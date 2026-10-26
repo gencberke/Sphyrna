@@ -19,12 +19,12 @@ extension LoomTheme {
         static let when = InkStyle(size: 11, mono: true)
         static let headGap: CGFloat = 14
 
-        /// Remora's place (136 wide, its face in it) and the sentence, 14 apart and 12 under the heading. The sentence is 14.5 on a
-        /// 1.55 line, at most 780 wide, and keeps two lines' room.
-        static let placeWidth: CGFloat = 136
-        static let placeGap: CGFloat = 14
+        /// Remora's face sits in the heading row at 36 pt before the title, and the date line follows the title. The sentence is
+        /// 14.5 on a 1.55 line, under the heading, full width up to its measure, and keeps two lines' room.
+        static let headingFaceWidth: CGFloat = 36
+        static let headingFaceGap: CGFloat = 12
         static let lineTop: CGFloat = 12
-        static let sentenceMaxWidth: CGFloat = 780
+        static let sentenceMaxWidth: CGFloat = 980
         static let sentence = InkStyle(size: 14.5, lineHeight: 22.475)
         static let sentenceLineSpacing: CGFloat = 5
         static let sentenceRoom: CGFloat = 2 * 1.55 * 14.5
@@ -33,10 +33,13 @@ extension LoomTheme {
 
         // MARK: Tiles
 
-        /// Three columns 14 apart, 18 under the sentence. A tile: raised 1, radius 12, hairline and card depth, padding 13 16 12.
+        /// One, two or three columns 14 apart by the content's width, 18 under the sentence. A tile: raised 1, radius 12,
+        /// hairline and card depth, padding 13 16 12.
         static let tilesTop: CGFloat = 18
         static let tileGap: CGFloat = 14
-        static let tileColumns = 3
+        /// Below this content width the tiles take one column, below the second two, above both three.
+        static let tileOneColumnBelow: CGFloat = 560
+        static let tileTwoColumnsBelow: CGFloat = 840
         static let tilePaddingTop: CGFloat = 13
         static let tilePaddingH: CGFloat = 16
         static let tilePaddingBottom: CGFloat = 12
@@ -141,10 +144,8 @@ extension LoomTheme {
 
         // MARK: Remora's face (Front, the menu bar's mark, D-77; hidden from VoiceOver)
 
-        /// In the brief's 136 wide place, about 64 wide, its trailing edge 6 inside the place's; in the fold's slot, about 36 wide.
-        /// One colour, the art's, at about 0.8.
-        static let faceWidth: CGFloat = 64
-        static let faceInset: CGFloat = 6
+        /// In the heading row, 36 wide before the title; in the fold's slot, about 36 wide. One colour, the art's, at about
+        /// 0.8.
         static let foldFaceWidth: CGFloat = 36
         static let faceOpacity = 0.8
 

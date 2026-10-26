@@ -67,7 +67,7 @@ private struct HomeBoardView: View {
                         if HomeLayout.isWide(paneWidth: paneWidth) {
                             HStack(alignment: .top, spacing: LoomTheme.Home.columnGap) {
                                 HomeLists(model: model).frame(maxWidth: .infinity, alignment: .topLeading)
-                                HomeUsage(model: model).frame(width: LoomTheme.Home.sideColumn)
+                                HomeUsage(model: model).frame(width: HomeLayout.sideColumn(paneWidth: paneWidth))
                             }
                         } else {
                             HomeLists(model: model)

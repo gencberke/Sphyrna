@@ -84,14 +84,28 @@ import Testing
         #expect(HomeLayout.cards(needsYou: 1, finished: 0, toContinue: 0) == [.needsYou])
     }
 
-    @Test func theSideColumnSitsBesideTheListsFrom820OfContentAndUnderThemBelow() {
+    @Test func theSideColumnSitsBesideTheListsFrom820OfContentAndScalesWithThePane() {
         let inset = LoomTheme.Home.sideInset
-        #expect(LoomTheme.Home.wideFrom == 820 && LoomTheme.Home.sideColumn == 316 && LoomTheme.Home.columnGap == 24)
+        #expect(LoomTheme.Home.wideFrom == 820 && LoomTheme.Home.sideColumnMin == 316 && LoomTheme.Home.sideColumnMax == 400)
+        #expect(LoomTheme.Home.columnGap == 24)
         #expect(HomeLayout.isWide(paneWidth: 820 + 2 * inset))
         #expect(!HomeLayout.isWide(paneWidth: 820 + 2 * inset - 1))
         // A pane wider than the column keeps the column's width.
         #expect(HomeLayout.contentWidth(paneWidth: 2_400) == LoomTheme.Home.maxWidth - 2 * inset)
         #expect(HomeLayout.isWide(paneWidth: 2_400))
+        // The side column is a third of the content, within 316 and 400.
+        #expect(HomeLayout.sideColumn(paneWidth: 820 + 2 * inset) == 316)
+        #expect(HomeLayout.sideColumn(paneWidth: 940) == 316)
+        #expect(HomeLayout.sideColumn(paneWidth: 2_400) == 400)
+    }
+
+    @Test func tilesTakeOneTwoOrThreeColumnsByTheContentWidth() {
+        #expect(HomeLayout.tileColumns(contentWidth: 559) == 1)
+        #expect(HomeLayout.tileColumns(contentWidth: 560) == 2)
+        #expect(HomeLayout.tileColumns(contentWidth: 839) == 2)
+        #expect(HomeLayout.tileColumns(contentWidth: 840) == 3)
+        #expect(HomeLayout.tileColumns(contentWidth: 456) == 1)
+        #expect(HomeLayout.tileColumns(contentWidth: 1_216) == 3)
     }
 
     @Test func theBandKeepsClearOfTheWindowButtonsOnlyWhereTheColumnDoesNot() {
@@ -107,7 +121,7 @@ import Testing
 
     @Test func theBandAndTheCardsHaveDesignsValues() {
         typealias H = LoomTheme.Home
-        #expect(H.bandAbove == 84 && H.bandBelow == 34 && H.blockGap == 14 && H.maxWidth == 1_000 && H.sideInset == 32)
+        #expect(H.bandAbove == 84 && H.bandBelow == 34 && H.blockGap == 14 && H.maxWidth == 1_280 && H.sideInset == 32)
         #expect(LoomTheme.InkType.statement.size == 42 && LoomTheme.InkType.statement.weight == .ultraLight)
         #expect(H.eyebrow.size == 11 && H.eyebrow.mono && H.eyebrow.tracking == 0.04)
         #expect(H.headHeight == 42 && H.pip == 7 && H.headGap == 9 && H.itemPadding == 16)

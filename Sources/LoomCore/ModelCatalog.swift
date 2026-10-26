@@ -70,6 +70,18 @@ public final class ModelCatalog {
         }
     }
 
+    /// The effort levels a Claude alias takes: the ones the last probe listed for that alias; the five the CLI takes when
+    /// the probe said nothing about any model (a probe that lists levels for one model and none for another means that one
+    /// takes none).
+    public func claudeEfforts(for alias: String) -> [String] {
+        let models = probedClaude ?? []
+        guard models.contains(where: { !$0.efforts.isEmpty }) else { return Self.claudeEffortLevels }
+        return models.first { $0.id == alias }?.efforts ?? Self.claudeEffortLevels
+    }
+
+    /// The five levels the CLI takes when a probe does not say.
+    private nonisolated static let claudeEffortLevels = ClaudeLaunchChoices.effortLevels
+
     /// The name of a Claude alias as the product shows it: the full name of the release the probe said it resolves to, else
     /// the fixed short title, else the alias itself.
     public func claudeTitle(of alias: String) -> String {

@@ -37,7 +37,7 @@ struct RemoraSettingsTests {
 
     @Test func everyControlCallsItsSetterAndTheValueIsKept() {
         let model = makeModel()
-        let controls = RemoraSettingsControls(model: model)
+        let controls = RemoraSettingsControls(model: model, catalog: ModelCatalog())
         let project = UUID()
         let note = FileManager.default.temporaryDirectory.appendingPathComponent("Remora-\(UUID()).md")
         controls.setOn(false)
@@ -90,12 +90,51 @@ struct RemoraSettingsTests {
     }
 
     @Test func aStoredValueTheListsDoNotHaveIsAddedSoThePopupNeverShowsAnUnlistedValue() {
+        let catalog = ModelCatalog()
         #expect(RemoraChoices.languages(including: "sv").last == RemoraChoices.Option(value: "sv", title: "sv"))
         #expect(RemoraChoices.languages(including: "tr").count == RemoraChoices.languages(including: nil).count)
-        #expect(RemoraChoices.models(including: "sonnet").map(\.title) == ["Sonnet 5.5", "Haiku 5.5"])
-        #expect(RemoraChoices.models(including: "claude-x").map(\.value) == ["sonnet", "haiku", "claude-x"])
-        #expect(RemoraChoices.efforts(including: "low").map(\.title) == ["Low", "Medium", "High", "Extra high", "Max"])
-        #expect(RemoraChoices.efforts(including: "weird").last?.value == "weird")
+        #expect(RemoraChoices.models(from: catalog.claudeModels, including: "sonnet").map(\.title) == ["Opus", "Sonnet", "Haiku"])
+        #expect(RemoraChoices.models(from: catalog.claudeModels, including: "claude-x").map(\.value) == ["opus", "sonnet", "haiku", "claude-x"])
+        #expect(RemoraChoices.efforts(for: "sonnet", from: catalog, including: "low").map(\.title)
+            == ["Low", "Medium", "High", "Extra high", "Max"])
+        #expect(RemoraChoices.efforts(for: "sonnet", from: catalog, including: "weird").last?.value == "weird")
+    }
+
+    /// FB6-22: every Claude model the catalog knows (Opus included) with the efforts its own probe listed; a model the probe
+    /// gave no levels is offered with no effort row.
+    @Test func everyClaudeModelIsOfferedWithItsOwnEfforts() {
+        let catalog = ModelCatalog()
+        catalog.apply(HarnessReading(provider: .claude, models: [
+            HarnessModel(id: "opus", displayName: "Opus", isDefault: false, efforts: ["low", "medium", "high"],
+                         resolvedModel: "claude-opus-5-5"),
+            HarnessModel(id: "sonnet", displayName: "Sonnet", isDefault: false, efforts: ["low", "medium", "high", "xhigh", "max"],
+                         resolvedModel: "claude-sonnet-5-5"),
+            HarnessModel(id: "haiku", displayName: "Haiku", isDefault: false, efforts: [], resolvedModel: "claude-haiku-5-5"),
+        ], readAt: Date()))
+        #expect(RemoraChoices.models(from: catalog.claudeModels, including: "sonnet").map(\.value) == ["opus", "sonnet", "haiku"])
+        #expect(RemoraChoices.models(from: catalog.claudeModels, including: "sonnet").map(\.title) == ["Opus 5.5", "Sonnet 5.5", "Haiku 5.5"])
+        #expect(RemoraChoices.efforts(for: "opus", from: catalog, including: "low").map(\.value) == ["low", "medium", "high"])
+        #expect(RemoraChoices.efforts(for: "opus", from: catalog, including: "max").map(\.value) == ["low", "medium", "high", "max"],
+                "a stored level the model does not list stays in its menu")
+        #expect(RemoraChoices.efforts(for: "haiku", from: catalog, including: "low").isEmpty, "no level, no row")
+        #expect(RemoraChoices.keptEffort("max", for: "opus", from: catalog) == "high", "the nearest level below")
+        #expect(RemoraChoices.keptEffort("xhigh", for: "haiku", from: catalog) == nil)
+    }
+
+    @Test func aModelChangeKeepsTheNearestEffortAndAModelWithoutEffortsHidesTheRow() {
+        let model = makeModel()
+        let catalog = ModelCatalog()
+        catalog.apply(HarnessReading(provider: .claude, models: [
+            HarnessModel(id: "opus", displayName: "Opus", isDefault: false, efforts: ["low", "medium", "high"], resolvedModel: "claude-opus-5-5"),
+            HarnessModel(id: "haiku", displayName: "Haiku", isDefault: false, efforts: [], resolvedModel: "claude-haiku-5-5"),
+        ], readAt: Date()))
+        let controls = RemoraSettingsControls(model: model, catalog: catalog)
+        controls.setEffort("max")
+        controls.setModel("opus")
+        #expect(model.remora.preferences.model == "opus" && model.remora.preferences.effort == "high")
+        controls.setModel("haiku")
+        #expect(model.remora.preferences.effort == "high", "a model without efforts keeps the stored level for a later one")
+        #expect(RemoraChoices.efforts(for: "haiku", from: catalog, including: "high").isEmpty)
     }
 
     @Test func theBriefModeSegmentsAreAutomaticAndWhenIAsk() {

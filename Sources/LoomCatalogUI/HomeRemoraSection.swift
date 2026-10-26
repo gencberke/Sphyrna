@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Remora on Home (DESIGN §9 and §20; the reference's `#brief` document): the brief with its states, or the fold, then the field,
 /// the answer and the footer. It takes the band's place with Remora on, and it is one VoiceOver group named "Remora"; its art (the
-/// band's hammerhead behind it, and Remora's face in the brief's place or the fold's 84 × 30 slot, `HomeRemoraArt`) is hidden from
+/// band's hammerhead behind it, and Remora's face in the heading row or the fold's 84 × 30 slot, `HomeRemoraArt`) is hidden from
 /// VoiceOver.
 struct HomeRemoraSection: View {
     let model: CatalogModel
@@ -18,11 +18,12 @@ struct HomeRemoraSection: View {
 
     var body: some View {
         let context = HomeRemoraContext.make(model: model, reads: reads, ui: ui)
+        let columns = HomeLayout.tileColumns(contentWidth: HomeLayout.contentWidth(paneWidth: paneWidth))
         VStack(alignment: .leading, spacing: 0) {
             if context.state == .folded {
                 HomeRemoraFold(model: model, ui: ui, reads: reads, context: context)
             } else {
-                HomeRemoraBriefBlock(model: model, ui: ui, reads: reads, context: context)
+                HomeRemoraBriefBlock(model: model, ui: ui, reads: reads, context: context, columns: columns)
             }
             HomeRemoraFieldBlock(model: model, ui: ui, reads: reads, context: context,
                                  topGap: context.state == .folded ? LoomTheme.Remora.foldFieldTop : LoomTheme.Remora.fieldTop)
@@ -53,55 +54,41 @@ struct HomeRemoraSection: View {
     }
 }
 
-/// A place of Remora's face: in the brief's column, about 64 wide, its trailing edge a little inside the column's and level with the
-/// middle of the sentence's room, fading in with a new brief; with `fold`, about 36 wide at the start of the folded line. It takes no
-/// click and VoiceOver does not see it.
+/// A place of Remora's face in the fold: about 36 wide at the start of the folded line. It takes no click and VoiceOver does not
+/// see it.
 struct HomeRemoraArtPlace: View {
     let identifier: String
-    var fold = false
-    @Environment(\.homeRemoraArt) private var art
     private typealias R = LoomTheme.Remora
 
     var body: some View {
-        Group {
-            if fold {
-                HomeRemoraFace(width: R.foldFaceWidth).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            } else {
-                HomeRemoraFace(width: R.faceWidth).opacity(art?.fade ?? 1)
-                    .padding(.trailing, R.faceInset)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .frame(height: R.sentenceRoom)
-            }
-        }
-        .allowsHitTesting(false).accessibilityHidden(true).accessibilityIdentifier(identifier)
+        HomeRemoraFace(width: R.foldFaceWidth).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .allowsHitTesting(false).accessibilityHidden(true).accessibilityIdentifier(identifier)
     }
 }
 
 // MARK: The brief
 
-/// The heading, the sentence with its place, the tiles, the further and quiet projects and the proposal.
+/// The heading with its face, the sentence, the tiles, the further and quiet projects and the proposal.
 private struct HomeRemoraBriefBlock: View {
     let model: CatalogModel
     let ui: HomeRemoraUI
     let reads: HomeRemoraReads
     let context: HomeRemoraContext
+    /// How many columns the tiles take at this pane's width.
+    let columns: Int
     private typealias R = LoomTheme.Remora
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HomeRemoraHeading(model: model, ui: ui, context: context)
-            HStack(alignment: .top, spacing: R.placeGap) {
-                HomeRemoraArtPlace(identifier: "home-remora-place").frame(width: R.placeWidth)
-                HomeRemoraSentence(model: model, ui: ui, context: context)
-                    .frame(maxWidth: R.sentenceMaxWidth, alignment: .topLeading)
-                Spacer(minLength: 0)
-            }
-            .padding(.top, R.lineTop)
+            HomeRemoraSentence(model: model, ui: ui, context: context)
+                .frame(maxWidth: R.sentenceMaxWidth, alignment: .topLeading)
+                .padding(.top, R.lineTop)
             if !context.tiles.isEmpty {
-                HomeRemoraTileGrid(model: model, ui: ui, reads: reads, tiles: context.tiles, now: context.now)
+                HomeRemoraTileGrid(model: model, ui: ui, reads: reads, tiles: context.tiles, now: context.now, columns: columns)
                     .padding(.top, R.tilesTop)
             } else if context.readingFrames > 0 {
-                HomeRemoraReadingFrames(count: context.readingFrames).padding(.top, R.tilesTop)
+                HomeRemoraReadingFrames(count: context.readingFrames, columns: columns).padding(.top, R.tilesTop)
             }
             ForEach(context.further) { line in
                 HomeRemoraFurtherLine(model: model, line: line).padding(.top, R.quietTop)
@@ -114,21 +101,27 @@ private struct HomeRemoraBriefBlock: View {
     }
 }
 
-/// "Where you left off", the date line and ⋯.
+/// The face before "Where you left off", then the date line and ⋯.
 private struct HomeRemoraHeading: View {
     let model: CatalogModel
     let ui: HomeRemoraUI
     let context: HomeRemoraContext
     @Environment(\.openRemoraMemory) private var openMemory
+    @Environment(\.homeRemoraArt) private var art
     private typealias R = LoomTheme.Remora
 
     var body: some View {
         let when = HomeRemoraText.whenLine(context.brief?.startedAt ?? model.now)
-        HStack(alignment: .firstTextBaseline, spacing: R.headGap) {
+        HStack(alignment: .center, spacing: 0) {
+            HomeRemoraFace(width: R.headingFaceWidth).opacity(art?.fade ?? 1)
+                .padding(.trailing, R.headingFaceGap)
+                .accessibilityHidden(true)
+                .accessibilityIdentifier("home-remora-face")
             Text(HomeRemoraText.heading).homeType(R.heading).foregroundStyle(LoomTheme.Text.primary)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("home-remora-heading")
             Text(when).homeType(R.when).foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
+                .padding(.leading, R.headGap)
                 .accessibilityIdentifier("home-remora-when")
             Spacer(minLength: 0)
             moreButton

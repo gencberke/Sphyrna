@@ -319,20 +319,11 @@ struct RemoraHomeRenderTests {
     private func slowBriefScript(_ sessions: [UUID]) -> [String: String] {
         let s = sessions.map(\.uuidString)
         let whys = ["Waits for review", "Needs a test", "Draft is ready"]
-        let chips = (0..<3).map { "{\"session\":\"\(s[$0])\",\"why\":\"\(whys[$0])\"}" }.joined(separator: ",")
+        let nexts = ["the signature path.", "the burst test.", "the changelog."]
+        let chips = (0..<3).map { "{\"session\":\"\(s[$0])\",\"why\":\"\(whys[$0])\",\"next\":\"\(nexts[$0])\"}" }.joined(separator: ",")
         let answer = "You left off in **loom**, where the billing webhook waits for a review.\n\n```remora\n"
             + "{\"cited\":[\"\(s[0])\"],\"chips\":[\(chips)],\"drafts\":[],\"facts\":[]}\n```\n"
         return ["LOOM_FAKE_REMORA_ANSWER": answer, "LOOM_FAKE_REMORA_DELAY_MS": "40"]
-    }
-
-    /// A project note for each of the rig's first three projects whose one item names its session, so each brief tile has a one-line
-    /// "Next:" (the reference's tiles all have one).
-    private func writeNotes(_ rig: RemoraHomeRig) async throws {
-        let memory = try RemoraMemory(directory: rig.remoraDirectory, clock: { [base = rig.base] in base })
-        let nexts = ["the signature path.", "the burst test.", "the changelog."]
-        for index in 0..<3 {
-            try await memory.replaceNote(project: rig.projects[index].id, items: [RemoraNoteItem(text: nexts[index], sessions: [rig.sessions[index]])])
-        }
     }
 
     /// While Remora writes a brief Home shows three empty frames in the tiles' places, none of the catalog's tiles and none of an
@@ -347,7 +338,6 @@ struct RemoraHomeRenderTests {
                     .init(title: "Release notes", project: 2, ago: 12_000)],
             preferences: RemoraPreferences(briefMode: .whenIAsk), scriptFor: slowBriefScript)
         defer { Task { await rig.finish() } }
-        try await writeNotes(rig)
         if olderBrief { try rig.keepBrief(text: "An older brief.", chips: [(0, "Older"), (1, "Older"), (2, "Older")], ago: 3_600) }
         rig.model.showHome()
         let (window, hosting) = hostHome(rig.model, width: 940, height: 900)

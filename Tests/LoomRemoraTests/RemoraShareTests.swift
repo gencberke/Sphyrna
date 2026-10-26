@@ -136,6 +136,22 @@ struct RemoraShareTests {
         #expect(remaining == Array(0..<remaining.count), "the projects that moved last stay: \(remaining)")
     }
 
+    @Test func anItemNotReconfirmedForNinetyDaysLeavesTheShare() async throws {
+        let fixture = try RemoraMemoryFixture()
+        defer { fixture.remove() }
+        let memory = try fixture.open()
+        let project = UUID()
+        fixture.now = fixture.daysAgo(100)
+        try await memory.replaceNote(project: project, items: [RemoraNoteItem(text: "An old fact", sessions: [UUID()])])
+        fixture.now = fixture.date(2026, 10, 21, 12)
+        #expect(await memory.share(for: .allProjects).projectNotes == 0, "an item 100 days old is no longer shared")
+        #expect(fixture.text("projects/\(project.uuidString).md") != nil, "it stays on disk until a brief rewrites the note")
+
+        try await memory.replaceNote(project: project, items: [RemoraNoteItem(text: "A fresh fact", sessions: [UUID()])])
+        let share = await memory.share(for: .allProjects)
+        #expect(share.projectNotes == 1 && share.text.contains("A fresh fact"))
+    }
+
     @Test func nothingToShareIsEmpty() async throws {
         let fixture = try RemoraMemoryFixture()
         defer { fixture.remove() }

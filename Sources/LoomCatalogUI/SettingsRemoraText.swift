@@ -1,5 +1,6 @@
 import Foundation
 import LoomChat
+import LoomCore
 import LoomRemora
 
 /// The words and the rules of Settings → Remora (DESIGN §20 Settings; the reference's `settings/body.html`), as plain values so
@@ -9,7 +10,7 @@ enum RemoraSettingsText {
     static let switchDetail = "Answers questions about your sessions on Home and from ⌘K, and drafts a new session's brief. It only reads."
 
     static let modelTitle = "Model"
-    static let modelDetail = "Haiku 5.5 answers faster and uses much less of your plan."
+    static let modelDetail = "Opus answers best; Haiku answers faster and uses much less of your plan."
     static let effortTitle = "Effort"
 
     static let briefTitle = "Morning brief"
@@ -67,12 +68,6 @@ enum RemoraChoices {
         let title: String
     }
 
-    static let models = [Option(value: "sonnet", title: "Sonnet 5.5"), Option(value: "haiku", title: "Haiku 5.5")]
-
-    static func efforts() -> [Option] {
-        ChatEffort.ordered.map { Option(value: $0, title: ComposerBarText.effortLabel($0)) }
-    }
-
     /// Common languages by their English names, in this order; `zh-Hans` is the form `RemoraPreferences` keeps.
     static let languages = [
         Option(value: "en", title: "English"), Option(value: "tr", title: "Turkish"), Option(value: "de", title: "German"),
@@ -81,14 +76,27 @@ enum RemoraChoices {
         Option(value: "ko", title: "Korean"), Option(value: "zh-Hans", title: "Chinese (Simplified)"),
     ]
 
-    /// The model list, with the stored model when it is none of the two.
-    static func models(including current: String) -> [Option] {
-        models.contains { $0.value == current } ? models : models + [Option(value: current, title: current)]
+    /// The model list: every Claude model the catalog offers (Opus included), with the stored model added when the catalog does
+    /// not list it.
+    static func models(from catalogModels: [ModelCatalogEntry], including current: String) -> [Option] {
+        let options = catalogModels.map { Option(value: $0.id, title: $0.title) }
+        return options.contains { $0.value == current } ? options : options + [Option(value: current, title: current)]
     }
 
-    static func efforts(including current: String) -> [Option] {
-        let all = efforts()
-        return all.contains { $0.value == current } ? all : all + [Option(value: current, title: current)]
+    /// The levels the chosen model takes, from the probe when it listed them; empty means it takes none and Settings hides the
+    /// row. A stored level the model does not list is kept in the popup, so it never shows a value that is not in its menu.
+    @MainActor
+    static func efforts(for model: String, from catalog: ModelCatalog, including current: String) -> [Option] {
+        let options = catalog.claudeEfforts(for: model).map { Option(value: $0, title: ComposerBarText.effortLabel($0)) }
+        guard !options.isEmpty, !current.isEmpty, !options.contains(where: { $0.value == current }) else { return options }
+        return options + [Option(value: current, title: ComposerBarText.effortLabel(current))]
+    }
+
+    /// The effort a model change keeps: the nearest level the new model offers (nil when it offers none, and the stored one
+    /// stays for a later model that takes it).
+    @MainActor
+    static func keptEffort(_ effort: String, for model: String, from catalog: ModelCatalog) -> String? {
+        ChatEffort.clamped(effort, to: catalog.claudeEfforts(for: model))
     }
 
     /// The language list: "Same as my last question" first (the tag is "", which stands for no language), then the languages.

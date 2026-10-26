@@ -130,11 +130,11 @@ struct ArtPlaceTests {
         }
     }
 
-    /// Front, the menu bar's mark, scaled from its own path data (never a copy of it) to about 64 and about 36, in the art's colour
-    /// at about 0.8.
-    @Test func theFaceIsTheMenuBarMarkAtTheTwoSizesInTheArtColour() {
+    /// Front, the menu bar's mark, scaled from its own path data (never a copy of it) to about 36 in the heading and the fold, in
+    /// the art's colour at about 0.8.
+    @Test func theFaceIsTheMenuBarMarkAtTheHeadingAndFoldSizesInTheArtColour() {
         let mark = MenuBarMark.bounds
-        for width in [LoomTheme.Remora.faceWidth, LoomTheme.Remora.foldFaceWidth] {
+        for width in [LoomTheme.Remora.headingFaceWidth, LoomTheme.Remora.foldFaceWidth] {
             let parts = HomeRemoraFace.parts(width: width)
             #expect(parts.count == MenuBarMark.paths.count, "every part of the mark")
             let box = parts.reduce(CGRect.null) { $0.union($1.boundingBoxOfPath) }
@@ -146,7 +146,7 @@ struct ArtPlaceTests {
                 #expect(abs(a.width - b.width * scale) < 0.01 && abs(a.minX - (b.minX - mark.minX) * scale) < 0.01, "the same path, scaled")
             }
         }
-        #expect(abs(LoomTheme.Remora.faceWidth - 64) <= 4 && abs(LoomTheme.Remora.foldFaceWidth - 36) <= 4)
+        #expect(abs(LoomTheme.Remora.headingFaceWidth - 36) <= 4 && abs(LoomTheme.Remora.foldFaceWidth - 36) <= 4)
         #expect(HomeRemoraFace.color == LoomTheme.Surface.art && abs(HomeRemoraFace.opacity - 0.8) <= 0.05)
     }
 

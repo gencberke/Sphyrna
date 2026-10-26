@@ -29,10 +29,6 @@ struct RemoraHomeStateTests {
                           lastActivityAt: activity, indicator: indicator)
     }
 
-    private func note(_ project: UUID, name: String = "loom", _ lines: [String]) -> RemoraHostNote {
-        RemoraHostNote(project: project, name: name, note: RemoraProjectNote(text: lines.joined(separator: "\n") + "\n"))
-    }
-
     // MARK: The state
 
     @Test func theStateIsChosenFromThePreferencesAndTheLastCalls() {
@@ -145,42 +141,32 @@ struct RemoraHomeStateTests {
             == "Less than a tenth of your 5-hour limit is left, so the morning brief waits. Questions still run.")
     }
 
-    @Test func quietAndNoteDaysReadAsWordsAndPutInDraftSaysWhereTheLineGoes() {
+    @Test func quietProjectsReadAsWordsAndPutInDraftSaysWhereTheLineGoes() {
         let now = date("2026-10-21T10:00:00Z")
         #expect(HomeRemoraText.quietSince(date("2026-10-16T08:00:00Z"), now: now, zone: zone, locale: locale, calendar: calendar) == "quiet since Friday")
         #expect(HomeRemoraText.quietSince(date("2026-10-02T08:00:00Z"), now: now, zone: zone, locale: locale, calendar: calendar) == "quiet since 2 october")
-        #expect(HomeRemoraText.noteDay("2026-10-21", now: now, zone: zone, locale: locale, calendar: calendar) == "today")
-        #expect(HomeRemoraText.noteDay("2026-10-20", now: now, zone: zone, locale: locale, calendar: calendar) == "yesterday")
-        #expect(HomeRemoraText.noteDay("2026-10-12", now: now, zone: zone, locale: locale, calendar: calendar) == "12 october")
-        #expect(HomeRemoraText.noteDay("not a day", now: now) == nil)
         #expect(HomeRemoraText.hoverWhere(.place) == "Goes below its composer's text, not sent, and the session opens")
         #expect(HomeRemoraText.hoverWhere(.copy(.terminal)) == "It runs in the terminal, so this is copied")
     }
 
     // MARK: Tiles
 
-    @Test func tilesFollowTheChipsOrderNextComesFromTheNewestNoteItemAndAtMostThreeShow() {
+    @Test func tilesFollowTheChipsOrderNextAndDraftComeFromTheChipAndAtMostThreeShow() {
         let ids = (0..<5).map { _ in UUID() }
         let projects = (0..<5).map { _ in UUID() }
         var sessions: [UUID: HomeRemoraSession] = [:]
         for (index, id) in ids.enumerated() { sessions[id] = session(id, project: projects[index], name: "p\(index)", title: "Session \(index)") }
         // Remora ranks: 3, 1, 4, 0; session 2 is not named.
         let order = [3, 1, 4, 0]
-        let chips = order.map { RemoraChip(sessionID: ids[$0].uuidString, why: "why \($0)") }
+        let nexts = ["The next step.", "Another step.", "", "Far step."]
+        let chips = order.enumerated().map { RemoraChip(sessionID: ids[$0.element].uuidString, why: "why \($0.element)", next: nexts[$0.offset]) }
         let drafts = [RemoraDraft(sessionID: ids[1].uuidString, text: "Run the checks.")]
-        let notes = [
-            note(projects[3], name: "p3", [
-                "- 2026-10-18 \u{00B7} Old step. (sessions: \(ids[3].uuidString))",
-                "- 2026-10-20 \u{00B7} The newest step. (sessions: \(ids[3].uuidString), \(ids[1].uuidString))",
-                "- 2026-10-19 \u{00B7} A middle step. (sessions: \(ids[3].uuidString))"]),
-        ]
-        let plan = HomeRemoraTiles.brief(chips: chips, drafts: drafts, notes: notes, sessions: sessions, excluded: [])
+        let plan = HomeRemoraTiles.brief(chips: chips, drafts: drafts, sessions: sessions, excluded: [])
         #expect(plan.tiles.map(\.id) == [ids[3], ids[1], ids[4]], "the chips' order, three tiles")
         #expect(plan.further.map(\.id) == [ids[0]], "a fourth project that moved is one line")
         #expect(plan.further.first?.why == "why 0")
-        #expect(plan.tiles[0].next == "The newest step." && plan.tiles[0].noteDay == "2026-10-20", "Next is the newest item that names the session")
-        #expect(plan.tiles[1].next == "The newest step.", "an item that cites two sessions is Next for both")
-        #expect(plan.tiles[2].next == nil && plan.tiles[2].draft == nil)
+        #expect(plan.tiles[0].next == "The next step." && plan.tiles[1].next == "Another step.", "Next is the chip's own line")
+        #expect(plan.tiles[2].next == nil && plan.tiles[2].draft == nil, "an empty next is no line")
         #expect(plan.tiles[1].draft == "Run the checks." && plan.tiles[0].draft == nil)
         #expect(plan.tiles.allSatisfy { !$0.isCatalog })
     }
@@ -192,28 +178,25 @@ struct RemoraHomeStateTests {
                         other: session(other, project: UUID(), name: "site")]
         let chips = [gone, first, second, other].map { RemoraChip(sessionID: $0.uuidString, why: "") }
             + [RemoraChip(sessionID: "not a uuid", why: "")]
-        let plan = HomeRemoraTiles.brief(chips: chips, drafts: [], notes: [], sessions: sessions, excluded: [])
+        let plan = HomeRemoraTiles.brief(chips: chips, drafts: [], sessions: sessions, excluded: [])
         #expect(plan.tiles.map(\.id) == [first, other], "a deleted session has no tile, a project has one, a bad id is dropped")
-        // A note item that names only a gone session gives no Next to anyone.
-        let orphan = note(project, [ "- 2026-10-20 \u{00B7} Step. (sessions: \(gone.uuidString))" ])
-        #expect(HomeRemoraTiles.brief(chips: chips, drafts: [], notes: [orphan], sessions: sessions, excluded: []).tiles.allSatisfy { $0.next == nil })
+        #expect(plan.tiles.allSatisfy { $0.next == nil })
     }
 
     @Test func anExcludedProjectIsNeverNamedNotInATileNotInALineNotInANote() {
         let secret = UUID(), open = UUID()
         let hidden = UUID(), shown = UUID()
         let sessions = [hidden: session(hidden, project: secret, name: "secret"), shown: session(shown, project: open, name: "open")]
-        let chips = [hidden, shown].map { RemoraChip(sessionID: $0.uuidString, why: "") }
-        let notes = [note(secret, name: "secret", ["- 2026-10-20 \u{00B7} Secret step. (sessions: \(shown.uuidString))"]),
-                     note(open, name: "open", ["- 2026-10-19 \u{00B7} Open step. (sessions: \(shown.uuidString))"])]
+        let chips = [RemoraChip(sessionID: hidden.uuidString, why: "", next: "Secret step."),
+                     RemoraChip(sessionID: shown.uuidString, why: "", next: "Open step.")]
         let projects = [HomeRemoraProject(id: secret, name: "secret", tone: nil), HomeRemoraProject(id: open, name: "open", tone: nil),
                         HomeRemoraProject(id: UUID(), name: "quiet one", tone: nil)]
         var latest = [secret: Date(timeIntervalSince1970: 10), open: Date(timeIntervalSince1970: 20)]
         latest[projects[2].id] = Date(timeIntervalSince1970: 5)
-        let plan = HomeRemoraTiles.brief(chips: chips, drafts: [], notes: notes, sessions: sessions, excluded: [secret], projects: projects,
+        let plan = HomeRemoraTiles.brief(chips: chips, drafts: [], sessions: sessions, excluded: [secret], projects: projects,
                                          latest: latest, before: Date(timeIntervalSince1970: 100))
         #expect(plan.tiles.map(\.id) == [shown])
-        #expect(plan.tiles[0].next == "Open step.", "a note of an excluded project gives no Next")
+        #expect(plan.tiles[0].next == "Open step.", "the excluded project's chip is never named")
         #expect(plan.quiet.map(\.project.name) == ["quiet one"], "an excluded project is not a quiet line either; a named one is not quiet")
         let catalog = HomeRemoraTiles.catalog(recent: [sessions[hidden]!, sessions[shown]!], excluded: [secret])
         #expect(catalog.map(\.id) == [shown])
@@ -259,7 +242,7 @@ struct RemoraHomeStateTests {
         let reading = HomeRemoraContext.make(model: rig.model, reads: reads, ui: ui)
         #expect(reading.state == .reading)
         #expect(reading.tiles.isEmpty, "no tile while a brief is written: \(reading.tiles.map(\.session.title))")
-        #expect(reading.readingFrames == LoomTheme.Remora.tileColumns && reading.further.isEmpty && reading.quiet.isEmpty)
+        #expect(reading.readingFrames == HomeRemoraTiles.maxTiles && reading.further.isEmpty && reading.quiet.isEmpty)
         rig.model.remora.phase = .idle
         #expect(!rig.ranAProcess)
     }
@@ -280,7 +263,7 @@ struct RemoraHomeStateTests {
     @Test func anEntryIsPickedUpWhenItsSessionRanAfterTheBriefBegan() {
         let start = Date(timeIntervalSince1970: 1_000)
         func tile(_ activity: Double) -> HomeRemoraTile {
-            HomeRemoraTile(session: session(activity: Date(timeIntervalSince1970: activity)), noteDay: nil, next: nil, draft: nil, isCatalog: false)
+            HomeRemoraTile(session: session(activity: Date(timeIntervalSince1970: activity)), next: nil, draft: nil, isCatalog: false)
         }
         let tiles = [tile(1_500), tile(900), tile(1_000), tile(2_000)]
         #expect(HomeRemoraTiles.pickedUp(tiles, since: start) == 2, "strictly after the start")

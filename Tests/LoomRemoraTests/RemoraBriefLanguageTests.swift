@@ -40,6 +40,9 @@ struct RemoraBriefLanguageTests {
         let english = try await world.build(.brief(since: since), settings: RemoraPackSettings(language: "en"))
 
         #expect(!plain.text.contains("Write the brief in"))
+        #expect(plain.text.contains("Two short sentences, about 35 words: only what moved, what needs me and the next step."),
+                "the brief's length is a number in its request")
+        #expect(!plain.text.contains("Keep it short."))
         #expect(turkish.text.contains("Write the brief in Turkish (tr).\n</request>"))
         #expect(english.text.contains("Write the brief in English (en).\n</request>"))
         #expect(turkish.text.components(separatedBy: "Write the brief in").count == 2, "more than one line")

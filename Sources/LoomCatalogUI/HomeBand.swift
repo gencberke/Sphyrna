@@ -100,6 +100,18 @@ enum HomeLayout {
     /// The side column sits beside the lists from `wideFrom` of content width, and under them below it.
     static func isWide(paneWidth: CGFloat) -> Bool { contentWidth(paneWidth: paneWidth) >= LoomTheme.Home.wideFrom }
 
+    /// The side column's width: a third of the content, between 316 and 400, so it grows with a wide pane.
+    static func sideColumn(paneWidth: CGFloat) -> CGFloat {
+        let third = contentWidth(paneWidth: paneWidth) / 3
+        return min(LoomTheme.Home.sideColumnMax, max(LoomTheme.Home.sideColumnMin, third))
+    }
+
+    /// How many columns the tiles take at a content width: one below 560, two below 840, three above.
+    static func tileColumns(contentWidth: CGFloat) -> Int {
+        if contentWidth < LoomTheme.Remora.tileOneColumnBelow { return 1 }
+        return contentWidth < LoomTheme.Remora.tileTwoColumnsBelow ? 2 : 3
+    }
+
     /// The list cards, top to bottom. Continue comes first, in both layouts (DESIGN §9 Two columns), when it has a session;
     /// Needs you always shows, empty when nothing needs the user; Finished only with something in it.
     enum Card: Hashable { case continueSessions, needsYou, finished }

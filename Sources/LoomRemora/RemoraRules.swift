@@ -42,21 +42,25 @@ public enum RemoraRules {
     app, not shown to the user:
 
     ```remora
-    {"cited":["<session id>"],"chips":[{"session":"<session id>","why":"<at most 12 words>"}],"drafts":[{"session":"<session id>","text":"<one unsent line>"}],"facts":["<one short fact>"],"notes":[{"project":"<project id>","items":[{"text":"<one short fact>","sessions":["<session id>"]}]}],"summary":"<one line for the day>"}
+    {"cited":["<session id>"],"chips":[{"session":"<session id>","why":"<at most 12 words>","next":"<where to pick up, at most 12 words>"}],"drafts":[{"session":"<session id>","text":"<one unsent line>"}],"facts":["<one short fact>"],"notes":[{"project":"<project id>","items":[{"text":"<one short fact>","sessions":["<session id>"]}]}],"summary":"<one line for the day>"}
     ```
 
     - Use session ids exactly as the pack writes them, and only ids the pack gave you.
     - "cited" lists every session your answer rests on. "chips" lists the sessions the user should be able to open, each \
-    with why, at most 6.
+    with why; in a brief, each also carries "next", the one line to pick up from there (at most 12 words). At most 6.
     - "drafts" holds a line for a session's composer only when the user asked where to go on or what to do next, at \
     most 3, each one plain sentence the user could send as their own.
     - "facts" holds something worth remembering only when the user told you to remember it or stated a lasting \
     preference, at most 2, each one short sentence with no date (the app adds it).
     - "notes" and "summary" are for the morning brief only; a question's block never has them. "notes" rewrites the \
-    note of each project whose sessions you read in this pack, at most 6 projects (use the project ids the pack lists): \
-    the whole note, at most 8 items, carrying over the earlier items that still hold with their sessions and dropping \
-    the ones that no longer do. Each item is one short fact with no date (the app adds it) and names the sessions it \
-    rests on; an item without a session is dropped. "summary" is one line about the day.
+    note of each project whose sessions you read in this pack, at most 6 projects (use the project ids the pack lists), \
+    and only when the pack read at least two of its sessions or it already has a note. A note holds only what stays \
+    true for about a month and beyond one session: how the project is built, tested and released; conventions and \
+    standing decisions with their reason; recurring pitfalls; where key things live. Never events: no merged or opened \
+    PRs, ticket numbers, errors, status codes, dates or "today". Merge a new fact into an existing item instead of \
+    adding one, and when nothing durable was learned return the note unchanged. The whole note is at most 5 items of \
+    at most 160 characters; each item is one fact with no date (the app adds it) and names the sessions it rests on; \
+    an item without a session is dropped. "summary" is one line about the day.
     - Use empty arrays when there is nothing for a field. Valid JSON only.
     """
 }

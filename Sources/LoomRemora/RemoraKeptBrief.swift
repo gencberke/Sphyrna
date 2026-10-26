@@ -54,6 +54,8 @@ struct RemoraKeptBriefFile: Sendable {
         struct Chip: Codable {
             var session: String
             var why: String
+            /// Absent in a brief kept before 1.7.1.
+            var next: String?
         }
 
         struct Draft: Codable {
@@ -84,7 +86,7 @@ struct RemoraKeptBriefFile: Sendable {
               stored.version == Self.version, stored.startedAt.isFinite else { return nil }
         return RemoraKeptBrief(
             startedAt: Date(timeIntervalSince1970: stored.startedAt), text: stored.text, cited: stored.cited,
-            chips: stored.chips.map { RemoraChip(sessionID: $0.session, why: $0.why) },
+            chips: stored.chips.map { RemoraChip(sessionID: $0.session, why: $0.why, next: $0.next ?? "") },
             drafts: stored.drafts.map { RemoraDraft(sessionID: $0.session, text: $0.text) }, proposedFacts: stored.facts,
             readSessionIDs: stored.sessions.compactMap(UUID.init(uuidString:)), footer: stored.footer)
     }
@@ -92,7 +94,7 @@ struct RemoraKeptBriefFile: Sendable {
     func write(_ brief: RemoraKeptBrief) throws {
         let stored = Stored(
             startedAt: brief.startedAt.timeIntervalSince1970, text: brief.text, cited: brief.cited,
-            chips: brief.chips.map { .init(session: $0.sessionID, why: $0.why) },
+            chips: brief.chips.map { .init(session: $0.sessionID, why: $0.why, next: $0.next.isEmpty ? nil : $0.next) },
             drafts: brief.drafts.map { .init(session: $0.sessionID, text: $0.text) }, facts: brief.proposedFacts,
             sessions: brief.readSessionIDs.map(\.uuidString), footer: brief.footer)
         try RemoraFiles.ensureDirectory(url.deletingLastPathComponent())

@@ -24,16 +24,17 @@ struct HomeRemoraLink: View {
 
 // MARK: Tiles
 
-/// Up to three tiles in three equal columns.
+/// Up to three tiles in one, two or three equal columns by the pane's width.
 struct HomeRemoraTileGrid: View {
     let model: CatalogModel
     let ui: HomeRemoraUI
     let reads: HomeRemoraReads
     let tiles: [HomeRemoraTile]
     let now: Date
+    let columns: Int
 
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: R.tileGap, alignment: .top), count: R.tileColumns),
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: R.tileGap, alignment: .top), count: max(1, columns)),
                   alignment: .leading, spacing: R.tileGap) {
             ForEach(tiles) { tile in
                 HomeRemoraTileView(model: model, ui: ui, reads: reads, tile: tile, now: now)
@@ -47,10 +48,11 @@ struct HomeRemoraTileGrid: View {
 /// does not see them.
 struct HomeRemoraReadingFrames: View {
     let count: Int
+    let columns: Int
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: LoomTheme.Radius.block)
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: R.tileGap, alignment: .top), count: R.tileColumns),
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: R.tileGap, alignment: .top), count: max(1, columns)),
                   alignment: .leading, spacing: R.tileGap) {
             ForEach(0..<count, id: \.self) { _ in
                 shape.strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline)
@@ -63,7 +65,7 @@ struct HomeRemoraReadingFrames: View {
     }
 }
 
-/// One tile: the project and the note's day, the session and how it ended, "Next:" from the note, Put in Draft and Open.
+/// One tile: the project and the session's age, the session and how it ended, "Next:" from the chip, Put in Draft and Open.
 struct HomeRemoraTileView: View {
     let model: CatalogModel
     let ui: HomeRemoraUI
@@ -115,10 +117,9 @@ struct HomeRemoraTileView: View {
         }
     }
 
-    /// The note's day for a tile of the brief, the session's age for a catalog tile.
+    /// The session's age: a brief's tile no longer borrows a note's day.
     private func timeLabel(_ session: HomeRemoraSession) -> String {
-        if !tile.isCatalog, let day = tile.noteDay, let label = HomeRemoraText.noteDay(day, now: now) { return label }
-        return RelativeTime.string(from: session.lastActivityAt, to: now)
+        RelativeTime.string(from: session.lastActivityAt, to: now)
     }
 
     private func actions(_ session: HomeRemoraSession) -> some View {
@@ -415,7 +416,7 @@ struct HomeRemoraFold: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: R.foldHeadGap) {
-                HomeRemoraArtPlace(identifier: "home-remora-fold-slot", fold: true).frame(width: R.foldSlot.width, height: R.foldSlot.height)
+                HomeRemoraArtPlace(identifier: "home-remora-fold-slot").frame(width: R.foldSlot.width, height: R.foldSlot.height)
                 Text("\(Text("Remora").font(R.foldHeadBold.font).foregroundStyle(LoomTheme.Text.primary))\(Text(foldTail).font(R.foldHead.font).foregroundStyle(LoomTheme.Text.secondaryStyle))")
                     .accessibilityIdentifier("home-remora-fold-head")
                 Spacer(minLength: 0)

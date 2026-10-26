@@ -240,7 +240,9 @@ struct PackLayout {
             return "<question>\n\(clip(RemoraSecretMask.mask(text), toBytes: Self.questionBytes))\n</question>\n"
         case let .brief(since):
             return "<request>\nWrite my morning brief for Home: what moved since \(stamps.stamp(since)), which sessions need me, "
-                + "and where I could pick up. Sessions in the index with an older last activity did not move. Keep it short.\n"
+                + "and where I could pick up. Sessions in the index with an older last activity did not move. Two short "
+                + "sentences, about 35 words: only what moved, what needs me and the next step. No history, no ids in the "
+                + "text, no PR or ticket numbers. Per-session detail goes in the chips and drafts.\n"
                 + languageLine() + "</request>\n"
         case let .draft(project):
             let name = picks.first { $0.summary.projectID == project }?.summary.projectName

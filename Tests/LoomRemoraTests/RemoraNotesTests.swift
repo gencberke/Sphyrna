@@ -22,25 +22,28 @@ struct RemoraNotesTests {
         #expect(fixture.mode("projects/\(project.uuidString).md") == 0o600)
         #expect(await memory.noteProjects() == [project])
 
-        // The next day's rewrite keeps the date of an item whose text did not change.
+        // The next day's rewrite dates every item today: the model re-confirmed it.
         fixture.now = fixture.now.addingTimeInterval(86_400)
         try await memory.replaceNote(project: project, items: [item("Next: release"), item("New thing", session)])
-        #expect(await memory.note(for: project)?.readableItems.map(\.date) == ["2026-10-21", "2026-10-22"])
+        #expect(await memory.note(for: project)?.readableItems.map(\.date) == ["2026-10-22", "2026-10-22"])
         try await memory.replaceNote(project: project, items: [])
         #expect(await memory.note(for: project) == nil, "no items removes it")
     }
 
-    @Test func aNoteNeverPassesTwoKiB() async throws {
+    @Test func aNoteNeverPassesItsCaps() async throws {
         let fixture = try RemoraMemoryFixture()
         defer { fixture.remove() }
         let memory = try fixture.open()
         let project = UUID()
         var items: [RemoraNoteItem] = []
-        for index in 0..<30 { items.append(item("Item \(index) " + String(repeating: "w", count: 120), UUID())) }
+        for index in 0..<30 { items.append(item("Item \(index) " + String(repeating: "w", count: 220), UUID())) }
         try await memory.replaceNote(project: project, items: items)
+        let stored = try #require(await memory.note(for: project)).readableItems
+        #expect(stored.count == RemoraProjectNote.Limits.items, "five items at most")
+        #expect(stored.allSatisfy { $0.text.count <= RemoraProjectNote.Limits.itemCharacters }, "each item is 160 characters at most")
         let size = try #require(fixture.text("projects/\(project.uuidString).md")).utf8.count
-        #expect(size <= RemoraProjectNote.Limits.bytes && size > 1_500, "\(size)")
-        #expect(await memory.note(for: project)?.readableItems.first?.text.hasPrefix("Item 0 ") == true, "same-day items: the earlier ones stay")
+        #expect(size <= RemoraProjectNote.Limits.bytes)
+        #expect(stored.first?.text.hasPrefix("Item 0 ") == true, "same-day items: the earlier ones stay")
 
         // A long edit is cut too, and the newest items win.
         var lines = (0..<30).map { "- 2026-10-\(String(format: "%02d", 1 + $0 % 20)) \u{00B7} Edited \($0) " + String(repeating: "e", count: 100) }
@@ -49,6 +52,7 @@ struct RemoraNotesTests {
         let edited = try #require(fixture.text("projects/\(project.uuidString).md"))
         #expect(edited.utf8.count <= RemoraProjectNote.Limits.bytes)
         #expect(edited.contains("Newest"))
+        #expect(edited.split(separator: "\n").count <= RemoraProjectNote.Limits.items)
 
         // One huge item is cut, not refused.
         try await memory.editNote(project: project, text: String(repeating: "z", count: 5_000))

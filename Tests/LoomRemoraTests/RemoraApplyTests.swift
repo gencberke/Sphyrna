@@ -71,11 +71,11 @@ struct RemoraApplyTests {
         defer { fixture.remove() }
         let memory = try fixture.open()
         let a = UUID(), b = UUID(), c = UUID(), excluded = UUID(), outside = UUID()
-        let sa = UUID(), sb = UUID(), sx = UUID(), sOld = UUID(), sNamedOnly = UUID(), sUnknown = UUID()
+        let sa = UUID(), sb = UUID(), sb2 = UUID(), sx = UUID(), sOld = UUID(), sNamedOnly = UUID(), sUnknown = UUID()
         try await memory.replaceNote(project: a, items: [RemoraNoteItem(text: "Old A item", sessions: [sOld]), RemoraNoteItem(text: "Dropped", sessions: [sOld])])
         try await memory.replaceNote(project: c, items: [RemoraNoteItem(text: "C stays", sessions: [UUID()])])
         let cBefore = fixture.text("projects/\(c.uuidString).md")
-        let map = [sa: a, sb: b, sx: excluded, sNamedOnly: outside]
+        let map = [sa: a, sb: b, sb2: b, sx: excluded, sNamedOnly: outside]
         let reply = answer(cited: [sa.uuidString, "junk"], notes: [
             update(a, [("New A item", [sa]), ("Old A item", [sOld]), ("Cites nothing real", [sUnknown]), ("Cites a named session", [sNamedOnly])]),
             update(b, [("B item", [sb])]),
@@ -85,7 +85,7 @@ struct RemoraApplyTests {
             update(UUID(), [("Unknown project", [sa])]),
             update(a, []),
         ], summary: "A and B moved")
-        let proposed = try await memory.apply(answer: reply, request: .brief(since: fixture.daysAgo(1)), pack: pack(read: [sa, sb, sx], named: [sNamedOnly]),
+        let proposed = try await memory.apply(answer: reply, request: .brief(since: fixture.daysAgo(1)), pack: pack(read: [sa, sb, sb2, sx], named: [sNamedOnly]),
                                               sessionProjects: map, excludedProjects: [excluded])
         #expect(proposed.isEmpty)
 
@@ -101,9 +101,29 @@ struct RemoraApplyTests {
         let line = try #require(await memory.journal(on: fixture.now).first)
         #expect(line.kind == .brief && line.question == nil && line.summary == "A and B moved")
         #expect(line.answer == "Two projects moved.")
-        #expect(line.sessions == [sa, sb, sx], "the sessions it read; a cited id that is no UUID is not kept")
+        #expect(line.sessions == [sa, sb, sb2, sx], "the sessions it read; a cited id that is no UUID is not kept")
         #expect(line.model == "claude-haiku-5-5" && line.tokens == 100)
         #expect(memory.usage.today.calls == 0, "apply adds nothing to the use: the call already did")
+    }
+
+    @Test func aProjectWithOneSessionReadGetsNoNoteUnlessItAlreadyHasOne() async throws {
+        let fixture = try RemoraMemoryFixture()
+        defer { fixture.remove() }
+        let memory = try fixture.open()
+        let one = UUID(), two = UUID(), kept = UUID()
+        let s1 = UUID(), s2a = UUID(), s2b = UUID(), sk = UUID()
+        try await memory.replaceNote(project: kept, items: [RemoraNoteItem(text: "Durable", sessions: [sk])])
+        let reply = answer(notes: [
+            update(one, [("Too soon to know", [s1])]),
+            update(two, [("Two sessions read", [s2a, s2b])]),
+            update(kept, [("Durable, refreshed", [sk])]),
+        ], summary: "The day")
+        _ = try await memory.apply(answer: reply, request: .brief(since: fixture.daysAgo(1)),
+                                   pack: pack(read: [s1, s2a, s2b, sk]),
+                                   sessionProjects: [s1: one, s2a: two, s2b: two, sk: kept])
+        #expect(await memory.note(for: one) == nil, "one session read is no note")
+        #expect(await memory.note(for: two)?.readableItems.map(\.text) == ["Two sessions read"])
+        #expect(await memory.note(for: kept)?.readableItems.map(\.text) == ["Durable, refreshed"], "an existing note is rewritten")
     }
 
     @Test func aBadNotesKeepsTheAnswerTheJournalLineAndTheOldNotes() async throws {

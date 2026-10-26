@@ -27,7 +27,7 @@ struct HomeRemoraContext {
         var latest: [UUID: Date] = [:]
         for session in recent { if let project = session.projectID { latest[project] = max(latest[project] ?? .distantPast, session.lastActivityAt) } }
         let plan = HomeRemoraTiles.brief(
-            chips: brief?.chips ?? [], drafts: brief?.drafts ?? [], notes: reads.notes, sessions: existing, excluded: excluded,
+            chips: brief?.chips ?? [], drafts: brief?.drafts ?? [], sessions: existing, excluded: excluded,
             projects: projects, latest: latest, before: brief?.startedAt)
         let picked = HomeRemoraTiles.pickedUp(plan.tiles, since: brief?.startedAt)
 
@@ -51,7 +51,7 @@ struct HomeRemoraContext {
         let catalog = showsBrief || reading ? [] : HomeRemoraTiles.catalog(recent: recent, excluded: excluded)
         return HomeRemoraContext(
             state: state, brief: brief, tiles: showsBrief ? plan.tiles : catalog,
-            readingFrames: reading ? LoomTheme.Remora.tileColumns : 0, further: showsBrief ? plan.further : [],
+            readingFrames: reading ? HomeRemoraTiles.maxTiles : 0, further: showsBrief ? plan.further : [],
             quiet: showsBrief ? plan.quiet : [], pickedUp: picked, now: model.now)
     }
 

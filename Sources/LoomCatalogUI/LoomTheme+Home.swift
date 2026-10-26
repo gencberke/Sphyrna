@@ -9,11 +9,12 @@ extension LoomTheme {
         // MARK: The column
 
         /// The widest the content grows; a wider panel keeps it centred.
-        static let maxWidth: CGFloat = 1_000
+        static let maxWidth: CGFloat = 1_280
         static let sideInset: CGFloat = 32
         static let bottom: CGFloat = 32
-        /// The width of the column beside the lists (plan limits, Today).
-        static let sideColumn: CGFloat = 316
+        /// The width of the column beside the lists (plan limits, Today): a third of the content, within these.
+        static let sideColumnMin: CGFloat = 316
+        static let sideColumnMax: CGFloat = 400
         /// The content width from which that column sits beside the lists; below it, under them.
         static let wideFrom: CGFloat = 820
         static let columnGap: CGFloat = 24

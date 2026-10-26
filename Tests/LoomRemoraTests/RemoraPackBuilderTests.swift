@@ -257,7 +257,8 @@ struct RemoraPackBuilderTests {
         // The brief and a question share the prefix, whatever `since` is.
         let brief = try await world.build(.brief(since: world.base.addingTimeInterval(-3600)), memory: memory)
         #expect(brief.stablePrefix == first.stablePrefix)
-        #expect(brief.text.hasSuffix("Keep it short.\n</request>\n") && brief.text.range(of: "\n<now>\n")!.lowerBound < brief.text.range(of: "\n<request>\n")!.lowerBound)
+        #expect(brief.text.hasSuffix("Per-session detail goes in the chips and drafts.\n</request>\n")
+                && brief.text.range(of: "\n<now>\n")!.lowerBound < brief.text.range(of: "\n<request>\n")!.lowerBound)
     }
 
     @Test func theJournalKeepsItsNewestLinesWhenItIsTooLongAndIsDefusedAndMasked() async throws {

@@ -113,12 +113,14 @@ final class RemoraHomeRig {
         model.installRemora(host: created)
     }
 
-    /// Writes the day's kept brief where the host reads it (started `ago` seconds back).
-    func keepBrief(text: String, chips: [(session: Int, why: String)], drafts: [(session: Int, text: String)] = [],
-                   facts: [String] = [], ago: TimeInterval = 60, footer: String = "read 3 sessions and 1 project note") throws {
+    /// Writes the day's kept brief where the host reads it (started `ago` seconds back). `nexts` carries each chip's "where
+    /// to pick up" line.
+    func keepBrief(text: String, chips: [(session: Int, why: String)], nexts: [Int: String] = [:],
+                   drafts: [(session: Int, text: String)] = [], facts: [String] = [], ago: TimeInterval = 60,
+                   footer: String = "read 3 sessions and 1 project note") throws {
         let brief = RemoraKeptBrief(
             startedAt: base.addingTimeInterval(-ago), text: text, cited: [],
-            chips: chips.map { RemoraChip(sessionID: sessions[$0.session].uuidString, why: $0.why) },
+            chips: chips.map { RemoraChip(sessionID: sessions[$0.session].uuidString, why: $0.why, next: nexts[$0.session] ?? "") },
             drafts: drafts.map { RemoraDraft(sessionID: sessions[$0.session].uuidString, text: $0.text) },
             proposedFacts: facts, readSessionIDs: sessions, footer: footer)
         try RemoraKeptBriefFile(directory: remoraDirectory).write(brief)

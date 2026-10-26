@@ -22,7 +22,7 @@ public struct RemoraNoteItem: Equatable, Sendable {
 ///
 ///     journal/YYYY-MM-DD.md   one line per call, the last 14 days   (`RemoraJournalEntry`)
 ///     journal/YYYY-Www.md     one line per older day, the last 12 weeks
-///     projects/<project id>.md   at most 2 KiB of dated items, each citing its sessions   (`RemoraProjectNote`)
+///     projects/<project id>.md   at most 1.5 KiB of dated items, each citing its sessions   (`RemoraProjectNote`)
 ///     usage.json              today's and the last 13 days' use     (`RemoraUsage`)
 ///
 /// This actor is the one writer. Every file is written atomically (a temporary file, then a rename) with mode 0600 in
@@ -144,35 +144,35 @@ public actor RemoraMemory {
             .compactMap { UUID(uuidString: String($0.dropLast(3))) }
     }
 
-    /// The daily update: the project's note becomes these items, dated today (an item whose text the note already had
-    /// keeps its date), cut to 2 KiB (the newest items stay). No items removes the note.
+    /// The daily update: the project's note becomes these items, every one dated today (the model returned it, so it is
+    /// re-confirmed), cut to 5 items of 160 characters and 1.5 KiB (the newest items stay). No items removes the note.
     public func replaceNote(project: UUID, items: [RemoraNoteItem]) throws {
-        let known = Dictionary(note(for: project)?.items.map { ($0.text, $0.day) } ?? [], uniquingKeysWith: { first, _ in first })
         let day = today
         var seen = Set<String>()
         let dated: [RemoraDatedItem] = items.compactMap { item in
             let text = RemoraText.line(item.text, limit: RemoraProjectNote.Limits.itemCharacters)
             guard !text.isEmpty, seen.insert(text).inserted else { return nil }
             var cited = Set<UUID>()
-            return RemoraDatedItem(day: known[text] ?? day, text: text, sessions: item.sessions.filter { cited.insert($0).inserted })
+            return RemoraDatedItem(day: day, text: text, sessions: item.sessions.filter { cited.insert($0).inserted })
         }
         try write(RemoraProjectNote.fitted(dated), for: project)
     }
 
     /// Edit: `text` is the note as the user left it. A line that is an item (`- YYYY-MM-DD · text (sessions: …)`) keeps
     /// its date and the citations it still has; any other line becomes an item dated today that cites nothing (it is the
-    /// user's own text, so no deleted session can take it away). The result is cut to 2 KiB. Empty text removes the note.
+    /// user's own text, so no deleted session can take it away). Text is cut to 160 characters, the result to 5 items and
+    /// 1.5 KiB. Empty text removes the note.
     public func editNote(project: UUID, text: String) throws {
         let day = today
         let items: [RemoraDatedItem] = text.split(whereSeparator: \.isNewline).compactMap { raw in
             let line = String(raw).trimmingCharacters(in: .whitespaces)
             if let item = RemoraDatedItem(line: line) {
-                let clean = RemoraText.flatten(RemoraSecretMask.mask(item.text))
+                let clean = RemoraText.line(item.text, limit: RemoraProjectNote.Limits.itemCharacters)
                 return clean.isEmpty ? nil : RemoraDatedItem(day: item.day, text: clean, sessions: item.sessions)
             }
             var free = line
             for bullet in ["- ", "* "] where free.hasPrefix(bullet) { free = String(free.dropFirst(bullet.count)) }
-            let clean = RemoraText.flatten(RemoraSecretMask.mask(free))
+            let clean = RemoraText.line(free, limit: RemoraProjectNote.Limits.itemCharacters)
             return clean.isEmpty ? nil : RemoraDatedItem(day: day, text: clean)
         }
         try write(RemoraProjectNote.fitted(items), for: project)
@@ -261,7 +261,9 @@ public actor RemoraMemory {
         let notes: [RemoraMemoryShare.ProjectNote] = noteProjects().compactMap { project in
             guard !excludedProjects.contains(project), inScope?.contains(project) ?? true,
                   let note = note(for: project) else { return nil }
-            return .init(project: project, name: projectNames[project], note: note)
+            let fresh = note.fresh(from: day, calendar: calendar)
+            guard !fresh.items.isEmpty else { return nil }
+            return .init(project: project, name: projectNames[project], note: fresh)
         }
         let named = projectNames.filter { !excludedProjects.contains($0.key) && (inScope?.contains($0.key) ?? true) }
         let lines = (journalFiles.entries(on: yesterday) + journalFiles.entries(on: day)).filter { entry in
@@ -275,8 +277,9 @@ public actor RemoraMemory {
 
     /// After a call: writes the journal line (both kinds); for a brief, replaces the note of each project the pack read
     /// (the projects of `pack.readSessionIDs` through `sessionProjects`; never one outside it, never an excluded one) with
-    /// the block's items and writes the summary on the line. Returns the facts the answer proposes (the ones `Remora.md`
-    /// does not hold yet) for the caller to offer as "Remember this?"; it never saves one.
+    /// the block's items and writes the summary on the line. A project gets a note only when the pack read at least two of
+    /// its sessions or it already had one. Returns the facts the answer proposes (the ones `Remora.md` does not hold yet)
+    /// for the caller to offer as "Remember this?"; it never saves one.
     ///
     /// A note's items keep only the sessions the pack names or the project's earlier note cited (an item that keeps none is
     /// dropped); a project whose items all go keeps its note. A question's notes and summary are ignored. The call's
@@ -305,8 +308,14 @@ public actor RemoraMemory {
 
         if isBrief {
             let moved = Set(pack.readSessionIDs.compactMap { sessionProjects[$0] }).subtracting(excludedProjects)
+            var readPerProject: [UUID: Int] = [:]
+            for id in pack.readSessionIDs {
+                if let project = sessionProjects[id] { readPerProject[project, default: 0] += 1 }
+            }
             for update in answer.notes {
                 guard let project = UUID(uuidString: update.project), moved.contains(project) else { continue }
+                // The gate: one session read is too little to know what a project keeps for a month.
+                guard readPerProject[project, default: 0] >= 2 || note(for: project) != nil else { continue }
                 let allowed = pack.namedSessionIDs.union(note(for: project)?.sessionIDs ?? [])
                 let items: [RemoraNoteItem] = update.items.compactMap { item in
                     var cited = Set<UUID>()

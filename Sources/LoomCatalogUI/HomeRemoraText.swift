@@ -71,21 +71,6 @@ enum HomeRemoraText {
         return "quiet since " + [parts.day.map(String.init), month].compactMap { $0 }.joined(separator: " ").lowercased(with: locale)
     }
 
-    /// The tile's head time: a project note's day as "today", "yesterday" or "20 october".
-    static func noteDay(_ day: String, now: Date, zone: TimeZone? = nil, locale: Locale = .current,
-                        calendar: Calendar = .current) -> String? {
-        var calendar = calendar
-        calendar.locale = locale
-        if let zone { calendar.timeZone = zone }
-        let parts = day.split(separator: "-").compactMap { Int($0) }
-        guard parts.count == 3, let date = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) else { return nil }
-        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)).day ?? 0
-        if days == 0 { return "today" }
-        if days == 1 { return "yesterday" }
-        let month = calendar.standaloneMonthSymbols.indices.contains(parts[1] - 1) ? calendar.standaloneMonthSymbols[parts[1] - 1] : nil
-        return ([String(parts[2])] + [month].compactMap { $0 }).joined(separator: " ").lowercased(with: locale)
-    }
-
     // MARK: Reading, footer, sources
 
     /// "Reading 6 sessions and 3 project notes…"; a question about one project names it ("Reading 3 sessions in loom and its note…");

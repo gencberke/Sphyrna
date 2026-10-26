@@ -17,6 +17,9 @@ struct RemoraSettingsView: View {
 
     private var controls: RemoraSettingsControls { RemoraSettingsControls(model: model) }
 
+    /// What Remora may run behind: every Claude model the catalog knows.
+    private var catalog: ModelCatalog { .shared }
+
     var body: some View {
         let preferences = model.remora.preferences
         let dimmed = RemoraSettingsRule.dimsTheRest(isOn: preferences.isOn)
@@ -29,8 +32,10 @@ struct RemoraSettingsView: View {
                     Group {
                         SettingsRowDivider()
                         modelRow(preferences)
-                        SettingsRowDivider()
-                        effortRow(preferences)
+                        if !RemoraChoices.efforts(for: preferences.model, from: catalog, including: preferences.effort).isEmpty {
+                            SettingsRowDivider()
+                            effortRow(preferences)
+                        }
                         SettingsRowDivider()
                         briefRow(preferences)
                         SettingsRowDivider()
@@ -84,7 +89,7 @@ struct RemoraSettingsView: View {
     // MARK: Rows
 
     private func modelRow(_ preferences: RemoraPreferences) -> some View {
-        let options = RemoraChoices.models(including: preferences.model)
+        let options = RemoraChoices.models(from: catalog.claudeModels, including: preferences.model)
         return SettingsRow(title: RemoraSettingsText.modelTitle, detail: RemoraSettingsText.modelDetail) {
             SettingsPopup(title: RemoraSettingsText.modelTitle,
                           selection: Binding(get: { preferences.model }, set: { controls.setModel($0) }),
@@ -95,7 +100,7 @@ struct RemoraSettingsView: View {
     }
 
     private func effortRow(_ preferences: RemoraPreferences) -> some View {
-        let options = RemoraChoices.efforts(including: preferences.effort)
+        let options = RemoraChoices.efforts(for: preferences.model, from: catalog, including: preferences.effort)
         return SettingsRow(title: RemoraSettingsText.effortTitle) {
             SettingsPopup(title: RemoraSettingsText.effortTitle,
                           selection: Binding(get: { preferences.effort }, set: { controls.setEffort($0) }),
@@ -192,9 +197,18 @@ struct RemoraSettingsView: View {
 @MainActor
 struct RemoraSettingsControls {
     let model: CatalogModel
+    /// The catalog the model list and each model's efforts come from; a test hands its own.
+    var catalog: ModelCatalog = .shared
 
     func setOn(_ on: Bool) { model.setRemoraOn(on) }
-    func setModel(_ value: String) { model.setRemoraModel(value) }
+    func setModel(_ value: String) {
+        model.setRemoraModel(value)
+        // A model with fewer levels keeps the nearest one below the stored level; one with none keeps the stored level for
+        // the next model that takes it (its row is hidden until then).
+        if let kept = RemoraChoices.keptEffort(model.remora.preferences.effort, for: value, from: catalog), kept != model.remora.preferences.effort {
+            model.setRemoraEffort(kept)
+        }
+    }
     func setEffort(_ value: String) { model.setRemoraEffort(value) }
     func setBriefMode(_ mode: RemoraBriefMode) { model.setRemoraBriefMode(mode) }
     /// The language popup's tag; "" is the first item, "Same as my last question".

@@ -1,9 +1,17 @@
 import Foundation
 
-/// One session Remora names for the user to open, with the reason.
+/// One session Remora names for the user to open, with the reason and, in a brief, where to pick up.
 public struct RemoraChip: Equatable, Sendable {
     public var sessionID: String
     public var why: String
+    /// The one line to pick up from that session; empty outside a brief.
+    public var next: String
+
+    public init(sessionID: String, why: String, next: String = "") {
+        self.sessionID = sessionID
+        self.why = why
+        self.next = next
+    }
 }
 
 /// An unsent line for a session's composer.
@@ -26,7 +34,7 @@ public struct RemoraNoteUpdate: Equatable, Sendable {
 
 /// What the closing fenced block of an answer holds, validated: `` ```remora `` and a JSON object
 ///
-///     {"cited":["<id>"],"chips":[{"session":"<id>","why":"..."}],"drafts":[{"session":"<id>","text":"..."}],"facts":["..."]}
+///     {"cited":["<id>"],"chips":[{"session":"<id>","why":"...","next":"..."}],"drafts":[{"session":"<id>","text":"..."}],"facts":["..."]}
 ///
 /// closed by a line of three backticks. A brief's block may also carry `"notes":[{"project":"<id>","items":[{"text":"…",
 /// "sessions":["<id>"]}]}]` and `"summary":"<one line>"`. Every field is optional. Session ids that are not in the pack's set are dropped
@@ -45,10 +53,11 @@ public struct RemoraBlock: Equatable, Sendable {
         public static let drafts = 3
         public static let facts = 3
         public static let whyCharacters = 140
+        public static let nextCharacters = 140
         public static let draftCharacters = 600
         public static let factCharacters = 240
         public static let noteProjects = 6
-        public static let noteItems = 8
+        public static let noteItems = RemoraProjectNote.Limits.items
         public static let noteItemCharacters = RemoraProjectNote.Limits.itemCharacters
         public static let noteItemSessions = 4
         public static let summaryCharacters = 240
@@ -83,7 +92,8 @@ public struct RemoraBlock: Equatable, Sendable {
         for case let entry as [String: Any] in chips ?? [] {
             guard block.chips.count < Limits.chips, let id = entry["session"] as? String, known.contains(id),
                   seen.insert(id).inserted else { continue }
-            block.chips.append(RemoraChip(sessionID: id, why: clean(entry["why"] as? String, Limits.whyCharacters)))
+            block.chips.append(RemoraChip(sessionID: id, why: clean(entry["why"] as? String, Limits.whyCharacters),
+                                           next: clean(entry["next"] as? String, Limits.nextCharacters)))
         }
         seen = []
         for case let entry as [String: Any] in drafts ?? [] {

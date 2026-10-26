@@ -129,8 +129,7 @@ enum HomeRemoraState: Equatable {
 struct HomeRemoraTile: Equatable, Identifiable {
     var id: UUID { session.id }
     let session: HomeRemoraSession
-    /// "YYYY-MM-DD" of the note item "Next" comes from.
-    let noteDay: String?
+    /// The chip's "where to pick up" line; nil for a catalog tile and for a chip Remora wrote none for.
     let next: String?
     /// The line Put in Draft leaves; nil for a catalog tile and for a session Remora wrote no line for.
     let draft: String?
@@ -157,20 +156,19 @@ struct HomeRemoraTilePlan: Equatable {
     var quiet: [HomeRemoraQuiet] = []
 }
 
-/// Builds the tiles from Remora's chips and drafts, its project notes and the catalog (the map's 2.3, decided 21 Oct). Pure.
+/// Builds the tiles from Remora's chips and drafts and the catalog (the map's 2.3, decided 21 Oct). Pure.
 enum HomeRemoraTiles {
     static let maxTiles = 3
 
     /// - `sessions`: the sessions that exist now, by id. A chip whose session is not there is hidden (it was deleted).
     /// - `excluded`: projects Settings keeps Remora out of; none is ever named.
     /// - `latest`: each project's newest activity, for the quiet lines; `before`: the brief's start, after which a project is not quiet.
-    static func brief(chips: [RemoraChip], drafts: [RemoraDraft], notes: [RemoraHostNote], sessions: [UUID: HomeRemoraSession],
+    static func brief(chips: [RemoraChip], drafts: [RemoraDraft], sessions: [UUID: HomeRemoraSession],
                       excluded: Set<UUID>, projects: [HomeRemoraProject] = [], latest: [UUID: Date] = [:],
                       before: Date? = nil) -> HomeRemoraTilePlan {
         var plan = HomeRemoraTilePlan()
         var seen = Set<UUID>()
         var named = Set<UUID>()
-        let allowedNotes = notes.filter { !excluded.contains($0.project) }
         for chip in chips {
             guard let id = UUID(uuidString: chip.sessionID), let session = sessions[id] else { continue }
             if let project = session.projectID, excluded.contains(project) { continue }
@@ -178,26 +176,15 @@ enum HomeRemoraTiles {
             guard seen.insert(session.projectID ?? session.id).inserted else { continue }
             if let project = session.projectID { named.insert(project) }
             if plan.tiles.count < maxTiles {
-                let next = nextItem(for: id, in: allowedNotes)
+                let next = chip.next.isEmpty ? nil : chip.next
                 let draft = drafts.first { $0.sessionID == chip.sessionID }?.text
-                plan.tiles.append(HomeRemoraTile(session: session, noteDay: next?.date, next: next?.text, draft: draft, isCatalog: false))
+                plan.tiles.append(HomeRemoraTile(session: session, next: next, draft: draft, isCatalog: false))
             } else {
                 plan.further.append(HomeRemoraFurther(session: session, why: chip.why))
             }
         }
         plan.quiet = quiet(projects: projects, latest: latest, named: named, excluded: excluded, before: before)
         return plan
-    }
-
-    /// The newest note item that names the session: the later day, and the later line within a day.
-    static func nextItem(for session: UUID, in notes: [RemoraHostNote]) -> RemoraProjectNote.Item? {
-        var best: RemoraProjectNote.Item?
-        for note in notes {
-            for item in note.note.readableItems where item.sessions.contains(session) {
-                if best == nil || item.date >= best!.date { best = item }
-            }
-        }
-        return best
     }
 
     /// When Remora cannot answer and when the user asks: the newest sessions, one for each project, with Open only.
@@ -207,7 +194,7 @@ enum HomeRemoraTiles {
         for session in recent.sorted(by: { $0.lastActivityAt > $1.lastActivityAt }) {
             if let project = session.projectID, excluded.contains(project) { continue }
             guard seen.insert(session.projectID ?? session.id).inserted else { continue }
-            tiles.append(HomeRemoraTile(session: session, noteDay: nil, next: nil, draft: nil, isCatalog: true))
+            tiles.append(HomeRemoraTile(session: session, next: nil, draft: nil, isCatalog: true))
             if tiles.count == maxTiles { break }
         }
         return tiles
