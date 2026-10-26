@@ -1351,8 +1351,8 @@ struct ConversationControllerTests {
             #expect(await waitUntil { !panel.isRunning && panel.items.last?.entry == .text("Done. The map is in notes.md.") })
             let entries = panel.items.map(\.entry)
             #expect(entries.contains(.thought(milliseconds: 1_500)))
-            #expect(entries.contains(.toolResult(firstLine: "File does not exist.", lineCount: 1, isError: true)))
-            #expect(entries.contains(.toolResult(firstLine: "fake-module/A.swift:3:class AService", lineCount: 3, isError: false)))
+            #expect(entries.contains(.toolResult(lines: ["File does not exist."], lineCount: 1, isError: true)))
+            #expect(entries.contains(.toolResult(lines: ["fake-module/A.swift:3:class AService", "fake-module/B.swift:9:class BService", "A.swift"], lineCount: 3, isError: false)))
             #expect(!entries.contains { if case let .text(text) = $0 { text.contains("ignored") } else { false } }, "the attachment line is skipped")
             #expect(!entries.contains { if case .brief = $0 { true } else { false } }, "the brief is kept apart from the ring")
 

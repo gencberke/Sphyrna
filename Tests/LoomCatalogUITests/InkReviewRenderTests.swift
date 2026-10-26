@@ -81,13 +81,13 @@ struct InkReviewRenderTests {
     private static let stream: [SubagentTranscriptEntry] = [
         .text("I'll read the tree's current drawing first, then the tokens it uses."),
         .toolCall(name: "Read", argument: "Sources/LoomCatalogUI/SubagentTree.swift"),
-        .toolResult(firstLine: "import SwiftUI", lineCount: 331, isError: false),
+        .toolResult(lines: ["import SwiftUI", "", "struct Tree: View {", "    let column = 22"], lineCount: 331, isError: false),
         .toolCall(name: "Grep", argument: "Branches\\."),
-        .toolResult(firstLine: "Sources/LoomCatalogUI/LoomTheme+Tree.swift:9:        static let column: CGFloat = 22", lineCount: 14,
+        .toolResult(lines: ["Sources/LoomCatalogUI/LoomTheme+Tree.swift:9:        static let column: CGFloat = 22"], lineCount: 14,
                     isError: false),
         .thought(milliseconds: 4_200),
         .toolCall(name: "Bash", argument: "swift build --target LoomCatalogUI"),
-        .toolResult(firstLine: "error: cannot find 'curveRadius' in scope", lineCount: 3, isError: true),
+        .toolResult(lines: ["error: cannot find 'curveRadius' in scope"], lineCount: 3, isError: true),
         .text("The branch offsets are the reference's own; the curve token was renamed. Each branch now leaves the status column "
               + "at 22 and turns into its row with a 7 pt curve."),
     ]

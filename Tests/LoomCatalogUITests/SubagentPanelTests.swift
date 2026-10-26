@@ -174,9 +174,9 @@ struct SubagentPanelTests {
         #expect(TranscriptEntryRow.thoughtText(milliseconds: 6_400) == "Thought for 6s")
         #expect(TranscriptEntryRow.thoughtText(milliseconds: 200) == "Thought for 1s")
         #expect(TranscriptEntryRow.thoughtText(milliseconds: nil) == "Thought")
-        #expect(TranscriptEntryRow.resultText(firstLine: "Wrote 96 lines", lineCount: 1) == "Wrote 96 lines")
-        #expect(TranscriptEntryRow.resultText(firstLine: "38 matches", lineCount: 38) == "38 matches  (+37 lines)")
-        #expect(TranscriptEntryRow.resultText(firstLine: "", lineCount: 0) == "(no output)")
+        #expect(TranscriptEntryRow.resultText(lines: ["Wrote 96 lines"]) == "Wrote 96 lines")
+        #expect(TranscriptEntryRow.resultText(lines: ["a", "b", "c", "d"]) == "a\nb\nc", "three lines at first; the rest is behind a click")
+        #expect(TranscriptEntryRow.resultText(lines: []) == "(no output)")
     }
 
     // MARK: Title and state

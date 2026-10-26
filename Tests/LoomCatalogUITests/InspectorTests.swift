@@ -106,12 +106,12 @@ struct InspectorTests {
         let mixed = InspectorOverviewContent.agents(
             [inspectorRecord("a"), inspectorRecord("b", running: false), inspectorRecord("c", started: inspectorT0.addingTimeInterval(30))],
             now: now)
-        #expect(mixed?.running == 2 && mixed?.title == "Agents \u{00B7} 2 running")
+        #expect(mixed?.running == 2 && mixed?.headline == "2 running")
         #expect(mixed?.rows.map(\.id) == ["a", "c", "b"], "the running ones first, then the finished")
 
         // Every agent finished: the section stays, with none running.
         let finished = InspectorOverviewContent.agents([inspectorRecord("b", running: false)], now: now)
-        #expect(finished?.running == 0 && finished?.title == "Agents \u{00B7} 0 running" && finished?.rows.count == 1)
+        #expect(finished?.running == 0 && finished?.headline == "0 running" && finished?.rows.count == 1)
 
         // An interrupted one (a stopped session's) is not running, and comes after the live ones.
         var interrupted = inspectorRecord("i")

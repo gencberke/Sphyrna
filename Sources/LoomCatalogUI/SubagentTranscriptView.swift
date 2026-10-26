@@ -21,7 +21,7 @@ struct TranscriptLine: Equatable, Identifiable {
     }
 
     enum Kind: Equatable {
-        case brief, omitted, words, call, result, thought, tail
+        case brief, omitted, words, call, result, thought, tail, tooLong
     }
 
     let id: String
@@ -36,6 +36,11 @@ struct TranscriptLine: Equatable, Identifiable {
     let style: LoomTheme.InkStyle
     let tone: Tone
     let lineLimit: Int?
+    /// The text is Markdown (the agent's words and its Result, FB6-18).
+    var markdown = false
+    /// A result's lines past the three shown, kept behind "Show more", and the lines the parser did not keep at all.
+    var hiddenLines: [String] = []
+    var unkeptLines = 0
     /// The room above the line.
     let top: CGFloat
     var accessibilityLabel: String?
@@ -87,17 +92,23 @@ enum TranscriptLines {
         case let .text(text):
             return TranscriptLine(id: id, kind: .words, mark: .glyph("⏺"), markTone: .primary,
                                   label: isResult ? resultLabel : nil, text: text, style: Metrics.words, tone: .primary,
-                                  lineLimit: nil, top: top)
+                                  lineLimit: nil, markdown: true, top: top)
         case let .toolCall(name, argument):
             return TranscriptLine(id: id, kind: .call, mark: .glyph("⏺"), markTone: .tertiary, name: name,
                                   text: argument.isEmpty ? "" : "(\(argument))", style: Metrics.call, tone: .secondary,
                                   lineLimit: Metrics.callLines, top: top,
                                   accessibilityLabel: argument.isEmpty ? name : "\(name), \(argument)")
-        case let .toolResult(firstLine, lineCount, isError):
+        case let .toolResult(lines, lineCount, isError):
+            let first = lines.first ?? ""
             return TranscriptLine(id: id, kind: .result, mark: .glyph("⎿"), markTone: isError ? .failure : .tertiary,
-                                  text: resultText(firstLine: firstLine, lineCount: lineCount), style: Metrics.result,
-                                  tone: isError ? .failure : .tertiary, lineLimit: Metrics.resultLines, top: top,
-                                  accessibilityLabel: isError ? "Error: \(firstLine)" : firstLine)
+                                  text: resultText(lines: lines), style: Metrics.result,
+                                  tone: isError ? .failure : .tertiary, lineLimit: Metrics.resultWrapLines,
+                                  hiddenLines: Array(lines.dropFirst(Metrics.resultLines)),
+                                  unkeptLines: max(0, lineCount - lines.count), top: top,
+                                  accessibilityLabel: isError ? "Error: \(first)" : first)
+        case .tooLong:
+            return TranscriptLine(id: id, kind: .tooLong, mark: .none, markTone: .tertiary, text: Metrics.tooLongText,
+                                  style: Metrics.omitted, tone: .tertiary, lineLimit: nil, top: top)
         case let .thought(milliseconds):
             return TranscriptLine(id: id, kind: .thought, mark: .glyph("✻"), markTone: .tertiary,
                                   text: thoughtText(milliseconds: milliseconds), style: Metrics.thought, tone: .tertiary,
@@ -114,10 +125,15 @@ enum TranscriptLines {
         return Metrics.blockGap
     }
 
-    /// The first line, and how much more there was: "Read 142 lines" style, but from the result itself.
-    static func resultText(firstLine: String, lineCount: Int) -> String {
-        let more = lineCount > 1 ? "  (+\(lineCount - 1) lines)" : ""
-        return (firstLine.isEmpty ? "(no output)" : firstLine) + more
+    /// The first lines of a result, as many as the tab shows at first; the rest is behind a click.
+    static func resultText(lines: [String]) -> String {
+        let shown = lines.prefix(Metrics.resultLines).joined(separator: "\n")
+        return shown.isEmpty ? "(no output)" : shown
+    }
+
+    /// The button under a result with more: "Show 12 more lines", or "Show less" once open.
+    static func moreLabel(hidden: Int, expanded: Bool) -> String {
+        expanded ? "Show less" : (hidden == 1 ? "Show 1 more line" : "Show \(hidden) more lines")
     }
 
     static func thoughtText(milliseconds: Int?) -> String {
@@ -128,15 +144,13 @@ enum TranscriptLines {
 
 /// The words a transcript entry is drawn with, kept under the name the panel's tests know.
 enum TranscriptEntryRow {
-    static func resultText(firstLine: String, lineCount: Int) -> String {
-        TranscriptLines.resultText(firstLine: firstLine, lineCount: lineCount)
-    }
+    static func resultText(lines: [String]) -> String { TranscriptLines.resultText(lines: lines) }
 
     static func thoughtText(milliseconds: Int?) -> String { TranscriptLines.thoughtText(milliseconds: milliseconds) }
 }
 
-/// One subagent's transcript in Claude's own marks (FB4-5): ⏺ for words and tool calls, ⎿ for a result, ✻ for thinking. Plain
-/// text only: nothing is rendered as Markdown and no link is opened. The list is lazy and bounded by the model's ring; it follows
+/// One subagent's transcript in Claude's own marks (FB4-5): ⏺ for words and tool calls, ⎿ for a result, ✻ for thinking. The agent's
+/// words and its Result are Markdown (FB6-18) and only web and mail links open; a tool's input and output stay plain text. The list is lazy and bounded by the model's ring; it follows
 /// the newest entry only while the reader is at the bottom.
 struct SubagentTranscriptView: View {
     let panel: SubagentTranscriptModel
@@ -203,6 +217,7 @@ private struct TranscriptLineView: View {
     typealias Metrics = LoomTheme.Agents
     let line: TranscriptLine
     @Environment(\.inspectorOverlays) private var overlays
+    @State private var expanded = false
 
     var body: some View {
         if line.kind == .brief {
@@ -242,13 +257,33 @@ private struct TranscriptLineView: View {
                 Text(verbatim: label).inspectorType(LoomTheme.Inspector.sectionLabel)
                     .foregroundStyle(LoomTheme.Inspector.quiet(overlays: overlays))
             }
-            text(of: line)
-                .modifier(TranscriptLineHeight(points: line.style.lineHeight))
-                .lineLimit(line.lineLimit)
-                .truncationMode(.tail)
-                .fixedSize(horizontal: false, vertical: true)
+            if line.markdown {
+                SubagentMarkdownView(id: line.id, text: line.text)
+            } else {
+                text(of: line)
+                    .modifier(TranscriptLineHeight(points: line.style.lineHeight))
+                    .lineLimit(expanded ? nil : line.lineLimit)
+                    .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if line.kind == .result, expanded {
+                let rest = line.hiddenLines.joined(separator: "\n")
+                if !rest.isEmpty {
+                    Text(verbatim: rest).font(line.style.font).foregroundStyle(style(line.tone))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            if line.kind == .result, hiddenCount > 0 {
+                Button(TranscriptLines.moreLabel(hidden: hiddenCount, expanded: expanded)) { expanded.toggle() }
+                    .buttonStyle(.plain)
+                    .font(Metrics.omitted.font).foregroundStyle(LoomTheme.Inspector.quiet(overlays: overlays))
+                    .padding(.top, Metrics.resultLabelGap / 2)
+            }
         }
     }
+
+    /// The lines a click shows: the ones the entry kept past three; lines it could not keep are named, not shown.
+    private var hiddenCount: Int { line.hiddenLines.count + line.unkeptLines }
 
     private func text(of line: TranscriptLine) -> Text {
         let base = Text(verbatim: line.text).font(line.style.font).foregroundStyle(style(line.tone))

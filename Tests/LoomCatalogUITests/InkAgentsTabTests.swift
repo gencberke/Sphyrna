@@ -121,9 +121,9 @@ import Testing
     private let stream: [SubagentTranscriptEntry] = [
         .text("I'll read the tree first."),
         .toolCall(name: "Read", argument: "Sources/LoomCatalogUI/SubagentTree.swift"),
-        .toolResult(firstLine: "import SwiftUI", lineCount: 88, isError: false),
+        .toolResult(lines: ["import SwiftUI"], lineCount: 88, isError: false),
         .toolCall(name: "Bash", argument: "swift build"),
-        .toolResult(firstLine: "error: no such module", lineCount: 1, isError: true),
+        .toolResult(lines: ["error: no such module"], lineCount: 1, isError: true),
         .thought(milliseconds: 6_400),
         .text("The branch offsets are the reference's own."),
     ]
@@ -139,9 +139,10 @@ import Testing
         #expect(lines[1].name == "Read" && lines[1].text == "(Sources/LoomCatalogUI/SubagentTree.swift)")
         #expect(lines[1].style.mono && lines[1].style.size == 11.5 && lines[1].tone == .secondary)
         #expect(LoomTheme.Agents.callName.weight == .semibold && LoomTheme.Agents.callName.mono)
-        // Its result after ⎿: mono 11, tertiary, one line with how many more there were.
-        #expect(lines[2].mark == .glyph("⎿") && lines[2].text == "import SwiftUI  (+87 lines)")
-        #expect(lines[2].style.mono && lines[2].style.size == 11 && lines[2].tone == .tertiary && lines[2].lineLimit == 1)
+        // Its result after ⎿: mono 11, tertiary, its first three lines; the lines the entry did not keep are behind a click (FB6-18).
+        #expect(lines[2].mark == .glyph("⎿") && lines[2].text == "import SwiftUI" && lines[2].unkeptLines == 87)
+        #expect(lines[2].style.mono && lines[2].style.size == 11 && lines[2].tone == .tertiary
+                && lines[2].lineLimit == LoomTheme.Agents.resultWrapLines)
         // An error is in the failure text.
         #expect(lines[4].tone == .failure && lines[4].markTone == .failure && lines[4].text == "error: no such module")
         #expect(lines[4].accessibilityLabel == "Error: error: no such module")

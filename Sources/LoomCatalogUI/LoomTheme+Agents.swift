@@ -77,7 +77,15 @@ extension LoomTheme {
         static let callLines = 3
         /// Its result after ⎿ in mono 11, one line.
         static let result = InkStyle(size: 11, mono: true)
-        static let resultLines = 1
+        /// A result shows its first three lines; the rest of what the parser kept is behind "Show more" (FB6-18). A long line
+        /// wraps, to twice that.
+        static let resultLines = 3
+        static let resultWrapLines = 6
+        /// The type the agent's words and its Result are set in as Markdown: the chat's scale at the Agents tab's size.
+        static let markdownReading = words.font
+        static let markdownLineSpacing: CGFloat = 4
+        static let markdownHeading = InkStyle(size: 13, weight: .semibold).font
+        static let tooLongText = "(an entry too long to show)"
         /// "Thought for 6s" and the live tail ("Running…") in Ink's small.
         static let thought = InkType.small
         static let tail = InkType.small

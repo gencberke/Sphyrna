@@ -8,7 +8,8 @@ import Foundation
 /// - A first read starts in the last `coldWindowBytes` of the file, at a line start, and also delivers the
 ///   file's first line when it lies before that window (the brief).
 /// - A file that shrinks, or whose path now names another inode, is read again from its tail.
-/// - A line over `maximumLineBytes` is skipped up to its newline; no buffer grows past that bound.
+/// - A line over `maximumLineBytes` is skipped up to its newline, and `oversized` is told (the view says "an entry too long
+///   to show"); no buffer grows past that bound.
 ///
 /// Not thread safe: one owner, normally the feed's queue.
 final class SubagentTranscriptTail {
@@ -64,7 +65,7 @@ final class SubagentTranscriptTail {
     }
 
     /// Calls `line` with each new whole line (without its newline). The buffer is valid only during the call.
-    func read(_ line: (UnsafeRawBufferPointer) -> Void) -> Outcome {
+    func read(oversized: () -> Void = {}, _ line: (UnsafeRawBufferPointer) -> Void) -> Outcome {
         guard descriptor >= 0 else { return Outcome() }
         var outcome = Outcome()
         var info = stat()
@@ -90,7 +91,7 @@ final class SubagentTranscriptTail {
             guard count > 0 else { break }
             bytesRead += count
             splitter.consume(UnsafeRawBufferPointer(start: chunk, count: count), at: UInt64(position),
-                             line: { _, bytes in line(bytes) }, oversized: { _, _ in })
+                             line: { _, bytes in line(bytes) }, oversized: { _, _ in oversized() })
             position += off_t(count)
         }
         return outcome

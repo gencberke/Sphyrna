@@ -2,7 +2,7 @@ import LoomChat
 import LoomCore
 import SwiftUI
 
-/// The Overview tab (the reference's session window A): five sections of what is true about the session. Session (its state,
+/// The Overview tab (the reference's session window A): six sections of what is true about the session. Session (its state,
 /// start, Claude Code version, model and effort, permission mode), Context (the ring), Worktree (project, branch and its base,
 /// folder), Changes of the last turn and Agents. It reads what the app already holds; the last turn's files are read while the
 /// tab is open as the Changes tab reads them (`CatalogModel.changesTrigger`).
@@ -60,15 +60,24 @@ struct InspectorOverview: View {
     var body: some View {
         let content = content
         ScrollView {
-            VStack(alignment: .leading, spacing: LoomTheme.Inspector.sectionGap) {
+            VStack(alignment: .leading, spacing: 0) {
                 sessionSection(content)
-                OverviewSection(title: "Context") { context }
+                OverviewDivider()
+                OverviewSection(title: "Context", headline: contextHeadline) { context }
                 if let conversationID = usageConversationID {
-                    OverviewSection(title: "Usage") { usageBlock(conversationID) }
+                    OverviewDivider()
+                    OverviewSection(title: "Usage", headline: usageHeadline(conversationID)) { usageBlock(conversationID) }
                 }
+                OverviewDivider()
                 worktreeSection(content)
-                if let lastTurn = content.lastTurn { changesSection(lastTurn) }
-                if let agents = content.agents { agentsSection(agents) }
+                if let lastTurn = content.lastTurn {
+                    OverviewDivider()
+                    changesSection(lastTurn)
+                }
+                if let agents = content.agents {
+                    OverviewDivider()
+                    agentsSection(agents)
+                }
             }
             .padding(LoomTheme.Inspector.bodyInset)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -98,33 +107,23 @@ struct InspectorOverview: View {
     private func sessionSection(_ content: InspectorOverviewContent) -> some View {
         OverviewSection(title: "Session") {
             VStack(alignment: .leading, spacing: LoomTheme.Overview.rowGap) {
+                // The state and when the session started share one line.
                 OverviewFact("State") {
                     HStack(spacing: LoomTheme.Overview.valueGap) {
                         IndicatorView(indicator: row.indicator)
                         OverviewText(content.status)
+                        Text("\u{00B7} \(content.started)").inspectorType(LoomTheme.Overview.machine)
+                            .foregroundStyle(LoomTheme.Text.secondaryStyle)
                     }
                 }
-                OverviewFact("Started") { OverviewText(content.started, mono: true) }
-                if let claude = content.claudeCode {
+                // The run on one line: the harness's version, the model and its effort.
+                if let run = content.runLine {
                     OverviewFact(model.capabilities(of: row.record.session.provider).displayName) {
                         HStack(spacing: LoomTheme.Overview.valueGap) {
                             ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Overview.harnessMark)
-                            OverviewText(claude, mono: true)
+                            OverviewText(run, mono: true)
                         }
                     }
-                }
-                if let name = content.model {
-                    OverviewFact("Model") {
-                        HStack(spacing: LoomTheme.Overview.valueGap) {
-                            OverviewText(name)
-                            if let effort = content.effort {
-                                Text("\u{00B7} \(effort)").inspectorType(LoomTheme.Overview.effort)
-                                    .foregroundStyle(LoomTheme.Text.secondaryStyle)
-                            }
-                        }
-                    }
-                } else if let effort = content.effort {
-                    OverviewFact("Effort") { OverviewText(effort, mono: true) }
                 }
                 if let mode = content.mode {
                     OverviewFact("Mode") {
@@ -152,7 +151,18 @@ struct InspectorOverview: View {
         }
     }
 
+    private var contextHeadline: String? {
+        guard model.capabilities(of: row.record.session.provider).readsContext,
+              let id = row.record.session.providerConversationID, let usage = model.usage?.contexts[id] else { return nil }
+        return OverviewContextText.sectionHeadline(usage)
+    }
+
     // MARK: Usage
+
+    private func usageHeadline(_ conversationID: String) -> String? {
+        guard let usage = model.usage?.sessionUsages[conversationID], !usage.isEmpty else { return nil }
+        return OverviewUsageText(usage).headline
+    }
 
     private struct UsageReadKey: Equatable {
         let conversationID: String?
@@ -209,7 +219,7 @@ struct InspectorOverview: View {
     // MARK: Changes and agents
 
     private func changesSection(_ lastTurn: InspectorOverviewContent.LastTurn) -> some View {
-        OverviewSection(title: "Changes \u{00B7} last turn", link: ("Open changes", {
+        OverviewSection(title: "Changes", headline: lastTurn.headline, link: ("Open changes", {
             model.openChanges(.lastTurn, for: row.id)
         })) {
             VStack(alignment: .leading, spacing: 0) {
@@ -228,7 +238,7 @@ struct InspectorOverview: View {
     }
 
     private func agentsSection(_ agents: InspectorOverviewContent.Agents) -> some View {
-        OverviewSection(title: agents.title, link: ("Open agents", { model.selectInspectorTab(.agents) })) {
+        OverviewSection(title: agents.title, headline: agents.headline, link: ("Open agents", { model.selectInspectorTab(.agents) })) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(agents.rows) { agent in OverviewAgentRow(agent: agent) }
                 if agents.more > 0 {
@@ -251,6 +261,8 @@ struct InspectorOverview: View {
 /// A section of the Overview: its label in Ink's label type, an optional "Open ›" at the end of the head, then the content.
 private struct OverviewSection<Content: View>: View {
     let title: String
+    /// What the section comes to, on the right of its head ("38%", "~$1.23", "4 files +120 −8", "2 running").
+    var headline: String?
     var link: (label: String, action: () -> Void)?
     @ViewBuilder let content: () -> Content
     @Environment(\.inspectorOverlays) private var overlays
@@ -259,14 +271,27 @@ private struct OverviewSection<Content: View>: View {
         VStack(alignment: .leading, spacing: LoomTheme.Inspector.sectionTitleGap) {
             HStack(spacing: LoomTheme.Space.detailSpacing) {
                 Text(title).inspectorType(LoomTheme.Inspector.sectionLabel)
-                    .foregroundStyle(LoomTheme.Inspector.quiet(overlays: overlays))
+                    .foregroundStyle(LoomTheme.Text.secondaryStyle)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: LoomTheme.Space.detailMinSpacer)
+                if let headline {
+                    Text(verbatim: headline).inspectorType(LoomTheme.Overview.headlineType)
+                        .foregroundStyle(LoomTheme.Text.secondaryStyle).lineLimit(1)
+                }
                 if let link { OverviewLink(label: link.label, action: link.action) }
             }
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// The hairline between two sections, 16 above and 16 below.
+private struct OverviewDivider: View {
+    var body: some View {
+        Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline)
+            .padding(.vertical, LoomTheme.Overview.sectionPad)
+            .accessibilityHidden(true)
     }
 }
 
@@ -358,12 +383,39 @@ private struct OverviewCopyButton: View {
     }
 }
 
-/// The Usage block: a row per kind of token and the API equivalent, a column each for Main, Subagents and Total.
+/// The Usage block: three rows (Main, Subagents, Total) with their tokens and the API equivalent, and the token kinds behind
+/// "Details" (a column each for Main, Subagents and Total).
 private struct OverviewUsageTable: View {
     let text: OverviewUsageText
+    @State private var detailed = false
     @Environment(\.inspectorOverlays) private var overlays
 
     var body: some View {
+        VStack(alignment: .leading, spacing: LoomTheme.Overview.rowGap) {
+            ForEach(text.rows, id: \.title) { row in
+                HStack(spacing: LoomTheme.Overview.columnGap) {
+                    label(row.title).frame(width: LoomTheme.Overview.usageNameWidth, alignment: .leading)
+                    Text(verbatim: row.tokens).inspectorType(LoomTheme.Overview.machine)
+                        .foregroundStyle(row.title == "Total" ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
+                    Spacer(minLength: 0)
+                    Text(verbatim: row.cost).inspectorType(LoomTheme.Overview.machine)
+                        .foregroundStyle(row.title == "Total" ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
+                }
+                .accessibilityElement(children: .combine)
+            }
+            Button(detailed ? "Hide details" : "Details") { detailed.toggle() }
+                .buttonStyle(.plain).font(LoomTheme.Overview.link.font)
+                .foregroundStyle(LoomTheme.Text.secondaryStyle)
+                .padding(.top, LoomTheme.Overview.detailsTop)
+                .accessibilityIdentifier("overview-usage-details")
+            if detailed { details }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .textSelection(.enabled)
+        .accessibilityIdentifier("overview-usage")
+    }
+
+    private var details: some View {
         Grid(alignment: .trailing, horizontalSpacing: LoomTheme.Overview.columnGap, verticalSpacing: LoomTheme.Overview.rowGap) {
             GridRow {
                 Text(verbatim: "").gridColumnAlignment(.leading)
@@ -375,9 +427,7 @@ private struct OverviewUsageTable: View {
             line("Output", \.output)
             line(OverviewUsageText.costLabel, \.cost)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .textSelection(.enabled)
-        .accessibilityIdentifier("overview-usage")
+        .accessibilityIdentifier("overview-usage-kinds")
     }
 
     private func line(_ name: String, _ value: KeyPath<OverviewUsageText.Column, String>) -> some View {

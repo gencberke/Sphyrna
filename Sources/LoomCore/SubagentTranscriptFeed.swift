@@ -158,7 +158,7 @@ public final class SubagentTranscriptFeed: @unchecked Sendable {
     private func deliver() {
         guard let tail else { return }
         var entries: [SubagentTranscriptEntry] = []
-        let outcome = tail.read { entries.append(contentsOf: parser.parse($0)) }
+        let outcome = tail.read(oversized: { entries.append(.tooLong) }) { entries.append(contentsOf: parser.parse($0)) }
         var omitted = outcome.omittedEarlier
         if entries.count > Self.maximumEntriesPerBatch {
             entries.removeFirst(entries.count - Self.maximumEntriesPerBatch)

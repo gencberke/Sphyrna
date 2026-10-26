@@ -112,6 +112,27 @@ struct ChatSettledBlocksView: View, Equatable {
     }
 }
 
+/// The type a list of Markdown blocks is drawn in: the Chat's reading size, or a smaller scale a narrower surface injects (the
+/// Agents tab's transcript, FB6-18).
+struct ChatMarkdownScale {
+    var reading: Font = LoomTheme.Chat.reading
+    var lineSpacing: CGFloat = LoomTheme.Chat.readingLineSpacing
+    var heading1: Font = LoomTheme.Chat.heading1
+    var heading2: Font = LoomTheme.Chat.heading2
+    var heading3: Font = LoomTheme.Chat.heading3
+}
+
+private struct ChatMarkdownScaleKey: EnvironmentKey {
+    static let defaultValue = ChatMarkdownScale()
+}
+
+extension EnvironmentValues {
+    var chatMarkdownScale: ChatMarkdownScale {
+        get { self[ChatMarkdownScaleKey.self] }
+        set { self[ChatMarkdownScaleKey.self] = newValue }
+    }
+}
+
 /// A list of blocks. Links open only when they are web or mail links.
 struct ChatMarkdownView: View {
     let blocks: [MarkdownBlock]
@@ -156,6 +177,7 @@ struct ChatMarkdownBlockView: View {
     let context: ChatRowContext
     /// A block of the message's own list, not one inside a list item or a quote: the render probe counts its evaluations.
     var isTopLevel = false
+    @Environment(\.chatMarkdownScale) private var scale
 
     var body: some View {
         let _ = isTopLevel ? ChatRenderProbe.blockBody(index: index, block: block, in: context) : ()
@@ -171,7 +193,7 @@ struct ChatMarkdownBlockView: View {
             inline(source)
         case let .heading(level, text):
             Text(ChatContent.inline(text, in: context))
-                .font(level <= 1 ? LoomTheme.Chat.heading1 : level == 2 ? LoomTheme.Chat.heading2 : LoomTheme.Chat.heading3)
+                .font(level <= 1 ? scale.heading1 : level == 2 ? scale.heading2 : scale.heading3)
                 .foregroundStyle(LoomTheme.Text.primary)
                 .padding(.top, 4)
                 .fixedSize(horizontal: false, vertical: true)
@@ -208,8 +230,8 @@ struct ChatMarkdownBlockView: View {
 
     private func inline(_ source: String) -> some View {
         Text(ChatContent.inline(source, in: context))
-            .font(LoomTheme.Chat.reading)
-            .lineSpacing(LoomTheme.Chat.readingLineSpacing)
+            .font(scale.reading)
+            .lineSpacing(scale.lineSpacing)
             .foregroundStyle(LoomTheme.Text.primary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -221,9 +243,9 @@ struct ChatMarkdownBlockView: View {
             if let checked {
                 Image(systemName: checked ? "checkmark.square" : "square").font(LoomTheme.Chat.rowIcon)
             } else if ordered {
-                Text("\(number).").font(LoomTheme.Chat.reading).monospacedDigit()
+                Text("\(number).").font(scale.reading).monospacedDigit()
             } else {
-                Text("\u{2022}").font(LoomTheme.Chat.reading)
+                Text("\u{2022}").font(scale.reading)
             }
         }
         .foregroundStyle(LoomTheme.Text.secondaryStyle)

@@ -178,9 +178,9 @@ struct InspectorOverviewTests {
     @Test func theAgentsSectionFollowsTheRecords() {
         #expect(Self.content(subagents: nil).agents == nil && Self.content(subagents: []).agents == nil)
         let running = Self.content(subagents: [inspectorRecord("a"), inspectorRecord("b", running: false)]).agents
-        #expect(running?.running == 1 && running?.title == "Agents \u{00B7} 1 running" && running?.rows.count == 2)
+        #expect(running?.running == 1 && running?.headline == "1 running" && running?.rows.count == 2)
         let none = Self.content(subagents: [inspectorRecord("b", running: false)]).agents
-        #expect(none?.running == 0 && none?.title == "Agents \u{00B7} 0 running")
+        #expect(none?.running == 0 && none?.headline == "0 running")
     }
 
     // MARK: Context

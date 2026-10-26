@@ -146,7 +146,7 @@ struct SubagentTranscriptTests {
         #expect(parser.parse(toolUse("Read", #"{"file_path":"edd-core/CoreConfig.java","limit":200}"#))
                 == [.toolCall(name: "Read", argument: "edd-core/CoreConfig.java")])
         #expect(parser.parse(toolResult(#""line one\nline two\nline three\n""#))
-                == [.toolResult(firstLine: "line one", lineCount: 3, isError: false)])
+                == [.toolResult(lines: ["line one", "line two", "line three"], lineCount: 3, isError: false)])
     }
 
     @Test func anAttachmentLineIsSkippedBeforeAnyDecoding() {
@@ -183,30 +183,45 @@ struct SubagentTranscriptTests {
 
     @Test func aResultShowsItsFirstLineItsLineCountAndWhetherItFailed() {
         func result(_ content: String, error: Bool = false) -> SubagentTranscriptEntry? { parser.parse(toolResult(content, error: error)).first }
-        #expect(result(#""Wrote 96 lines""#) == .toolResult(firstLine: "Wrote 96 lines", lineCount: 1, isError: false))
+        #expect(result(#""Wrote 96 lines""#) == .toolResult(lines: ["Wrote 96 lines"], lineCount: 1, isError: false))
         // A list of parts: the text parts count, others (an image) do not.
         #expect(result(#"[{"type":"text","text":"first\nsecond"},{"type":"image","source":{}},{"type":"text","text":"third"}]"#)
-                == .toolResult(firstLine: "first", lineCount: 3, isError: false))
-        #expect(result(#""File does not exist.""#, error: true) == .toolResult(firstLine: "File does not exist.", lineCount: 1, isError: true))
-        #expect(result(#""""#) == .toolResult(firstLine: "", lineCount: 0, isError: false))
-        #expect(result(#"[{"type":"image","source":{}}]"#) == .toolResult(firstLine: "", lineCount: 0, isError: false))
+                == .toolResult(lines: ["first", "second", "third"], lineCount: 3, isError: false))
+        #expect(result(#""File does not exist.""#, error: true) == .toolResult(lines: ["File does not exist."], lineCount: 1, isError: true))
+        #expect(result(#""""#) == .toolResult(lines: [], lineCount: 0, isError: false))
+        #expect(result(#"[{"type":"image","source":{}}]"#) == .toolResult(lines: [], lineCount: 0, isError: false))
     }
 
     @Test func aHugeLineIsClippedAtParseTimeOnACharacterBoundary() {
         let huge = String(repeating: "é", count: 20_000) // 40 KB of UTF-8
         let entries = parser.parse(#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"\#(huge)"}]}}"#)
-        guard case let .text(clipped)? = entries.first else { Issue.record("no text entry"); return }
-        #expect(clipped.utf8.count <= parser.maximumStringBytes + "…".utf8.count)
+        guard case let .text(whole)? = entries.first else { Issue.record("no text entry"); return }
+        #expect(whole.utf8.count == 40_000, "the agent's words are cut later than a tool's output (64 KiB, FB6-18)")
+        let enormous = String(repeating: "é", count: 40_000) // 80 KB
+        guard case let .text(clipped)? = parser.parse(
+            #"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"\#(enormous)"}]}}"#).first
+        else { Issue.record("no text entry"); return }
+        #expect(clipped.utf8.count <= parser.maximumTextBytes + "…".utf8.count)
         #expect(clipped.hasSuffix("…") && clipped.dropLast().allSatisfy { $0 == "é" })
         // A brief and a result's first line are clipped the same way.
         guard case let .brief(brief)? = parser.parse(#"{"type":"user","message":{"role":"user","content":"\#(huge)"}}"#).first else {
             Issue.record("no brief"); return
         }
         #expect(brief.utf8.count <= parser.maximumStringBytes + 3)
-        guard case let .toolResult(first, count, _)? = parser.parse(toolResult("\"\(huge)\\nmore\"")).first else {
+        guard case let .toolResult(lines, count, _)? = parser.parse(toolResult("\"\(huge)\\nmore\"")).first else {
             Issue.record("no result"); return
         }
-        #expect(first.utf8.count <= parser.maximumStringBytes + 3 && count == 2)
+        #expect((lines.first?.utf8.count ?? 0) <= parser.maximumStringBytes + 3 && count == 2)
+    }
+
+    @Test func aReadNamesItsRangeAndAResultKeepsMoreThanThreeLines() {
+        #expect(parser.parse(toolUse("Read", #"{"file_path":"A.swift","offset":120,"limit":40}"#))
+                == [.toolCall(name: "Read", argument: "A.swift (lines 120–159)")])
+        #expect(parser.parse(toolUse("Read", #"{"file_path":"A.swift"}"#)) == [.toolCall(name: "Read", argument: "A.swift")])
+        let output = (1...60).map { "line \($0)" }.joined(separator: "\n")
+        guard case let .toolResult(lines, count, _)? = parser.parse(toolResult("\"\(output.replacingOccurrences(of: "\n", with: "\\n"))\"")).first
+        else { Issue.record("no result"); return }
+        #expect(count == 60 && lines.count == SubagentTranscriptParser.maximumResultLines && lines.first == "line 1")
     }
 
     @Test func linesThatAreNotUsableYieldNothingAndNeverThrow() {
@@ -277,6 +292,17 @@ struct SubagentTranscriptTests {
         #expect(tail.bytesRead - before == 4)
         _ = lines(tail)
         #expect(tail.bytesRead - before == 4, "an idle read costs no bytes")
+    }
+
+    @Test func aLineOverTheBoundIsNamedNotDropped() throws {
+        let tree = try Tree()
+        defer { tree.remove() }
+        let url = try tree.transcript("a1", "one\n" + String(repeating: "z", count: 300) + "\ntwo\n")
+        let tail = try tail(url, in: tree, maximumLine: 100)
+        var collected: [String] = []
+        var oversized = 0
+        _ = tail.read(oversized: { oversized += 1 }) { collected.append(String(decoding: $0, as: UTF8.self)) }
+        #expect(collected == ["one", "two"] && oversized == 1, "the long line is told, not read")
     }
 
     @Test func aShrinkedFileIsReadAgainFromItsTail() throws {

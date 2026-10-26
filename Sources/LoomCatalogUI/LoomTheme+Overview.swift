@@ -56,6 +56,16 @@ extension LoomTheme {
         static let agentType = InkStyle(size: 12, weight: .medium)
         static let agentTime = InkType.meta
         static let agentCheck = Font.system(size: 9, weight: .semibold)
+        // MARK: Sections
+
+        /// A hairline between sections, with this much above and below it (FB6-19).
+        static let sectionPad: CGFloat = 16
+        /// The head's headline ("38%", "~$1.23", "4 files +120 −8", "2 running"), in mono.
+        static let headlineType = InkType.metaLarge
+        /// The Usage block's three rows: the name's column, and the gap above "Details".
+        static let usageNameWidth: CGFloat = 72
+        static let detailsTop: CGFloat = 8
+
         /// The lists stop here; "N more" says what is not shown.
         static let maxFiles = 6
         static let maxAgents = 5

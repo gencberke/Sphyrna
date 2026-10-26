@@ -10,8 +10,11 @@ public enum SubagentTranscriptEntry: Equatable, Sendable {
     case text(String)
     /// A tool call with its main argument (a command's first line, a path, a pattern, a URL).
     case toolCall(name: String, argument: String)
-    /// A tool's answer: its first line, how many lines it had, and whether it failed.
-    case toolResult(firstLine: String, lineCount: Int, isError: Bool)
+    /// A tool's answer: its first lines (the view shows three and keeps the rest behind a click), how many lines it had, and
+    /// whether it failed.
+    case toolResult(lines: [String], lineCount: Int, isError: Bool)
+    /// A line of the file over the reader's bound: it is named instead of dropped (FB6-18).
+    case tooLong
     /// "Thought for Ns": Claude writes only the duration, never the thinking text.
     case thought(milliseconds: Int?)
 }
@@ -23,12 +26,19 @@ public enum SubagentTranscriptEntry: Equatable, Sendable {
 /// never decoded: the wire types below do not name them.
 public struct SubagentTranscriptParser: Sendable {
     public static let defaultMaximumStringBytes = 4 * 1024
+    /// The agent's own words are cut later than a tool's input or output, so a final report is whole (FB6-18).
+    public static let defaultMaximumTextBytes = 64 * 1024
+    /// How many lines of a tool result an entry keeps; the rest of the 4 KiB is behind a click.
+    public static let maximumResultLines = 40
 
     private let decoder = JSONDecoder()
     let maximumStringBytes: Int
+    let maximumTextBytes: Int
 
-    public init(maximumStringBytes: Int = Self.defaultMaximumStringBytes) {
+    public init(maximumStringBytes: Int = Self.defaultMaximumStringBytes,
+                maximumTextBytes: Int = Self.defaultMaximumTextBytes) {
         self.maximumStringBytes = maximumStringBytes
+        self.maximumTextBytes = max(maximumTextBytes, maximumStringBytes)
     }
 
     public func parse(_ line: UnsafeRawBufferPointer) -> [SubagentTranscriptEntry] {
@@ -57,10 +67,10 @@ public struct SubagentTranscriptParser: Sendable {
         for block in blocks.compactMap(\.value) {
             switch block.type {
             case "text":
-                if let text = block.text, !text.allSatisfy(\.isWhitespace) { entries.append(.text(clipped(text))) }
+                if let text = block.text, !text.allSatisfy(\.isWhitespace) { entries.append(.text(clipped(text, to: maximumTextBytes))) }
             case "tool_use":
                 let name = clipped(block.name ?? "Tool")
-                entries.append(.toolCall(name: name, argument: clipped(Self.argument(tool: name, input: block.input?.strings ?? [:]))))
+                entries.append(.toolCall(name: name, argument: clipped(Self.argument(tool: name, input: block.input?.fields ?? [:]))))
             case "thinking":
                 entries.append(.thought(milliseconds: wire.thinkingDurationMs.map { Int($0.rounded()) }))
             default: break
@@ -80,8 +90,8 @@ public struct SubagentTranscriptParser: Sendable {
                 case "tool_result":
                     let text = block.content?.text ?? ""
                     entries.append(.toolResult(
-                        firstLine: clipped(Self.firstLine(of: text)), lineCount: Self.lineCount(of: text),
-                        isError: block.isError ?? false))
+                        lines: Self.leadingLines(of: clipped(text), limit: Self.maximumResultLines),
+                        lineCount: Self.lineCount(of: text), isError: block.isError ?? false))
                 case "text":
                     if let text = block.text, !text.allSatisfy(\.isWhitespace) { entries.append(.brief(clipped(text))) }
                 default: break
@@ -100,7 +110,15 @@ public struct SubagentTranscriptParser: Sendable {
         let chosen: String?
         switch tool {
         case "Bash": chosen = first("command")
-        case "Read", "Edit", "MultiEdit", "Write": chosen = first("file_path", "path")
+        case "Read":
+            // The file and, when the call asked for a part, its range.
+            if let path = first("file_path", "path"), let offset = input["offset"].flatMap(Int.init), offset > 0 {
+                let end = input["limit"].flatMap(Int.init).map { offset + max($0, 1) - 1 }
+                chosen = path + " (lines " + String(offset) + (end.map { "–" + String($0) } ?? "–") + ")"
+            } else {
+                chosen = first("file_path", "path")
+            }
+        case "Edit", "MultiEdit", "Write": chosen = first("file_path", "path")
         case "NotebookEdit": chosen = first("notebook_path", "file_path")
         case "Grep", "Glob": chosen = first("pattern")
         case "WebFetch": chosen = first("url")
@@ -108,7 +126,7 @@ public struct SubagentTranscriptParser: Sendable {
         case "Agent", "Task": chosen = first("description")
         default:
             // Any other tool: the first short text field. Dictionary order is not the file's, so by name.
-            chosen = input.keys.sorted().compactMap { input[$0] }.first { !$0.isEmpty && $0.utf8.count <= 200 }
+            chosen = input.keys.sorted().compactMap { input[$0] }.first { !$0.isEmpty && $0.utf8.count <= 200 && Int($0) == nil }
         }
         return firstLine(of: chosen ?? "")
     }
@@ -121,6 +139,19 @@ public struct SubagentTranscriptParser: Sendable {
         return ""
     }
 
+    /// The first `limit` non-blank-leading lines of `text`, each without trailing spaces; none for an empty text.
+    static func leadingLines(of text: String, limit: Int) -> [String] {
+        var lines: [String] = []
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            let trimmed = line.replacingOccurrences(of: "\r", with: "")
+            if lines.isEmpty && trimmed.allSatisfy(\.isWhitespace) { continue }
+            lines.append(String(trimmed.reversed().drop { $0 == " " || $0 == "\t" }.reversed()))
+            if lines.count == limit { break }
+        }
+        while let last = lines.last, last.isEmpty { lines.removeLast() }
+        return lines
+    }
+
     static func lineCount(of text: String) -> Int {
         var newlines = 0
         for byte in text.utf8 where byte == 0x0A { newlines += 1 }
@@ -129,10 +160,12 @@ public struct SubagentTranscriptParser: Sendable {
     }
 
     /// At most `maximumStringBytes` of UTF-8, cut on a character boundary, with an ellipsis when cut.
-    func clipped(_ text: String) -> String {
+    func clipped(_ text: String) -> String { clipped(text, to: maximumStringBytes) }
+
+    func clipped(_ text: String, to limit: Int) -> String {
         let utf8 = text.utf8
-        guard utf8.count > maximumStringBytes else { return text }
-        var end = utf8.index(utf8.startIndex, offsetBy: maximumStringBytes)
+        guard utf8.count > limit else { return text }
+        var end = utf8.index(utf8.startIndex, offsetBy: limit)
         while end > utf8.startIndex, utf8[end] & 0xC0 == 0x80 { end = utf8.index(before: end) }
         return String(text[..<end]) + "…"
     }
@@ -185,18 +218,23 @@ public struct SubagentTranscriptParser: Sendable {
         enum CodingKeys: String, CodingKey { case type, text, name, input, content, isError = "is_error" }
     }
 
-    /// A tool call's input: only its string fields, which are all a main argument is made of.
+    /// A tool call's input: its string fields, which a main argument is made of, and its whole numbers (a Read's `offset` and
+    /// `limit`), as text.
     private struct ToolInput: Decodable {
-        let strings: [String: String]
+        let fields: [String: String]
 
         init(from decoder: any Decoder) throws {
-            var strings: [String: String] = [:]
+            var fields: [String: String] = [:]
             if let container = try? decoder.container(keyedBy: AnyKey.self) {
                 for key in container.allKeys {
-                    if let value = try? container.decode(String.self, forKey: key) { strings[key.stringValue] = value }
+                    if let value = try? container.decode(String.self, forKey: key) {
+                        fields[key.stringValue] = value
+                    } else if let number = try? container.decode(Int.self, forKey: key) {
+                        fields[key.stringValue] = String(number)
+                    }
                 }
             }
-            self.strings = strings
+            self.fields = fields
         }
     }
 

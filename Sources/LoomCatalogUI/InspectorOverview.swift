@@ -30,8 +30,18 @@ struct InspectorOverviewContent: Equatable {
         /// Files past `LoomTheme.Overview.maxFiles`.
         let more: Int
         let isRead: Bool
+        /// All the files of the turn, and their lines added and removed (the head's headline).
+        var fileCount = 0
+        var added = 0
+        var removed = 0
 
         var isEmpty: Bool { isRead && files.isEmpty }
+
+        /// "4 files +120 −8"; nil before the turn was read or when it edited nothing.
+        var headline: String? {
+            guard isRead, fileCount > 0 else { return nil }
+            return "\(fileCount) \(fileCount == 1 ? "file" : "files") +\(added) \u{2212}\(removed)"
+        }
     }
 
     struct Agents: Equatable {
@@ -40,7 +50,9 @@ struct InspectorOverviewContent: Equatable {
         /// Subagents past `LoomTheme.Overview.maxAgents`.
         let more: Int
 
-        var title: String { "Agents \u{00B7} \(running) running" }
+        var title: String { "Agents" }
+        /// "2 running", also "0 running" once they finished.
+        var headline: String { "\(running) running" }
     }
 
     /// The state's word: the pill's label; "Not running" for a session with no run, "—" for an ended one.
@@ -91,11 +103,19 @@ struct InspectorOverviewContent: Equatable {
                         added: file.added, removed: file.removed)
             }
             lastTurn = LastTurn(files: Array(rows.prefix(LoomTheme.Overview.maxFiles)),
-                                more: max(0, rows.count - LoomTheme.Overview.maxFiles), isRead: edits != nil)
+                                more: max(0, rows.count - LoomTheme.Overview.maxFiles), isRead: edits != nil,
+                                fileCount: rows.count, added: rows.reduce(0) { $0 + $1.added },
+                                removed: rows.reduce(0) { $0 + $1.removed })
         } else {
             lastTurn = nil
         }
         agents = Self.agents(subagents, now: now, waiting: waiting)
+    }
+
+    /// The run on one line: "Claude Code 2.1.300 · Opus 5.5 · high"; nil when none of the three is known.
+    var runLine: String? {
+        let parts = [claudeCode, model, effort].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " \u{00B7} ")
     }
 
     /// The CLI's word, trimmed and in lowercase ("high", "xhigh"); nil for none.
@@ -153,6 +173,9 @@ enum OverviewContextText {
         usage.percent.map { "\(UsageFormat.percent($0)) of the window" } ?? "\(UsageFormat.tokens(usage.tokens)) tokens"
     }
 
+    /// The share on the right of the section's head ("38%"); nil when the window is unknown.
+    static func sectionHeadline(_ usage: ContextUsage) -> String? { usage.percent.map { UsageFormat.percent($0) } }
+
     static func detail(_ usage: ContextUsage) -> String {
         guard let window = usage.window else { return "Window unknown" }
         return "\(UsageFormat.tokens(usage.tokens)) of \(UsageFormat.tokens(window)) tokens"
@@ -171,9 +194,25 @@ struct OverviewUsageText: Equatable {
         let cost: String
     }
 
+    /// One line of the collapsed block: who spent it, the tokens and the API equivalent.
+    struct Row: Equatable {
+        let title: String
+        let tokens: String
+        let cost: String
+    }
+
     let columns: [Column]
+    let rows: [Row]
+    /// The total's cost, on the right of the section's head ("~$1.23"); nil when a model of the session has no price.
+    let headline: String?
 
     init(_ usage: SessionUsage) {
+        func row(_ title: String, _ part: SessionUsage.Part) -> Row {
+            Row(title: title, tokens: UsageFormat.tokens(part.tokens.total) + " tokens",
+                cost: part.estimatedCostUSD.map(UsageFormat.cost) ?? "\u{2014}")
+        }
+        rows = [row("Main", usage.main), row("Subagents", usage.subagents), row("Total", usage.total)]
+        headline = usage.total.estimatedCostUSD.map(UsageFormat.cost)
         func column(_ title: String, _ part: SessionUsage.Part) -> Column {
             Column(title: title, input: UsageFormat.tokens(part.tokens.input), cacheWrite: UsageFormat.tokens(part.tokens.cacheWrite),
                    cacheRead: UsageFormat.tokens(part.tokens.cacheRead), output: UsageFormat.tokens(part.tokens.output),
