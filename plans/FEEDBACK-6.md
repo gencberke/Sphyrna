@@ -26,7 +26,7 @@ make and the release line. [FEEDBACK-5](FEEDBACK-5.md) was round 5; [RESCUE-PLAN
 | Release | What it holds |
 | --- | --- |
 | **1.7.1** | Every fix and every change that stands on today's two harnesses: the sidebar (FB6-1 to FB6-6), the terminal and state bugs (FB6-9, FB6-10), the energy work that is ours (FB6-11), the open-session skill and session awareness (FB6-15, FB6-16 part 1), the Sphyrna name where the user sees it (FB6-17), the Agents view and Overview (FB6-18, FB6-19), Remora's brief, layout and memory (FB6-20, FB6-21, FB6-23), and the health items. |
-| **1.8.0** | Every harness first-class: the harness catalogue and Connections with "not found" (FB6-13), the model and effort panel over a harness-neutral draft (FB6-7, FB6-8), Codex sessions started and resumed with the draft, then read (FB6-14), Remora on any connected harness (FB6-22), and the message between sessions if `@user` wants it (FB6-16 part 2). opencode, agy and pi get rows and marks there; each becomes startable through its own descriptor. |
+| **1.8.0** (parked, 26 Oct) | `@user`: "1.8.0 planan işleri bekleyebilir. roadmap'te belirtilebilir"; nothing of it is started. Every harness first-class: the harness catalogue and Connections with "not found" (FB6-13), the model and effort panel over a harness-neutral draft (FB6-7, FB6-8), Codex sessions started and resumed with the draft, then read (FB6-14), Remora on any connected harness (FB6-22), and the message between sessions if `@user` wants it (FB6-16 part 2). opencode, agy and pi get rows and marks there; each becomes startable through its own descriptor. |
 
 The push and the GitHub release still wait for `@user` (D-16, D-83); 1.7.0 is not pushed yet.
 
@@ -699,6 +699,8 @@ note it, skip that part and go on with the next slice.
 - a draft `plans/RELEASE-NOTES-1.7.1.md` committed on the branch.
 
 ## Release 1.8.0: outline
+
+Parked by `@user` on 26 Oct after 1.7.2 ("1.8.0 planan işleri bekleyebilir"); it starts with P0, the real-Codex spike, when `@user` picks it up.
 
 | # | Slice | Items |
 | --- | --- | --- |
