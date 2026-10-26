@@ -273,7 +273,11 @@ extension ProcessSupervisor {
             session.currentRun = nil
             sessions[runtime.activeSessionID] = session
         }
-        LoomLog.notice(.lifecycle, "Run \(runID.uuidString.prefix(8)) ended (\(LoomLog.ref(runtime.activeSessionID)), \(Self.faceName(pipe: runtime.endpoint.isPipe)), reason \(reason.rawValue), \(Self.exitName(runtime.run.exitStatus)))")
+        if internalSessionIDs.contains(runtime.activeSessionID) {
+            LoomLog.notice(.lifecycle, "Helper run \(runID.uuidString.prefix(8)) ended (\(Self.faceName(pipe: runtime.endpoint.isPipe)), reason \(reason.rawValue), \(Self.exitName(runtime.run.exitStatus)))")
+        } else {
+            LoomLog.notice(.lifecycle, "Run \(runID.uuidString.prefix(8)) ended (\(LoomLog.ref(runtime.activeSessionID)), \(Self.faceName(pipe: runtime.endpoint.isPipe)), reason \(reason.rawValue), \(Self.exitName(runtime.run.exitStatus)))")
+        }
         if !internalSessionIDs.contains(runtime.activeSessionID) {
             await events.publish(sessionID: runtime.activeSessionID, change: .runEnded(runID, reason))
         }

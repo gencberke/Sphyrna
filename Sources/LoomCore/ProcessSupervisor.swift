@@ -503,7 +503,12 @@ public actor ProcessSupervisor {
             await events.publish(sessionID: sessionID, change: .runStarted(runID))
             await events.publish(sessionID: sessionID, change: .runEndpoint(runID, endpointKind))
         }
-        LoomLog.notice(.lifecycle, "Run \(runID.uuidString.prefix(8)) started (\(LoomLog.ref(sessionID)), \(Self.faceName(pipe: endpoint.isPipe)), \(Self.startKind(arguments)))")
+        if internalSessionIDs.contains(sessionID) {
+            // An app-owned helper (the Codex usage probe, a Remora call) is no session of the user's: the line says so (H1).
+            LoomLog.notice(.lifecycle, "Helper run \(runID.uuidString.prefix(8)) started (\(Self.helperName(executable: executable, arguments: arguments)), \(Self.faceName(pipe: endpoint.isPipe)))")
+        } else {
+            LoomLog.notice(.lifecycle, "Run \(runID.uuidString.prefix(8)) started (\(LoomLog.ref(sessionID)), \(Self.faceName(pipe: endpoint.isPipe)), \(Self.startKind(arguments)))")
+        }
         markerInspected.insert(leaderIdentity)
         managedRunMarkers[leaderIdentity] = runID
 
@@ -734,6 +739,12 @@ extension ProcessSupervisor {
         if arguments.contains("--fork-session") { return "fork" }
         if arguments.contains("--resume") || arguments.first == "resume" { return "resume" }
         return "new"
+    }
+
+    /// What a helper run is, for the log line only: the program's name, and `app-server` when that is what it runs.
+    static func helperName(executable: String, arguments: [String]) -> String {
+        let program = (executable as NSString).lastPathComponent
+        return arguments.contains("app-server") ? "\(program) app-server" : program
     }
 
     /// A run's wait status as a log line names it: `exit code 1`, `signal 9`, or `exit unknown`.

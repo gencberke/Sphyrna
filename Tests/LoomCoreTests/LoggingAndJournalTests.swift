@@ -34,6 +34,9 @@ struct LoggingAndJournalTests {
         #expect(ProcessSupervisor.exitName(256) == "exit code 1")
         #expect(ProcessSupervisor.exitName(SIGKILL) == "signal 9")
         #expect(ProcessSupervisor.exitName(nil) == "exit unknown")
+        #expect(ProcessSupervisor.helperName(executable: "/opt/homebrew/bin/codex", arguments: ["app-server", "--listen"]) == "codex app-server",
+                "a helper run is named for what it runs, not logged like a user's session (H1)")
+        #expect(ProcessSupervisor.helperName(executable: "/usr/local/bin/claude", arguments: ["-p"]) == "claude")
     }
 
     // MARK: Source guards
