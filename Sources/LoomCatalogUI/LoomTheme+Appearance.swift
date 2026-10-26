@@ -71,6 +71,7 @@ extension LoomTheme {
     /// Paper's ink `#1E1C1A`: overlays, hairlines and fills are this colour at an opacity where Ink uses white.
     static let inkRGB = RGB(hex: 0x1E1C1A)
     static let whiteRGB = RGB(red: 1, green: 1, blue: 1)
+    static let blackRGB = RGB(red: 0, green: 0, blue: 0)
 
     /// A white overlay in Ink, an ink overlay in Paper.
     static func overlay(dark: Double, light: Double) -> AdaptiveTone {

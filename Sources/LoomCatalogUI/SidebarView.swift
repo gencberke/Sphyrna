@@ -22,7 +22,7 @@ public struct SidebarView: View {
             SidebarList(model: model)
             SidebarFooter(model: model)
         }
-        .background(SidebarBackground(reduceTransparency: reduceTransparency, style: model.sidebarStyle))
+        .background(SidebarBackground(reduceTransparency: reduceTransparency, appearance: model.sidebarAppearance))
         .ignoresSafeArea(.container, edges: .top)
         .tint(LoomTheme.Accent.base)
         // Indicators stand still while the window is inactive/hidden or the sidebar is collapsed.
@@ -614,14 +614,12 @@ struct CardTimeLabel: View {
     }
 }
 
-/// The harness's mark on a card or a row: 12 pt in a box trimmed 2 pt on the left and 1 pt on the right, as the reference draws it, so
-/// the title starts 37 pt after the status column's left edge.
+/// The harness's mark on a card or a row: 12 pt, one leading edge with the title and the lines under it at 20 (FB6-2).
 struct HarnessMark: View {
     let provider: ManagedSession.Provider
 
     var body: some View {
         ProviderIcon(provider: provider)
-            .padding(.leading, -LoomTheme.Sidebar.markTrimLeading).padding(.trailing, -LoomTheme.Sidebar.markTrimTrailing)
     }
 }
 

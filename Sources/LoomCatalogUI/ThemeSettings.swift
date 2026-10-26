@@ -17,11 +17,21 @@ struct ThemeSettings: View {
                 SettingsRowDivider()
                 ToneRow(selection: model.paneTone, onSelect: { model.setPaneTone($0) })
                 SettingsRowDivider()
-                SettingsRow(title: "Sidebar",
-                            detail: "Solid is opaque. Transparent lets what is behind the window show through. Reduce Transparency in System Settings always shows Solid.") {
-                    InkSegmented(values: SidebarStyle.allCases, title: \.title, selection: model.sidebarStyle,
-                                 onSelect: { model.setSidebarStyle($0) })
-                        .accessibilityLabel("Sidebar")
+                SettingsRow(title: "Sidebar fill",
+                            detail: "Canvas is the window's own surface. Raised is one step lighter, as the Claude desktop app's sidebar; Deep is one step darker.") {
+                    HStack(spacing: S.controlGap) {
+                        SidebarFillPreview(appearance: model.sidebarAppearance)
+                        InkSegmented(values: SidebarFill.allCases, title: \.title, selection: model.sidebarAppearance.fill,
+                                     onSelect: { model.setSidebarFill($0) })
+                            .accessibilityLabel("Sidebar fill")
+                    }
+                }
+                SettingsRowDivider()
+                SettingsRow(title: "Sidebar opacity",
+                            detail: "Solid is opaque. The other steps let what is behind the window show through, with no blur. Reduce Transparency in System Settings always shows Solid.") {
+                    InkSegmented(values: SidebarOpacity.allCases, title: \.title, selection: model.sidebarAppearance.opacity,
+                                 onSelect: { model.setSidebarOpacity($0) })
+                        .accessibilityLabel("Sidebar opacity")
                 }
                 SettingsRowDivider()
                 SettingsRow(title: "Project colors",

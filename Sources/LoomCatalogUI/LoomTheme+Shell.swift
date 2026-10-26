@@ -119,6 +119,8 @@ extension LoomTheme {
     enum Shell {
         /// The canvas's hairline, as a dynamic colour for AppKit.
         static var dividerColor: NSColor { Surface.hairlineTone.nsColor }
+        /// The divider under Increase Contrast: 30 % in Ink and 45 % in Paper (DESIGN §3).
+        static var dividerIncreasedColor: NSColor { Surface.hairlineIncreasedTone.nsColor }
     }
 }
 
@@ -162,8 +164,11 @@ extension LoomTheme.ProjectColor {
 
 /// What the app target reads from the shell: the colour of the split view's divider (DESIGN §2 item 2).
 public enum ShellChrome {
-    /// The canvas's hairline, white 7.5 % in Ink and the ink 8.5 % in Paper.
-    public static var dividerColor: NSColor { LoomTheme.Shell.dividerColor }
+    /// The canvas's hairline, white 7.5 % in Ink and the ink 8.5 % in Paper; 30 % and 45 % under Increase Contrast.
+    public static var dividerColor: NSColor {
+        NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+            ? LoomTheme.Shell.dividerIncreasedColor : LoomTheme.Shell.dividerColor
+    }
 }
 
 /// The main window's split view: the sidebar beside the main pane, divided by the canvas's 1 pt hairline (DESIGN §2 item
@@ -179,6 +184,21 @@ public final class CanvasSplitView: NSSplitView {
     public required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     public override var dividerColor: NSColor { ShellChrome.dividerColor }
+
+    /// The divider is an opaque line (FB6-1): the canvas under the canvas's hairline, so the clear window never shows through
+    /// the 1 pt gap between the panes — neither pane paints under it.
+    public override func drawDivider(in rect: NSRect) {
+        LoomTheme.Surface.canvasNS.setFill()
+        rect.fill()
+        dividerColor.setFill()
+        rect.fill()
+    }
+
+    /// Appearance and Increase Contrast change what the divider resolves to, and AppKit keeps the divider's drawing: redraw it.
+    public override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
 }
 
 // MARK: Focus ring

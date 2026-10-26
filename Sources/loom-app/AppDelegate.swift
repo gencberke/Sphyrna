@@ -87,6 +87,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
         conversations?.applyTerminalTheme()
         settingsController?.window?.backgroundColor = model.themePanelBackground
+        // The split view's divider is drawn by AppKit: it follows Appearance and Increase Contrast, so it is redrawn here.
+        splitController?.refreshChrome()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

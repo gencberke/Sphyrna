@@ -251,8 +251,8 @@ public final class CatalogModel {
     public private(set) var notifyApprovals: Bool
     /// Settings → General → Search session text: whether the command palette may read transcripts (default on).
     public private(set) var searchesSessionText: Bool
-    /// Settings → Theme → Sidebar: Solid or Transparent (D-57, RESCUE C3).
-    public private(set) var sidebarStyle: SidebarStyle
+    /// Settings → Theme → Sidebar: the fill and the opacity (FB6-6, D-57).
+    public private(set) var sidebarAppearance: SidebarAppearance
     /// Settings → General → Sessions run in (V19, D-69): the app-wide face of a Claude session as it starts or resumes. Chat by
     /// default. The stored key keeps its old name, so an older file reads the same.
     public private(set) var newSessionFace: SessionFace
@@ -518,7 +518,8 @@ public final class CatalogModel {
         showInMenuBar = preferences.current.showInMenuBar
         notifyApprovals = preferences.current.notifyApprovals
         searchesSessionText = preferences.current.searchSessionText
-        sidebarStyle = preferences.current.sidebarStyle
+        sidebarAppearance = SidebarAppearance(fill: preferences.current.sidebarFill,
+                                              opacity: preferences.current.sidebarOpacity)
         newSessionFace = preferences.current.newSessionFace
         appearance = preferences.current.appearance
         paneTone = preferences.current.paneTone
@@ -1378,11 +1379,18 @@ public final class CatalogModel {
         persist { $0.searchSessionText = enabled }
     }
 
-    /// Settings → General → Sidebar (D-57). Applies at once: the sidebar's background reads `sidebarStyle`.
-    public func setSidebarStyle(_ style: SidebarStyle) {
-        guard style != sidebarStyle else { return }
-        sidebarStyle = style
-        persist { $0.sidebarStyle = style }
+    /// Settings → Theme → Sidebar's fill (FB6-6). Applies at once: the sidebar's background reads `sidebarAppearance`.
+    public func setSidebarFill(_ fill: SidebarFill) {
+        guard fill != sidebarAppearance.fill else { return }
+        sidebarAppearance.fill = fill
+        persist { $0.sidebarFill = fill }
+    }
+
+    /// Settings → Theme → Sidebar's opacity (FB6-6). Applies at once: the sidebar's background reads `sidebarAppearance`.
+    public func setSidebarOpacity(_ opacity: SidebarOpacity) {
+        guard opacity != sidebarAppearance.opacity else { return }
+        sidebarAppearance.opacity = opacity
+        persist { $0.sidebarOpacity = opacity }
     }
 
     /// Settings → General → Sessions run in (V19, D-69): the face of every Claude session as it starts or resumes. A

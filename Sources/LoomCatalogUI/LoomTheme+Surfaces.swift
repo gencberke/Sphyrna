@@ -98,11 +98,42 @@ extension LoomTheme.Surface {
     /// A card is raised 1.
     static var card: Color { raised1 }
 
-    /// The sidebar canvas's opacity for a style (D-57, RESCUE C3): Transparent is 0.8, Solid is opaque.
-    static func sidebarTintOpacity(for style: SidebarStyle) -> Double {
-        switch style {
-        case .transparent: sidebarTintOpacity
+    // MARK: The sidebar's fill and opacity (FB6-6, D-57)
+
+    /// How far Deep sits from the canvas: 30 % toward black in Ink and 4 % toward the ink in Paper, so it is one step darker
+    /// in both appearances and keeps the tone's cast.
+    static let sidebarDeepInkShare = 0.30
+    static let sidebarDeepPaperShare = 0.04
+
+    /// A sidebar fill as data, for each appearance and tone: Canvas is the canvas, Raised is raised 1 (one step lighter, as
+    /// the Claude desktop app's sidebar) and Deep is the canvas mixed toward black or the ink.
+    static func sidebarFillRGB(_ fill: SidebarFill, appearance: LoomTheme.Appearance, tone: PaneTone) -> LoomTheme.RGB {
+        let greys = greys(appearance, tone: tone)
+        switch fill {
+        case .canvas: return greys.canvas
+        case .raised: return greys.raised1
+        case .deep:
+            return appearance == .dark
+                ? greys.canvas.mixed(with: LoomTheme.blackRGB, share: sidebarDeepInkShare)
+                : greys.canvas.mixed(with: LoomTheme.inkRGB, share: sidebarDeepPaperShare)
+        }
+    }
+
+    /// A sidebar fill as a colour. Reading it in a view body subscribes that view to the tone.
+    static func sidebarFillColor(_ fill: SidebarFill) -> Color {
+        let tone = LoomTheme.ThemeState.shared.tone
+        return LoomTheme.Adaptive(dark: sidebarFillRGB(fill, appearance: .dark, tone: tone),
+                                  light: sidebarFillRGB(fill, appearance: .light, tone: tone)).color
+    }
+
+    /// The sidebar's opacity for a step (FB6-6): Solid is opaque; 90, 80 and 65 % draw the fill over what is behind the window.
+    /// 80 % is the step 1.7.0 called Transparent (`sidebarTintOpacity`, RESCUE C3).
+    static func sidebarTintOpacity(for opacity: SidebarOpacity) -> Double {
+        switch opacity {
         case .solid: 1
+        case .ninety: sidebarTintNinety
+        case .eighty: sidebarTintOpacity
+        case .sixtyFive: sidebarTintSixtyFive
         }
     }
 }

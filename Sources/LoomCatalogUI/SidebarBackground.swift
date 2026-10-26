@@ -1,20 +1,20 @@
 import SwiftUI
 
-/// The sidebar is the canvas: Solid (opaque) by default, or in the Transparent style (D-57, RESCUE C3) the canvas at partial
-/// opacity straight over what is behind the window. There is no material and no blur: the window is clear and the sidebar's
-/// split item draws nothing of its own, so the one fill is all there is and nothing animates or redraws because of it. The detail
-/// pane stays opaque. Reduce Transparency draws Solid whatever the style says.
+/// The sidebar is one plain fill (FB6-6, D-57): the canvas, raised 1 or Deep, at Solid or one of the translucent steps. A
+/// translucent step draws that fill straight over what is behind the window: there is no material and no blur, so the one fill is
+/// all there is and nothing animates or redraws because of it. The detail pane stays opaque. Reduce Transparency draws Solid
+/// whatever the step says.
 struct SidebarBackground: View {
     let reduceTransparency: Bool
-    var style: SidebarStyle = .solid
+    var appearance: SidebarAppearance = .standard
 
-    static func effectiveStyle(_ style: SidebarStyle, reduceTransparency: Bool) -> SidebarStyle {
-        reduceTransparency ? .solid : style
+    static func effectiveOpacity(_ appearance: SidebarAppearance, reduceTransparency: Bool) -> Double {
+        reduceTransparency ? 1 : LoomTheme.Surface.sidebarTintOpacity(for: appearance.opacity)
     }
 
     var body: some View {
-        let opacity = LoomTheme.Surface.sidebarTintOpacity(for: Self.effectiveStyle(style, reduceTransparency: reduceTransparency))
-        LoomTheme.Surface.sidebar.opacity(opacity)
+        LoomTheme.Surface.sidebarFillColor(appearance.fill)
+            .opacity(Self.effectiveOpacity(appearance, reduceTransparency: reduceTransparency))
             .ignoresSafeArea()
             .accessibilityHidden(true)
     }

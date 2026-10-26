@@ -45,9 +45,12 @@ enum LoomTheme {
     // MARK: Color
 
     enum Surface {
-        /// The sidebar's opacity in Transparent: the canvas at 0.8 straight over what is behind the window, no material and no
-        /// blur (DESIGN §2 item 2, RESCUE C3); Solid is opaque (`sidebarTintOpacity(for:)`). The colour is the tone's canvas.
+        /// The sidebar's opacity steps (FB6-6, D-57): Solid is opaque; 90, 80 and 65 % draw the fill straight over what is
+        /// behind the window, with no material and no blur. `sidebarTintOpacity` is the 80 % step 1.7.0 called Transparent
+        /// (RESCUE C3); `sidebarTintOpacity(for:)` is the one place the step is read.
         static let sidebarTintOpacity = 0.8
+        static let sidebarTintNinety = 0.9
+        static let sidebarTintSixtyFive = 0.65
 
         // Lines, white in Ink and the ink `#1E1C1A` in Paper (DESIGN §3 Surfaces, lines and fills).
         static let hairlineOpacity = 0.075
@@ -61,6 +64,7 @@ enum LoomTheme {
         /// Increase Contrast raises the hairline to 30 % (ink 45 % in Paper).
         static let hairlineIncreasedOpacity = 0.30
         static let hairlineIncreasedLightOpacity = 0.45
+        static let hairlineIncreasedTone = overlay(dark: hairlineIncreasedOpacity, light: hairlineIncreasedLightOpacity)
         static let hairlineTone = overlay(dark: hairlineOpacity, light: hairlineLightOpacity)
         static let strongHairlineTone = overlay(dark: strongHairlineOpacity, light: strongHairlineLightOpacity)
         static let strongerHairlineTone = overlay(dark: strongerHairlineOpacity, light: strongerHairlineLightOpacity)

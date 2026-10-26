@@ -51,6 +51,12 @@ final class MainSplitViewController: NSSplitViewController {
     var sidebarWidth: Double { sidebarItem.isCollapsed ? 0 : Double(sidebarItem.viewController.view.frame.width) }
     var sidebarIsCollapsed: Bool { sidebarItem.isCollapsed }
 
+    /// Redraws the AppKit chrome that SwiftUI does not reach: the split view's divider, whose colour follows Appearance and
+    /// Increase Contrast (FB6-1). Called from `AppDelegate.applyTheme`.
+    func refreshChrome() {
+        splitView.needsDisplay = true
+    }
+
     /// Moves the divider as a user drag would; the persistence path is the same.
     func setSidebarWidth(_ width: Double) {
         if sidebarItem.isCollapsed { sidebarItem.isCollapsed = false }

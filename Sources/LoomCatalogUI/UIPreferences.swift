@@ -45,31 +45,71 @@ public enum CatalogViewMode: String, Codable, Sendable, CaseIterable {
     case projects
 }
 
-/// Settings → Theme → Sidebar (D-57; General until D-63). Solid, the opaque canvas, is the default (D-81); Transparent is the
-/// canvas at partial opacity over what is behind the window, with no blur (RESCUE C3, which replaced Glass). A stored choice is
-/// kept, and a stored `glass` reads as Transparent. Reduce Transparency draws Solid whatever this says.
-/// The cases are in the segment's order, Solid first (DESIGN §5); the raw values are what is stored.
-public enum SidebarStyle: String, Codable, Sendable, CaseIterable {
+/// Settings → Theme → Sidebar → Fill (FB6-6, D-57): what the sidebar draws. Canvas is the window's own surface (the default,
+/// D-81); Raised is one step lighter, as the Claude desktop app's sidebar; Deep is one step darker than the canvas. Plain
+/// fills, no material and no blur, so the energy cost stays at 1.7.0's.
+/// The cases are in the segment's order (DESIGN §5); the raw values are what is stored.
+public enum SidebarFill: String, Codable, Sendable, CaseIterable {
+    case canvas
+    case raised
+    case deep
+
+    /// The label in Settings.
+    public var title: String {
+        switch self {
+        case .canvas: "Canvas"
+        case .raised: "Raised"
+        case .deep: "Deep"
+        }
+    }
+}
+
+/// Settings → Theme → Sidebar → Opacity (FB6-6, D-57): Solid is the opaque fill; the other steps draw the fill over what is
+/// behind the window, with no blur. 80 % is the step 1.7.0 called Transparent. Reduce Transparency draws Solid whatever this
+/// says. The cases are in the segment's order, Solid first (DESIGN §5); the raw values are what is stored.
+public enum SidebarOpacity: String, Codable, Sendable, CaseIterable {
     case solid
-    case transparent
+    case ninety = "90"
+    case eighty = "80"
+    case sixtyFive = "65"
 
     /// The label in Settings.
     public var title: String {
         switch self {
         case .solid: "Solid"
-        case .transparent: "Transparent"
+        case .ninety: "90 %"
+        case .eighty: "80 %"
+        case .sixtyFive: "65 %"
         }
     }
 
-    /// The raw value Glass was stored under before Transparent replaced it.
-    static let glassRawValue = "glass"
+    /// Solid is the opaque step.
+    public var isOpaque: Bool { self == .solid }
+}
 
-    public init(from decoder: Decoder) throws {
-        let raw = try decoder.singleValueContainer().decode(String.self)
-        guard let style = raw == Self.glassRawValue ? .transparent : SidebarStyle(rawValue: raw) else {
-            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown sidebar style \(raw)"))
-        }
-        self = style
+/// Settings → Theme → Sidebar (FB6-6, D-57): a fill and an opacity, applied at once and kept. A file from 1.6.x or 1.7.0 holds
+/// one word instead: `solid` reads as Canvas at Solid, and `transparent` or `glass` read as Canvas at 80 % — nobody is moved by
+/// the new pair. A file written by this build carries the two keys and no `sidebarStyle`, so going back a version reads Solid
+/// (`UIPreferences`' default).
+public struct SidebarAppearance: Equatable, Sendable {
+    public var fill: SidebarFill
+    public var opacity: SidebarOpacity
+
+    public init(fill: SidebarFill = .canvas, opacity: SidebarOpacity = .solid) {
+        self.fill = fill
+        self.opacity = opacity
+    }
+
+    /// The canvas, opaque: the default (D-81) and what Reduce Transparency draws.
+    public static let standard = SidebarAppearance()
+
+    /// This appearance as the single word 1.6.x stored and the evidence scripts read: `solid` for the opaque step, else
+    /// `transparent`.
+    public var legacyStyle: String { opacity.isOpaque ? "solid" : "transparent" }
+
+    /// The fill and the opacity a 1.6.x `sidebarStyle` word reads as; a missing or unknown word is Solid.
+    public static func legacy(_ raw: String?) -> SidebarAppearance {
+        raw == "transparent" || raw == "glass" ? SidebarAppearance(opacity: .eighty) : .standard
     }
 }
 
@@ -171,8 +211,11 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     /// Settings → General → Notify when a session needs approval. A file written before the setting
     /// existed reads as on. (Open at login is not a preference: the system holds it.)
     public var notifyApprovals: Bool
-    /// Settings → Theme → Sidebar: Solid or Transparent (D-57, RESCUE C3). A file written before the setting existed reads as Solid (D-81).
-    public var sidebarStyle: SidebarStyle
+    /// Settings → Theme → Sidebar (FB6-6, D-57): the fill (Canvas, Raised, Deep) and the opacity (Solid, 90, 80, 65 %). A file
+    /// written before the setting existed, or by 1.7.0, reads as Canvas at Solid (D-81), except a stored `transparent` or
+    /// `glass`, which reads as Canvas at 80 %.
+    public var sidebarFill: SidebarFill
+    public var sidebarOpacity: SidebarOpacity
     /// What the window opens on. A file written before the setting existed reads as the last session.
     public var launchView: LaunchView
     /// The sessions whose inspector is open (V2: closed by default, remembered per session). Least recently
@@ -235,7 +278,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
                 sidebarWidth: Double = UIPreferences.defaultSidebarWidth,
                 sidebarCollapsed: Bool = false, terminalFontSize: Double = UIPreferences.defaultTerminalFontSize,
                 openTabs: [UUID] = [], windowFrame: WindowFrame? = nil, projectColors: Bool = true,
-                showInMenuBar: Bool = true, notifyApprovals: Bool = true, sidebarStyle: SidebarStyle = .solid,
+                showInMenuBar: Bool = true, notifyApprovals: Bool = true,
+                sidebarFill: SidebarFill = .canvas, sidebarOpacity: SidebarOpacity = .solid,
                 launchView: LaunchView = .lastSession, inspectorOpen: [UUID] = [],
                 inspectorWidths: InspectorWidths = InspectorWidths(), searchSessionText: Bool = true,
                 newSessionFace: SessionFace = ChatFreeze.readFace(nil),
@@ -251,7 +295,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         self.projectColors = projectColors
         self.showInMenuBar = showInMenuBar
         self.notifyApprovals = notifyApprovals
-        self.sidebarStyle = sidebarStyle
+        self.sidebarFill = sidebarFill
+        self.sidebarOpacity = sidebarOpacity
         self.launchView = launchView
         self.inspectorOpen = Self.normalizedInspectors(inspectorOpen)
         self.inspectorWidths = inspectorWidths
@@ -265,6 +310,9 @@ public struct UIPreferences: Codable, Equatable, Sendable {
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Settings → Theme → Sidebar (FB6-6): the two newer keys win. A file from 1.6.x or 1.7.0 holds one `sidebarStyle` word
+        // instead, and keeps the look it had: Solid stays Canvas at Solid, Transparent (or Glass) stays Canvas at 80 %.
+        let legacySidebar = SidebarAppearance.legacy((try? container.decodeIfPresent(String.self, forKey: .sidebarStyle)) ?? nil)
         // Unknown or missing keys fall back to defaults.
         self.init(
             viewMode: (try? container.decodeIfPresent(CatalogViewMode.self, forKey: .viewMode)) ?? .activity,
@@ -283,7 +331,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
             projectColors: (try? container.decodeIfPresent(Bool.self, forKey: .projectColors)) ?? true,
             showInMenuBar: (try? container.decodeIfPresent(Bool.self, forKey: .showInMenuBar)) ?? true,
             notifyApprovals: (try? container.decodeIfPresent(Bool.self, forKey: .notifyApprovals)) ?? true,
-            sidebarStyle: (try? container.decodeIfPresent(SidebarStyle.self, forKey: .sidebarStyle)) ?? .solid,
+            sidebarFill: (try? container.decodeIfPresent(SidebarFill.self, forKey: .sidebarFill)) ?? legacySidebar.fill,
+            sidebarOpacity: (try? container.decodeIfPresent(SidebarOpacity.self, forKey: .sidebarOpacity)) ?? legacySidebar.opacity,
             launchView: (try? container.decodeIfPresent(LaunchView.self, forKey: .launchView)) ?? .lastSession,
             inspectorOpen: ((try? container.decodeIfPresent([Lossy<UUID>].self, forKey: .inspectorOpen)) ?? nil)?
                 .compactMap(\.value) ?? [],
@@ -305,7 +354,9 @@ public struct UIPreferences: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case viewMode, selectedSessionID, destination, sidebarWidth, sidebarCollapsed, terminalFontSize, openTabs
+        // `sidebarStyle` is read only: 1.6.x and 1.7.0 stored one word, this build stores the fill and the opacity (FB6-6).
         case windowFrame, projectColors, showInMenuBar, notifyApprovals, sidebarStyle, launchView, inspectorOpen
+        case sidebarFill, sidebarOpacity
         case inspectorWidths, searchSessionText, newSessionFace, appearance, paneTone, animatedArt, remora
         case keepAwake, notifyLongTurns, harnessConnections, usageSection
     }
@@ -323,7 +374,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         try container.encode(projectColors, forKey: .projectColors)
         try container.encode(showInMenuBar, forKey: .showInMenuBar)
         try container.encode(notifyApprovals, forKey: .notifyApprovals)
-        try container.encode(sidebarStyle, forKey: .sidebarStyle)
+        try container.encode(sidebarFill, forKey: .sidebarFill)
+        try container.encode(sidebarOpacity, forKey: .sidebarOpacity)
         try container.encode(launchView, forKey: .launchView)
         try container.encode(inspectorOpen, forKey: .inspectorOpen)
         try container.encode(inspectorWidths, forKey: .inspectorWidths)

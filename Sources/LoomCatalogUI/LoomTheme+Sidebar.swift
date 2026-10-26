@@ -97,17 +97,16 @@ extension LoomTheme {
         static let metaMonoFont = InkType.meta.font
         static let metaGlyph = Font.system(size: 10)
         static let metaSpacing: CGFloat = 4
-        /// The harness mark's box is trimmed 2 pt on the left and 1 pt on the right (`.srow .hm`, `.scard .c1 .hm`).
-        static let markTrimLeading: CGFloat = 2
-        static let markTrimTrailing: CGFloat = 1
-        /// The column the harness's mark (trimmed) takes on a card; a card's project mark stands in the same column (RESCUE C3).
-        static var markSlot: CGFloat { Layout.harnessMarkRow - markTrimLeading - markTrimTrailing }
-        /// Where a title starts, from the row's leading inset: the status slot, the trimmed mark and two gaps (37).
+        /// The harness mark's box on a card is the mark's own 12 pt: one leading edge at 20 after the status column, with the
+        /// title and the lines under it (FB6-2).
+        static var markSlot: CGFloat { Layout.harnessMarkRow }
+        /// Where a title starts, from the row's leading inset: the status slot, the mark and two gaps (40).
         static var titleIndent: CGFloat {
-            Layout.indicatorSlot.width + Layout.harnessMarkRow - markTrimLeading - markTrimTrailing + 2 * Space.cardSpacing
+            Layout.indicatorSlot.width + Layout.harnessMarkRow + 2 * Space.cardSpacing
         }
-        /// Lines 2 and 3 of a card start under the title.
-        static var cardTextIndent: CGFloat { titleIndent }
+        /// Lines 2 and 3 of a card start under the mark, on one leading edge with it: the status slot and one gap (20), so the
+        /// title and the lines under it share the mark's left edge instead of the name's (FB6-2).
+        static var cardTextIndent: CGFloat { Layout.indicatorSlot.width + Space.cardSpacing }
 
         /// Section headings (Drafts, Active, the days): 11.5 medium tertiary, the count in mono, 6 apart. They start on the
         /// status column's left edge (`rowLeading` inside the list's inset), pad 12 above (none for the list's first) and 5 below.
