@@ -528,7 +528,7 @@ private struct OverviewAgentRow: View {
         if agent.isWaiting {
             IndicatorView(indicator: .waitingForApproval)
         } else if agent.isRunning && agent.note == nil {
-            IndicatorView(indicator: .working)
+            IndicatorView(indicator: .working, animates: false)
         } else if agent.note == nil {
             Image(systemName: "checkmark").font(LoomTheme.Overview.agentCheck).foregroundStyle(LoomTheme.Text.faint)
                 .accessibilityHidden(true)

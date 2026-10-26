@@ -185,7 +185,7 @@ Rules: the daily `Loom.app` and its data are user data like the installed `Loom 
 
 Sphyrna logs through unified logging (`LoomLog`, `Sources/LoomCore/LoomLog.swift`), subsystem `local.loom.desktop`, one category per area:
 
-- `Lifecycle`: runs, with a start line (session, face, new, resume or fork) and an end line (reason, exit); an app-owned helper run (the Codex usage probe) reads "Helper run … started (codex app-server, …)" with no session ref;
+- `Lifecycle`: runs, with a start line (session, face, new, resume or fork) and an end line (reason, exit), and, at debug, one `Terminal resize source=layout|attach cols=… rows=… run=…` line for each size the terminal asks of the program; an app-owned helper run (the Codex usage probe) reads "Helper run … started (codex app-server, …)" with no session ref;
 - `Session`: `SessionService`, the outcome of each start, resume, stop, handover, answer and open request, and side-chat retirement;
 - `Chat`: the Chat face's driver and host (ready latency, end causes, requests by kind and answer, undecoded output lines);
 - `Remora`: one end line per call (kind, model, duration, tokens, outcome or failure kind), the automatic brief's decision and the day's slot;

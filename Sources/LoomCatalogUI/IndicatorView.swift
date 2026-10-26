@@ -13,6 +13,9 @@ extension EnvironmentValues {
 
 struct IndicatorView: View {
     let indicator: SessionIndicator
+    /// False: a working indicator stands on its first frame whatever the window does. A subagent's mark is still; only a
+    /// session's own spinner animates (FB6-11).
+    var animates = true
     @Environment(\.indicatorsAnimate) private var indicatorsAnimate
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
@@ -29,15 +32,15 @@ struct IndicatorView: View {
     /// window (contract §10); otherwise it stands on its first frame. Like the system's
     /// own small progress spinners it keeps running under Reduce Motion (user
     /// decision, 6 Oct 2026).
-    static func isAnimating(_ indicator: SessionIndicator, indicatorsAnimate: Bool) -> Bool {
-        indicator == .working && indicatorsAnimate
+    static func isAnimating(_ indicator: SessionIndicator, indicatorsAnimate: Bool, animates: Bool = true) -> Bool {
+        indicator == .working && indicatorsAnimate && animates
     }
 
     var body: some View {
         Group {
             switch indicator {
             case .working:
-                let animating = Self.isAnimating(indicator, indicatorsAnimate: indicatorsAnimate)
+                let animating = Self.isAnimating(indicator, indicatorsAnimate: indicatorsAnimate, animates: animates)
                 BrailleSpinner(animating: animating)
             case .waitingForApproval, .waitingForInput:
                 dot(LoomTheme.Status.attention)

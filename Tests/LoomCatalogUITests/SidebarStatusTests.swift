@@ -237,6 +237,8 @@ struct SidebarStatusTests {
         // Hidden or inactive window (model.windowIsActive == false) or collapsed sidebar.
         #expect(!IndicatorView.isAnimating(.working, indicatorsAnimate: false))
         #expect(!IndicatorView.isAnimating(.waitingForInput, indicatorsAnimate: true))
+        // A subagent's mark stands still in a window that animates (FB6-11): only a session's own spinner moves.
+        #expect(!IndicatorView.isAnimating(.working, indicatorsAnimate: true, animates: false))
         #expect(IndicatorView.framesPerSecond <= 12)
     }
 

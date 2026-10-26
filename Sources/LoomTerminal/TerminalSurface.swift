@@ -19,6 +19,11 @@ public enum TerminalSurfaceLimits {
     /// scrollback) and about this many bytes, the oldest rows going first.
     public static let endedScreenLines = 400
     public static let endedScreenBytes = 1024 * 1024
+    /// A grid narrower than this is not sent to the program: it comes from a view in the middle of a layout (a collapsing
+    /// sidebar, a column opening), and the program would redraw, or a normal buffer would reflow, for a width nobody sees.
+    public static let minimumColumns = 20
+    /// The frame a terminal starts at when none was laid out yet: a view that was never laid out.
+    public static let fallbackFrame = CGSize(width: 800, height: 500)
 
     public static var options: TerminalOptions {
         var options = TerminalOptions(
@@ -157,9 +162,16 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
     public var onTitle: ((String) -> Void)?
     public var onInputError: ((TerminalInputError) -> Void)?
 
+    /// The frame of the last terminal that was laid out. A new terminal starts at it, so the program is launched at about the
+    /// width it will have and not at the 95 columns of a view that was never laid out (FB6-9).
+    private static let lastLaidOutFrame = Mutex<CGSize?>(nil)
+
+    static var launchFrame: CGSize { lastLaidOutFrame.withLock { $0 } ?? TerminalSurfaceLimits.fallbackFrame }
+    static func forgetLaidOutFrame() { lastLaidOutFrame.withLock { $0 = nil } }
+
     public init(fontSize: CGFloat = 14) {
         view = LoomTerminalView(
-            frame: NSRect(x: 0, y: 0, width: 800, height: 500),
+            frame: NSRect(origin: .zero, size: Self.launchFrame),
             font: Self.font(size: fontSize), options: TerminalSurfaceLimits.options
         )
         output = TerminalOutputBridge(feed: view.feedSender)
@@ -206,7 +218,7 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
         queue.enqueue(early)
         // The grid may have changed between launch and attach.
         let size = gridSize
-        requestResize(rows: size.rows, columns: size.columns)
+        requestResize(rows: size.rows, columns: size.columns, source: "attach")
     }
 
     /// The run ended; input is refused and no work continues for this view.
@@ -289,7 +301,11 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
 
     public func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
         requestResize(rows: UInt16(clamping: max(1, newRows)),
-                      columns: UInt16(clamping: max(1, newCols)))
+                      columns: UInt16(clamping: max(1, newCols)), source: "layout")
+        if newCols >= TerminalSurfaceLimits.minimumColumns {
+            let frame = source.frame.size
+            Self.lastLaidOutFrame.withLock { $0 = frame }
+        }
     }
 
     public func setTerminalTitle(source: TerminalView, title: String) {
@@ -341,7 +357,13 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
     // MARK: Private
 
     /// Coalesces to the latest size; one ioctl is in flight at a time.
-    private func requestResize(rows: UInt16, columns: UInt16) {
+    private func requestResize(rows: UInt16, columns: UInt16, source: String) {
+        let run = runID.map { String($0.uuidString.prefix(8)).lowercased() } ?? "-"
+        guard Int(columns) >= TerminalSurfaceLimits.minimumColumns else {
+            LoomLog.debug(.lifecycle, "Terminal resize ignored source=\(source) cols=\(columns) rows=\(rows) run=\(run)")
+            return
+        }
+        LoomLog.debug(.lifecycle, "Terminal resize source=\(source) cols=\(columns) rows=\(rows) run=\(run)")
         requestedSize = (rows, columns)
         guard resizeTask == nil, case let .attached(_, endpoint) = input else { return }
         resizeTask = Task { [weak self] in

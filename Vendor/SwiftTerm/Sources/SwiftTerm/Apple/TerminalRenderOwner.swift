@@ -553,7 +553,7 @@ final class TerminalRenderOwner: Sendable {
                 // end of synchronized output) invalidates the whole view.
                 let fullRedraw = resizedTo != nil ||
                     session.snapshot.requiresFullRedraw
-                if fullRedraw || buffer.yDisp != buffer.yBase || buffer.lines.isEmpty {
+                if fullRedraw || buffer.lines.isEmpty {
                     region = request.viewState.viewBounds
                 } else if var span = session.snapshot.changedRowSpan {
                     if span.lowerBound >= 0, span.upperBound < terminal.rows {

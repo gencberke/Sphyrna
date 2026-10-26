@@ -1,0 +1,70 @@
+--- a/Sources/SwiftTerm/Apple/TerminalRenderOwner.swift
++++ b/Sources/SwiftTerm/Apple/TerminalRenderOwner.swift
+@@ -553,7 +553,7 @@ final class TerminalRenderOwner: Sendable {
+                 // end of synchronized output) invalidates the whole view.
+                 let fullRedraw = resizedTo != nil ||
+                     session.snapshot.requiresFullRedraw
+-                if fullRedraw || buffer.yDisp != buffer.yBase || buffer.lines.isEmpty {
++                if fullRedraw || buffer.lines.isEmpty {
+                     region = request.viewState.viewBounds
+                 } else if var span = session.snapshot.changedRowSpan {
+                     if span.lowerBound >= 0, span.upperBound < terminal.rows {
+--- a/Sources/SwiftTerm/Apple/TerminalSnapshot.swift
++++ b/Sources/SwiftTerm/Apple/TerminalSnapshot.swift
+@@ -539,7 +539,7 @@ final class TerminalSnapshot {
+                       alt: terminal.isCurrentBufferAlternate)
+         changedRowSpan = changedSpan
+         requiresFullRedraw = previousLayout.map { $0 != layout } != false ||
+-            buffer.yDisp != buffer.yBase || followsFrozenFrame || styleChanged ||
++            followsFrozenFrame || styleChanged ||
+             bidiInputsChanged || hasDoubleSizeRow || buffer.hasAnyImages ||
+             !kitty.renderSnapshot.placements.isEmpty || previousHadImages
+         previousHadImages = buffer.hasAnyImages || !kitty.renderSnapshot.placements.isEmpty
+--- a/Sources/SwiftTerm/Mac/MacTerminalView.swift
++++ b/Sources/SwiftTerm/Mac/MacTerminalView.swift
+@@ -1613,20 +1613,32 @@ open class TerminalView: NSView, NSUserInterfaceValidations, TerminalDelegate {
+     /// Shows the overlay scroller and restarts its fade delay.
+     func showOverlayScroller() {
+         guard scrollerStyle == .overlay, scroller.isEnabled else { return }
+-        overlayScrollerHideTimer?.invalidate()
+         overlayScrollerFadeGeneration += 1
+-        scroller.isHidden = false
+-        scroller.alphaValue = 0
+-        scroller.needsDisplay = true
+-        overlayScrollerIndicator.isHidden = false
+-        overlayScrollerIndicator.alphaValue = 1
+-        overlayScrollerIndicator.needsDisplay = true
+-        overlayScrollerIndicator.displayIfNeeded()
+-        guard !overlayScrollerIsTracking else { return }
+-        overlayScrollerHideTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) {
+-            [weak self] _ in
+-            MainActor.assumeIsolated {
+-                self?.hideOverlayScroller(animated: true)
++        // A wheel event shows the scroller again and again: once it stands, only the fade delay moves. The indicator is marked
++        // for display by `applyScrollerState`; nothing here draws it synchronously.
++        if scroller.isHidden || scroller.alphaValue != 0 || overlayScrollerIndicator.isHidden
++            || overlayScrollerIndicator.alphaValue != 1 {
++            scroller.isHidden = false
++            scroller.alphaValue = 0
++            scroller.needsDisplay = true
++            overlayScrollerIndicator.isHidden = false
++            overlayScrollerIndicator.alphaValue = 1
++            overlayScrollerIndicator.needsDisplay = true
++        }
++        guard !overlayScrollerIsTracking else {
++            overlayScrollerHideTimer?.invalidate()
++            overlayScrollerHideTimer = nil
++            return
++        }
++        let fireDate = Date(timeIntervalSinceNow: 1.5)
++        if let timer = overlayScrollerHideTimer, timer.isValid {
++            timer.fireDate = fireDate
++        } else {
++            overlayScrollerHideTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) {
++                [weak self] _ in
++                MainActor.assumeIsolated {
++                    self?.hideOverlayScroller(animated: true)
++                }
+             }
+         }
+     }

@@ -1613,20 +1613,32 @@ open class TerminalView: NSView, NSUserInterfaceValidations, TerminalDelegate {
     /// Shows the overlay scroller and restarts its fade delay.
     func showOverlayScroller() {
         guard scrollerStyle == .overlay, scroller.isEnabled else { return }
-        overlayScrollerHideTimer?.invalidate()
         overlayScrollerFadeGeneration += 1
-        scroller.isHidden = false
-        scroller.alphaValue = 0
-        scroller.needsDisplay = true
-        overlayScrollerIndicator.isHidden = false
-        overlayScrollerIndicator.alphaValue = 1
-        overlayScrollerIndicator.needsDisplay = true
-        overlayScrollerIndicator.displayIfNeeded()
-        guard !overlayScrollerIsTracking else { return }
-        overlayScrollerHideTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) {
-            [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.hideOverlayScroller(animated: true)
+        // A wheel event shows the scroller again and again: once it stands, only the fade delay moves. The indicator is marked
+        // for display by `applyScrollerState`; nothing here draws it synchronously.
+        if scroller.isHidden || scroller.alphaValue != 0 || overlayScrollerIndicator.isHidden
+            || overlayScrollerIndicator.alphaValue != 1 {
+            scroller.isHidden = false
+            scroller.alphaValue = 0
+            scroller.needsDisplay = true
+            overlayScrollerIndicator.isHidden = false
+            overlayScrollerIndicator.alphaValue = 1
+            overlayScrollerIndicator.needsDisplay = true
+        }
+        guard !overlayScrollerIsTracking else {
+            overlayScrollerHideTimer?.invalidate()
+            overlayScrollerHideTimer = nil
+            return
+        }
+        let fireDate = Date(timeIntervalSinceNow: 1.5)
+        if let timer = overlayScrollerHideTimer, timer.isValid {
+            timer.fireDate = fireDate
+        } else {
+            overlayScrollerHideTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) {
+                [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.hideOverlayScroller(animated: true)
+                }
             }
         }
     }
@@ -1984,6 +1996,7 @@ open class TerminalView: NSView, NSUserInterfaceValidations, TerminalDelegate {
     }
     
     public override func mouseExited(with event: NSEvent) {
+        lastMotionHit = nil
         turnOffUrlPreview()
         if linkHighlightMode == .hover || linkHighlightMode == .hoverWithModifier {
             let oldRange = linkHighlightRange
@@ -3989,6 +4002,19 @@ open class TerminalView: NSView, NSUserInterfaceValidations, TerminalDelegate {
         return calculateMouseHit(at: point).grid
     }
     
+    /// The cell (and, for the pixel protocol, the pixel) the last handled pointer move was in. A trackpad delivers about 120 moves a
+    /// second; a move inside the same cell reports nothing to the program and matches no link, as xterm, iTerm2 and Ghostty do.
+    var lastMotionHit: (grid: Position, pixels: Position)?
+
+    /// Whether a move to `hit` is a move to another cell (another pixel under the pixel protocol); remembers it.
+    func noteMotion(at hit: (grid: Position, pixels: Position), pixelProtocol: Bool) -> Bool {
+        if let last = lastMotionHit, last.grid == hit.grid, !pixelProtocol || last.pixels == hit.pixels {
+            return false
+        }
+        lastMotionHit = hit
+        return true
+    }
+
     public override func mouseMoved(with event: NSEvent) {
         if #available(macOS 26, *) {
             // On macOS 26 movement arrives via `acceptsMouseMovedEvents`, which delivers
@@ -3998,6 +4024,8 @@ open class TerminalView: NSView, NSUserInterfaceValidations, TerminalDelegate {
             if !bounds.contains(point) { return }
         }
         let hit = calculateMouseHit(with: event)
+        let pixelProtocol = withTerminal { $0.mouseProtocol == .sgrPixel }
+        guard noteMotion(at: hit, pixelProtocol: pixelProtocol) else { return }
         if commandActive {
             if let payload = getPayload(for: event) as? String {
                 previewUrl (payload: payload)

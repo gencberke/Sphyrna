@@ -295,7 +295,7 @@ Deletion is an end-to-end state machine persisted in the `deletions` table (`req
 - Inserts a stream marker `"Files rewound to before “…” · HH:MM"` with **`Undo`**. Safety copies exist on disk **only while Undo is open** (`D-72`: deleted on next send, newer rewind, Undo completion, session deletion, or app launch). Undo restores files atomically and moves post-rewind new files to the macOS Trash (never plain `unlink`).
 
 ### 8.4 Inspector: `Agents` Tab (`V09`, `V23`, [D-78](DECISIONS.md))
-- Lists running and finished subagents in a card (`12.5 pt` spinner or `7 pt` waiting dot, type, description, elapsed time). Clicking a subagent widens the inspector to the review width (`556 pt` by default) and opens its live or historical subagent transcript in two voices (prose in SF Pro, tool calls and `⎿` results in SF Mono, ending in `"Result"` or `"Waiting for you"` with `"Show the request"`).
+- Lists running and finished subagents in a card (`12.5 pt` still running mark (first frame; only a session's own spinner animates, 1.7.1) or `7 pt` waiting dot, type, description, elapsed time). Clicking a subagent widens the inspector to the review width (`556 pt` by default) and opens its live or historical subagent transcript in two voices (prose in SF Pro, tool calls and `⎿` results in SF Mono, ending in `"Result"` or `"Waiting for you"` with `"Show the request"`).
 
 ### 8.5 Quick Question (`⌘;`, `V22a`)
 - Available on a running Chat-face session (`⌘;` or Command Palette `"Ask a quick question"`). Opens a floating popover card above the composer and sends Claude's `side_question` control request over the parent's cached context (`120 s` timeout, no tools, zero writes to transcript, history, queue, or usage index). `↵` asks, `Esc` closes and discards.

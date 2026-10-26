@@ -228,7 +228,6 @@ struct SubagentTreeView: View {
     var waiting: Set<String> = []
     @State private var finishedExpanded = false
     @State private var runningExpanded = false
-    @Environment(\.indicatorsAnimate) private var indicatorsAnimate
 
     var body: some View {
         let content = SubagentTreeContent(
@@ -238,9 +237,7 @@ struct SubagentTreeView: View {
             let branches = SubagentBranches(depths: content.rows.map(\.depth))
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(content.rows) { row in
-                    SubagentRowView(
-                        row: row, animates: indicatorsAnimate,
-                        action: { perform(row) })
+                    SubagentRowView(row: row, action: { perform(row) })
                 }
             }
             .overlay(alignment: .topLeading) {
@@ -266,7 +263,6 @@ struct SubagentTreeView: View {
 private struct SubagentRowView: View {
     typealias Metrics = LoomTheme.Branches
     let row: SubagentTreeContent.Row
-    let animates: Bool
     let action: () -> Void
 
     var body: some View {
@@ -309,7 +305,8 @@ private struct SubagentRowView: View {
         case .running where row.isWaiting:
             IndicatorView(indicator: .waitingForApproval)
         case .running:
-            BrailleSpinner(animating: animates, style: .subagent)
+            // A still mark: only the session's own spinner animates, so a window moves at most one per working session (FB6-11).
+            BrailleSpinner(animating: false, style: .subagent)
         case .finished, .finishedFold:
             Image(systemName: "checkmark").font(Metrics.check).foregroundStyle(LoomTheme.Text.faint)
         case .more:

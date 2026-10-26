@@ -128,6 +128,30 @@ struct TerminalPartialDrawTests {
         #expect(try step(view, "\(e)[9;3H", into: incremental) == nil)
     }
 
+    /// FB6-11: output that arrives while the view is parked in the scrollback does not repaint the whole view (it used to, on every
+    /// frame); the rows the output changes are still what is drawn, and the pixels equal a full redraw.
+    @Test func outputWhileParkedInTheScrollbackInvalidatesOnlyTheChangedRows() throws {
+        let view = makeView()
+        let incremental = Canvas(view)
+        try step(view, (1...60).map { "scrollback \($0) gypq" }.joined(separator: "\r\n"), into: incremental)
+        view.scrollTo(row: 10)
+        let state = try #require(view.captureFrameViewState())
+        let parked = try #require(view.prepareFrame(viewState: state))
+        // Scrolling changed the layout: that frame is the whole view.
+        #expect(parked.region == view.bounds || parked.region.map { $0.height >= view.bounds.height } == true)
+        incremental.draw(view, dirty: view.bounds)
+        // Output at the bottom changes no row of the parked screen: nothing to draw.
+        let quiet = try step(view, "\r\nmore output below", into: incremental)
+        #expect(quiet == nil || quiet!.height < view.bounds.height, "parked output repainted \(String(describing: quiet))")
+        #expect(differingBytes(incremental.pixels, fullPixels(view)) == 0)
+        // A row of the parked screen that changes (a program rewrites the line it printed) is drawn, and only that.
+        view.feed(text: "\u{1b}[s\u{1b}[1;1Hrewritten at the top\u{1b}[u")
+        let next = try #require(view.captureFrameViewState())
+        let frame = try #require(view.prepareFrame(viewState: next))
+        if let region = frame.region { incremental.draw(view, dirty: region) }
+        #expect(differingBytes(incremental.pixels, fullPixels(view)) == 0)
+    }
+
     @Test func droppedDirtyRowIsDetected() throws {
         let view = makeView()
         let incremental = Canvas(view)

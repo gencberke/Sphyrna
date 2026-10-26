@@ -1,0 +1,26 @@
+--- a/Sources/SwiftTerm/Mac/MacTerminalView.swift
++++ b/Sources/SwiftTerm/Mac/MacTerminalView.swift
+@@ -1986,0 +1987 @@ open class TerminalView: NSView, NSUserInterfaceValidations, TerminalDelegate {
++        lastMotionHit = nil
+@@ -3991,0 +3993,13 @@ open class TerminalView: NSView, NSUserInterfaceValidations, TerminalDelegate {
++    /// The cell (and, for the pixel protocol, the pixel) the last handled pointer move was in. A trackpad delivers about 120 moves a
++    /// second; a move inside the same cell reports nothing to the program and matches no link, as xterm, iTerm2 and Ghostty do.
++    var lastMotionHit: (grid: Position, pixels: Position)?
++
++    /// Whether a move to `hit` is a move to another cell (another pixel under the pixel protocol); remembers it.
++    func noteMotion(at hit: (grid: Position, pixels: Position), pixelProtocol: Bool) -> Bool {
++        if let last = lastMotionHit, last.grid == hit.grid, !pixelProtocol || last.pixels == hit.pixels {
++            return false
++        }
++        lastMotionHit = hit
++        return true
++    }
++
+@@ -4000,0 +4015,2 @@ open class TerminalView: NSView, NSUserInterfaceValidations, TerminalDelegate {
++        let pixelProtocol = withTerminal { $0.mouseProtocol == .sgrPixel }
++        guard noteMotion(at: hit, pixelProtocol: pixelProtocol) else { return }
+--- a/Sources/SwiftTerm/Terminal.swift
++++ b/Sources/SwiftTerm/Terminal.swift
+@@ -886 +886 @@ open class Terminal {
+-    private var mouseProtocol: MouseProtocolEncoding = .x10
++    private(set) var mouseProtocol: MouseProtocolEncoding = .x10

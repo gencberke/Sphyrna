@@ -294,6 +294,7 @@ The figures above are estimates from the reference's values; the tests give the 
 - **Working: the braille spinner** `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`.
   - It is ten frames of one SF Mono braille cell, at 12 frames a second.
   - It is 14 pt in the 12 pt slot, in primary; in a subagent row it is 12.5 pt, in secondary.
+  - Only a session's own spinner (its card, its header, its tab) moves. The mark of a running subagent, in the sidebar's tree, in the Agents list and in Overview, stands on the first frame (1.7.1, FB6-11): one session with three subagents drew eight animated layers, each composited on its own, and a window now animates at most one spinner for each working session in view.
   - In code it is a render-server layer animation of pre-drawn frames, a `CAKeyframeAnimation` over the frames' contents, so it costs the app no wakeups, as the chase did.
   - It stands on its first frame when the window is hidden or inactive, and in the sidebar when the sidebar is collapsed ([SPEC.md §12](../SPEC.md#12-resource-performance-subscription--context-budgets-d-07-d-83-c)).
   - It keeps moving under Reduce Motion (D-12), like the system's own small progress indicators.

@@ -539,7 +539,7 @@ final class TerminalSnapshot {
                       alt: terminal.isCurrentBufferAlternate)
         changedRowSpan = changedSpan
         requiresFullRedraw = previousLayout.map { $0 != layout } != false ||
-            buffer.yDisp != buffer.yBase || followsFrozenFrame || styleChanged ||
+            followsFrozenFrame || styleChanged ||
             bidiInputsChanged || hasDoubleSizeRow || buffer.hasAnyImages ||
             !kitty.renderSnapshot.placements.isEmpty || previousHadImages
         previousHadImages = buffer.hasAnyImages || !kitty.renderSnapshot.placements.isEmpty

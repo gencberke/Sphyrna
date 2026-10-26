@@ -272,7 +272,7 @@ struct InspectorAgentRow: View {
 
     @ViewBuilder private var status: some View {
         switch agent.status {
-        case .working: IndicatorView(indicator: .working)
+        case .working: IndicatorView(indicator: .working, animates: false)
         case .waiting: IndicatorView(indicator: .waitingForApproval)
         case .none: Color.clear
         }

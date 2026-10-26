@@ -883,7 +883,7 @@ open class Terminal {
     }
     
     // The protocol encoding for the terminal
-    private var mouseProtocol: MouseProtocolEncoding = .x10
+    private(set) var mouseProtocol: MouseProtocolEncoding = .x10
 
     // This is used to track if we are setting the colors, to prevent a
     // recursive invocation (nativeForegroundColor sets the terminal
