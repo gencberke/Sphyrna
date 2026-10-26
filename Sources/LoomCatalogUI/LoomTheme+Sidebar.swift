@@ -100,7 +100,8 @@ extension LoomTheme {
         /// The harness mark's box on a card is the mark's own 12 pt: one leading edge at 20 after the status column, with the
         /// title and the lines under it (FB6-2).
         static var markSlot: CGFloat { Layout.harnessMarkRow }
-        /// Where a title starts, from the row's leading inset: the status slot, the mark and two gaps (40).
+        /// Where the name on a card's top line starts, after the mark: the status slot, the mark and two gaps (40). The title
+        /// and the lines under it start at the mark's own edge (`cardTextIndent`).
         static var titleIndent: CGFloat {
             Layout.indicatorSlot.width + Layout.harnessMarkRow + 2 * Space.cardSpacing
         }

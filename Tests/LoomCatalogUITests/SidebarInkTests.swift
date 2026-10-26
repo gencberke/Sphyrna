@@ -97,8 +97,8 @@ struct SidebarInkLayoutTests {
         #expect(LoomTheme.Sidebar.doorHeight == 30 && LoomTheme.Sidebar.doorRadius == 8)
         #expect(LoomTheme.Sidebar.footerHeight == 46)
         #expect(LoomTheme.Sidebar.chipMeter == CGSize(width: 40, height: 4))
-        // Lines 2 and 3 of a card start under its title: the status slot, the mark (trimmed 2 and 1) and two gaps, 37 in all.
-        #expect(LoomTheme.Sidebar.cardTextIndent == 37)
+        // The title and the lines under it start under the mark, on one edge: the status slot and one gap, 20 in all (FB6-2).
+        #expect(LoomTheme.Sidebar.cardTextIndent == 20)
     }
 
     // MARK: The fixes from the lunch pairs (I3f)
@@ -140,10 +140,11 @@ struct SidebarInkLayoutTests {
         #expect(LoomTheme.Branches.cardTrunkTop == markCentre + 7)
     }
 
-    @Test func theHarnessMarkIsTrimmedSoTheTitleStarts37PointsAfterTheStatusColumnsLeftEdge() {
+    @Test func theHarnessMarkKeepsItsTwelvePointsAndTheLinesStartUnderIt() {
         typealias S = LoomTheme.Sidebar
-        #expect(S.markTrimLeading == 2 && S.markTrimTrailing == 1)
-        #expect(S.titleIndent == 37 && S.cardTextIndent == 37)
+        #expect(S.markSlot == LoomTheme.Layout.harnessMarkRow && S.markSlot == 12)
+        // The name after the mark on the top line (40); the title and the lines under it at the mark's own edge (20).
+        #expect(S.titleIndent == 40 && S.cardTextIndent == 20)
     }
 
     @Test func aReasonLineDrawsItsCommandInMono() {

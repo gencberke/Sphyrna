@@ -304,6 +304,28 @@ struct ThemeAppearanceTests {
         }
     }
 
+    /// FB6-6: every fill (Canvas, Raised, Deep) at the lowest opacity step (65 %) over a white and a black desktop. Primary
+    /// text keeps AA (4.5:1) on all of them, so the title, the names and the branch stay readable however see-through the
+    /// sidebar is. The quieter tiers thin with the fill by design — 65 % is the step made for the look — so secondary's floor
+    /// is its own worst value at this step (2.1:1, Ink Raised over white), which the next change to a fill or a step trips.
+    @Test func everySidebarFillAtItsLowestOpacityKeepsPrimaryReadableOverWhiteAndBlack() {
+        let step = LoomTheme.Surface.sidebarTintOpacity(for: .sixtyFive)
+        #expect(step == 0.65)
+        for appearance in Appearance.allCases {
+            for tone in PaneTone.allCases {
+                for fill in SidebarFill.allCases {
+                    let rgb = LoomTheme.Surface.sidebarFillRGB(fill, appearance: appearance, tone: tone)
+                    for (name, backdrop) in [("white", Self.white), ("black", Self.black)] {
+                        let surface = rgb.composited(over: backdrop, opacity: step)
+                        let id = "\(appearance) \(tone) \(fill) over \(name)"
+                        Self.floor(LoomTheme.Text.primaryPair[appearance].contrast(with: surface), 4.5, "primary on \(id)")
+                        Self.floor(LoomTheme.Text.secondaryPair[appearance].contrast(with: surface), 2.1, "secondary on \(id)")
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: The values
 
     private static func hex(_ greys: LoomTheme.Surface.Greys) -> [UInt32] {

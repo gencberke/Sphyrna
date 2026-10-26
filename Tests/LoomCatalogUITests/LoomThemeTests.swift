@@ -3,11 +3,11 @@ import Testing
 @testable import LoomCatalogUI
 
 /// Ink's values as data (WCAG 2.x relative luminance): the contrast math, the tokens that hold their RGB data, the type,
-/// radius and height scale, and the sidebar's Transparent | Solid tint. The floors per appearance and tone are in
-/// `ThemeAppearanceTests`. The sidebar is a translucent tint over a material, so it is checked over the darkest and the
-/// lightest backdrop and as the opaque Reduce Transparency color. The lightest backdrop is what the dark `.sidebar`
-/// material passes of a pure white window behind it: measured 0.38-0.51 per sRGB channel on macOS 27 (12 Oct 2026,
-/// captures at tint 0.86 and 0.6), taken as 0.5 gray.
+/// radius and height scale, and the sidebar's fills (Canvas, Raised, Deep) and opacity steps (FB6-6). The floors per
+/// appearance and tone are in `ThemeAppearanceTests`. The sidebar is a plain fill over what is behind the window, so the
+/// 1.7.0 step (80 %) is checked over the darkest and the lightest backdrop and as the opaque Reduce Transparency color. The
+/// lightest backdrop is what a pure white window behind it looked like through the old material: measured 0.38-0.51 per sRGB
+/// channel on macOS 27 (12 Oct 2026), taken as 0.5 gray.
 struct LoomThemeTests {
     typealias RGB = LoomTheme.RGB
     private static let black = RGB(red: 0, green: 0, blue: 0)
@@ -57,6 +57,7 @@ struct LoomThemeTests {
         #expect(LoomTheme.Accent.baseRGB == RGB(hex: 0x8791CF))
         #expect(LoomTheme.Accent.onAccentRGB == RGB(hex: 0x0B0E16))
         #expect(LoomTheme.Surface.sidebarTintOpacity == 0.8)
+        #expect(LoomTheme.Surface.sidebarTintNinety == 0.9 && LoomTheme.Surface.sidebarTintSixtyFive == 0.65)
         #expect(LoomTheme.inkRGB == RGB(hex: 0x1E1C1A))
     }
 
@@ -132,19 +133,36 @@ struct LoomThemeTests {
                 && LoomTheme.Rhythm.inspectorWidthSide == 392)
     }
 
-    // MARK: Transparent | Solid (D-57, RESCUE C3)
+    // MARK: The sidebar's fills and opacity (FB6-6, D-57)
 
-    @Test func theSidebarTintIsTheCanvasAtEightTenthsForTransparentAndOpaqueForSolid() {
-        #expect(LoomTheme.Surface.sidebarTintOpacity(for: .transparent) == 0.8)
-        #expect(LoomTheme.Surface.sidebarTintOpacity(for: .solid) == 1)
+    @Test func theSidebarFillsAreTheCanvasRaisedAndOneStepDeeper() {
+        for appearance in LoomTheme.Appearance.allCases {
+            let greys = LoomTheme.Surface.greys(appearance, tone: .neutral)
+            let canvas = LoomTheme.Surface.sidebarFillRGB(.canvas, appearance: appearance, tone: .neutral)
+            let raised = LoomTheme.Surface.sidebarFillRGB(.raised, appearance: appearance, tone: .neutral)
+            let deep = LoomTheme.Surface.sidebarFillRGB(.deep, appearance: appearance, tone: .neutral)
+            #expect(canvas == greys.canvas && raised == greys.raised1)
+            #expect(deep.luminance < canvas.luminance, "\(appearance): Deep is one step darker")
+            #expect(deep.luminance > raised.luminance * 0.3, "\(appearance): and stays a surface, not black")
+        }
     }
 
-    @Test func reduceTransparencyDrawsSolidWhateverTheStyleIs() {
+    @Test func theSidebarOpacityStepsAreSolidNinetyEightyAndSixtyFive() {
+        #expect(LoomTheme.Surface.sidebarTintOpacity(for: .solid) == 1)
+        #expect(LoomTheme.Surface.sidebarTintOpacity(for: .ninety) == 0.9)
+        #expect(LoomTheme.Surface.sidebarTintOpacity(for: .eighty) == 0.8)
+        #expect(LoomTheme.Surface.sidebarTintOpacity(for: .sixtyFive) == 0.65)
+    }
+
+    @Test func reduceTransparencyDrawsSolidWhateverTheFillAndStepAre() {
         typealias Background = SidebarBackground
-        #expect(Background.effectiveStyle(.transparent, reduceTransparency: false) == .transparent)
-        #expect(Background.effectiveStyle(.transparent, reduceTransparency: true) == .solid)
-        #expect(Background.effectiveStyle(.solid, reduceTransparency: false) == .solid)
-        #expect(Background.effectiveStyle(.solid, reduceTransparency: true) == .solid)
+        for fill in SidebarFill.allCases {
+            for opacity in SidebarOpacity.allCases {
+                #expect(Background.effectiveOpacity(SidebarAppearance(fill: fill, opacity: opacity), reduceTransparency: true) == 1)
+                #expect(Background.effectiveOpacity(SidebarAppearance(fill: fill, opacity: opacity), reduceTransparency: false)
+                        == LoomTheme.Surface.sidebarTintOpacity(for: opacity))
+            }
+        }
     }
 
     @Test func solidSidebarCarriesTheTextTiersAsTheOpaqueTintDid() {

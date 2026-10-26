@@ -46,6 +46,8 @@ What it changes is the surface.
 
 ## 2. Elements to keep
 
+> **1.7.1 (FB6-1, FB6-2, FB6-6, [D-103](../DECISIONS.md)):** the sidebar draws one plain fill: Canvas (the default), Raised (one step lighter) or Deep (one step darker), at Solid, 90, 80 or 65 % over what is behind the window, with no material and no blur; Reduce Transparency draws Solid. The split view's divider is opaque under its hairline, so the desktop never shows through the 1 pt gap. A card's title, reason line and branch start on one edge under the project (or harness) mark, 20 from the row's inset; the name keeps its place after the mark, whose box is its own 12 pt.
+
 > **1.7.0 (RESCUE C3, [D-100](../DECISIONS.md), [D-102](../DECISIONS.md)):** the sidebar heading shows the view's title once with that view's action (Projects: Add Project; Activity: New Session) and a separate two-button picker; empty sidebar space has a context menu (Add Project…, New Session). Session cards have three layers in both views (Activity: project / title / branch · harness · model; Projects: harness · model / title / branch), with the model's full name ("Opus 5.5"). The sidebar styles are **Solid | Transparent**: Transparent is the canvas at 0.8 straight over the desktop, no material, no blur (it replaces Glass). Settings → General has no "Sessions run in"; Settings → Theme has no Animated art; Settings → Sessions has a Storage section; the inspector's Overview has a Usage section (Main / Subagents / Total, "API equivalent").
 
 The window's structure stays; Ink redraws it.
@@ -53,10 +55,10 @@ The window's structure stays; Ink redraws it.
 1. **Window buttons and the sidebar header.** The native red, yellow and green window buttons stay. The sidebar's 52 pt header row holds them and, at its trailing end, the sidebar toggle, nothing else. The view switch is the list's heading (item 3), so the header has no folder and clock buttons and no ⋯ menu; Add Project is in the footer's `+` menu (D-75).
 
    There is no navbar band: the header sits on the canvas (O-03, closed by D-69), with a hairline under it.
-2. **One canvas.** The sidebar and the main pane are one canvas, divided by a 1 pt hairline; nothing between them is boxed (rule 1).
+2. **One canvas.** The sidebar and the main pane are one canvas, divided by a 1 pt opaque hairline (the canvas under it, FB6-1); nothing between them is boxed (rule 1).
    - **Appearance:** Ink (dark, the default), Paper (light) or Match system, chosen in Settings → Theme.
    - **The terminal face** is dark in every appearance (§6 Terminal framing).
-   - **The sidebar** is Solid by default (D-81). Settings → Theme → Sidebar keeps Glass as an option (D-57): the sidebar's canvas at 0.8 over the behind-window material (D-81). Reduce Transparency draws Solid.
+   - **The sidebar** draws one plain fill (FB6-6): Canvas (the default, D-81), Raised (one step lighter, as the Claude desktop app's sidebar) or Deep (one step darker than the canvas), at Solid, 90, 80 or 65 %, straight over what is behind the window with no material and no blur (80 % is the step 1.7.0 called Transparent, D-57). Reduce Transparency draws Solid.
    - **The tone** (D-63, D-81): Neutral, Warm or Cool, chosen in Settings → Theme → Tone, a cast over every grey of the window (§3 Tones).
 3. **The sidebar, top to bottom.**
    - The search field: 30 pt, a hairline box, with ⌘K in mono.
@@ -71,7 +73,7 @@ The window's structure stays; Ink redraws it.
      - the reason line, only in the Active section (D-69), in 11.5 secondary with a command in mono, such as "Allow: <command>", "Asks: <header>", "Plan ready for review" or "Failed: <cause>";
      - a fixed bottom row in 11 tertiary: the branch glyph and the branch in mono (or the origin of a session another one opened), the pin glyph, and at the trailing end the project's mark (12) and name (D-69 (7)).
 
-     The second and third lines align under the title. A card takes the project view's row language: radius 10, the selected one in its project's tint, and its subagents branching from the status column (§4). The harness's mark replaces the old trailing provider mark.
+     The title, the reason line and the branch start on one edge under the project (or harness) mark; the name keeps its place after the mark (FB6-2). A card takes the project view's row language: radius 10, the selected one in its project's tint, and its subagents branching from the status column (§4). The harness's mark replaces the old trailing provider mark.
 5. **Footer bar** (D-32). It is 46 pt, with a hairline above it, and holds:
    - **Left: a `+` menu.** Its session items carry their harness's mark (14). It offers:
      - a new Claude session;

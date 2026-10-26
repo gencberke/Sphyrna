@@ -151,6 +151,13 @@ extension LoomTheme {
         static let checkboxGlyph = Font.system(size: 10, weight: .bold)
         static let checkboxHit: CGFloat = 24
 
+        // MARK: Theme: the sidebar's fill preview
+
+        /// The picture beside the fill choices (FB6-6): 44 × 26, radius 6, the fill at the chosen step over the canvas.
+        static let sidebarPreviewWidth: CGFloat = 44
+        static let sidebarPreviewHeight = InkHeight.control
+        static let sidebarPreviewRadius = InkRadius.control
+
         // MARK: Theme: the tone tiles
 
         /// Three tiles in a grid, 10 apart; a tile has radius 10, 6 inside, a hairline edge; selected it takes the selected fill and a

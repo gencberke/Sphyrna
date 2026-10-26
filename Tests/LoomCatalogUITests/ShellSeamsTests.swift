@@ -6,8 +6,8 @@ import LoomTerminal
 import Testing
 @testable import LoomCatalogUI
 
-/// V01/V02: the Solid | Transparent and launch-view preferences, the per-session inspector, and the detail route.
-/// Files live in temporary folders that each test removes.
+/// V01/V02: the sidebar's fill and opacity (FB6-6), the launch-view preferences, the per-session inspector, and the detail
+/// route. Files live in temporary folders that each test removes.
 @MainActor
 @Suite(.serialized, .timeLimit(.minutes(2)))
 struct ShellSeamsTests {
@@ -26,82 +26,107 @@ struct ShellSeamsTests {
         try JSONDecoder().decode(UIPreferences.self, from: Data(contentsOf: root.appendingPathComponent("ui-preferences.json")))
     }
 
-    // MARK: Solid | Transparent
+    // MARK: Settings → Theme → Sidebar (FB6-6, D-57)
 
-    /// DESIGN §5's Theme row (RESCUE C3): the segment reads Solid | Transparent, the default first; a stored `glass` reads as
-    /// Transparent and is written back as `transparent`.
-    @Test func theSidebarSegmentReadsSolidThenTransparentAndAStoredGlassReadsAsTransparent() throws {
-        #expect(SidebarStyle.allCases == [.solid, .transparent])
-        #expect(SidebarStyle.allCases.map(\.title) == ["Solid", "Transparent"])
-        #expect(SidebarStyle.allCases.map(\.rawValue) == ["solid", "transparent"])
-        let decoder = JSONDecoder()
-        #expect(try decoder.decode(SidebarStyle.self, from: Data(#""glass""#.utf8)) == .transparent)
-        #expect(try decoder.decode(SidebarStyle.self, from: Data(#""transparent""#.utf8)) == .transparent)
-        #expect(String(data: try JSONEncoder().encode(SidebarStyle.transparent), encoding: .utf8) == #""transparent""#)
+    /// The segments' order and words, and what a 1.6.x or 1.7.0 `sidebarStyle` word reads as: `solid` is Canvas at Solid,
+    /// `transparent` and `glass` are Canvas at 80 %, and a missing or unknown word is Solid (nobody is moved by the new pair).
+    @Test func theSidebarSegmentsReadTheirStepsAndAnOldStyleReadsAsThePairItHad() {
+        #expect(SidebarFill.allCases.map(\.rawValue) == ["canvas", "raised", "deep"])
+        #expect(SidebarFill.allCases.map(\.title) == ["Canvas", "Raised", "Deep"])
+        #expect(SidebarOpacity.allCases.map(\.rawValue) == ["solid", "90", "80", "65"])
+        #expect(SidebarOpacity.allCases.map(\.title) == ["Solid", "90 %", "80 %", "65 %"])
+        #expect(SidebarAppearance.legacy("solid") == .standard)
+        #expect(SidebarAppearance.legacy("transparent") == SidebarAppearance(fill: .canvas, opacity: .eighty))
+        #expect(SidebarAppearance.legacy("glass") == SidebarAppearance(fill: .canvas, opacity: .eighty))
+        #expect(SidebarAppearance.legacy(nil) == .standard && SidebarAppearance.legacy("frosted") == .standard)
+        // The one word the evidence scripts read: `solid` for the opaque step, `transparent` for any see-through step.
+        #expect(SidebarAppearance.standard.legacyStyle == "solid")
+        #expect(SidebarAppearance(fill: .deep, opacity: .eighty).legacyStyle == "transparent")
+        #expect(SidebarAppearance(opacity: .sixtyFive).legacyStyle == "transparent")
     }
 
-    @Test func theSidebarStylePersistsAndAppliesLive() throws {
+    @Test func theSidebarFillAndOpacityPersistAndApplyLive() throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let model = model(at: root)
-        #expect(model.sidebarStyle == .solid, "Solid is the default (D-81)")
+        #expect(model.sidebarAppearance == .standard, "the canvas, opaque (D-81)")
 
-        // The sidebar's background reads the style itself (`SidebarBackground(style:)`); there is no bridge
-        // through Reduce Transparency any more.
-        model.setSidebarStyle(.transparent)
-        #expect(model.sidebarStyle == .transparent)
-        #expect(try stored(root).sidebarStyle == .transparent)
+        model.setSidebarFill(.raised)
+        model.setSidebarOpacity(.sixtyFive)
+        #expect(model.sidebarAppearance == SidebarAppearance(fill: .raised, opacity: .sixtyFive))
+        let kept = try stored(root)
+        #expect(kept.sidebarFill == .raised && kept.sidebarOpacity == .sixtyFive)
         #expect(model.preferencesSnapshot.projectColors, "nothing else changed")
 
-        model.setSidebarStyle(.solid)
-        #expect(model.sidebarStyle == .solid)
-        #expect(try stored(root).sidebarStyle == .solid)
+        model.setSidebarFill(.canvas)
+        model.setSidebarOpacity(.solid)
+        #expect(model.sidebarAppearance == .standard)
+        let written = String(decoding: try Data(contentsOf: root.appendingPathComponent("ui-preferences.json")), as: UTF8.self)
+        #expect(written.contains("\"sidebarFill\"") && written.contains("\"sidebarOpacity\""))
+        #expect(!written.contains("\"sidebarStyle\""), "a file written now carries the pair, not the old word")
 
         // A new window reads what was saved.
-        model.setSidebarStyle(.transparent)
+        model.setSidebarOpacity(.eighty)
         let again = self.model(at: root)
-        #expect(again.sidebarStyle == .transparent)
+        #expect(again.sidebarAppearance == SidebarAppearance(fill: .canvas, opacity: .eighty))
     }
 
-    /// DESIGN §2 item 2 (D-81): the sidebar is Solid for a fresh or missing preference, and a stored choice is kept. A user who
-    /// chose Glass keeps it, as Transparent; nobody is moved by the new default.
-    @Test func aFreshOrMissingSidebarPreferenceIsSolidAndAStoredChoiceIsKept() throws {
-        #expect(UIPreferences().sidebarStyle == .solid)
-        #expect(try JSONDecoder().decode(UIPreferences.self, from: Data("{}".utf8)).sidebarStyle == .solid)
-        #expect(try JSONDecoder().decode(UIPreferences.self, from: Data(#"{"sidebarStyle": "frosted"}"#.utf8)).sidebarStyle == .solid)
-        #expect(SidebarBackground(reduceTransparency: false).style == .solid, "a bare background draws Solid")
+    /// DESIGN §2 item 2 (FB6-6, D-81): the sidebar is Canvas at Solid for a fresh or missing preference, and a stored choice
+    /// is kept. A user who chose Glass or Transparent keeps the look they had, as Canvas at 80 %; the two newer keys win.
+    @Test func aFreshOrMissingSidebarPreferenceIsCanvasAtSolidAndAStoredChoiceIsKept() throws {
+        #expect(UIPreferences().sidebarFill == .canvas && UIPreferences().sidebarOpacity == .solid)
+        let freshPreferences = try JSONDecoder().decode(UIPreferences.self, from: Data("{}".utf8))
+        #expect(freshPreferences.sidebarFill == .canvas && freshPreferences.sidebarOpacity == .solid)
+        let oddPreferences = try JSONDecoder().decode(UIPreferences.self, from: Data(#"{"sidebarStyle": "frosted"}"#.utf8))
+        #expect(oddPreferences.sidebarFill == .canvas && oddPreferences.sidebarOpacity == .solid)
 
-        let fresh = try temporaryRoot()
         let stored = try temporaryRoot()
-        defer { for root in [fresh, stored] { try? FileManager.default.removeItem(at: root) } }
-        #expect(model(at: fresh).sidebarStyle == .solid, "no file at all")
+        defer { try? FileManager.default.removeItem(at: stored) }
+        #expect(model(at: stored).sidebarAppearance == .standard, "no file at all")
         try Data(#"{"sidebarStyle": "glass"}"#.utf8).write(to: stored.appendingPathComponent("ui-preferences.json"))
-        #expect(model(at: stored).sidebarStyle == .transparent, "a stored Glass reads as Transparent")
+        #expect(model(at: stored).sidebarAppearance == SidebarAppearance(opacity: .eighty),
+                "a stored Glass reads as Canvas at 80 %")
+        try Data(#"{"sidebarStyle": "transparent"}"#.utf8).write(to: stored.appendingPathComponent("ui-preferences.json"))
+        #expect(model(at: stored).sidebarAppearance == SidebarAppearance(opacity: .eighty))
         try Data(#"{"sidebarStyle": "solid"}"#.utf8).write(to: stored.appendingPathComponent("ui-preferences.json"))
-        #expect(model(at: stored).sidebarStyle == .solid)
+        #expect(model(at: stored).sidebarAppearance == .standard)
+        try Data(#"{"sidebarStyle": "transparent", "sidebarFill": "deep", "sidebarOpacity": "65"}"#.utf8)
+            .write(to: stored.appendingPathComponent("ui-preferences.json"))
+        #expect(model(at: stored).sidebarAppearance == SidebarAppearance(fill: .deep, opacity: .sixtyFive))
     }
 
-    @Test func theBackgroundDrawsTheStyleTheModelHoldsAndReduceTransparencyForcesSolid() {
-        // The tint the sidebar draws for each pair of (style, system Reduce Transparency).
-        func tint(_ style: SidebarStyle, _ reduce: Bool) -> Double {
-            LoomTheme.Surface.sidebarTintOpacity(for: SidebarBackground.effectiveStyle(style, reduceTransparency: reduce))
+    @Test func theBackgroundDrawsTheFillAtItsStepAndReduceTransparencyForcesSolid() {
+        typealias Background = SidebarBackground
+        #expect(Background.effectiveOpacity(.standard, reduceTransparency: false) == 1)
+        #expect(Background.effectiveOpacity(SidebarAppearance(opacity: .ninety), reduceTransparency: false) == 0.9)
+        #expect(Background.effectiveOpacity(SidebarAppearance(opacity: .eighty), reduceTransparency: false)
+                == LoomTheme.Surface.sidebarTintOpacity && LoomTheme.Surface.sidebarTintOpacity == 0.8,
+                "80 % is the step 1.7.0 called Transparent")
+        #expect(Background.effectiveOpacity(SidebarAppearance(opacity: .sixtyFive), reduceTransparency: false)
+                == LoomTheme.Surface.sidebarTintSixtyFive && LoomTheme.Surface.sidebarTintSixtyFive == 0.65)
+        for fill in SidebarFill.allCases {
+            // The fill changes what the step is drawn with, never the step.
+            #expect(Background.effectiveOpacity(SidebarAppearance(fill: fill, opacity: .eighty), reduceTransparency: false) == 0.8)
+            for opacity in SidebarOpacity.allCases {
+                #expect(Background.effectiveOpacity(SidebarAppearance(fill: fill, opacity: opacity), reduceTransparency: true) == 1)
+            }
         }
-        #expect(tint(.transparent, false) == LoomTheme.Surface.sidebarTintOpacity && LoomTheme.Surface.sidebarTintOpacity == 0.8,
-                "Transparent is the canvas at 0.8 over what is behind the window")
-        #expect(tint(.solid, false) == 1)
-        #expect(tint(.transparent, true) == 1 && tint(.solid, true) == 1)
     }
 
     @Test func preferencesRoundTripAndAnOldOrOddFileReadsAsTheDefaults() throws {
-        let preferences = UIPreferences(sidebarStyle: .solid, launchView: .home)
+        let preferences = UIPreferences(sidebarFill: .raised, sidebarOpacity: .sixtyFive, launchView: .home)
         let again = try JSONDecoder().decode(UIPreferences.self, from: JSONEncoder().encode(preferences))
-        #expect(again.sidebarStyle == .solid && again.launchView == .home && again == preferences)
+        #expect(again.sidebarFill == .raised && again.sidebarOpacity == .sixtyFive && again.launchView == .home
+                && again == preferences)
 
         let old = try JSONDecoder().decode(UIPreferences.self, from: Data("{}".utf8))
-        #expect(old.sidebarStyle == .solid && old.launchView == .lastSession && old.inspectorOpen.isEmpty)
+        #expect(old.sidebarFill == .canvas && old.sidebarOpacity == .solid && old.launchView == .lastSession
+                && old.inspectorOpen.isEmpty)
         let odd = try JSONDecoder().decode(
-            UIPreferences.self, from: Data(#"{"sidebarStyle": "frosted", "launchView": 3, "inspectorOpen": ["x", 4]}"#.utf8))
-        #expect(odd.sidebarStyle == .solid && odd.launchView == .lastSession && odd.inspectorOpen.isEmpty)
+            UIPreferences.self,
+            from: Data(#"{"sidebarStyle": "frosted", "sidebarFill": "sepia", "sidebarOpacity": 3, "launchView": 3, "inspectorOpen": ["x", 4]}"#.utf8))
+        #expect(odd.sidebarFill == .canvas && odd.sidebarOpacity == .solid && odd.launchView == .lastSession
+                && odd.inspectorOpen.isEmpty)
     }
 
     // MARK: Launch view

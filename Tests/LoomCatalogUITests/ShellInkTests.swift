@@ -94,6 +94,29 @@ struct ShellInkTests {
         #expect(abs(Double(paper.alphaComponent) - 0.085) < 0.002 && paper.redComponent < 0.2, "the ink 8.5 % in Paper")
     }
 
+    /// FB6-1: the divider's 1 pt gap is painted with the opaque canvas under the hairline, so a clear window behind the split
+    /// view never shows the desktop through it. The hairline alone was 7.5 % opaque; the canvas under it is what fills the gap.
+    @Test func theDividerPaintsAnOpaqueRectUnderItsHairline() throws {
+        let split = CanvasSplitView(frame: NSRect(x: 0, y: 0, width: 80, height: 80))
+        split.appearance = NSAppearance(named: .darkAqua)
+        let rep = try #require(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 8, pixelsHigh: 40, bitsPerSample: 8, samplesPerPixel: 4,
+            hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        let context = try #require(NSGraphicsContext(bitmapImageRep: rep))
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        NSColor.clear.setFill()
+        NSRect(x: 0, y: 0, width: 8, height: 40).fill()
+        split.drawDivider(in: NSRect(x: 3, y: 0, width: 1, height: 40))
+        context.flushGraphics()
+        NSGraphicsContext.restoreGraphicsState()
+
+        let inside = try #require(rep.colorAt(x: 3, y: 20)?.usingColorSpace(.sRGB))
+        let outside = try #require(rep.colorAt(x: 6, y: 20)?.usingColorSpace(.sRGB))
+        #expect(inside.alphaComponent == 1, "the canvas fills the divider's rect before the hairline draws over it")
+        #expect(outside.alphaComponent == 0, "and only inside the divider's rect")
+    }
+
     /// Flush on the canvas (A6): the terminal's text keeps 16 pt around it, 20 at the leading edge, and nothing else.
     @Test func theTerminalSitsFlushWithItsInset() {
         let terminal = NSView()

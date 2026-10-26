@@ -5,6 +5,8 @@ import SwiftUI
 struct ThemeSettings: View {
     let model: CatalogModel
 
+    private typealias S = LoomTheme.Settings
+
     var body: some View {
         SettingsPage {
             SettingsGroup {
@@ -41,6 +43,27 @@ struct ThemeSettings: View {
                 }
             }
         }
+    }
+}
+
+/// The small picture beside the fill choices (FB6-6): the fill at the chosen opacity over the canvas, so the colour and the
+/// see-through step read together as the sidebar will draw them. No blur, as in the sidebar.
+private struct SidebarFillPreview: View {
+    let appearance: SidebarAppearance
+
+    private typealias S = LoomTheme.Settings
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: S.sidebarPreviewRadius)
+        ZStack {
+            LoomTheme.Surface.canvas
+            LoomTheme.Surface.sidebarFillColor(appearance.fill)
+                .opacity(LoomTheme.Surface.sidebarTintOpacity(for: appearance.opacity))
+        }
+        .frame(width: S.sidebarPreviewWidth, height: S.sidebarPreviewHeight)
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))
+        .accessibilityHidden(true)
     }
 }
 

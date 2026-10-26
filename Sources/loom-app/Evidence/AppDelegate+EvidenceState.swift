@@ -32,13 +32,15 @@ extension AppDelegate {
                 "buttons": $0.buttons.map(\.title),
             ] as [String: Any] } ?? NSNull(),
             "renderer": evidenceMode && arguments.contains("--metal") ? "metal" : "coregraphics",
-            // The setting on its own (Settings → General → Sidebar), the system's Reduce Transparency on its own,
-            // and what the sidebar draws: opaque in Solid or under Reduce Transparency, else see-through (Transparent; the value
-            // keeps the word `glass` the measuring script reads, D-57).
-            "sidebarStyle": model?.sidebarStyle.rawValue ?? "unknown",
+            // Settings → Theme → Sidebar's fill and opacity (FB6-6), its one legacy word (the measuring scripts' `sidebarStyle`:
+            // `solid` for the opaque step, else `transparent`), the system's Reduce Transparency, and what the sidebar draws:
+            // opaque in Solid or under Reduce Transparency, else see-through (the value keeps the word `glass` the script reads).
+            "sidebarStyle": model?.sidebarAppearance.legacyStyle ?? "unknown",
+            "sidebarFill": model?.sidebarAppearance.fill.rawValue ?? "unknown",
+            "sidebarOpacity": model?.sidebarAppearance.opacity.rawValue ?? "unknown",
             "systemReduceTransparency": NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency,
             "sidebarMaterial": model.map {
-                $0.sidebarStyle == .solid || NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+                $0.sidebarAppearance.opacity.isOpaque || NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
                     ? "opaque" : "glass"
             } ?? "unknown",
             // Settings → Theme (D-63): the settings, what the main window resolves them to, and the terminal's background.
