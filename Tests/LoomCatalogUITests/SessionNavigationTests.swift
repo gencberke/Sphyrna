@@ -5,8 +5,10 @@ import LoomTerminal
 import Testing
 @testable import LoomCatalogUI
 
-private func candidate(_ indicator: SessionIndicator, _ seconds: Double, id: UUID = UUID()) -> AttentionCandidate {
-    AttentionCandidate(id: id, indicator: indicator, lastActivityAt: Date(timeIntervalSince1970: seconds))
+private func candidate(_ indicator: SessionIndicator, _ seconds: Double, id: UUID = UUID(),
+                       backgroundWork: Int = 0) -> AttentionCandidate {
+    AttentionCandidate(id: id, indicator: indicator, lastActivityAt: Date(timeIntervalSince1970: seconds),
+                       backgroundWork: backgroundWork)
 }
 
 /// D-45 items 2 to 5, 7, 8 as pure rules: nothing here needs a model, a window or a process.
@@ -126,7 +128,7 @@ struct SessionNavigationRuleTests {
     @Test func quitAsksOnlyForAUserQuitWithWorkInFlight() throws {
         let prompt = try #require(QuitConfirmation.prompt(busySessions: 3, systemInitiated: false))
         #expect(prompt.title == "Quit Sphyrna and stop 3 working sessions?")
-        #expect(prompt.text == "Sphyrna stops every session it started. You can resume each one later.")
+        #expect(prompt.text == "Sphyrna stops every session it started, with the background work they run. You can resume each one later.")
         #expect(prompt.confirmTitle == "Quit" && prompt.cancelTitle == "Cancel")
         #expect(QuitConfirmation.prompt(busySessions: 1, systemInitiated: false)?.title
                 == "Quit Sphyrna and stop 1 working session?")
@@ -143,6 +145,14 @@ struct SessionNavigationRuleTests {
         ]
         #expect(QuitConfirmation.busyCount(counted + notCounted) == 2)
         #expect(QuitConfirmation.busyCount(notCounted) == 0)
+    }
+
+    /// D-103: a finished turn with a dev server or a watcher still running reads Ready, but quitting stops that work, so
+    /// Quit still asks.
+    @Test func aReadySessionWithBackgroundWorkCountsForTheQuitQuestion() {
+        let background = [candidate(.ready, 1, backgroundWork: 2), candidate(.unviewedCompletion, 2, backgroundWork: 1)]
+        #expect(QuitConfirmation.busyCount(background) == 2)
+        #expect(QuitConfirmation.busyCount([candidate(.ready, 3)]) == 0)
     }
 
     @Test func theSystemsOwnQuitIsToldApartFromTheUsers() {

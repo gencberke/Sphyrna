@@ -502,6 +502,8 @@ Copy only: Settings → General's helper line and the release notes explain that
 - `sessions` and `--json` gain `openedBy`; a new `whoami` returns this session's id, title, project, state, its opener (id, title,
   state) and the sessions it opened.
 - A session started from a draft passes its Sphyrna title to Claude as the session's name, so Claude's own list and Sphyrna's agree.
+  *Not built in 1.7.1 (review, 26 Oct):* a draft carries no title when it starts (Claude names the session), and a later rename in
+  Sphyrna would have to reach Claude's `/rename`. Sphyrna's session id is Claude's, and `whoami` returns it, so agents match by id.
 - The skill tells the agent that Sphyrna is the way between its sessions, and that Claude's own cross-session messages are refused.
 - `crossSessionInbound: refuse` stays (SPEC §3): an agent must not reach another session without `@user`.
 

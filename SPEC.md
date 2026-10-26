@@ -48,7 +48,7 @@ This document is the single authoritative specification of what Sphyrna (interna
   - Verified Stop closes the stopped session's tab unless the user navigated elsewhere while Stop was verifying.
 - **Normal Quit (`Cmd+Q`):**
   - **Acceptance criterion:** Zero running processes started and owned by Sphyrna remain; external user terminal sessions are untouched.
-  - **Confirmation (`D-45`):** When user-initiated and any session is Working or Waiting for approval, Quit shows a confirmation alert with `Cancel` as the filled default (`Return`). System logout, restart, and shutdown (`keyAEQuitReason`) skip confirmation so Sphyrna never blocks macOS shutdown.
+  - **Confirmation (`D-45`):** When user-initiated and any session is Working, Waiting for approval, or Ready with background shells or crons its turn left running (`D-103`), Quit shows a confirmation alert with `Cancel` as the filled default (`Return`). System logout, restart, and shutdown (`keyAEQuitReason`) skip confirmation so Sphyrna never blocks macOS shutdown.
   - **Unverified stop alert:** If any scope cannot be verified empty on a user-initiated Quit, Sphyrna presents a 3-button vertical alert (`Try Again` default, `Keep Sphyrna Open`, and destructive `Quit Anyway`).
 - **Loom crash / Force Quit (`D-05`, `O-09`):** If the control socket between Sphyrna and `LoomRunHost` breaks without an orderly `EXIT` frame, `LoomRunHost` immediately stops all forked processes in its coalition and exits. On next launch, `PreviousRunRecovery` and `StaleSocketSweep` clean up any abandoned run scopes and sockets and surface interrupted sessions in Home's `Continue` card.
 

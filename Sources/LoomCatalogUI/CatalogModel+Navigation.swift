@@ -22,14 +22,18 @@ extension CatalogModel {
             let indicator = SessionIndicator(record: record, live: state,
                                              awaitingOpenApproval: awaitingOpenApproval.contains(id))
             if case .failed = indicator, state.activePhase != .endedUnread { return nil }
-            return AttentionCandidate(id: id, indicator: indicator, lastActivityAt: record.lastActivityAt)
+            // Work a finished turn left running counts for Quit only (D-103); the indicator says Ready.
+            let background = state.runID != nil && state.status?.activity == .turnComplete
+                ? state.status?.pendingProviderWorkCount ?? 0 : 0
+            return AttentionCandidate(id: id, indicator: indicator, lastActivityAt: record.lastActivityAt,
+                                      backgroundWork: background)
         }
     }
 
     /// The sessions that need the user, most urgent first (`AttentionOrder`).
     public func sessionsNeedingAttention() -> [UUID] { AttentionOrder.ordered(attentionCandidates()) }
 
-    /// Sessions that are Working or Need approval: what quitting would stop mid-turn.
+    /// Sessions that are Working, Need approval or run background work after their turn: what quitting would interrupt.
     public func busySessionCount() -> Int { QuitConfirmation.busyCount(attentionCandidates()) }
 
     public var canJumpToAttention: Bool { !sessionsNeedingAttention().isEmpty }

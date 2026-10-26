@@ -13,11 +13,15 @@ public struct AttentionCandidate: Equatable, Sendable {
     public let id: UUID
     public let indicator: SessionIndicator
     public let lastActivityAt: Date
+    /// The background shells and crons a finished turn left running (D-103): they keep a Ready session out of Working, but
+    /// quitting stops them, so they count for Quit's question.
+    public let backgroundWork: Int
 
-    public init(id: UUID, indicator: SessionIndicator, lastActivityAt: Date) {
+    public init(id: UUID, indicator: SessionIndicator, lastActivityAt: Date, backgroundWork: Int = 0) {
         self.id = id
         self.indicator = indicator
         self.lastActivityAt = lastActivityAt
+        self.backgroundWork = backgroundWork
     }
 }
 
@@ -177,21 +181,23 @@ public enum QuitConfirmation {
 
     /// The question for a user-initiated quit, or nil when none is needed: a system-initiated quit never
     /// asks (the logout or restart must not wait for an answer), and neither does a quit with nothing
-    /// working. `busySessions`: sessions that are Working or Need approval.
+    /// working. `busySessions`: sessions that are Working, Need approval or run background work.
     public static func prompt(busySessions: Int, systemInitiated: Bool) -> Prompt? {
         guard !systemInitiated, busySessions > 0 else { return nil }
         let noun = busySessions == 1 ? "session" : "sessions"
         return Prompt(
             title: "Quit Sphyrna and stop \(busySessions) working \(noun)?",
-            text: "Sphyrna stops every session it started. You can resume each one later.",
+            text: "Sphyrna stops every session it started, with the background work they run. You can resume each one later.",
             confirmTitle: "Quit", cancelTitle: "Cancel")
     }
 
-    /// Sessions that are mid-turn: Working, or Needs approval (a provider approval, or an agent's wait
-    /// on an open-session request, which the indicator already folds in). Ready, Waiting for you and
-    /// Finished do not count.
+    /// Sessions that quitting would interrupt: Working, Needs approval (a provider approval, or an agent's wait on an
+    /// open-session request, which the indicator already folds in), or a finished turn that left background shells or
+    /// crons running (D-103: Ready with "N background"). Ready, Waiting for you and Finished without such work do not count.
     public static func busyCount(_ candidates: [AttentionCandidate]) -> Int {
-        candidates.reduce(0) { $0 + ($1.indicator == .working || $1.indicator == .waitingForApproval ? 1 : 0) }
+        candidates.reduce(0) {
+            $0 + ($1.indicator == .working || $1.indicator == .waitingForApproval || $1.backgroundWork > 0 ? 1 : 0)
+        }
     }
 
     /// `keyAEQuitReason` ("why?"), the attribute of the quit Apple event that says why.
