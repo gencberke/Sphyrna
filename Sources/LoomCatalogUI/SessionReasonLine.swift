@@ -1,6 +1,16 @@
 import Foundation
 import LoomCore
 
+/// The work a finished turn left running, as every state surface says it (D-103): "1 background", "3 background". Working
+/// means a turn is running; a finished turn with background shells or crons reads Ready and keeps this count on its card's
+/// line, its header pill and the Overview. One helper, so the three word it alike.
+enum BackgroundWorkText {
+    static func of(_ reason: StatusReason?) -> String? {
+        guard let reason, case .turnDone = reason.kind, !reason.work.isEmpty else { return nil }
+        return "\(reason.work.total) background"
+    }
+}
+
 /// The line an Active card shows between its title and its fixed bottom row (concept decision 8, D-69): what the
 /// session waits for or did last. It is worded from a `StatusReason`, which the hub changes only at hook boundaries, so the
 /// text never changes per frame. The text comes from commands, paths and Claude's replies: it is shown
@@ -34,10 +44,9 @@ struct SessionReasonLine: Equatable {
         case .input:
             self.init(text: "Waiting for your input")
         case .turnDone:
-            // Work that still runs comes first: it is what makes "done" not final.
+            // Work left running after the turn comes first, then the last message's line.
             var parts: [String] = []
-            let tasks = reason.work.tasks
-            if tasks > 0 { parts.append(tasks == 1 ? "1 background task running" : "\(tasks) background tasks running") }
+            if let work = BackgroundWorkText.of(reason) { parts.append(work) }
             if let detail = reason.detail { parts.append(detail) }
             self.init(text: parts.isEmpty ? "Turn done" : parts.joined(separator: " · "))
         case .failure(let category):

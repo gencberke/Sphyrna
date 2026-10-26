@@ -23,9 +23,11 @@ struct StatePillStyle: Equatable {
 
     private static let white = LoomTheme.RGB(red: 1, green: 1, blue: 1)
 
-    /// `label` replaces the indicator's own (the subagent panel's "Running 4m").
-    init?(_ indicator: SessionIndicator, label override: String? = nil) {
-        guard let label = override ?? indicator.label else { return nil }
+    /// `label` replaces the indicator's own (the subagent panel's "Running 4m"); `suffix` is added after the label (the
+    /// work a finished turn left running, "· 1 background", D-103).
+    init?(_ indicator: SessionIndicator, label override: String? = nil, suffix: String? = nil) {
+        guard let base = override ?? indicator.label else { return nil }
+        let label = suffix.flatMap { $0.isEmpty ? nil : $0 }.map { "\(base) · \($0)" } ?? base
         self.label = label
         showsIndicator = ![.ready, .idle, .stale, .unknown].contains(indicator)
         func tone(_ pair: LoomTheme.Adaptive) -> LoomTheme.ContrastStyle {

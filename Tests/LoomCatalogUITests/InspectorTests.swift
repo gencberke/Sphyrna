@@ -92,7 +92,7 @@ struct InspectorTests {
         #expect(line(.question, "Which database?") == "Question: Which database?")
         #expect(line(.planReady) == "Plan ready for review")
         #expect(line(.turnDone, "Done: 3 files changed") == "Done: 3 files changed")
-        #expect(line(.turnDone, "Done", work: BackgroundWork(shells: 1, scheduled: 1)) == "Done · 2 running in the background")
+        #expect(line(.turnDone, "Done", work: BackgroundWork(shells: 1, scheduled: 1)) == "Done · 2 background")
         #expect(line(.turnDone) == nil)
         #expect(line(.failure(category: "rate_limit")) == "rate_limit")
         #expect(line(.failure(category: nil), "Overloaded") == "Overloaded")

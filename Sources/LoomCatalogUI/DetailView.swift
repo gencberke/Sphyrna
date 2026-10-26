@@ -278,7 +278,7 @@ struct SessionHeaderRow: View {
                 .lineLimit(1).headerSlot(.status, shrinks: true)
         } else if let notice = model.preparingNotice {
             PreparingNotice(text: notice).headerSlot(.status, shrinks: true)
-        } else if let style = StatePillStyle(row.indicator) {
+        } else if let style = StatePillStyle(row.indicator, suffix: BackgroundWorkText.of(row.reason)) {
             StatePill(indicator: row.indicator, style: style).headerSlot(.status)
         }
     }

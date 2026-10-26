@@ -46,7 +46,8 @@ struct InspectorOverview: View {
         let edits = readsEdits ? model.changes.session(for: row.id).state(.lastTurn).data?.files : nil
         let base = baseKey.flatMap { key in baseRead.flatMap { $0.key == key ? $0.name : nil } }
         return InspectorOverviewContent(
-            status: row.indicator.label ?? (record.lifecycle == .active ? "Not running" : "\u{2014}"),
+            status: [row.indicator.label ?? (record.lifecycle == .active ? "Not running" : "\u{2014}"),
+                     BackgroundWorkText.of(row.reason)].compactMap { $0 }.joined(separator: " · "),
             createdAt: record.createdAt, now: model.now, provider: provider,
             claudeVersion: words.version, model: model.modelContent(of: record)?.name,
             reportedMode: words.reportedMode, launchedMode: words.launchedMode,

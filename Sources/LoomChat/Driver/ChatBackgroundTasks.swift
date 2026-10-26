@@ -1,8 +1,8 @@
 import Foundation
 
 /// The background work of a Chat-face run, from its own stream (S1): a Bash moved to the background by a `now` send or
-/// `background_tasks`, a background subagent. It outlives the turn, so a finished turn with background work is still
-/// under way (the hub's `pendingProviderWorkCount`), and Quit counts it as busy.
+/// `background_tasks`, a background subagent. It outlives the turn but does not keep the session Working (D-103): the turn
+/// reads Ready with the count beside it, and Quit counts the work as busy.
 ///
 /// - `system/background_tasks_changed{tasks}` replaces the set (S1: replace semantics);
 /// - `system/task_started` with `is_backgrounded`, and `task_updated{patch:{is_backgrounded:true}}`, add a task;

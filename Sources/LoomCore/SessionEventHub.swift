@@ -142,9 +142,9 @@ public struct SessionViewState: Equatable, Sendable {
     /// and ends with any other status, a new unseen completion, a new run or the end of the run. Nothing is sent to the provider.
     public var waitingAcknowledged: Bool
     /// Whether the run belongs in the Active section: under way from the start of a turn (work, an approval, a
-    /// question during the turn, background work after it), then "ended unread" when the turn finished or
-    /// failed while the conversation was not viewed. Viewing or "Mark as Read" ends it; so do a prompt, a new
-    /// run and the end of the run. An idle notice after a turn the user read changes nothing.
+    /// question during the turn), then "ended unread" when the turn finished or failed while the conversation was not viewed.
+    /// Background work left after a turn does not keep it under way (D-103). Viewing or "Mark as Read" ends it; so do a prompt,
+    /// a new run and the end of the run. An idle notice after a turn the user read changes nothing.
     public var activePhase: ActivePhase
     /// The last thing that went wrong for this conversation outside a stop
     /// (start failure, missing history, lost provider connection). Cleared by a
@@ -342,12 +342,6 @@ public actor SessionEventHub {
             let phase = Self.activePhase(after: value, from: state.activePhase,
                                          viewed: viewedSessionID == sessionID,
                                          newFailure: value?.isFailure == true && previous?.status?.isFailure != true)
-            // Background work that ends while nobody looks is the task's real end, even when the turn itself
-            // was seen or still had work pending: it shows as finished, like a turn that ends unseen.
-            if phase == .endedUnread, state.activePhase == .underWay, value?.activity == .turnComplete {
-                state.unviewedCompletion = true
-                state.waitingAcknowledged = false
-            }
             state.activePhase = phase
         case let .lifecycle(value): state.lifecycle = value
         case let .conversationIdentity(value): state.conversationID = value
@@ -503,8 +497,9 @@ public actor SessionEventHub {
         }
     }
 
-    /// The Active-section phase after a status. Work and an approval put the run under way (background work left after a turn does not, D-103); a finished or failed turn ends it as unread unless the user is looking (a new failure is
-    /// unread even with no turn seen under way before it). A question during the
+    /// The Active-section phase after a status. Work and an approval put the run under way; a finished or failed turn ends it
+    /// as unread unless the user is looking (a new failure is unread even with no turn seen under way before it). Background
+    /// work left after a turn does not (D-103): the turn ended, so the run is over. A question during the
     /// turn and an unknown state change nothing, so Claude's idle notice about a minute after a turn the user
     /// read cannot bring the run back; a prompt or the end of the session takes it out.
     private static func activePhase(after status: ProviderWorkState?, from phase: ActivePhase,

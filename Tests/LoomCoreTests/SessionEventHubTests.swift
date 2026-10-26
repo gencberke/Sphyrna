@@ -303,31 +303,34 @@ struct ActivePhaseTests {
         #expect(await phase(hub, id) == .inactive)
     }
 
-    @Test func pendingProviderWorkKeepsTheRunUnderWayAfterTheTurn() async {
+    @Test func backgroundWorkDoesNotKeepTheRunUnderWayAfterTheTurn() async {
         let hub = SessionEventHub(), id = UUID()
         _ = await start(hub, id)
         await hub.publish(sessionID: id, change: working)
+        // The Stop ends the turn even when it lists background shells (D-103): the session is unread-finished, not under way.
         await hub.publish(sessionID: id, change: .status(ProviderWorkState(activity: .turnComplete, pendingProviderWorkCount: 2)))
-        #expect(await phase(hub, id) == .underWay)
-        await hub.publish(sessionID: id, change: .status(ProviderWorkState(activity: .turnComplete, pendingProviderWorkCount: 1)))
-        #expect(await phase(hub, id) == .underWay)
-        await hub.publish(sessionID: id, change: complete)
-        #expect(await phase(hub, id) == .endedUnread, "the last background task ended unseen")
-    }
-
-    @Test func backgroundWorkThatEndsUnseenShowsAsFinishedThoughTheTurnWasSeen() async {
-        let hub = SessionEventHub(), id = UUID()
-        _ = await start(hub, id)
-        await hub.publish(sessionID: id, change: working)
-        await hub.publish(sessionID: id, change: .status(ProviderWorkState(activity: .turnComplete, pendingProviderWorkCount: 1)))
-        // The user looks while the background work runs, then moves on before it ends.
-        await hub.setViewed(sessionID: id)
-        await hub.setViewed(sessionID: nil)
-        #expect(await hub.snapshot().sessions[id]?.unviewedCompletion == false)
-        await hub.publish(sessionID: id, change: complete)
         let state = await hub.snapshot().sessions[id]
         #expect(state?.activePhase == .endedUnread)
-        #expect(state?.unviewedCompletion == true, "the card shows Finished, not Ready, in Active")
+        #expect(state?.unviewedCompletion == true)
+        // A further status with the same activity changes neither.
+        await hub.publish(sessionID: id, change: .status(ProviderWorkState(activity: .turnComplete, pendingProviderWorkCount: 1)))
+        #expect(await phase(hub, id) == .endedUnread)
+        await hub.markRead(sessionID: id)
+        #expect(await phase(hub, id) == .inactive)
+    }
+
+    @Test func aTurnThatEndsWithBackgroundWorkReadsFinishedWhileNobodyLooks() async {
+        let hub = SessionEventHub(), id = UUID()
+        _ = await start(hub, id)
+        await hub.publish(sessionID: id, change: working)
+        await hub.publish(sessionID: id, change: .status(ProviderWorkState(activity: .turnComplete, pendingProviderWorkCount: 1)))
+        // The card shows Finished, not Ready, while the turn's end is unread — the shell does not hold it at Working.
+        #expect(await hub.snapshot().sessions[id]?.unviewedCompletion == true)
+        // The user looks: Ready, with the work still counted for Quit and the idle stop.
+        await hub.setViewed(sessionID: id)
+        let viewed = await hub.snapshot().sessions[id]
+        #expect(viewed?.unviewedCompletion == false && viewed?.activePhase == .inactive)
+        #expect(viewed?.status?.pendingProviderWorkCount == 1)
     }
 
     @Test func aPromptARunEndAndANewRunTakeTheSessionOut() async {

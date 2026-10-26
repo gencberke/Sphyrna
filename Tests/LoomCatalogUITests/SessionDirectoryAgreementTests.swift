@@ -38,8 +38,9 @@ struct SessionDirectoryAgreementTests {
 
     static let cases: [Case] = [
         Case(name: "working", record: record(), live: live(.working), indicator: .working, word: .working),
+        // D-103: a finished turn reads Ready whatever background shells or crons it left; the card says "N background".
         Case(name: "background work after a finished turn", record: record(), live: live(.turnComplete, pending: 2),
-             indicator: .working, word: .working),
+             indicator: .ready, word: .ready),
         Case(name: "hook approval", record: record(), live: live(.waitingForApproval),
              indicator: .waitingForApproval, word: .needsApproval),
         Case(name: "open-session request", record: record(), live: live(.working), awaitingOpenApproval: true,
@@ -111,6 +112,55 @@ struct SessionDirectoryAgreementTests {
                                 "problem", "identityUnclear", "unviewedCompletion", "ready", "idle", "stale", "ended"]
         #expect(Set(Self.cases.map { kind($0.indicator) }) == all)
         #expect(Set(Self.cases.map(\.word)) == Set(SessionStateWord.allCases))
+    }
+
+    /// FB6-10 (D-103): a Stop that lists a never-ending background shell ends the turn, so the session reads Ready — not
+    /// Working — and the card, the header pill and the directory's word carry the work left behind. The Stop is the recorded
+    /// payload shape (`S0HookFixtures.stopWithShell`, driven through the real tracker here so the count is its own).
+    @Test @MainActor func aStopWithANeverEndingShellReadsReadyWithOneBackground() async throws {
+        let session = UUID(), run = UUID()
+        let tracker = ClaudeHookStateTracker(sessionID: session, managedRunID: run)
+        let t0 = Date(timeIntervalSince1970: 1_790_000_000)
+        let providerSession = "0a0a0a0a-0000-4000-8000-000000000001"
+        func payload(_ event: String, _ fields: [String: Any] = [:]) -> [String: Any] {
+            var object: [String: Any] = [
+                "session_id": providerSession, "hook_event_name": event, "cwd": "/tmp/ws",
+                "transcript_path": "/tmp/cfg/projects/-tmp-ws/\(providerSession).jsonl",
+            ]
+            object.merge(fields) { _, new in new }
+            return object
+        }
+        func receive(_ fields: [String: Any], at offset: Double) async throws {
+            let envelope = ClaudeHookEnvelope(
+                sessionID: session, managedRunID: run,
+                payload: try JSONSerialization.data(withJSONObject: fields), sentAt: t0.addingTimeInterval(offset))
+            _ = try await tracker.receive(envelope, receivedAt: t0.addingTimeInterval(offset))
+        }
+        try await receive(payload("SessionStart", ["source": "startup", "model": "claude-opus-5-5"]), at: 0)
+        try await receive(payload("UserPromptSubmit", ["permission_mode": "default", "prompt": "watch the build"]), at: 1)
+        try await receive(payload("Stop", [
+            "permission_mode": "default", "stop_hook_active": false,
+            "last_assistant_message": "The watcher runs in the background.",
+            // A dev server or a watcher never ends by itself: the case that kept 1.7.0's cards Working.
+            "background_tasks": [["id": "watch1", "type": "shell", "status": "running",
+                                  "description": "Watch the build", "command": "while true; do sleep 1; done"]],
+            "session_crons": [] as [Any],
+        ]), at: 2)
+        let status = await tracker.status()
+        #expect(status.activity == .turnComplete && status.backgroundTaskCount == 1)
+
+        let live = SessionViewState(
+            status: ProviderWorkState(activity: status.activity,
+                                      pendingProviderWorkCount: status.backgroundTaskCount + status.scheduledTaskCount),
+            runID: run, reason: status.reason)
+        let record = Self.record()
+        let indicator = SessionIndicator(record: record, live: live)
+        #expect(indicator == .ready, "the turn ended; the shell does not make it Working")
+        #expect(SessionStateWord.of(record: record, live: live) == .ready)
+        #expect(SessionReasonLine(live.displayReason)?.text == "1 background · The watcher runs in the background.")
+        let pill = try #require(StatePillStyle(indicator, suffix: BackgroundWorkText.of(live.displayReason)))
+        #expect(pill.label == "Ready · 1 background")
+        #expect(BackgroundWorkText.of(StatusReason(.turnDone, detail: "Done")) == nil, "no work left: no suffix")
     }
 
     /// The mapping the directory's note states: the indicator's `.ended` is `stopped`, `.unviewedCompletion` is `finished`,

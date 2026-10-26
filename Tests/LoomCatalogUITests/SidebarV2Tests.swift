@@ -49,12 +49,12 @@ struct SidebarV2Tests {
 
     @Test func workThatStillRunsComesBeforeTheLastWords() {
         let one = StatusReason(.turnDone, detail: "Started the import", work: BackgroundWork(shells: 1))
-        #expect(SessionReasonLine(one)?.text == "1 background task running · Started the import")
+        #expect(SessionReasonLine(one)?.text == "1 background · Started the import")
         let two = StatusReason(.turnDone, work: BackgroundWork(shells: 1, subagents: 1))
-        #expect(SessionReasonLine(two)?.text == "2 background tasks running")
-        // A schedule is not running work.
+        #expect(SessionReasonLine(two)?.text == "2 background")
+        // A schedule counts too: a cron left behind is work the user may want to see.
         let scheduled = StatusReason(.turnDone, detail: "Done", work: BackgroundWork(scheduled: 2))
-        #expect(SessionReasonLine(scheduled)?.text == "Done")
+        #expect(SessionReasonLine(scheduled)?.text == "2 background · Done")
     }
 
     @Test func theTooltipAddsTheCommandsOwnDescription() {

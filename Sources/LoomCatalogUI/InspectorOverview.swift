@@ -238,8 +238,7 @@ enum InspectorReasonText {
         case .input:
             return "Waiting for your input"
         case .turnDone:
-            let work = reason.work.isEmpty ? nil : "\(reason.work.total) running in the background"
-            return [reason.detail, work].compactMap { $0 }.joined(separator: " · ").nilIfEmpty
+            return [reason.detail, BackgroundWorkText.of(reason)].compactMap { $0 }.joined(separator: " · ").nilIfEmpty
         case let .failure(category):
             return reason.detail ?? category ?? "The turn failed"
         case .automaticTurn:

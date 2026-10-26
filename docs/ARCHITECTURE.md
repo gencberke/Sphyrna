@@ -210,8 +210,9 @@ CatalogModel.startConversation -> ConversationController.start -> SessionService
     - *Automatic turns*: a `UserPromptSubmit` whose prompt starts with `<task-notification` (a finished background task) or
       `<agent-message` is Claude's own: reason `.automaticTurn`, not the user's use (no `lastUsedAt`, no use stamp), and it does not
       clear the finished subagents. A `SubagentStop` with no start and an empty `agent_type` (the prompt-suggestion agent) is
-      ignored by `SubagentLedger`. The registry also reports `status: "shell"` while only a background shell runs (unknown to
-      `knownStatuses` today, so ignored).
+      ignored by `SubagentLedger`. The registry also reports `status: "shell"` while only a background shell runs; it is one of
+      `knownStatuses` and changes nothing: the work is counted from `Stop.background_tasks`, and a finished turn with work left
+      reads Ready with `"N background"` (`D-103`).
  -> SessionEventHub frame -> CatalogModel.apply (sequence fast path, full reconcile on a gap) -> SessionRowModel.live
  -> SessionIndicator(record:live:) -> IndicatorView / ChaseDots in sidebar row and detail header
 ```
@@ -700,7 +701,7 @@ This section maps every UI surface, control, accessibility identifier, keyboard 
   - `Sources/LoomCatalogUI/BrailleSpinner.swift` (`BrailleSpinner`)
   - `Sources/LoomCatalogUI/LoomTheme+Status.swift` (`LoomTheme.Spinner`, `LoomTheme.StatusMark`)
 - **Derivation Priority Order:**
-  `stopFailure` > `issue` > `ambiguousIdentity` (`identityUnclear`) > `awaitingOpenApproval` (reads as `waitingForApproval` / `"Needs approval"`) > live activity (turn complete with pending background work counts as `working`) > `unviewedCompletion` (`"Finished"`) > lifecycle (`ready`, `idle`, `stale`, `ended`).
+  `stopFailure` > `issue` > `ambiguousIdentity` (`identityUnclear`) > `awaitingOpenApproval` (reads as `waitingForApproval` / `"Needs approval"`) > live activity (`working`; a finished turn whose `Stop` left background work reads `ready`, never `working`, `D-103`) > `unviewedCompletion` (`"Finished"`) > lifecycle (`ready`, `idle`, `stale`, `ended`). The unfinished work is shown beside the state: `BackgroundWorkText` ("1 background") on the header pill, the card's reason line and the Overview.
 - **Accessibility Rule:** Under macOS "Differentiate without color", `failed` / `stopUnverified` / `problem` and project failure dots draw a 7 pt red diamond (`Diamond`, `ProjectAttention.drawsDiamond`) instead of a circle. Working spinner runs under Reduce Motion (`D-12`).
 
 ### 11.5 Detail Pane, Header, Tab Strip, Banners, Ended Screen & Record

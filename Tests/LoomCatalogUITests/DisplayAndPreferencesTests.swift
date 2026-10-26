@@ -58,8 +58,8 @@ struct DisplayAndPreferencesTests {
         #expect(SessionIndicator(record: base, live: live(.failed("boom"))) == .failed("boom"))
         #expect(SessionIndicator(record: base, live: live(.turnComplete)) == .ready)
         #expect(SessionIndicator(record: base, live: live(.turnComplete, unviewed: true)) == .unviewedCompletion)
-        // A finished turn with provider work still pending is not "finished".
-        #expect(SessionIndicator(record: base, live: live(.turnComplete, pending: 2, unviewed: true)) == .working)
+        // A finished turn with provider work still pending is Finished while unviewed, and Ready once seen (D-103).
+        #expect(SessionIndicator(record: base, live: live(.turnComplete, pending: 2, unviewed: true)) == .unviewedCompletion)
         // An unverified stop wins over everything, with or without a live run.
         #expect(SessionIndicator(record: base, live: live(.turnComplete, failure: "x")) == .stopUnverified("x"))
         #expect(SessionIndicator(record: record(lifecycle: .idle), live: live(nil, failure: "y", runID: nil))
