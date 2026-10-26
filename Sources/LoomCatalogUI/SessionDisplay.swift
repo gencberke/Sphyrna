@@ -63,8 +63,9 @@ public enum SessionIndicator: Equatable, Sendable {
             case let .failed(message)?: self = .failed(message)
             case .sessionEnded?: self = .ended
             case .turnComplete?:
-                if (live.status?.pendingProviderWorkCount ?? 0) > 0 { self = .working }
-                else { self = live.unviewedCompletion ? .unviewedCompletion : .ready }
+                // Background work left behind does not make a finished turn Working (D-103); the card's line, the
+                // header's pill and the Overview say "N background".
+                self = live.unviewedCompletion ? .unviewedCompletion : .ready
             }
             return
         }

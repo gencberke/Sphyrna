@@ -54,7 +54,7 @@ public enum SessionStateWord: String, Codable, Sendable, Equatable, CaseIterable
             case .failed?: return .failed
             case .sessionEnded?: return .stopped
             case .turnComplete?:
-                if (live.status?.pendingProviderWorkCount ?? 0) > 0 { return .working }
+                // Working means a turn is running; background shells and crons left behind are "N background" (D-103).
                 return live.unviewedCompletion ? .finished : .ready
             }
         }

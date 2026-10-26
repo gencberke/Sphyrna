@@ -503,8 +503,7 @@ public actor SessionEventHub {
         }
     }
 
-    /// The Active-section phase after a status. Work, an approval and background work after a turn put the run
-    /// under way; a finished or failed turn ends it as unread unless the user is looking (a new failure is
+    /// The Active-section phase after a status. Work and an approval put the run under way (background work left after a turn does not, D-103); a finished or failed turn ends it as unread unless the user is looking (a new failure is
     /// unread even with no turn seen under way before it). A question during the
     /// turn and an unknown state change nothing, so Claude's idle notice about a minute after a turn the user
     /// read cannot bring the run back; a prompt or the end of the session takes it out.
@@ -513,7 +512,6 @@ public actor SessionEventHub {
         guard let status else { return .inactive }
         switch status.activity {
         case .working, .waitingForApproval: return .underWay
-        case .turnComplete where status.pendingProviderWorkCount > 0: return .underWay
         case .failed where newFailure:
             // A failure is news whether or not a turn was seen under way before it (a failure at the start of
             // a run has no "working" before it): unread until the user looks.
