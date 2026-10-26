@@ -197,6 +197,7 @@ struct RemoraHostTests {
 
     @Test func aSettingsChangeThatIsNeitherOffNorAGrowingExclusionLetsTheCallFinish() async throws {
         let rig = try RemoraHostRig()
+        try rig.seedNote()   // one session read writes no note of its own (the gate); the project already has one
         let other = UUID(), third = UUID()
         let host = slowBrief(rig, settings: RemoraPreferences(excludedProjects: [other, third]))
         let running = Task { await host.brief() }

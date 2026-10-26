@@ -112,12 +112,12 @@ struct RemoraFollowUpDoorTests {
     @Test func aNoteCardSaysWhenItsNoteWasRewritten() {
         let note = RemoraProjectNote(text: "- 2026-10-21 · Next: the fixtures.\n")
         #expect(RemoraNoteText.meta(note, rewrittenAt: at(day: 21, hour: 9, minute: 12), now: now, calendar: calendar)
-            == "rewritten 09:12 · 0.0 of 2 KB", "today: the time, as the reference draws it")
+            == "rewritten 09:12 · 0.0 of 1.5 KB", "today: the time, as the reference draws it")
         #expect(RemoraNoteText.meta(note, rewrittenAt: at(day: 20, hour: 9, minute: 5), now: now, calendar: calendar)
-            == "rewritten yesterday 09:05 · 0.0 of 2 KB")
+            == "rewritten yesterday 09:05 · 0.0 of 1.5 KB")
         #expect(RemoraNoteText.meta(note, rewrittenAt: at(day: 12, hour: 9, minute: 5), now: now, calendar: calendar)
-            == "rewritten 12 October · 0.0 of 2 KB")
-        #expect(RemoraNoteText.meta(note, rewrittenAt: nil, now: now, calendar: calendar) == "0.0 of 2 KB", "no time known: the size alone")
+            == "rewritten 12 October · 0.0 of 1.5 KB")
+        #expect(RemoraNoteText.meta(note, rewrittenAt: nil, now: now, calendar: calendar) == "0.0 of 1.5 KB", "no time known: the size alone")
     }
 
     @Test func theWorkingMemoryLineSaysWhenItWasUpdated() {

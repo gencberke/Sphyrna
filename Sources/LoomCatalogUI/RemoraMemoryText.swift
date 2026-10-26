@@ -166,19 +166,18 @@ enum RemoraJournal {
 // MARK: A project's note
 
 /// A project's note as the sheet shows and edits it: one `- YYYY-MM-DD · text` line for each item (the note's own form), and the size
-/// against the 2 KB the note is cut to.
+/// against the 1.5 KB the note is cut to (`RemoraProjectNote.Limits.bytes`).
 enum RemoraNoteText {
     static func display(_ note: RemoraProjectNote) -> String {
         note.readableItems.map { "- \($0.date) · \($0.text)" }.joined(separator: "\n")
     }
 
-    /// "1.4 of 2 KB".
+    /// "1.4 of 1.5 KB".
     static func size(_ note: RemoraProjectNote) -> String {
-        let limit = RemoraProjectNote.Limits.bytes / 1024
-        return String(format: "%.1f of %d KB", Double(note.text.utf8.count) / 1024, limit)
+        String(format: "%.1f of %.1f KB", Double(note.text.utf8.count) / 1024, Double(RemoraProjectNote.Limits.bytes) / 1024)
     }
 
-    /// A card's head: "rewritten 09:12 · 1.4 of 2 KB" (the reference's form for today), "rewritten yesterday 09:12 · …",
+    /// A card's head: "rewritten 09:12 · 1.4 of 1.5 KB" (the reference's form for today), "rewritten yesterday 09:12 · …",
     /// "rewritten 19 October · …"; the size alone when the time is not known.
     static func meta(_ note: RemoraProjectNote, rewrittenAt: Date?, now: Date, calendar: Calendar) -> String {
         guard let rewrittenAt else { return size(note) }

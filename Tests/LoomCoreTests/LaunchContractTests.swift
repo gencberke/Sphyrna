@@ -150,7 +150,7 @@ import Testing
         let session = UUID()
         let common: Set<String> = [
             "TERM", "COLORTERM", "LOOM_RUN_ID", "LOOM_SESSION_ID", "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_DISABLE_AGENT_VIEW",
-            "LOOM_HOOK_SOCKET", "LOOM_HOOK_TOKEN", "LOOM_CLI", "LOOM_CONTROL_SOCKET",
+            "LOOM_HOOK_SOCKET", "LOOM_HOOK_TOKEN", "LOOM_CLI", "SPHYRNA_CLI", "LOOM_CONTROL_SOCKET",
         ]
         let chatOnly: Set<String> = ["CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS", "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING"]
         // The supervisor adds LOOM_MANAGED_RUN_ID at the spawn (`ProcessSupervisor.launch`); nothing else is added after this.

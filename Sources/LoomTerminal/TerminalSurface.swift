@@ -162,16 +162,14 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
     public var onTitle: ((String) -> Void)?
     public var onInputError: ((TerminalInputError) -> Void)?
 
-    /// The frame of the last terminal that was laid out. A new terminal starts at it, so the program is launched at about the
-    /// width it will have and not at the 95 columns of a view that was never laid out (FB6-9).
-    private static let lastLaidOutFrame = Mutex<CGSize?>(nil)
+    /// Told the terminal's frame each time a grid of at least `minimumColumns` was laid out. The host keeps the last one and
+    /// starts the next terminal at it (`init(launchFrame:)`), so the program is launched at about the width it will have and not at
+    /// the 95 columns of a view that was never laid out (FB6-9).
+    public var onLaidOut: ((CGSize) -> Void)?
 
-    static var launchFrame: CGSize { lastLaidOutFrame.withLock { $0 } ?? TerminalSurfaceLimits.fallbackFrame }
-    static func forgetLaidOutFrame() { lastLaidOutFrame.withLock { $0 = nil } }
-
-    public init(fontSize: CGFloat = 14) {
+    public init(fontSize: CGFloat = 14, launchFrame: CGSize = TerminalSurfaceLimits.fallbackFrame) {
         view = LoomTerminalView(
-            frame: NSRect(origin: .zero, size: Self.launchFrame),
+            frame: NSRect(origin: .zero, size: launchFrame),
             font: Self.font(size: fontSize), options: TerminalSurfaceLimits.options
         )
         output = TerminalOutputBridge(feed: view.feedSender)
@@ -302,10 +300,7 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
     public func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
         requestResize(rows: UInt16(clamping: max(1, newRows)),
                       columns: UInt16(clamping: max(1, newCols)), source: "layout")
-        if newCols >= TerminalSurfaceLimits.minimumColumns {
-            let frame = source.frame.size
-            Self.lastLaidOutFrame.withLock { $0 = frame }
-        }
+        if newCols >= TerminalSurfaceLimits.minimumColumns { onLaidOut?(source.frame.size) }
     }
 
     public func setTerminalTitle(source: TerminalView, title: String) {

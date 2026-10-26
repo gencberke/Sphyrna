@@ -886,9 +886,10 @@ extension ChatDriverTests {
         await rig.finish()
     }
 
-    /// Regression (V16 fix round): work that outlives the turn (here a Bash a `now` send moved to the background) keeps
-    /// the session under way after the turn's `result`, through the hub's pending work count, until it ends.
-    @Test func backgroundWorkKeepsTheSessionUnderWayAfterTheTurn() async throws {
+    /// Regression (V16 fix round, changed by D-103): work that outlives the turn (here a Bash a `now` send moved to the
+    /// background) no longer keeps the session under way after the turn's `result`; the hub keeps its pending work count until
+    /// it ends, for Quit and the idle blockers.
+    @Test func backgroundWorkLeavesTheTurnFinishedAndTheCountKept() async throws {
         let rig = try await Rig.make()
         let id = UUID()
         let driver = rig.driver(id)
@@ -906,8 +907,9 @@ extension ChatDriverTests {
         #expect(await driver.snapshot().backgroundTaskCount == 1)
         #expect(await waitUntil {
             let state = await rig.events.snapshot().sessions[id]
+            // D-103: the turn is over, so the session is not under way; the count stays for Quit and the idle blockers.
             return state?.status == ProviderWorkState(activity: .turnComplete, pendingProviderWorkCount: 1)
-                && state?.activePhase == .underWay
+                && state?.activePhase != .underWay
         })
         let pending = await rig.supervisor.providerWorkState(sessionID: id)?.pendingProviderWorkCount
         #expect(pending == 1)

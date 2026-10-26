@@ -171,6 +171,7 @@ struct RemoraHostForgetterTests {
 
     @Test func anUnrelatedSessionDeletedWhileABriefRunsLeavesTheBriefItsJournalLineAndItsNote() async throws {
         let rig = try RemoraHostRig()
+        try rig.seedNote()   // one session read writes no note of its own (the gate); the project already has one
         let host = rig.makeHost(script: briefAnswering(rig.session, project: rig.project), withTranscript: true)
         rig.forgetProcesses()
         let running = Task { await host.brief() }

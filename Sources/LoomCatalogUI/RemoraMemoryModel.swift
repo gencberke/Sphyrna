@@ -37,7 +37,7 @@ final class RemoraMemoryModel {
 
         var text: String { RemoraNoteText.display(note) }
         var size: String { RemoraNoteText.size(note) }
-        /// "rewritten 09:12 · 1.4 of 2 KB".
+        /// "rewritten 09:12 · 1.4 of 1.5 KB".
         func meta(now: Date, calendar: Calendar) -> String {
             RemoraNoteText.meta(note, rewrittenAt: rewrittenAt, now: now, calendar: calendar)
         }
@@ -102,7 +102,7 @@ final class RemoraMemoryModel {
         loaded = true
     }
 
-    /// "rewritten 09:12 · 1.4 of 2 KB" for a card, read against the sheet's clock.
+    /// "rewritten 09:12 · 1.4 of 1.5 KB" for a card, read against the sheet's clock.
     func meta(of card: NoteCard) -> String { card.meta(now: now(), calendar: calendar) }
 
     /// The notes by name, a removed one in its place.

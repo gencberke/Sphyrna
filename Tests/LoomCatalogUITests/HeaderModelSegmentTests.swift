@@ -450,7 +450,7 @@ struct HeaderModelSegmentTests {
         names.filter { name in texts.contains { Self.isRow(name, $0) } }
     }
 
-    @Test func theInspectorOverviewHasAModelFactInTheSessionSectionBeforeTheBranch() async throws {
+    @Test func theInspectorOverviewHasTheRunRowInTheSessionSectionBeforeTheBranch() async throws {
         let rig = try await rig()
         defer { cleanup(rig) }
         rig.index.set(["conv-main": sample()])
@@ -459,23 +459,25 @@ struct HeaderModelSegmentTests {
         rig.model.trackInspectorContext()
         await rig.usage.settle()
 
-        // The reading's model, in the header segment's words: in Session, which comes before Worktree and its Branch.
+        // The model is the third part of the run row (the harness's name: "Claude Code … · Opus 5.5 · effort), in Session, which
+        // comes before Worktree and its Branch; the model's words are the header segment's.
         let row = try #require(rig.model.selectedRow)
-        let texts = try await overviewTexts(rig, row: row, waitingFor: "Model")
-        let model = try #require(texts.firstIndex { Self.isRow("Model", $0) }, "texts \(texts)")
+        let texts = try await overviewTexts(rig, row: row, waitingFor: "Claude")
+        let run = try #require(texts.firstIndex { Self.isRow("Claude", $0) }, "texts \(texts)")
         let branch = try #require(texts.firstIndex { Self.isRow("Branch", $0) }, "texts \(texts)")
-        #expect(model < branch, "the Model fact is in Session, before Worktree's Branch: \(texts)")
+        #expect(run < branch, "the run row is in Session, before Worktree's Branch: \(texts)")
+        #expect(!texts.contains { Self.isRow("Model", $0) }, "the model is not a row of its own any more: \(texts)")
         #expect(rig.model.modelContent(of: row.record)?.name == "Opus 5.5")
     }
 
-    @Test func theInspectorModelFactIsTheLaunchModelBeforeAReadingAndAbsentWithoutBoth() async throws {
+    @Test func theInspectorRunRowHoldsTheLaunchModelBeforeAReadingAndIsAbsentWithoutBoth() async throws {
         let rig = try await rig()
         defer { cleanup(rig) }
         try await select(rig.main, in: rig)
         let mainRow = try #require(rig.model.selectedRow)
         #expect(rig.model.modelContent(of: mainRow.record) == nil, "nothing is read until the view asks for the launch model")
-        let launched = try await overviewTexts(rig, row: mainRow, waitingFor: "Model")
-        #expect(launched.contains { Self.isRow("Model", $0) }, "the Model fact shows once the launch model is read: \(launched)")
+        let launched = try await overviewTexts(rig, row: mainRow, waitingFor: "Claude")
+        #expect(launched.contains { Self.isRow("Claude", $0) }, "the run row shows once the launch model is read: \(launched)")
         #expect(rig.model.modelContent(of: mainRow.record)?.name == "Sonnet")
         #expect(rig.model.modelContent(of: mainRow.record)?.usage == nil)
         // The stored effort and mode, until the run reports its own.
@@ -484,7 +486,7 @@ struct HeaderModelSegmentTests {
 
         try await select(rig.bare, in: rig)
         let none = try await overviewTexts(rig, row: try #require(rig.model.selectedRow), waitingFor: nil)
-        #expect(!none.contains { Self.isRow("Model", $0) }, "texts \(none)")
+        #expect(!none.contains { Self.isRow("Claude", $0) }, "no model and no version: no run row: \(none)")
         #expect(!none.contains { Self.isRow("Mode", $0) }, "no mode was ever recorded for it: \(none)")
         #expect(none.contains { Self.isRow("Branch", $0) })
     }
@@ -506,13 +508,15 @@ struct HeaderModelSegmentTests {
         #expect(rig.model.launchModels.claudeVersion == nil, "the toolchain is not asked before the Overview is on screen")
         let texts = try await overviewTexts(rig, row: row, waitingFor: "Claude")
 
-        let headers = rows(["Session", "Context", "Worktree", "Changes \u{00B7} last turn", "Agents \u{00B7} 1 running"], in: texts)
-        #expect(headers.count == 5, "the five sections: \(texts)")
-        let order = ["Session", "Context", "Worktree", "Changes \u{00B7} last turn", "Agents \u{00B7} 1 running"]
-            .compactMap { name in texts.firstIndex { Self.isRow(name, $0) } }
-        #expect(order == order.sorted() && order.count == 5, "in the reference's order: \(texts)")
+        let sections = ["Session", "Context", "Usage", "Worktree", "Changes", "Agents"]
+        #expect(rows(sections, in: texts).count == 6, "the six sections: \(texts)")
+        let order = sections.compactMap { name in texts.firstIndex { Self.isRow(name, $0) } }
+        #expect(order == order.sorted() && order.count == 6, "in the reference's order: \(texts)")
+        // The start time shares the State line, and the model and effort share the harness's row.
         let facts = rows(["State", "Started", "Claude", "Model", "Mode", "Project", "Branch", "Folder"], in: texts)
-        #expect(facts == ["State", "Started", "Claude", "Model", "Mode", "Project", "Branch", "Folder"], "texts \(texts)")
+        #expect(facts == ["State", "Claude", "Mode", "Project", "Branch", "Folder"], "texts \(texts)")
+        #expect(texts.contains("1 running"), "the Agents headline: \(texts)")
+        #expect(rig.model.modelContent(of: row.record)?.name == "Opus 5.5")
         #expect(rig.model.launchModels.claudeVersion == "2.1.300")
         // The run's own words win over what was stored at launch (default, high).
         #expect(rig.model.launchModels.permissionMode(of: rig.main) == "default" && row.live?.permissionMode == "acceptEdits")
@@ -526,7 +530,7 @@ struct HeaderModelSegmentTests {
         let row = try #require(rig.model.selectedRow)
         let texts = try await overviewTexts(rig, row: row, waitingFor: "Folder")
         #expect(rows(["Session", "Context", "Worktree"], in: texts) == ["Session", "Context", "Worktree"], "texts \(texts)")
-        #expect(rows(["State", "Started", "Project", "Branch", "Folder"], in: texts) == ["State", "Started", "Project", "Branch", "Folder"])
+        #expect(rows(["State", "Project", "Branch", "Folder"], in: texts) == ["State", "Project", "Branch", "Folder"])
         #expect(rows(["Claude", "Model", "Mode", "Effort"], in: texts).isEmpty, "nothing new for Codex: \(texts)")
         #expect(!texts.contains { $0.lowercased().hasPrefix("changes") || $0.lowercased().hasPrefix("agents") },
                 "no Changes or Agents section: \(texts)")
@@ -542,7 +546,7 @@ struct HeaderModelSegmentTests {
         let row = try #require(rig.model.selectedRow)
         let texts = try await overviewTexts(rig, row: row, waitingFor: "Folder")
         #expect(!texts.contains { $0.lowercased().hasPrefix("agents") }, "no agent ever: no section: \(texts)")
-        #expect(rows(["Changes \u{00B7} last turn"], in: texts).count == 1, "a Claude session lists its last turn: \(texts)")
+        #expect(rows(["Changes"], in: texts).count == 1, "a Claude session lists its last turn: \(texts)")
         #expect(texts.contains { $0.hasPrefix("No reading yet") }, "texts \(texts)")
     }
 }

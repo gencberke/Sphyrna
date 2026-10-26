@@ -53,6 +53,8 @@ public final class ConversationController: NewSessionIntents, HandoverIntents, T
     let service: SessionService
     weak var model: CatalogModel?
     private(set) var entries: [UUID: Entry] = [:]
+    /// The frame of the last terminal this controller laid out: a new terminal starts at it (FB6-9).
+    private(set) var lastTerminalFrame: CGSize?
     /// The last screens of ended runs, by session (FB4-3): static snapshots, no surface is kept.
     private(set) var endedScreens = EndedScreenStore()
     /// What the user saw when they pressed Stop, by run, until that run's end uses it.
@@ -380,7 +382,8 @@ public final class ConversationController: NewSessionIntents, HandoverIntents, T
 
     public func newRunSink() -> TerminalRunSink? {
         guard let model else { return nil }
-        let surface = TerminalSurface(fontSize: model.terminalFontSize)
+        let surface = TerminalSurface(fontSize: model.terminalFontSize,
+                                      launchFrame: lastTerminalFrame ?? TerminalSurfaceLimits.fallbackFrame)
         let size = surface.gridSize
         return TerminalRunSink(rows: size.rows, columns: size.columns, output: surface.outputSink, handle: surface)
     }
@@ -437,6 +440,7 @@ public final class ConversationController: NewSessionIntents, HandoverIntents, T
         surface.onInputError = { [weak self] error in
             self?.model?.reportFailure(error.description)
         }
+        surface.onLaidOut = { [weak self] frame in self?.lastTerminalFrame = frame }
         surface.view.sessionDrop = sessionDrop(run: runID)
         surface.view.dropWash = .init(fill: LoomTheme.Drag.washNS, edge: LoomTheme.Drag.edgeNS,
                                       edgeWidth: LoomTheme.Drag.edgeWidth, radius: LoomTheme.Drag.washRadius)

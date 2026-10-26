@@ -299,9 +299,9 @@ struct LaunchChoicesCatalogTests {
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
-    /// Seam 1, the Open Session request (D-40): it always starts in the terminal and carries no choices, so the TUI is told no
-    /// mode at all; the session is not in Ask.
-    @Test func anOpenSessionStartPassesNoModeAndRunsNoAsk() async throws {
+    /// Seam 1, the Open Session request (D-40): it always starts in the terminal. Without `--mode` it takes Sphyrna's default
+    /// mode as a draft does (D-103, FB6-15), which is Ask before edits and not Ask: nothing runs on `dontAsk`.
+    @Test func anOpenSessionStartTakesTheDefaultModeAndRunsNoAsk() async throws {
         let holder = FileManager.default.temporaryDirectory.appendingPathComponent("loom-choices-open-\(UUID())", isDirectory: true)
         try FileManager.default.createDirectory(at: holder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: holder) }
@@ -318,7 +318,7 @@ struct LaunchChoicesCatalogTests {
         #expect(await screen.contains("FAKE-CLAUDE READY"))
         _ = await SessionRuntimeTests.waitUntil { FileManager.default.fileExists(atPath: argv.path) }
         let args = ((try? String(contentsOf: argv, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
-        #expect(!args.contains("dontAsk") && Self.value(after: "--permission-mode", in: args) == nil, "\(args)")
+        #expect(!args.contains("dontAsk") && Self.value(after: "--permission-mode", in: args) == "default", "\(args)")
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
@@ -406,7 +406,7 @@ struct LaunchChoicesCatalogTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let folder = try ClaudeLoomPlugin.install(in: root)
         let style = try String(contentsOf: folder.appendingPathComponent("output-styles/ask.md"), encoding: .utf8)
-        #expect(style.hasPrefix("---\nname: Ask\n") && ClaudeLoomPlugin.askStyleName == "loom:Ask")
+        #expect(style.hasPrefix("---\nname: Ask\n") && ClaudeLoomPlugin.askStyleName == "sphyrna:Ask")
         #expect(!style.localizedCaseInsensitiveContains("conversation"))
     }
 

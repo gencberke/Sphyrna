@@ -107,6 +107,15 @@ final class RemoraHostRig {
             timeZone: zone, clock: { clock.now })
     }
 
+    /// A note the rig's project already has. A brief writes a project's note once it read two of its sessions or the note exists
+    /// (the gate of 1.7.1); the rig has one session, so a test that expects the note seeds this first.
+    func seedNote() throws {
+        let folder = remora.appendingPathComponent("projects", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try "- 2027-01-14 · Earlier work. (sessions: \(UUID().uuidString))\n"
+            .write(to: folder.appendingPathComponent(project.uuidString + ".md"), atomically: true, encoding: .utf8)
+    }
+
     /// A stand-in for `claude` that answers nothing and keeps what it was given: its stdin as `captured/stdin.txt` and the file
     /// `--system-prompt-file` names, which the call removes when it ends, as `captured/system.txt`. Its call ends as a failure;
     /// a test of the pack only reads what was captured.

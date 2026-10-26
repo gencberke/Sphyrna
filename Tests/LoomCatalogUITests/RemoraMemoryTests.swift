@@ -122,9 +122,9 @@ struct RemoraMemoryTests {
         RemoraProjectNote(text: "- 2026-10-20 · The importer moved to async. (sessions: \(session.uuidString))\n- 2026-10-21 · Next: the fixtures.\n")
     }
 
-    @Test func aNoteIsShownInItsOwnFormAndSizedAgainstTwoKilobytes() {
+    @Test func aNoteIsShownInItsOwnFormAndSizedAgainstItsKilobyteAndAHalf() {
         #expect(RemoraNoteText.display(note) == "- 2026-10-20 · The importer moved to async.\n- 2026-10-21 · Next: the fixtures.")
-        #expect(RemoraNoteText.size(note) == "0.1 of 2 KB")
+        #expect(RemoraNoteText.size(note) == "0.1 of 1.5 KB")
     }
 
     @Test func anEditKeepsTheCitationsOfTheLinesItDidNotChange() {
