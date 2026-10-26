@@ -395,8 +395,8 @@ public final class UsageModel {
         guard active else { return }
         refresh(reason: .activation)
         fetchLimitsIfDue(after: cadence.afterShown)
-        // Codex is asked only while the page shows; Home reads what an earlier ask left.
-        refreshHarnesses(askCodex: usagePageVisible, force: false)
+        // Codex is asked on activation too, under the probe's five-minute floor, so the footer's Codex line is current (FB6-3).
+        refreshHarnesses(askCodex: true, force: false)
     }
 
     /// The Settings window shows or hides (closed, minimized or covered).
@@ -427,6 +427,8 @@ public final class UsageModel {
     public func minuteTick() {
         // Pure: a plan window that has ended drops out whenever the window ticks (visible, key or not).
         rebuildChip()
+        // Codex is asked on the minute tick while the window is active; the probe's five-minute floor makes most of them free.
+        if windowIsActive, isConnected(.codex) { refreshHarnesses(askCodex: true, force: false) }
         guard windowIsActive, dayChanged else { return }
         refresh(reason: .dayChanged)
     }
@@ -580,7 +582,8 @@ public final class UsageModel {
     private func rebuildChip() {
         let content = UsageChipContent.make(
             state: state, today: today, hasHistory: hasHistory, limits: limits,
-            codex: isConnected(.codex) ? readings[.codex] : nil, now: clock(), timeZone: timeZone)
+            codex: isConnected(.codex) ? readings[.codex] : nil, codexConnected: isConnected(.codex) && harnessProbe != nil,
+            now: clock(), timeZone: timeZone)
         if content != chip { chip = content }
     }
 

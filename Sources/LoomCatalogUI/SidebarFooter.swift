@@ -39,7 +39,7 @@ struct SidebarFooter: View {
         }
         .focusEffectDisabled()
         .padding(.horizontal, LoomTheme.Sidebar.footerInset)
-        .frame(height: LoomTheme.Sidebar.footerHeight)
+        .frame(height: LoomTheme.Sidebar.footerHeight(lines: model.usage?.chip?.lines.count ?? 1))
         .overlay(alignment: .top) {
             Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline)
                 .allowsHitTesting(false).accessibilityHidden(true)
@@ -57,7 +57,7 @@ struct UsageChip: View {
         Group {
             if let chip = usage.chip {
                 Button(action: open) { UsageChipLabel(chip: chip) }
-                    .buttonStyle(UsageChipButtonStyle())
+                    .buttonStyle(UsageChipButtonStyle(lines: chip.lines.count))
                     .help(chip.tooltip)
                     .accessibilityLabel(chip.accessibilityLabel)
                     .accessibilityHint("Opens Usage in Settings")
@@ -66,7 +66,7 @@ struct UsageChip: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: LoomTheme.Sidebar.chipHeight)
+        .frame(height: LoomTheme.Sidebar.chipHeight(lines: usage.chip?.lines.count ?? 1))
     }
 }
 
@@ -81,7 +81,14 @@ struct UsageChipLabel: View {
         let tone = hovered ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.tertiaryStyle)
         let value = hovered ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle)
         Group {
-            if let limit = chip.limit {
+            if chip.lines.count > 1 {
+                // A line per harness: its mark, today's tokens and its tightest limit.
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(chip.lines.prefix(LoomTheme.Sidebar.chipMaxLines).enumerated()), id: \.offset) { _, line in
+                        harnessLine(line, tone, value).frame(height: LoomTheme.Sidebar.chipLineHeight)
+                    }
+                }
+            } else if let limit = chip.limit {
                 ViewThatFits(in: .horizontal) {
                     // No fixedSize here: ViewThatFits tests the ideal width (tokens, the least gap, limit), and the
                     // chosen child then takes the whole proposal so the spacer pushes the limit to the trailing edge.
@@ -102,13 +109,34 @@ struct UsageChipLabel: View {
         HStack(spacing: 0) {
             tokens(tone, value).truncationMode(.tail)
             Spacer(minLength: LoomTheme.Space.chipSplitGap)
-            HStack(spacing: LoomTheme.Space.chipLimitGap) {
-                Text(limit.name).foregroundStyle(tone)
-                if showMeter { UsageChipMeter(remainingPercent: limit.remainingPercent, isLow: limit.isLow) }
-                Text(UsageFormat.percent(limit.remainingPercent))
-                    .foregroundStyle(limit.isLow ? AnyShapeStyle(LoomTheme.Status.attentionLight) : value)
+            limitGroup(limit, tone, value, showMeter: showMeter)
+        }
+    }
+
+    private func limitGroup(_ limit: UsageChipContent.Limit, _ tone: AnyShapeStyle, _ value: AnyShapeStyle,
+                            showMeter: Bool) -> some View {
+        HStack(spacing: LoomTheme.Space.chipLimitGap) {
+            Text(limit.name).foregroundStyle(tone)
+            if showMeter { UsageChipMeter(remainingPercent: limit.remainingPercent, isLow: limit.isLow) }
+            Text(UsageFormat.percent(limit.remainingPercent))
+                .foregroundStyle(limit.isLow ? AnyShapeStyle(LoomTheme.Status.attentionLight) : value)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    /// `[mark] 168M  Wk ▬ 15%`: the meter drops first when the line is narrow, then the tokens are cut.
+    private func harnessLine(_ line: UsageChipContent.Line, _ tone: AnyShapeStyle, _ value: AnyShapeStyle) -> some View {
+        HStack(spacing: 0) {
+            ProviderIcon(provider: line.harness, size: LoomTheme.Sidebar.chipHarnessMark)
+                .padding(.trailing, LoomTheme.Space.chipLimitGap)
+            Text(line.figure).foregroundStyle(value).truncationMode(.tail)
+            Spacer(minLength: LoomTheme.Space.chipSplitGap)
+            if let limit = line.limit {
+                ViewThatFits(in: .horizontal) {
+                    limitGroup(limit, tone, value, showMeter: true)
+                    limitGroup(limit, tone, value, showMeter: false)
+                }
             }
-            .fixedSize(horizontal: true, vertical: false)
         }
     }
 
@@ -150,12 +178,15 @@ extension EnvironmentValues {
 
 /// One 24 pt button with the shared pill on hover and press, like the chrome buttons.
 private struct UsageChipButtonStyle: ButtonStyle {
+    var lines = 1
+
     func makeBody(configuration: Configuration) -> some View {
-        Chip(configuration: configuration)
+        Chip(configuration: configuration, lines: lines)
     }
 
     private struct Chip: View {
         let configuration: ButtonStyle.Configuration
+        let lines: Int
         @State private var hovering = false
         @Environment(\.isFocused) private var focused
 
@@ -165,7 +196,7 @@ private struct UsageChipButtonStyle: ButtonStyle {
                 .environment(\.usageChipHovered, hovering || configuration.isPressed)
                 .padding(.horizontal, LoomTheme.Space.chipInset)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: LoomTheme.Sidebar.chipHeight)
+                .frame(height: LoomTheme.Sidebar.chipHeight(lines: lines))
                 .background(RowHighlight(state: state, radius: LoomTheme.Highlight.radiusControl))
                 .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
                     .strokeBorder(ChromeButtonStyle.showsFocusRing(

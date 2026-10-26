@@ -248,15 +248,15 @@ struct UsageHarnessTests {
 
     // MARK: Asking
 
-    @Test func codexIsAskedWhenThePageOpensAndWhenTheAppTurnsActiveWithTheProbesFloor() async {
+    @Test func codexIsAskedWhenTheAppTurnsActiveAndWhenThePageOpensWithTheProbesFloor() async {
         let rig = rig()
         rig.usage.windowActivityChanged(false)
         rig.usage.windowActivityChanged(true)
         await rig.usage.settle()
-        #expect(rig.codex.asks == 0, "the page is not showing: Codex is not asked")
+        #expect(rig.codex.asks == 1, "the footer's Codex line is asked on activation (FB6-3), page or not")
 
         await openPage(rig)
-        #expect(rig.codex.asks == 1)
+        #expect(rig.codex.asks == 1, "the page opening is inside the floor")
 
         rig.clock.advance(100)
         rig.usage.windowActivityChanged(false)
@@ -268,14 +268,23 @@ struct UsageHarnessTests {
         rig.usage.windowActivityChanged(false)
         rig.usage.windowActivityChanged(true)
         await rig.usage.settle()
-        #expect(rig.codex.asks == 2, "past the floor, with the page showing")
+        #expect(rig.codex.asks == 2, "past the floor")
 
         rig.usage.setUsageSectionSelected(false)
         rig.clock.advance(400)
         rig.usage.windowActivityChanged(false)
         rig.usage.windowActivityChanged(true)
         await rig.usage.settle()
-        #expect(rig.codex.asks == 2, "the page is away again")
+        #expect(rig.codex.asks == 3, "the page is away, and the footer still asks past the floor")
+
+        rig.clock.advance(60)
+        rig.usage.minuteTick()
+        await rig.usage.settle()
+        #expect(rig.codex.asks == 3, "the minute tick asks too, and the floor holds")
+        rig.clock.advance(300)
+        rig.usage.minuteTick()
+        await rig.usage.settle()
+        #expect(rig.codex.asks == 4, "past the floor the minute tick reads Codex again")
     }
 
     @Test func updateForcesCodexAndNothingAsksOnATimer() async {
@@ -504,5 +513,25 @@ struct UsageHarnessTests {
         // Codex's windows are listed even while Claude has none.
         let alone = UsageChipContent.make(state: .ready, today: today, hasHistory: true, codex: codex, now: Self.start, timeZone: Self.zone)
         #expect(alone?.limit == nil && alone?.tooltip.contains("\n5-hour: 77% left") == true)
+    }
+
+    @Test func theChipHoldsALinePerConnectedHarnessAndCodexNotSignedInReadsADash() {
+        let today = UsageSnapshotFactory.snapshot(range: .days(1), now: Self.start, output: 168_000_000, cost: 1)
+        let codex = HarnessReading(provider: .codex, account: Self.pro, windows: [
+            Self.window("codex.primary", "5-hour", minutes: 300, used: 23, resetsIn: 3 * 3_600),
+            Self.window("codex.secondary", "Weekly", minutes: 10_080, used: 85, resetsIn: 4 * 86_400)],
+            tokenDays: [HarnessTokenDay(day: "2026-10-07", tokens: 4_200_000)], readAt: Self.start)
+        let both = UsageChipContent.make(state: .ready, today: today, hasHistory: true, limits: Self.claudeLimits(), codex: codex,
+                                         codexConnected: true, now: Self.start, timeZone: Self.zone)
+        #expect(both?.lines.map(\.harness) == [.claude, .codex], "one line per connected harness, in Connections' order")
+        #expect(both?.lines.last?.limit == UsageChipContent.Limit(name: "Wk", remainingPercent: 15), "Codex's tightest window")
+        #expect(both?.lines.last?.figure == "4.2M", "Codex's tokens of today")
+        let signedOut = UsageChipContent.make(state: .ready, today: today, hasHistory: true, codex: nil, codexConnected: true,
+                                              now: Self.start, timeZone: Self.zone)
+        #expect(signedOut?.lines.last == UsageChipContent.Line(harness: .codex, figure: "\u{2014}", limit: nil))
+        let off = UsageChipContent.make(state: .ready, today: today, hasHistory: true, now: Self.start, timeZone: Self.zone)
+        #expect(off?.lines.map(\.harness) == [.claude], "a harness switched off has no line")
+        #expect(LoomTheme.Sidebar.footerHeight(lines: 2) == 46 && LoomTheme.Sidebar.footerHeight(lines: 3) == 46 + 14,
+                "two lines fit the footer, the third grows it by one line")
     }
 }

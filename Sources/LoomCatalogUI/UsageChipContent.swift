@@ -17,6 +17,23 @@ public struct UsageChipContent: Equatable, Sendable {
     public var limit: Limit?
     public var tooltip: String
     public var accessibilityLabel: String
+    /// One line per connected harness that reports usage, in Connections' order: `[mark] 168M  Wk ▬ 15%` (FB6-3). Empty
+    /// where the chip says one thing (indexing, no usage yet).
+    public var lines: [Line] = []
+
+    /// One harness's line in the footer.
+    public struct Line: Equatable, Sendable {
+        public var harness: ManagedSession.Provider
+        /// The tokens of today, or `—` for a harness that is not signed in or has not said.
+        public var figure: String
+        public var limit: Limit?
+
+        public init(harness: ManagedSession.Provider, figure: String, limit: Limit?) {
+            self.harness = harness
+            self.figure = figure
+            self.limit = limit
+        }
+    }
 
     /// The bottleneck plan window as data, so the view draws it (name, meter, percent) without formatting.
     public struct Limit: Equatable, Sendable {
@@ -46,7 +63,7 @@ public struct UsageChipContent: Equatable, Sendable {
     /// windows are listed in the tooltip, and the chip's own number stays Claude's.
     static func make(
         state: UsageState, today: UsageSnapshot?, hasHistory: Bool, limits: PlanLimits? = nil, codex: HarnessReading? = nil,
-        now: Date = Date(), timeZone: TimeZone = .current
+        codexConnected: Bool = false, now: Date = Date(), timeZone: TimeZone = .current
     ) -> UsageChipContent? {
         switch state {
         case .idle, .failed:
@@ -90,11 +107,51 @@ public struct UsageChipContent: Equatable, Sendable {
                     }
                 }
             }
+            var lines = [Line(harness: .claude, figure: UsageFormat.tokens(tokens.total), limit: limit)]
+            if codexConnected {
+                let line = codexLine(codex, now: now, timeZone: timeZone)
+                lines.append(line)
+                label += ". Codex, " + (codex?.account == nil ? "not signed in" : "\(line.figure) tokens today"
+                    + (line.limit.map { ", limit \($0.name) \($0.remainingPercent) percent remaining" } ?? ""))
+                if let day = codexTokens(codex, now: now, timeZone: timeZone) {
+                    tooltip += "\nCodex tokens today: \(UsageFormat.grouped(day))"
+                }
+            }
             tooltip += "\nClick to open Usage."
             return UsageChipContent(
                 kind: .today, lead: "", figure: UsageFormat.tokens(tokens.total), suffix: " today", limit: limit,
-                tooltip: tooltip, accessibilityLabel: label)
+                tooltip: tooltip, accessibilityLabel: label, lines: lines)
         }
+    }
+
+    /// Codex's line: today's tokens and its tightest current window; `—` while it is not signed in or has not answered.
+    static func codexLine(_ reading: HarnessReading?, now: Date, timeZone: TimeZone) -> Line {
+        guard let reading, reading.account != nil else { return Line(harness: .codex, figure: "\u{2014}", limit: nil) }
+        let tightest = reading.currentWindows(at: now).min { $0.remainingPercent < $1.remainingPercent }
+        let figure = codexTokens(reading, now: now, timeZone: timeZone).map(UsageFormat.tokens) ?? "\u{2014}"
+        return Line(harness: .codex, figure: figure, limit: tightest.map {
+            Limit(name: chipName(of: $0), remainingPercent: $0.remainingPercent)
+        })
+    }
+
+    /// The tokens Codex counted for today's date, when it listed that day.
+    static func codexTokens(_ reading: HarnessReading?, now: Date, timeZone: TimeZone) -> Int64? {
+        guard let reading else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let parts = calendar.dateComponents([.year, .month, .day], from: now)
+        guard let year = parts.year, let month = parts.month, let day = parts.day else { return nil }
+        let today = String(format: "%04d-%02d-%02d", year, month, day)
+        return reading.tokenDays.first { $0.day == today }?.tokens
+    }
+
+    /// A window's short name in the chip: `5h`, `Wk`, `3d`; its own name when its length is unknown.
+    static func chipName(of window: HarnessLimitWindow) -> String {
+        guard let minutes = window.durationMinutes else { return window.name }
+        if minutes == 7 * 1_440 { return "Wk" }
+        if minutes % 1_440 == 0 { return "\(minutes / 1_440)d" }
+        if minutes % 60 == 0 { return "\(minutes / 60)h" }
+        return "\(minutes)m"
     }
 
     /// `resets 16:30`, or `resets Mon 10:00` when it is not today; nil when the reset time is unknown.

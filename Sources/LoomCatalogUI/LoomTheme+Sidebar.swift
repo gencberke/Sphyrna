@@ -128,6 +128,21 @@ extension LoomTheme {
         static let chipFont = InkType.meta.font
         static let chipMeter = CGSize(width: 40, height: 4)
         static let chipHeight: CGFloat = InkHeight.control
+        /// A chip with a line per harness (FB6-3): each line is this high, the chip adds this above and below the lines, and the
+        /// footer keeps this much around the chip. Two lines fit the 46 pt footer; a third grows it by one line.
+        static let chipLineHeight: CGFloat = 14
+        static let chipLinesPadding: CGFloat = 6
+        static let footerChipRoom: CGFloat = 12
+        static let chipHarnessMark: CGFloat = 12
+        static let chipMaxLines = 3
+
+        /// The chip's height for `lines` lines of harnesses: the single line keeps today's.
+        static func chipHeight(lines: Int) -> CGFloat {
+            lines <= 1 ? chipHeight : CGFloat(min(lines, chipMaxLines)) * chipLineHeight + chipLinesPadding
+        }
+
+        /// The footer's height: 46, or more when the chip's lines do not fit with the room around them.
+        static func footerHeight(lines: Int) -> CGFloat { max(footerHeight, chipHeight(lines: lines) + footerChipRoom) }
     }
 }
 

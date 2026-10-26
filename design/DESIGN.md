@@ -80,7 +80,7 @@ The window's structure stays; Ink redraws it.
      - a new Codex session, disabled with "Codex comes in a later version" in a build that cannot start it;
      - a new Claude session without a project, while a session is selected;
      - Add Project.
-   - **Middle: the usage chip**, in mono 11.
+   - **Middle: the usage chip**, in mono 11, one line per connected harness that reports usage (FB6-3): the harness's mark at 12, today's tokens, its bottleneck window with the meter. Two lines fit the 46 pt footer; a third makes it one line taller (60), at most three lines.
      - Its left side is today's tokens (`1.2M today`).
      - Pinned to the right is the plan window that runs out first, when the Claude CLI reports plan limits: `5h` or `Wk`, a 40×4 meter of the share remaining, and the percent remaining.
      - There is no money. Under 20 % remaining, the percent and the meter fill take the attention colour.
