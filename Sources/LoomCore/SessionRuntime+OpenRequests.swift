@@ -27,7 +27,8 @@ extension SessionRuntime {
                 provider: .claude, projectID: spec.projectID, rows: rows, columns: columns,
                 outputSink: outputSink,
                 opening: SessionOpening(
-                    title: spec.title, firstMessage: spec.message, openedBy: spec.requesterID
+                    title: spec.title, firstMessage: spec.message, openedBy: spec.requesterID,
+                    choices: spec.choices
                 )
             )
             launched.value = launch
@@ -51,7 +52,8 @@ extension SessionRuntime {
         let started = try await openRequests.approve(requestID) { spec in
             let launch = try await self.startChatConversation(
                 projectID: spec.projectID, sessionID: sessionID,
-                opening: SessionOpening(title: spec.title, firstMessage: spec.message, openedBy: spec.requesterID),
+                opening: SessionOpening(title: spec.title, firstMessage: spec.message, openedBy: spec.requesterID,
+                                        choices: spec.choices),
                 outputSink: outputSink
             )
             launched.value = RuntimeOpenedChat(launch: launch, firstMessage: spec.message)

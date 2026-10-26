@@ -19,12 +19,16 @@ public struct OpenSessionRequest: Identifiable, Equatable, Sendable {
     public let projectName: String
     public let title: String
     public let message: String
+    /// The model, effort and mode the agent asked for (Q3, D-103); all nil unless `open` passed them. The session starts with
+    /// these; a missing mode takes Sphyrna's default at the start.
+    public let choices: ClaudeLaunchChoices
     public let receivedAt: Date
     public internal(set) var phase: Phase
 
     public init(
         id: UUID = UUID(), requesterID: UUID, requesterTitle: String? = nil, projectID: UUID,
         projectName: String, title: String, message: String,
+        choices: ClaudeLaunchChoices = ClaudeLaunchChoices(),
         receivedAt: Date = Date(), phase: Phase = .waiting
     ) {
         self.id = id
@@ -34,6 +38,7 @@ public struct OpenSessionRequest: Identifiable, Equatable, Sendable {
         self.projectName = projectName
         self.title = title
         self.message = message
+        self.choices = choices
         self.receivedAt = receivedAt
         self.phase = phase
     }
@@ -74,6 +79,7 @@ struct OpenSessionSpec: Sendable {
     let projectID: UUID
     let title: String
     let message: String
+    let choices: ClaudeLaunchChoices
 }
 
 /// Keeps the requests of agents until the user decides (contract section 7: nothing starts
@@ -141,7 +147,8 @@ actor OpenSessionCoordinator {
         let input: OpenSessionInput
         do {
             input = try OpenSessionInput.validated(
-                title: call.title, project: call.project, message: call.message
+                title: call.title, project: call.project, message: call.message,
+                model: call.model, effort: call.effort, mode: call.mode
             )
         } catch {
             return OpenSessionReply(status: .invalid, detail: String(describing: error))
@@ -175,7 +182,7 @@ actor OpenSessionCoordinator {
         let request = OpenSessionRequest(
             id: id, requesterID: requesterID, requesterTitle: requesterTitle, projectID: project.id,
             projectName: project.name, title: input.title,
-            message: input.message, receivedAt: Date(), phase: .waiting
+            message: input.message, choices: input.choices, receivedAt: Date(), phase: .waiting
         )
         return await withCheckedContinuation { continuation in
             let timeout = Task { [replyDelay] in
@@ -190,6 +197,23 @@ actor OpenSessionCoordinator {
     }
 
     // MARK: Listing sessions (read-only)
+
+    /// `whoami`: this session, its opener and the sessions it opened, authorized like `listSessions`. Read-only; it creates no
+    /// request and waits for no one.
+    func whoAmI(_ call: WhoAmICall, directory: SessionDirectory) async -> WhoAmIReply {
+        guard !shutDown else { return WhoAmIReply(status: .unavailable, detail: "Sphyrna is quitting") }
+        guard let requesterID = await authorize(call.sessionID, call.managedRunID) else {
+            return WhoAmIReply(status: .unavailable, detail: "this process is not part of a live Sphyrna session")
+        }
+        do {
+            guard let who = try await directory.whoAmI(requesterID) else {
+                return WhoAmIReply(status: .invalid, detail: "this session is not in Sphyrna's catalog")
+            }
+            return WhoAmIReply(status: .ok, who: who)
+        } catch {
+            return WhoAmIReply(status: .invalid, detail: "Sphyrna could not read its catalog: \(error)")
+        }
+    }
 
     /// The other sessions of a project, or of every project, newest activity first, from `directory`. The requester (the card the
     /// run is on now) is left out. Authorized like `submit`; it creates no request and waits for no one.
@@ -307,7 +331,7 @@ actor OpenSessionCoordinator {
         do {
             let sessionID = try await start(OpenSessionSpec(
                 requesterID: request.requesterID, projectID: request.projectID, title: request.title,
-                message: request.message
+                message: request.message, choices: request.choices
             ))
             resolveWaiter(id, OpenSessionReply(status: .started, sessionID: sessionID, title: request.title))
             remove(id)

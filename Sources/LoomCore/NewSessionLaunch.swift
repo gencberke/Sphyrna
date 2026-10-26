@@ -85,6 +85,13 @@ public struct ClaudeLaunchChoices: Equatable, Sendable, Codable {
 
     public var isEmpty: Bool { permissionMode == nil && model == nil && effort == nil }
 
+    /// The effort levels Claude's CLI takes (`claude --help` on 2.1.300). The current aliases list all five; the draft and an
+    /// agent's `open --effort` accept exactly these.
+    public static let effortLevels = ["low", "medium", "high", "xhigh", "max"]
+
+    /// The modes an agent may pick with `open --mode` (Q3, D-103): never Ask (a Chat-only mode) and never Full access.
+    public static let openedModes: [ClaudePermissionMode] = [.askBeforeEdits, .acceptEdits, .plan, .auto]
+
     /// Each choice of `newer` that is set replaces this one's.
     public func merging(_ newer: ClaudeLaunchChoices) -> ClaudeLaunchChoices {
         ClaudeLaunchChoices(permissionMode: newer.permissionMode ?? permissionMode, model: newer.model ?? model,

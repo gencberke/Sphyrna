@@ -63,7 +63,8 @@ private final class ListRig: @unchecked Sendable {
         let directory = SessionDirectory(catalog: catalog, events: SessionEventHub())
         server = try OpenSessionControlServer(
             socketPath: socketPath, authenticationToken: token,
-            sessions: { call in await coordinator.listSessions(call, directory: directory) }
+            sessions: { call in await coordinator.listSessions(call, directory: directory) },
+            whoAmI: { call in await coordinator.whoAmI(call, directory: directory) }
         ) { call in await coordinator.submit(call) }
     }
 
@@ -74,12 +75,12 @@ private final class ListRig: @unchecked Sendable {
 
     @discardableResult
     func add(_ title: String?, project: CatalogProject?, activity: TimeInterval, provider: ManagedSession.Provider = .claude,
-             sideChatOf parent: UUID? = nil) async throws -> UUID {
+             sideChatOf parent: UUID? = nil, openedBy: UUID? = nil) async throws -> UUID {
         let session = ManagedSession(provider: provider, workingDirectory: (project?.path ?? root.path))
         try await catalog.insertSession(
             session, title: title, createdAt: Date(timeIntervalSince1970: 1_000),
             lastUsedAt: Date(timeIntervalSince1970: activity), lifecycle: .idle, projectID: project?.id,
-            lastActivityAt: Date(timeIntervalSince1970: activity),
+            lastActivityAt: Date(timeIntervalSince1970: activity), openedBy: openedBy,
             sideChat: parent.map { SideChatLink(parentSessionID: $0, forkedAt: Date(timeIntervalSince1970: 1_500)) })
         return session.id
     }
@@ -135,7 +136,7 @@ struct SessionListTests {
         for arguments in [["sessions", "--limit", "0"], ["sessions", "--all", "--project", "beta"], ["sessions", "--bogus"]] {
             let (code, out) = await rig.run(arguments)
             #expect(code == 2, "\(arguments)")
-            #expect(out.stderr.joined().hasPrefix("error: ") && out.stderr.joined().contains("usage: \"$LOOM_CLI\" sessions"))
+            #expect(out.stderr.joined().hasPrefix("error: ") && out.stderr.joined().contains("usage: \"$SPHYRNA_CLI\" sessions"))
             #expect(out.stdout.isEmpty)
         }
     }
@@ -146,7 +147,7 @@ struct SessionListTests {
             let code = OpenSessionCommand.run(arguments: arguments, environment: [:], readStandardInput: { Data() },
                                               output: out.output)
             let text = out.stdout.joined()
-            #expect(code == 0 && text.contains("usage: \"$LOOM_CLI\" open --title") && text.contains("usage: \"$LOOM_CLI\" sessions"))
+            #expect(code == 0 && text.contains("usage: \"$SPHYRNA_CLI\" open --title") && text.contains("usage: \"$SPHYRNA_CLI\" sessions"))
         }
         let sessions = ListOutput()
         #expect(OpenSessionCommand.run(arguments: ["sessions", "--help"], environment: [:], readStandardInput: { Data() },
@@ -273,13 +274,13 @@ struct SessionListTests {
         let all = await rig.run(["sessions", "--all"])
         #expect(all.code == 0 && all.out.stderr.isEmpty)
         let lines = all.out.stdout.joined().components(separatedBy: "\n")
-        #expect(lines[0] == "id\tstate\tharness\tface\tlast-activity\tproject\ttitle")
+        #expect(lines[0] == "id\tstate\tharness\tface\tlast-activity\tproject\ttitle\topened-by")
         #expect(lines.count == 3)
-        #expect(lines[1] == "\(quoted.uuidString.lowercased())\tidle\tclaude\t-\t1970-01-01T00:50:00Z\talpha\t\"Say \\\"hi\\\" and \\\\ go now\"")
-        #expect(lines[2] == "\(untitled.uuidString.lowercased())\tidle\tclaude\t-\t1970-01-01T00:33:20Z\t-\t\"\"")
+        #expect(lines[1] == "\(quoted.uuidString.lowercased())\tidle\tclaude\t-\t1970-01-01T00:50:00Z\talpha\t\"Say \\\"hi\\\" and \\\\ go now\"\t-")
+        #expect(lines[2] == "\(untitled.uuidString.lowercased())\tidle\tclaude\t-\t1970-01-01T00:33:20Z\t-\t\"\"\t-")
 
         let none = await rig.run(["sessions", "--project", "beta"])
-        #expect(none.code == 0 && none.out.stdout == ["id\tstate\tharness\tface\tlast-activity\tproject\ttitle"])
+        #expect(none.code == 0 && none.out.stdout == ["id\tstate\tharness\tface\tlast-activity\tproject\ttitle\topened-by"])
     }
 
     @Test func jsonIsAnArrayOfTheSummariesAndHoldsNoContent() async throws {
@@ -297,6 +298,40 @@ struct SessionListTests {
         #expect(objects[0]["state"] as? String == "idle" && objects[0]["lastActivityAt"] as? String == "1970-01-01T00:50:00Z")
         let decoded = try SessionListCoding.decoder().decode([SessionSummary].self, from: data)
         #expect(decoded.map(\.id) == [ids.a2, ids.a1])
+    }
+
+    @Test func whoAmIPrintsThisSessionItsOpenerAndTheSessionsItOpened() async throws {
+        let rig = try await ListRig.make()
+        defer { rig.cleanup() }
+        let child = try await rig.add("Child", project: rig.alpha, activity: 2_000, openedBy: rig.requester.id)
+
+        let table = await rig.run(["whoami"])
+        #expect(table.code == 0 && table.out.stderr.isEmpty)
+        let text = table.out.stdout.joined(separator: "\n")
+        #expect(text.contains("id: \(rig.requester.id.uuidString.lowercased())"))
+        #expect(text.contains("project: alpha") && text.contains("title: \"Planner\""))
+        #expect(text.contains("opened-by: -"))
+        #expect(text.contains("opened: \(child.uuidString.lowercased()) idle \"Child\""))
+
+        let json = await rig.run(["whoami", "--json"])
+        #expect(json.code == 0)
+        let decoded = try SessionListCoding.decoder().decode(
+            SessionWhoAmI.self, from: Data(json.out.stdout.joined().utf8))
+        #expect(decoded.session.id == rig.requester.id && decoded.opener == nil)
+        #expect(decoded.opened.map(\.id) == [child])
+        #expect(decoded.opened.first?.openedBy == rig.requester.id)
+        #expect(decoded.opened.first?.projectName == "alpha" && decoded.opened.first?.state == .idle)
+
+        // `sessions` names the opener in its own column, and `--json` carries it.
+        let sessions = await rig.run(["sessions", "--project", "alpha"])
+        #expect(sessions.out.stdout.joined(separator: "\n").contains("\t\"Child\"\t\(rig.requester.id.uuidString.lowercased())"))
+        let listJSON = await rig.run(["sessions", "--project", "alpha", "--json"])
+        let listed = try SessionListCoding.decoder().decode(
+            [SessionSummary].self, from: Data(listJSON.out.stdout.joined().utf8))
+        #expect(listed.first { $0.id == child }?.openedBy == rig.requester.id)
+
+        let bad = await rig.run(["whoami", "--bogus"])
+        #expect(bad.code == 2 && bad.out.stderr.joined().contains("usage: \"$SPHYRNA_CLI\" whoami"))
     }
 
     @Test func aListTooLargeForOneAnswerIsCutAndSaysSo() async throws {

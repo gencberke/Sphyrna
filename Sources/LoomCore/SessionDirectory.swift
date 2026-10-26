@@ -82,9 +82,11 @@ public struct SessionSummary: Codable, Equatable, Sendable, Identifiable {
     /// The face of the live run; nil without one.
     public let face: SessionLiveFace?
     public let lastActivityAt: Date
+    /// The session whose agent asked for this one to be opened (D-40); nil for a session the user started.
+    public let openedBy: UUID?
 
     public init(id: UUID, harness: SessionHarness, title: String?, projectID: UUID?, projectName: String?,
-                state: SessionStateWord, face: SessionLiveFace?, lastActivityAt: Date) {
+                state: SessionStateWord, face: SessionLiveFace?, lastActivityAt: Date, openedBy: UUID? = nil) {
         self.id = id
         self.harness = harness
         self.title = title
@@ -93,6 +95,7 @@ public struct SessionSummary: Codable, Equatable, Sendable, Identifiable {
         self.state = state
         self.face = face
         self.lastActivityAt = lastActivityAt
+        self.openedBy = openedBy
     }
 }
 
@@ -139,15 +142,40 @@ public struct SessionDirectory: Sendable {
         let live = await events.snapshot().sessions
         let awaiting = Set(await openRequests().filter(Self.needsUser).map(\.requesterID))
         return rows.compactMap { row in
-            guard let harness = SessionHarness(row.record.session.provider) else { return nil }
-            let id = row.record.session.id
-            let state = live[id]
-            return SessionSummary(
-                id: id, harness: harness, title: row.record.title,
-                projectID: row.record.projectID, projectName: row.projectName,
-                state: SessionStateWord.of(record: row.record, live: state, awaitingOpenApproval: awaiting.contains(id)),
-                face: Self.face(of: state), lastActivityAt: row.record.lastActivityAt)
+            summary(of: row, live: live, awaiting: awaiting)
         }
+    }
+
+    /// What `whoami` answers: this session, its opener and the sessions it opened, all read once. Nil when the session is not in
+    /// the catalog (a run whose card is gone).
+    public func whoAmI(_ sessionID: UUID) async throws -> SessionWhoAmI? {
+        guard let own = try await catalog.directoryRow(id: sessionID) else { return nil }
+        var opener: CatalogDirectoryRow?
+        if let openerID = own.record.openedBy { opener = try await catalog.directoryRow(id: openerID) }
+        let opened = try await catalog.directoryRows(project: nil, excluding: [], limit: SessionQuery.maxLimit,
+                                                     openedBy: sessionID)
+        let live = await events.snapshot().sessions
+        let awaiting = Set(await openRequests().filter(Self.needsUser).map(\.requesterID))
+        guard let ownSummary = summary(of: own, live: live, awaiting: awaiting) else { return nil }
+        return SessionWhoAmI(
+            session: ownSummary,
+            opener: opener.flatMap { summary(of: $0, live: live, awaiting: awaiting) },
+            opened: opened.compactMap { summary(of: $0, live: live, awaiting: awaiting) }
+        )
+    }
+
+    private func summary(of row: CatalogDirectoryRow, live: [UUID: SessionViewState],
+                         awaiting: Set<UUID>) -> SessionSummary? {
+        guard let harness = SessionHarness(row.record.session.provider) else { return nil }
+        let id = row.record.session.id
+        let state = live[id]
+        return SessionSummary(
+            id: id, harness: harness, title: row.record.title,
+            projectID: row.record.projectID, projectName: row.projectName,
+            state: SessionStateWord.of(record: row.record, live: state,
+                                       awaitingOpenApproval: awaiting.contains(id)),
+            face: Self.face(of: state), lastActivityAt: row.record.lastActivityAt,
+            openedBy: row.record.openedBy)
     }
 
     /// The face of a live run (from the run endpoint); nil without a run.

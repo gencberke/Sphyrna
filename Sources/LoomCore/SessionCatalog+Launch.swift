@@ -22,7 +22,9 @@ extension SessionCatalog {
 
     /// Records the choices that are set; one that is nil keeps its stored value. The session's project remembers them for its
     /// next session (`lastUsedLaunchChoices`): a start and a live change of mode, model or effort count alike.
-    public func recordLaunchChoices(_ choices: ClaudeLaunchChoices, sessionID: UUID) throws {
+    /// `rememberingInProject` false keeps a session an agent opened out of that memory (Q3, D-103).
+    public func recordLaunchChoices(_ choices: ClaudeLaunchChoices, sessionID: UUID,
+                                    rememberingInProject: Bool = true) throws {
         guard !choices.isEmpty else { return }
         try database.transaction {
             try database.withStatement("""
@@ -36,6 +38,7 @@ extension SessionCatalog {
                 try database.bind(sessionID.uuidString, at: 4, to: statement)
                 try database.stepDone(statement, operation: "record launch choices")
             }
+            guard rememberingInProject else { return }
             // A session this catalog does not have remembers nothing.
             let key: String? = try database.withStatement("SELECT project_id FROM sessions WHERE id = ?") { statement in
                 try database.bind(sessionID.uuidString, at: 1, to: statement)

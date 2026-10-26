@@ -8,13 +8,17 @@ import Foundation
 /// validation error; 3 Sphyrna unreachable or not inside a Sphyrna session.
 public enum OpenSessionCommand {
     public static let usage = """
-        usage: "$LOOM_CLI" open --title <title> [--project <name|path>] \
-        (--message-file <path> | --message -)
+        usage: "$SPHYRNA_CLI" open --title <title> [--project <name|path>] [--model <model>] [--effort <level>] \
+        [--mode <mode>] (--message-file <path> | --message -)
 
           --title <title>         session title, 1-160 characters
           --ticket <key>          accepted and ignored, so older agent rules keep running; Sphyrna keeps no
                                   tracker keys, and open always starts a new session
           --project <name|path>   a Sphyrna project by exact name or path (default: this session's project)
+          --model <model>         a Claude model alias or id (default: Claude's own)
+          --effort <level>        low, medium, high, xhigh or max (default: Claude's own)
+          --mode <mode>           default (Ask before edits), acceptEdits, plan or auto; Full access is
+                                  never an agent's choice. Without --mode the session takes Sphyrna's default.
           --message-file <path>   file with the first message (UTF-8, at most 64 KiB)
           --message -             read the first message from standard input
 
@@ -26,7 +30,7 @@ public enum OpenSessionCommand {
         """
 
     /// The top-level help: every command.
-    public static let overview = usage + "\n\n" + sessionsUsage
+    public static let overview = usage + "\n\n" + sessionsUsage + "\n\n" + whoAmIUsage
 
     public struct Output {
         public var standardOutput: (String) -> Void
@@ -46,6 +50,10 @@ public enum OpenSessionCommand {
         case "open": break
         case "sessions":
             return runSessions(
+                arguments: Array(arguments.dropFirst()), environment: environment, output: output
+            )
+        case "whoami":
+            return runWhoAmI(
                 arguments: Array(arguments.dropFirst()), environment: environment, output: output
             )
         default:
@@ -83,7 +91,8 @@ public enum OpenSessionCommand {
         let input: OpenSessionInput
         do {
             input = try OpenSessionInput.validated(
-                title: parsed.title ?? "", project: parsed.project, message: message
+                title: parsed.title ?? "", project: parsed.project, message: message,
+                model: parsed.model, effort: parsed.effort, mode: parsed.mode
             )
         } catch {
             output.standardError("error: \(error)")
@@ -100,7 +109,8 @@ public enum OpenSessionCommand {
                 OpenSessionWireRequest(
                     authenticationToken: connection.token, sessionID: connection.sessionID,
                     managedRunID: connection.runID,
-                    title: input.title, project: input.project, message: input.message
+                    title: input.title, project: input.project, message: input.message,
+                    model: input.model, effort: input.effort, mode: input.mode
                 ),
                 socketPath: connection.socketPath, replyTimeout: replyTimeout
             )
@@ -138,6 +148,9 @@ public enum OpenSessionCommand {
     struct ParsedArguments {
         var title: String?
         var project: String?
+        var model: String?
+        var effort: String?
+        var mode: String?
         var messageFile: String?
         var messageFromStandardInput = false
         var help = false
@@ -179,7 +192,7 @@ public enum OpenSessionCommand {
                 result.help = true
                 continue
             }
-            guard ["--title", "--ticket", "--project", "--message-file", "--message"].contains(name) else {
+            guard ["--title", "--ticket", "--project", "--model", "--effort", "--mode", "--message-file", "--message"].contains(name) else {
                 throw OpenSessionRejection("unknown option \"\(name)\"")
             }
             guard seen.insert(name).inserted else {
@@ -193,6 +206,9 @@ public enum OpenSessionCommand {
             case "--title": result.title = value
             case "--ticket": break // accepted and ignored (D-69)
             case "--project": result.project = value
+            case "--model": result.model = value
+            case "--effort": result.effort = value
+            case "--mode": result.mode = value
             case "--message-file": result.messageFile = value
             default:
                 guard value == "-" else {

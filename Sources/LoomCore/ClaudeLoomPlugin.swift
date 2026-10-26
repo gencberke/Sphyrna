@@ -7,8 +7,8 @@ import Foundation
 public enum ClaudeLoomPlugin {
     static let manifest = """
         {
-          "name": "loom",
-          "version": "1.1.0",
+          "name": "sphyrna",
+          "version": "1.2.0",
           "description": "Sphyrna, the desktop app hosting this session: list its other sessions and open another with a first message.",
           "author": { "name": "Sphyrna" }
         }
@@ -23,34 +23,31 @@ public enum ClaudeLoomPlugin {
 
         # Sessions in Sphyrna
 
-        This session runs inside Sphyrna, the desktop app that hosts it. `"$LOOM_CLI"` has two commands.
+        This session runs inside Sphyrna, the app that hosts it. `"$SPHYRNA_CLI"` is the way between its sessions;
+        Claude's own cross-session messages are refused.
 
-        ## List sessions
+        ## List and identify
 
-        `"$LOOM_CLI" sessions` prints the user's other sessions, newest first, tab-separated: id, state, harness,
-        face, last activity (UTC), project, title. It holds no session content. It lists this session's project;
-        `--project <name|path>` picks another, `--all` every project, `--limit <n>` (default 20) sets the count,
-        `--json` prints JSON. Do not guess an id.
+        `"$SPHYRNA_CLI" sessions` prints the user's other sessions, tab-separated: id, state, harness, face, last
+        activity (UTC), project, title, opened by; no session content. It lists this session's project;
+        `--project <name|path>`, `--all`, `--limit <n>` and `--json` widen it.
+
+        `"$SPHYRNA_CLI" whoami` prints this session's id, state, project and title, its opener, and the sessions it
+        opened. Do not guess an id.
 
         ## Open another session
 
-        `"$LOOM_CLI" open` asks Sphyrna to open a new top-level Claude session with a first message. Nothing starts
-        until the user approves it in Sphyrna.
+        `"$SPHYRNA_CLI" open --help` lists the flags, including `--model`, `--effort` and `--mode`. `open` asks
+        Sphyrna to open a new top-level Claude session with a first message; nothing starts until the user approves
+        it. Full access is never yours to pick.
 
-        1. Write the first message to a file. The new session sees nothing of this one: give the goal, the
-           context, and where to start.
-        2. Run it (it waits up to 85 seconds for the user's answer):
-
-           ```bash
-           "$LOOM_CLI" open --title "<short topic>" --message-file <file>
-           ```
-
-           `--project <name|path>` picks another Sphyrna project; `--message -` reads standard input.
-        3. Act on the result line:
-           - `started <id> "<title>"`: it runs. Tell the user; do not also do that work here.
-           - `pending: ...`: no answer yet; the request stays in Sphyrna. Tell the user; do not ask again.
-           - `denied`: the user said no. Do not retry.
-           - `error: ...`: report it. Exit code 3 means Sphyrna cannot be reached from here.
+        1. Write the first message to a file: the new session sees nothing of this one, so give the goal, context and
+           where to start.
+        2. Run `"$SPHYRNA_CLI" open --title "<topic>" --message-file <file>` (`--message -` reads stdin); it waits up
+           to 85 seconds.
+        3. Act on the result: `started <id> "<title>"` (tell the user; do not duplicate it), `pending: ...` (no answer;
+           tell the user, do not ask again), `denied` (do not retry), `error: ...` (report it; exit 3 means Sphyrna is
+           unreachable).
 
         `open` always starts a new session; to reuse one, find it with `sessions` and ask the user first.
 
@@ -70,7 +67,7 @@ public enum ClaudeLoomPlugin {
         """
 
     /// The name `outputStyle` takes for `askStyle`: `<plugin>:<style>`.
-    public static let askStyleName = "loom:Ask"
+    public static let askStyleName = "sphyrna:Ask"
 
     /// Writes the plugin into `directory` (created when missing); a file that already has this content is left
     /// alone. Returns the folder to pass as `--plugin-dir`.

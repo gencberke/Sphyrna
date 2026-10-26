@@ -32,9 +32,16 @@ public struct OpenSessionInput: Equatable, Sendable {
     public let title: String
     public let project: String?
     public let message: String
+    /// The model the agent asked for (`--model`), a safe token; nil leaves it to the CLI.
+    public let model: String?
+    /// The effort the agent asked for (`--effort`), one of `ClaudeLaunchChoices.effortLevels`; nil leaves it to the CLI.
+    public let effort: String?
+    /// The mode the agent asked for (`--mode`), one of `ClaudeLaunchChoices.openedModes`; nil takes Sphyrna's default.
+    public let mode: String?
 
     public static func validated(
-        title: String, project: String?, message: String
+        title: String, project: String?, message: String,
+        model: String? = nil, effort: String? = nil, mode: String? = nil
     ) throws -> OpenSessionInput {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { throw OpenSessionRejection("the title is empty") }
@@ -56,7 +63,51 @@ public struct OpenSessionInput: Equatable, Sendable {
         guard message.utf8.count <= OpenSessionLimits.messageByteLimit else {
             throw OpenSessionRejection("the message is larger than 64 KiB")
         }
-        return OpenSessionInput(title: trimmedTitle, project: projectName, message: message)
+        return OpenSessionInput(
+            title: trimmedTitle, project: projectName, message: message,
+            model: try validatedModel(model), effort: try validatedEffort(effort), mode: try validatedMode(mode)
+        )
+    }
+
+    /// A `--model` value: a safe token for the CLI, or nil.
+    public static func validatedModel(_ model: String?) throws -> String? {
+        guard let raw = model else { return nil }
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ClaudeLaunchChoices.isSafeToken(value) else {
+            throw OpenSessionRejection("the model is not a safe model name")
+        }
+        return value
+    }
+
+    /// An `--effort` value: one of Claude's five levels, or nil.
+    public static func validatedEffort(_ effort: String?) throws -> String? {
+        guard let raw = effort else { return nil }
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ClaudeLaunchChoices.effortLevels.contains(value) else {
+            throw OpenSessionRejection(
+                "the effort must be one of \(ClaudeLaunchChoices.effortLevels.joined(separator: ", "))"
+            )
+        }
+        return value
+    }
+
+    /// A `--mode` value: one of the four modes an agent may pick (Q3), or nil. Full access is refused by name, so the agent
+    /// reads why instead of guessing.
+    public static func validatedMode(_ mode: String?) throws -> String? {
+        guard let raw = mode else { return nil }
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value == ClaudePermissionMode.fullAccess.rawValue {
+            throw OpenSessionRejection("Full access is never an agent's choice; pick Ask before edits, Accept edits, Plan or Auto")
+        }
+        guard ClaudeLaunchChoices.openedModes.contains(where: { $0.rawValue == value }) else {
+            throw OpenSessionRejection("the mode must be one of default (Ask before edits), acceptEdits, plan or auto")
+        }
+        return value
+    }
+
+    /// The choices an opened session starts with, as the catalog records them.
+    public var choices: ClaudeLaunchChoices {
+        ClaudeLaunchChoices(permissionMode: mode, model: model, effort: effort)
     }
 
     /// A `--project` value (name or path) after the rules; nil stays nil. Shared by `open` and `sessions`.
@@ -133,6 +184,10 @@ struct OpenSessionWireRequest: Codable, Sendable {
     var title: String
     var project: String?
     var message: String
+    /// Optional so the helpers of 1.7.0 and older still decode: they send none.
+    var model: String? = nil
+    var effort: String? = nil
+    var mode: String? = nil
 }
 
 /// A request that passed the token check.
@@ -142,6 +197,21 @@ struct OpenSessionCall: Sendable {
     let title: String
     let project: String?
     let message: String
+    let model: String?
+    let effort: String?
+    let mode: String?
+
+    init(sessionID: UUID, managedRunID: UUID, title: String, project: String?, message: String,
+         model: String? = nil, effort: String? = nil, mode: String? = nil) {
+        self.sessionID = sessionID
+        self.managedRunID = managedRunID
+        self.title = title
+        self.project = project
+        self.message = message
+        self.model = model
+        self.effort = effort
+        self.mode = mode
+    }
 }
 
 // MARK: Client (blocking; the command process)
@@ -198,11 +268,13 @@ enum OpenSessionClient {
 final class OpenSessionControlServer: @unchecked Sendable {
     typealias Handler = @Sendable (OpenSessionCall) async -> OpenSessionReply
     typealias SessionsHandler = @Sendable (SessionListCall) async -> SessionListReply
+    typealias WhoAmIHandler = @Sendable (WhoAmICall) async -> WhoAmIReply
 
     private let socketPath: String
     private let authenticationToken: String
     private let handler: Handler
     private let sessionsHandler: SessionsHandler?
+    private let whoAmIHandler: WhoAmIHandler?
     // A session is waiting on this answer, so the queues do not run at utility priority: in a process that
     // is CPU-bound at higher priority (the full test target) utility work waited more than 10 s for a CPU.
     private let acceptQueue = DispatchQueue(label: "dev.loom.open-session.accept", qos: .userInitiated)
@@ -218,7 +290,7 @@ final class OpenSessionControlServer: @unchecked Sendable {
     private static let requestDeadline: TimeInterval = 5
 
     init(socketPath: String, authenticationToken: String, sessions: SessionsHandler? = nil,
-         handler: @escaping Handler) throws {
+         whoAmI: WhoAmIHandler? = nil, handler: @escaping Handler) throws {
         guard !authenticationToken.isEmpty else {
             throw ClaudeHookTransportError.invalidConfiguration("empty authentication token")
         }
@@ -226,6 +298,7 @@ final class OpenSessionControlServer: @unchecked Sendable {
         self.authenticationToken = authenticationToken
         self.handler = handler
         sessionsHandler = sessions
+        whoAmIHandler = whoAmI
         let descriptor = try LocalSocket.listen(at: socketPath)
         let source = DispatchSource.makeReadSource(fileDescriptor: descriptor, queue: acceptQueue)
         source.setEventHandler { [weak self] in self?.acceptAvailable(descriptor: descriptor) }
@@ -281,6 +354,10 @@ final class OpenSessionControlServer: @unchecked Sendable {
         finish(connection, encoded: try? SessionListCoding.encoder().encode(reply))
     }
 
+    private func finish(_ connection: Int32, _ reply: WhoAmIReply) {
+        finish(connection, encoded: try? SessionListCoding.encoder().encode(reply))
+    }
+
     private func finish(_ connection: Int32, encoded: Data?) {
         if let data = encoded {
             try? LocalSocket.writeAll(
@@ -303,13 +380,18 @@ final class OpenSessionControlServer: @unchecked Sendable {
         } catch {
             return finish(connection, nil)
         }
-        // Version 1 is `open` (what older helpers send); version 2 carries a `command`.
+        // Version 1 is `open` (what older helpers send); version 2 carries `sessions`; version 3 carries `whoami`.
         guard let wire = try? JSONDecoder().decode(OpenSessionWireRequest.self, from: data),
               wire.version == OpenSessionWireRequest.protocolVersion else {
             if let list = try? JSONDecoder().decode(SessionListWireRequest.self, from: data),
                list.version == SessionListWireRequest.protocolVersion,
                list.command == SessionListWireRequest.commandName {
                 return serve(connection: connection, list: list)
+            }
+            if let who = try? JSONDecoder().decode(WhoAmIWireRequest.self, from: data),
+               who.version == WhoAmIWireRequest.protocolVersion,
+               who.command == WhoAmIWireRequest.commandName {
+                return serve(connection: connection, who: who)
             }
             return finish(connection, OpenSessionReply(status: .invalid, detail: "the request is malformed"))
         }
@@ -320,7 +402,8 @@ final class OpenSessionControlServer: @unchecked Sendable {
         }
         let call = OpenSessionCall(
             sessionID: wire.sessionID, managedRunID: wire.managedRunID, title: wire.title,
-            project: wire.project, message: wire.message
+            project: wire.project, message: wire.message,
+            model: wire.model, effort: wire.effort, mode: wire.mode
         )
         let handler = self.handler
         Task.detached(priority: .userInitiated) { [self] in
@@ -343,6 +426,23 @@ final class OpenSessionControlServer: @unchecked Sendable {
             sessionID: list.sessionID, managedRunID: list.managedRunID, project: list.project,
             all: list.all, limit: list.limit
         )
+        Task.detached(priority: .userInitiated) { [self] in
+            finish(connection, await handler(call))
+        }
+    }
+
+    private func serve(connection: Int32, who: WhoAmIWireRequest) {
+        guard secureEqual(who.authenticationToken, authenticationToken) else {
+            return finish(connection, WhoAmIReply(
+                status: .unavailable, detail: "this process is not part of a live Sphyrna session"
+            ))
+        }
+        guard let handler = whoAmIHandler else {
+            return finish(connection, WhoAmIReply(
+                status: .unavailable, detail: "this Sphyrna does not know its sessions"
+            ))
+        }
+        let call = WhoAmICall(sessionID: who.sessionID, managedRunID: who.managedRunID)
         Task.detached(priority: .userInitiated) { [self] in
             finish(connection, await handler(call))
         }

@@ -31,39 +31,56 @@ public struct SessionOrigin: Equatable, Sendable {
     public var accessibilityPhrase: String { "opened by " + requester }
 }
 
-/// What the request box shows for one request, as plain values (the view only draws them). Kept
-/// apart from the view so each kind and phase can be checked without a window.
+/// What the request card shows for one request, as plain values (the view only draws them). Kept apart from the view so each
+/// kind and phase can be checked without a window. The card reads as the session it will become (FB6-24): its requester, the
+/// title, the harness, model, effort, mode and project in one mono line, then the first three lines of the message.
 struct OpenRequestBoxContent: Equatable {
-    enum Action: Equatable { case deny, openSession, dismiss }
+    enum Action: Hashable { case deny, openSession, dismiss }
 
     /// A "preview" of the first message: this many lines, shown before "Show full message".
-    static let previewLineLimit = 4
+    static let previewLineLimit = 3
     /// A single very long line is cut here in the preview (the full text is one click away).
     static let previewCharacterLimit = 480
 
-    struct Line: Equatable {
-        let label: String
-        let value: String
-    }
-
-    let heading: String
-    /// Project and title of the request.
-    let lines: [Line]
+    let heading = "Open a new session?"
+    /// "from <requester>", in mono on the heading's trailing side.
+    let requester: String
+    /// "1 of 3" when several requests wait, oldest first; nil for one.
+    let counter: String?
+    /// The title of the session that will open.
+    let title: String
+    /// The choices the session starts with, as the user reads them: a missing choice is Sphyrna's default.
+    let model: String
+    let effort: String
+    let mode: String
+    let projectName: String
     /// The first lines of the message.
     let preview: String
     /// More message than the preview shows: "Show full message" is offered.
     let hasMore: Bool
     let message: String
-    /// "Opening…" while the approved session starts.
+    /// "Opening…" while the approved session starts; the view draws a spinner in the accent button's place instead.
     let status: String?
+    /// The approved session is starting: the buttons are disabled and the spinner takes the accent button's place.
+    let showsSpinner: Bool
     let failure: String?
     let actions: [Action]
     /// The buttons are shown but cannot be pressed (the session is starting).
     let actionsDisabled: Bool
 
-    init(_ request: OpenSessionRequest) {
-        heading = "Open a new session?"
-        lines = [Line(label: "Project", value: request.projectName), Line(label: "Title", value: request.title)]
+    /// `defaults` is what Sphyrna will use for a choice the agent left nil (`CatalogModel.draftStartChoices(projectID:)`).
+    /// `position` and `count` are the card's place among the requests of this session, oldest first.
+    init(_ request: OpenSessionRequest, defaults: ClaudeLaunchChoices = ClaudeLaunchChoices(),
+         position: Int = 1, count: Int = 1) {
+        requester = "from " + (request.requesterTitle ?? SessionOrigin.unknownRequester)
+        counter = count > 1 ? "\(position) of \(count)" : nil
+        title = request.title
+        model = (request.choices.model ?? defaults.model).map(ModelCatalog.claudeTitle(of:)) ?? "Default model"
+        effort = request.choices.effort ?? defaults.effort ?? "Default effort"
+        let rawMode = request.choices.permissionMode ?? defaults.permissionMode
+            ?? ClaudePermissionMode.askBeforeEdits.rawValue
+        mode = ClaudePermissionMode.title(forRaw: rawMode)
+        projectName = request.projectName
         let split = Self.preview(of: request.message)
         preview = split.text
         hasMore = split.truncated
@@ -71,16 +88,19 @@ struct OpenRequestBoxContent: Equatable {
         switch request.phase {
         case .waiting:
             status = nil
+            showsSpinner = false
             failure = nil
             actions = [.deny, .openSession]
             actionsDisabled = false
         case .starting:
             status = "Opening…"
+            showsSpinner = true
             failure = nil
             actions = [.deny, .openSession]
             actionsDisabled = true
         case let .failed(text):
             status = nil
+            showsSpinner = false
             failure = text
             actions = [.dismiss]
             actionsDisabled = false
@@ -101,6 +121,28 @@ struct OpenRequestBoxContent: Equatable {
     }
 }
 
+/// One answered request, folded to a one-line notice for `LoomTheme.OpenRequest.foldLinger`: "Opened: <title>" with a way to
+/// the new session, or "Denied: <title>". A dismissed failure just goes: there is nothing to report.
+struct OpenRequestFold: Identifiable, Equatable {
+    enum Outcome: Equatable { case opened, denied }
+
+    /// The answered request's id.
+    let id: UUID
+    let outcome: Outcome
+    let title: String
+    /// The session whose agent asked: the opened session is found by its origin and title.
+    let requesterID: UUID
+
+    var text: String {
+        switch outcome {
+        case .opened: "Opened: " + title
+        case .denied: "Denied: " + title
+        }
+    }
+
+    var showsGoToSession: Bool { outcome == .opened }
+}
+
 extension OpenSessionRequest {
     /// The requester's card needs the user: a request nobody answered, or one that failed to
     /// start (its box stays until dismissed). A request that is starting does not.
@@ -108,6 +150,16 @@ extension OpenSessionRequest {
         switch phase {
         case .waiting, .failed: return true
         case .starting: return false
+        }
+    }
+
+    /// What answering this request folds to (FB6-24): an approved request was starting and is now gone, so its session
+    /// exists; a request that left while it still waited was denied. A failed request that was dismissed folds to nothing.
+    var answeredFold: OpenRequestFold.Outcome? {
+        switch phase {
+        case .waiting: return .denied
+        case .starting: return .opened
+        case .failed: return nil
         }
     }
 }

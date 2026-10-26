@@ -224,10 +224,10 @@ struct OpenSessionLaunchProfileTests {
         let skill = try String(contentsOf: skillFile, encoding: .utf8)
         let manifest = try #require(try JSONSerialization.jsonObject(
             with: Data(contentsOf: folder.appendingPathComponent(".claude-plugin/plugin.json"))) as? [String: Any])
-        #expect(manifest["name"] as? String == "loom")
+        #expect(manifest["name"] as? String == "sphyrna")
         #expect(skill.hasPrefix("---\nname: open-session\ndescription: "))
         // Every option and result line the skill names is one the command has.
-        for word in ["\"$LOOM_CLI\" open", "--title", "--project", "--message-file", "--message -",
+        for word in ["\"$SPHYRNA_CLI\" open", "--title", "--project", "--message-file", "--message -",
                      "started <", "pending: ...", "denied", "error: "] {
             #expect(OpenSessionCommand.usage.contains(word), "usage lacks \(word)")
             #expect(skill.contains(word), "skill lacks \(word)")
@@ -299,7 +299,7 @@ struct OpenSessionCommandTests {
         for arguments in [["--help"], ["open", "--help"], ["open", "--title", "x", "--help"]] {
             let (code, out) = await run(arguments, environment: [:])
             #expect(code == 0, "\(arguments)")
-            #expect(out.stdout.joined().contains("usage: \"$LOOM_CLI\" open --title"))
+            #expect(out.stdout.joined().contains("usage: \"$SPHYRNA_CLI\" open --title"))
         }
     }
 
@@ -557,10 +557,61 @@ struct OpenSessionRuntimeTests {
         #expect(FileManager.default.fileExists(atPath: plugin.appendingPathComponent("skills/open-session/SKILL.md").path))
     }
 
+    @Test func anOpenedSessionWithoutItsOwnModeTakesSphyrnasDefaultAndLeavesTheProjectsLastUsedAlone() async throws {
+        let (script, directory) = try stub()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let context = try await SessionRuntimeTests.makeContext(
+            executableOverride: script, extraClaudeHelp: " --permission-mode <mode>",
+            defaultOpenedMode: { _ in "plan" }
+        )
+        defer { context.cleanup() }
+        let folder = context.root.appendingPathComponent("project", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let project = try await context.catalog.addProject(path: folder.path).project
+        let requester = try await context.runtime.startConversation(provider: .claude, projectID: project.id)
+        let hooks = try #require(await context.runtime.hookConfiguration)
+        let control = try #require(hooks.controlSocketPath)
+        let token = hooks.authenticationToken
+
+        func ask(_ title: String, mode: String?) -> Task<OpenSessionReply, any Error> {
+            let request = OpenSessionWireRequest(
+                authenticationToken: token, sessionID: requester.sessionID, managedRunID: requester.runID,
+                title: title, project: nil, message: "go", mode: mode
+            )
+            return Task.detached { try OpenSessionClient.exchange(request, socketPath: control) }
+        }
+        func approveNext() async throws -> RuntimeLaunch {
+            #expect(await SessionRuntimeTests.waitUntil { await context.runtime.openRequestSnapshot().count == 1 })
+            let entry = try #require(await context.runtime.openRequestSnapshot().first)
+            return try await context.runtime.approveOpenRequest(entry.id)
+        }
+
+        // No `--mode`: the session starts in Sphyrna's default, as a draft does.
+        let defaulted = ask("Defaulted", mode: nil)
+        let first = try await approveNext()
+        #expect(try await defaulted.value.status == .started)
+        let argv = try #require(await arguments(of: first.sessionID, in: context))
+        let index = try #require(argv.firstIndex(of: "--permission-mode"))
+        #expect(argv[index + 1] == "plan")
+        #expect(try await context.catalog.launchChoices(sessionID: first.sessionID).permissionMode == "plan")
+        // An agent's pick is not the project's "last used": the next draft keeps its own default.
+        #expect(try await context.catalog.lastUsedLaunchChoices()[project.id.uuidString] == nil)
+
+        // The agent's own mode wins over the default.
+        let chosen = ask("Chosen", mode: ClaudePermissionMode.acceptEdits.rawValue)
+        let second = try await approveNext()
+        #expect(try await chosen.value.status == .started)
+        let chosenArgv = try #require(await arguments(of: second.sessionID, in: context))
+        let chosenIndex = try #require(chosenArgv.firstIndex(of: "--permission-mode"))
+        #expect(chosenArgv[chosenIndex + 1] == ClaudePermissionMode.acceptEdits.rawValue)
+        #expect(try await context.catalog.lastUsedLaunchChoices()[project.id.uuidString] == nil)
+    }
+
     @Test func approvingARequestStartsANormalSessionWithTheNameTheMessageAndItsOrigin() async throws {
         let (script, directory) = try stub()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let context = try await SessionRuntimeTests.makeContext(executableOverride: script)
+        let context = try await SessionRuntimeTests.makeContext(
+            executableOverride: script, extraClaudeHelp: " --permission-mode <mode>")
         defer { context.cleanup() }
         let folder = context.root.appendingPathComponent("project", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

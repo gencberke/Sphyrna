@@ -4,7 +4,7 @@ import Foundation
 /// holds what the directory knows (id, title, project, state, harness, face, last activity), never a session's content.
 extension OpenSessionCommand {
     public static let sessionsUsage = """
-        usage: "$LOOM_CLI" sessions [--project <name|path> | --all] [--limit <n>] [--json]
+        usage: "$SPHYRNA_CLI" sessions [--project <name|path> | --all] [--limit <n>] [--json]
 
         Lists the user's other Sphyrna sessions, newest activity first, read-only. This session is not listed.
 
@@ -15,15 +15,26 @@ extension OpenSessionCommand {
 
         Without --project or --all the list is this session's project; a session that is in no project must say
         --all or --project. The table has a header line, then one line per session, tab-separated:
-          id  state  harness  face  last-activity  project  title
+          id  state  harness  face  last-activity  project  title  opened-by
         state is working, needs-approval, waiting, failed, problem, finished, ready, idle, stale, stopped or unknown;
         harness is claude or codex; face is terminal or chat, "-" when the session is not running; last-activity is
-        ISO 8601 in UTC; project is "-" without one; title is in double quotes ("" when it has none).
-        With --json the keys are id, harness, title, projectID, projectName, state, face and lastActivityAt (a key
-        is left out when it has no value). Exit codes: 0 listed, 2 bad request, 3 Sphyrna unreachable.
+        ISO 8601 in UTC; project is "-" without one; title is in double quotes ("" when it has none); opened-by is the
+        requester's id, "-" for a session the user started.
+        With --json the keys are id, harness, title, projectID, projectName, state, face, lastActivityAt and openedBy
+        (a key is left out when it has no value). Exit codes: 0 listed, 2 bad request, 3 Sphyrna unreachable.
         """
 
-    static let sessionsColumns = ["id", "state", "harness", "face", "last-activity", "project", "title"]
+    /// `"$SPHYRNA_CLI" whoami`: this session, its opener and the sessions it opened (FB6-16 part 1).
+    public static let whoAmIUsage = """
+        usage: "$SPHYRNA_CLI" whoami [--json]
+
+        What this session is, read-only and with no session content: id, state, project and title, its opener (id,
+        title and state; "-" when the user started it) and the sessions it opened. `--json` writes one object with
+        the keys session, opener and opened, each a session summary as `sessions --json` writes it.
+        Exit codes: 0 answered, 2 bad request, 3 Sphyrna unreachable.
+        """
+
+    static let sessionsColumns = ["id", "state", "harness", "face", "last-activity", "project", "title", "opened-by"]
 
     struct SessionsArguments: Equatable {
         var project: String?
@@ -137,9 +148,77 @@ extension OpenSessionCommand {
                 session.id.uuidString.lowercased(), session.state.rawValue, session.harness.rawValue,
                 session.face?.rawValue ?? "-", formatter.string(from: session.lastActivityAt),
                 session.projectName.map(singleLine) ?? "-", quoted(session.title ?? ""),
+                session.openedBy?.uuidString.lowercased() ?? "-",
             ].joined(separator: "\t")
         }
         return ([sessionsColumns.joined(separator: "\t")] + rows).joined(separator: "\n")
+    }
+
+    static func runWhoAmI(arguments: [String], environment: [String: String], output: Output) -> Int32 {
+        var json = false
+        for argument in arguments {
+            switch argument {
+            case "--json": json = true
+            case "--help", "-h":
+                output.standardOutput(whoAmIUsage)
+                return 0
+            default:
+                output.standardError("error: unknown option \"\(argument)\"\n\(whoAmIUsage)")
+                return 2
+            }
+        }
+        guard let connection = Connection(environment: environment) else {
+            output.standardOutput(Connection.missing)
+            return 3
+        }
+        let reply: WhoAmIReply
+        do {
+            reply = try OpenSessionClient.exchange(
+                WhoAmIWireRequest(
+                    authenticationToken: connection.token, sessionID: connection.sessionID,
+                    managedRunID: connection.runID
+                ),
+                socketPath: connection.socketPath
+            )
+        } catch {
+            output.standardOutput("error: Sphyrna could not be reached or did not answer (\(error))")
+            return 3
+        }
+        guard reply.status == .ok, let who = reply.who else {
+            output.standardOutput("error: \(reply.detail ?? "the request was not accepted")")
+            return reply.exitCode
+        }
+        if json {
+            guard let data = try? SessionListCoding.encoder().encode(who) else {
+                output.standardOutput("error: the answer could not be written")
+                return 3
+            }
+            output.standardOutput(String(decoding: data, as: UTF8.self))
+        } else {
+            output.standardOutput(whoAmITable(who))
+        }
+        return 0
+    }
+
+    /// Key lines for this session, then one line per session it opened.
+    static func whoAmITable(_ who: SessionWhoAmI) -> String {
+        func line(_ summary: SessionSummary) -> String {
+            "\(summary.id.uuidString.lowercased()) \(summary.state.rawValue) \(quoted(summary.title ?? ""))"
+        }
+        let own = who.session
+        var lines = [
+            "id: \(own.id.uuidString.lowercased())",
+            "state: \(own.state.rawValue)",
+            "project: \(own.projectName.map(singleLine) ?? "-")",
+            "title: \(quoted(own.title ?? ""))",
+            "opened-by: \(who.opener.map(line) ?? "-")",
+        ]
+        if who.opened.isEmpty {
+            lines.append("opened: none")
+        } else {
+            lines += who.opened.map { "opened: " + line($0) }
+        }
+        return lines.joined(separator: "\n")
     }
 
     private static func singleLine(_ text: String) -> String {

@@ -295,8 +295,10 @@ public struct ProviderLaunchProfile: Sendable {
         if let hooks {
             env["LOOM_HOOK_SOCKET"] = hooks.socketPath
             env["LOOM_HOOK_TOKEN"] = hooks.authenticationToken
-            // The bundled helper doubles as the agent's way to ask for another session (D-40).
+            // The bundled helper doubles as the agent's way to ask for another session (D-40). `SPHYRNA_CLI` is the name the
+            // skill uses (FB6-17); `LOOM_CLI` stays for agents of 1.7.0 and the rules they saved.
             env["LOOM_CLI"] = hooks.helperPath
+            env["SPHYRNA_CLI"] = hooks.helperPath
             if let control = hooks.controlSocketPath { env["LOOM_CONTROL_SOCKET"] = control }
         }
         // Loom's skill for `"$LOOM_CLI" open` (D-42); a Claude without the option runs without it.

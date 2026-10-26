@@ -46,7 +46,7 @@ import Testing
         let manifest = try #require(JSONSerialization.jsonObject(
             with: Data(contentsOf: root.appendingPathComponent(".claude-plugin/plugin.json"))) as? [String: Any])
         #expect(Set(manifest.keys).isSubset(of: ["name", "version", "description", "author"]), "\(manifest.keys.sorted())")
-        #expect(manifest["name"] as? String == "loom")
+        #expect(manifest["name"] as? String == "sphyrna")
     }
 
     @Test func theSkillAndTheStyleStayWithinTheirBudgets() throws {
@@ -64,7 +64,7 @@ import Testing
         #expect(skill.body.count <= 1_500, "the skill's body: \(skill.body.count) characters")
         // One skill, both verbs, named in the app's name; the manifest says Sphyrna too.
         #expect(description.hasPrefix("This session runs inside Sphyrna") && !description.contains("Loom"))
-        #expect(skill.body.contains("\"$LOOM_CLI\" sessions") && skill.body.contains("\"$LOOM_CLI\" open"))
+        #expect(skill.body.contains("\"$SPHYRNA_CLI\" sessions") && skill.body.contains("\"$SPHYRNA_CLI\" open"))
         #expect(skill.body.contains("no session content"))
         let manifest = try #require(JSONSerialization.jsonObject(
             with: Data(contentsOf: root.appendingPathComponent(".claude-plugin/plugin.json"))) as? [String: Any])

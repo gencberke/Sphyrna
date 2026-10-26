@@ -137,6 +137,41 @@ struct OpenSessionTests {
         #expect(throws: OpenSessionRejection.self) { try check("ok", "  ") }
     }
 
+    @Test func fullAccessIsNeverAnAgentsModeAndAnOpenedSessionTakesTheDefaultsOtherwise() throws {
+        func check(_ mode: String?) throws -> OpenSessionInput {
+            try OpenSessionInput.validated(title: "T", project: nil, message: "go", mode: mode)
+        }
+        // Q3 (D-103): the agent picks model, effort and mode, never Full access; the refusal names it.
+        let parsed = try OpenSessionCommand.parse(
+            ["--title", "T", "--mode", "bypassPermissions", "--message", "-"])
+        #expect(throws: OpenSessionRejection.self) {
+            try OpenSessionInput.validated(
+                title: parsed.title ?? "", project: parsed.project, message: "go",
+                model: parsed.model, effort: parsed.effort, mode: parsed.mode
+            )
+        }
+        #expect(throws: OpenSessionRejection.self) { try check(ClaudePermissionMode.fullAccess.rawValue) }
+        #expect(try check(nil).mode == nil, "no --mode leaves the choice to Sphyrna's default")
+        for mode in ClaudeLaunchChoices.openedModes {
+            let input = try check(mode.rawValue)
+            #expect(input.mode == mode.rawValue)
+            #expect(input.choices.permissionMode == mode.rawValue)
+        }
+        for bad in ["ask", "dontAsk", "yolo"] {
+            #expect(throws: OpenSessionRejection.self, "\(bad)") { try check(bad) }
+        }
+
+        let chosen = try OpenSessionInput.validated(
+            title: "T", project: nil, message: "go", model: " opus ", effort: "high", mode: "plan")
+        #expect(chosen.model == "opus" && chosen.effort == "high" && chosen.mode == "plan")
+        #expect(throws: OpenSessionRejection.self) {
+            try OpenSessionInput.validated(title: "T", project: nil, message: "go", model: "--opus")
+        }
+        #expect(throws: OpenSessionRejection.self) {
+            try OpenSessionInput.validated(title: "T", project: nil, message: "go", effort: "extreme")
+        }
+    }
+
     // MARK: Authentication
 
     @Test func aRequestIsAcceptedOnlyFromTheLiveRunOfItsCardWithTheRunToken() async throws {

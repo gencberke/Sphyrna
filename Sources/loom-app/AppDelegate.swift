@@ -565,7 +565,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // A failed start makes the next one read the CLI again instead of reusing the cache.
             toolchainInvalidator: { provider in await system.invalidate(provider) },
             // Home's Continue lists runs by what the catalog says; it reads again once the open runs are closed.
-            runsRecovered: { await model.runsWereRecovered() }
+            runsRecovered: { await model.runsWereRecovered() },
+            // An opened session whose agent passed no `--mode` takes Sphyrna's default, resolved as the draft resolves it
+            // (Q3, D-103): Settings' fixed mode, else the project's last used, else Ask before edits.
+            defaultOpenedMode: { [weak model] projectID in
+                await MainActor.run { model?.draftStartChoices(projectID: projectID).permissionMode }
+            }
         )
     }
 

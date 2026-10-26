@@ -25,11 +25,12 @@ private final class AnswerRecorder: ConversationIntents {
 }
 
 private func openRequest(
-    requester: UUID = UUID(), phase: OpenSessionRequest.Phase = .waiting, message: String = "Fix the login flow."
+    requester: UUID = UUID(), phase: OpenSessionRequest.Phase = .waiting, message: String = "Fix the login flow.",
+    choices: ClaudeLaunchChoices = ClaudeLaunchChoices()
 ) -> OpenSessionRequest {
     OpenSessionRequest(
         requesterID: requester, requesterTitle: "Planner", projectID: UUID(), projectName: "edd-backend",
-        title: "EDDP-412 Fix login", message: message, phase: phase)
+        title: "EDDP-412 Fix login", message: message, choices: choices, phase: phase)
 }
 
 /// A session opens a session (D-40) at the presentation boundary: what the request box says, how the
@@ -43,29 +44,57 @@ struct OpenRequestTests {
     @Test func theBoxStatesTheRequestAndOffersDenyAndOpenSessionOnlyWhileItWaits() {
         let waiting = OpenRequestBoxContent(openRequest(message: "line 1\nline 2"))
         #expect(waiting.heading == "Open a new session?")
-        #expect(waiting.lines == [.init(label: "Project", value: "edd-backend"),
-                                  .init(label: "Title", value: "EDDP-412 Fix login")])
+        #expect(waiting.requester == "from Planner" && waiting.counter == nil)
+        #expect(waiting.title == "EDDP-412 Fix login" && waiting.projectName == "edd-backend")
+        #expect(waiting.model == "Default model" && waiting.effort == "Default effort"
+                && waiting.mode == "Ask before edits", "a missing choice is Sphyrna's default")
         #expect(waiting.preview == "line 1\nline 2" && !waiting.hasMore)
         #expect(waiting.actions == [.deny, .openSession] && !waiting.actionsDisabled)
-        #expect(waiting.status == nil && waiting.failure == nil)
+        #expect(waiting.status == nil && !waiting.showsSpinner && waiting.failure == nil)
 
         let starting = OpenRequestBoxContent(openRequest(phase: .starting))
-        #expect(starting.status == "Opening…" && starting.actionsDisabled)
+        #expect(starting.status == "Opening…" && starting.showsSpinner && starting.actionsDisabled)
         #expect(starting.actions == [.deny, .openSession])
 
         let failed = OpenRequestBoxContent(openRequest(phase: .failed("Claude could not be started")))
-        #expect(failed.failure == "Claude could not be started")
+        #expect(failed.failure == "Claude could not be started" && !failed.showsSpinner)
         #expect(failed.actions == [.dismiss] && !failed.actionsDisabled)
     }
 
-    @Test func theMessagePreviewIsTheFirstFourLinesWithTheRestOneClickAway() {
+    @Test func theCardReadsAsTheSessionItWillBeWithTheAgentsChoicesOrSphyrnasDefaults() {
+        let asked = openRequest(choices: ClaudeLaunchChoices(permissionMode: "plan", model: "opus", effort: "high"))
+        let content = OpenRequestBoxContent(asked, position: 1, count: 3)
+        #expect(content.counter == "1 of 3", "several requests are one card with a counter, oldest first")
+        #expect(content.model == "Opus" && content.effort == "high" && content.mode == "Plan")
+        #expect(OpenRequestBoxContent(asked, position: 2, count: 3).counter == "2 of 3")
+        #expect(OpenRequestBoxContent(asked, position: 1, count: 1).counter == nil)
+
+        let defaults = ClaudeLaunchChoices(permissionMode: "auto", model: "sonnet", effort: "low")
+        let defaulted = OpenRequestBoxContent(openRequest(), defaults: defaults)
+        #expect(defaulted.model == "Sonnet" && defaulted.effort == "low" && defaulted.mode == "Auto")
+        #expect(defaulted.requester == "from Planner")
+    }
+
+    @Test func anAnsweredRequestFoldsToOneLineAndADismissedFailureDoesNot() {
+        #expect(openRequest(phase: .waiting).answeredFold == .denied)
+        #expect(openRequest(phase: .starting).answeredFold == .opened)
+        #expect(openRequest(phase: .failed("x")).answeredFold == nil, "dismissing a failure reports nothing")
+        let id = UUID()
+        let requester = UUID()
+        let opened = OpenRequestFold(id: id, outcome: .opened, title: "EDDP-412 Fix login", requesterID: requester)
+        #expect(opened.text == "Opened: EDDP-412 Fix login" && opened.showsGoToSession)
+        #expect(OpenRequestFold(id: id, outcome: .denied, title: "Nope", requesterID: requester).text == "Denied: Nope")
+        #expect(!OpenRequestFold(id: id, outcome: .denied, title: "Nope", requesterID: requester).showsGoToSession)
+    }
+
+    @Test func theMessagePreviewIsTheFirstThreeLinesWithTheRestOneClickAway() {
         let six = (1...6).map { "line \($0)" }.joined(separator: "\n")
         let long = OpenRequestBoxContent(openRequest(message: six))
-        #expect(long.preview == "line 1\nline 2\nline 3\nline 4")
+        #expect(long.preview == "line 1\nline 2\nline 3")
         #expect(long.hasMore && long.message == six, "the full message is kept for the scroll area")
 
-        let four = OpenRequestBoxContent(openRequest(message: "a\nb\nc\nd\n\n"))
-        #expect(!four.hasMore, "trailing blank lines are not 'more message'")
+        let three = OpenRequestBoxContent(openRequest(message: "a\nb\nc\n\n"))
+        #expect(!three.hasMore, "trailing blank lines are not 'more message'")
 
         let oneLong = OpenRequestBoxContent(openRequest(message: String(repeating: "x", count: 2_000)))
         #expect(oneLong.preview.count == OpenRequestBoxContent.previewCharacterLimit && oneLong.hasMore)
@@ -222,6 +251,10 @@ struct OpenRequestTests {
 
         let origin = try #require(rig.model.origin(of: child))
         #expect(origin.cardLabel == "from Planner" && origin.replacesBranch, "same branch: the origin takes its place")
+        #expect(rig.model.openedSession(openedBy: rig.requester, title: "EDDP-412 Fix login") == rig.child,
+                "the folded line finds the session the request started")
+        #expect(rig.model.openedSession(openedBy: rig.requester, title: "another title") == nil)
+        #expect(rig.model.openedSession(openedBy: UUID(), title: "EDDP-412 Fix login") == nil)
         let queries = rig.model.statistics.pageQueries
         for _ in 0..<50 { _ = rig.model.origin(of: child) }
         #expect(rig.model.statistics.pageQueries == queries, "drawing a card never queries the catalog")
@@ -330,7 +363,7 @@ struct OpenRequestTests {
                     return ProviderToolchain(
                         provider: provider, executable: fake,
                         capabilities: ProviderCapabilities(
-                            version: "fake", help: "--settings <s> --session-id <i> -n, --name <n> --remote <A>",
+                            version: "fake", help: "--settings <s> --session-id <i> -n, --name <n> --remote <A> --permission-mode <m>",
                             serverHelp: "--listen <U>"),
                         environment: ["PATH": "/usr/bin:/bin", "HOME": home.path, "LOOM_FAKE_STATE": state.path],
                         profileDirectory: root.appendingPathComponent("profile"))

@@ -27,6 +27,87 @@ enum SessionListCoding {
     }
 }
 
+/// What `whoami` answers (FB6-16 part 1): the caller, its opener (nil for a session the user started) and the sessions it
+/// opened, each the directory's summary (no session content).
+public struct SessionWhoAmI: Codable, Equatable, Sendable {
+    public let session: SessionSummary
+    public let opener: SessionSummary?
+    public let opened: [SessionSummary]
+
+    public init(session: SessionSummary, opener: SessionSummary?, opened: [SessionSummary]) {
+        self.session = session
+        self.opener = opener
+        self.opened = opened
+    }
+}
+
+/// Version 3 of the control socket's request: `whoami`.
+struct WhoAmIWireRequest: Codable, Sendable {
+    static let protocolVersion = 3
+    static let commandName = "whoami"
+    var version = Self.protocolVersion
+    var authenticationToken: String
+    var sessionID: UUID
+    var managedRunID: UUID
+    var command = Self.commandName
+}
+
+/// A whoami request that passed the token check.
+struct WhoAmICall: Sendable {
+    let sessionID: UUID
+    let managedRunID: UUID
+}
+
+/// Sphyrna's answer to `whoami`.
+public struct WhoAmIReply: Codable, Equatable, Sendable {
+    public enum Status: String, Codable, Sendable {
+        case ok
+        case invalid
+        case unavailable
+    }
+
+    public let status: Status
+    public let who: SessionWhoAmI?
+    public let detail: String?
+
+    public init(status: Status, who: SessionWhoAmI? = nil, detail: String? = nil) {
+        self.status = status
+        self.who = who
+        self.detail = detail
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decode(Status.self, forKey: .status)
+        who = try container.decodeIfPresent(SessionWhoAmI.self, forKey: .who)
+        detail = try container.decodeIfPresent(String.self, forKey: .detail)
+    }
+
+    public var exitCode: Int32 {
+        switch status {
+        case .ok: 0
+        case .invalid: 2
+        case .unavailable: 3
+        }
+    }
+}
+
+extension OpenSessionClient {
+    /// Sends one `whoami` request and waits for the answer (immediate: nothing waits for the user).
+    static func exchange(
+        _ request: WhoAmIWireRequest, socketPath: String,
+        connectTimeout: TimeInterval = 2, replyTimeout: TimeInterval = 10
+    ) throws -> WhoAmIReply {
+        let data = try JSONEncoder().encode(request)
+        let answer = try roundTrip(raw: data, socketPath: socketPath, connectTimeout: connectTimeout,
+                                   replyTimeout: replyTimeout)
+        guard let reply = try? SessionListCoding.decoder().decode(WhoAmIReply.self, from: answer) else {
+            throw ClaudeHookTransportError.malformedMessage
+        }
+        return reply
+    }
+}
+
 /// Version 2 of the control socket's request: it names a `command`. Version 1 is `open` and is unchanged.
 struct SessionListWireRequest: Codable, Sendable {
     static let protocolVersion = 2

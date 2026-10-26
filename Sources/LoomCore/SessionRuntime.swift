@@ -50,6 +50,9 @@ public struct SessionRuntimeConfiguration: Sendable {
     /// listed sessions by their runs before that (Home's Continue) can read again. The catalog already holds
     /// the closed runs when it is called.
     public var runsRecovered: (@Sendable () async -> Void)?
+    /// The mode an opened session takes when its agent passed no `--mode` (Q3, D-103): Sphyrna's default, read on the main
+    /// actor for the request's project. Nil takes Ask before edits.
+    public var defaultOpenedMode: (@Sendable (UUID?) async -> String?)?
     /// How long a failed capability probe waits before its one retry (`SessionRuntime.toolchain(for:)`).
     public var toolchainProbeRetryPause: Duration
 
@@ -70,6 +73,7 @@ public struct SessionRuntimeConfiguration: Sendable {
         catalogBackupDelay: TimeInterval? = 10,
         toolchainInvalidator: (@Sendable (ManagedSession.Provider) async -> Void)? = nil,
         runsRecovered: (@Sendable () async -> Void)? = nil,
+        defaultOpenedMode: (@Sendable (UUID?) async -> String?)? = nil,
         toolchainProbeRetryPause: Duration = .seconds(1)
     ) {
         self.toolchains = toolchains
@@ -91,6 +95,7 @@ public struct SessionRuntimeConfiguration: Sendable {
         self.catalogBackupDelay = catalogBackupDelay
         self.toolchainInvalidator = toolchainInvalidator
         self.runsRecovered = runsRecovered
+        self.defaultOpenedMode = defaultOpenedMode
         self.toolchainProbeRetryPause = toolchainProbeRetryPause
     }
 }
@@ -175,11 +180,15 @@ public struct SessionOpening: Equatable, Sendable {
     public let firstMessage: String
     /// The session whose agent asked.
     public let openedBy: UUID
+    /// What the agent asked for with `open --model`, `--effort` and `--mode` (Q3, D-103); all nil leaves Loom's defaults.
+    public let choices: ClaudeLaunchChoices
 
-    public init(title: String, firstMessage: String, openedBy: UUID) {
+    public init(title: String, firstMessage: String, openedBy: UUID,
+                choices: ClaudeLaunchChoices = ClaudeLaunchChoices()) {
         self.title = title
         self.firstMessage = firstMessage
         self.openedBy = openedBy
+        self.choices = choices
     }
 }
 
@@ -493,7 +502,13 @@ public actor SessionRuntime {
         launch: (ProviderLaunchProfile) async throws -> T
     ) async throws -> T {
         let hooks = try ensureHooks()
-        let choices = draft?.choices ?? ClaudeLaunchChoices()
+        var choices = draft?.choices ?? opening?.choices ?? ClaudeLaunchChoices()
+        // An opened session takes Sphyrna's default mode when its agent named none (Q3, D-103); the agent's own mode, when it
+        // gave one, wins. Full access never comes from the agent: validation refuses it, and only the user's default can.
+        if opening != nil, choices.permissionMode == nil {
+            choices.permissionMode = await configuration.defaultOpenedMode?(projectID)
+                ?? ClaudePermissionMode.askBeforeEdits.rawValue
+        }
         // Validated before the card exists: an unsupported CLI leaves nothing behind.
         let profile = try claudeProfile(
             route: .new(sessionID), toolchain: toolchain, sessionID: sessionID, hooks: hooks, choices: choices,
@@ -512,7 +527,7 @@ public actor SessionRuntime {
                 ManagedSession(id: sessionID, provider: .claude, workingDirectory: prepared.folder),
                 projectID: projectID, title: opening?.title, openedBy: opening?.openedBy
             )
-            await recordLaunchChoices(choices, sessionID: sessionID)
+            await recordLaunchChoices(choices, sessionID: sessionID, rememberingInProject: opening == nil)
             startingSessions.insert(sessionID)
             defer { startingSessions.remove(sessionID) }
             return try await launch(profile)
@@ -583,10 +598,13 @@ public actor SessionRuntime {
     }
 
     /// Records a session's mode, model or effort (a start, or a live change that succeeded in the Chat face), so
-    /// every later spawn in either face passes them. A failed write is logged; the session goes on.
-    public func recordLaunchChoices(_ choices: ClaudeLaunchChoices, sessionID: UUID) async {
+    /// every later spawn in either face passes them. A failed write is logged; the session goes on. `rememberingInProject`
+    /// false keeps a session an agent opened out of the project's "last used" (Q3, D-103).
+    public func recordLaunchChoices(_ choices: ClaudeLaunchChoices, sessionID: UUID, rememberingInProject: Bool = true) async {
         guard !choices.isEmpty else { return }
-        do { try await catalog.recordLaunchChoices(choices, sessionID: sessionID) } catch {
+        do {
+            try await catalog.recordLaunchChoices(choices, sessionID: sessionID, rememberingInProject: rememberingInProject)
+        } catch {
             LoomLog.error(.catalog, "Launch choices could not be recorded (\(LoomLog.category(of: error)))")
         }
     }

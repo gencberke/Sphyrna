@@ -37,4 +37,14 @@ extension CatalogModel {
         guard actionsAvailable else { return }
         intents?.dismissOpen(requestID: id)
     }
+
+    /// The session an approved request started, once a list holds it: the folded line's "Go to Session". The session takes
+    /// the request's title and names its opener, and the newest match wins if an older session shares both.
+    public func openedSession(openedBy requesterID: UUID, title: String) -> UUID? {
+        let records = rowModels.values.map(\.record) + lists.values.flatMap { $0.rows.map(\.record) }
+        return records
+            .filter { $0.openedBy == requesterID && $0.title == title }
+            .max { $0.createdAt < $1.createdAt }?
+            .session.id
+    }
 }

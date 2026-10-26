@@ -12,8 +12,8 @@ This document is the single authoritative specification of what Sphyrna (interna
 
 ### 1.1 Three Founding Goals ([D-83](DECISIONS.md))
 1. **Light:** RAM, CPU, disk, and energy never tire the user, while every capability remains intact. Abandoned or ended sessions must never accumulate live processes, terminal buffers, or background polling.
-2. **Sessions, not harnesses:** Sphyrna is the central place that manages every session regardless of its underlying harness, so work can pass between Claude and Codex, and sessions can discover (`"$LOOM_CLI" sessions`) or request opening (`"$LOOM_CLI" open`) other sessions under the user's authority.
-3. **Cost out of sight:** Subscription quota and context cost stay invisible. Nothing enters a session's context beyond the project's own instructions except the ≤ 300-character Sphyrna plugin skill description (and `loom:Ask` output style when in Ask mode).
+2. **Sessions, not harnesses:** Sphyrna is the central place that manages every session regardless of its underlying harness, so work can pass between Claude and Codex, and sessions can discover (`"$SPHYRNA_CLI" sessions`), identify (`"$SPHYRNA_CLI" whoami`) or request opening (`"$SPHYRNA_CLI" open`) other sessions under the user's authority.
+3. **Cost out of sight:** Subscription quota and context cost stay invisible. Nothing enters a session's context beyond the project's own instructions except the ≤ 300-character Sphyrna plugin skill description (and `sphyrna:Ask` output style when in Ask mode).
 
 ### 1.2 Core Experience & Scope ([D-01](DECISIONS.md), [D-57](DECISIONS.md), [D-69](DECISIONS.md), [D-77](DECISIONS.md), [D-83](DECISIONS.md))
 - **Core experience contract:** *The live session is always the user's own unmodified Claude Code CLI in a process Sphyrna owns, in its terminal or in its structured mode, with one owner at a time. One app-wide switch in Settings chooses which; the terminal is always one of the choices. Codex runs in its terminal.*
@@ -85,7 +85,7 @@ Lifecycle state (`active`, `idle`, `stale`, `deleted`) and momentary agent work 
 Every status surface (sidebar row, activity card, tab, header state pill, Home, palette, menu bar) derives a single status from `SessionIndicator` in this priority order:
 1. **`stopUnverified` / `failed` / `problem`** (Failure dot `#F2615C` / `#C8322C`, or `7 pt` diamond under macOS `"Differentiate without color"`, `D-69 (11)`).
 2. **`identityUnclear`** (Hollow attention ring).
-3. **`waitingForApproval` / `waitingForInput`** (`"Needs approval"` / `"Waiting for you"`, `7 pt` attention dot `#FF9E0A` / `#C46A00`; includes pending agent `"$LOOM_CLI" open` requests).
+3. **`waitingForApproval` / `waitingForInput`** (`"Needs approval"` / `"Waiting for you"`, `7 pt` attention dot `#FF9E0A` / `#C46A00`; includes pending agent `"$SPHYRNA_CLI" open` requests).
 4. **`working`** (`12 fps` 10-frame `BrailleSpinner` `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`). Working means a turn is running: `UserPromptSubmit` to `Stop`, an automatic turn, or the registry's `busy` (which covers background subagents). A finished turn whose `Stop` lists background shells, crons or subagents reads `ready` (`finished` while unviewed), with `"N background"` beside the state — the header pill (`StatePillStyle`'s suffix), the Active card's reason line and the Overview (`D-103`). The count (`BackgroundWork.total`) still holds Quit's confirmation and the automatic idle-stop blockers.
 5. **`unviewedCompletion`** (`"Finished"`, `7 pt` unviewed blue dot `#5C8CFF` / `#2557CC`; cleared by viewing the session or clicking `"Mark as Read"`, `D-39`).
 6. **`ready` / `idle` / `stale` / `ended`** (No mark in lists/tabs; `ended` shows no header state pill; `stale` dims the title to secondary).
@@ -246,7 +246,7 @@ Deletion is an end-to-end state machine persisted in the `deletions` table (`req
 
 ### 7.4 Composer Bar, Permission Modes, Model Popover & Context Ring ([D-58](DECISIONS.md), [D-62](DECISIONS.md), [D-63](DECISIONS.md), [D-75](DECISIONS.md))
 - **Permission modes (live via `set_permission_mode`):**
-  1. **`Ask`** (teal `bubble.left`, **Chat face only**): `dontAsk` + live `permissions` (allowing `WebFetch`/`WebSearch`, denying `Write`/`Edit`/`NotebookEdit` and non-read user allow rules) + `loom:Ask` output style (`--plugin-dir`). Refused while a tool approval waits. On any terminal spawn, `Ask` automatically falls back to `Ask before edits` with a notice.
+  1. **`Ask`** (teal `bubble.left`, **Chat face only**): `dontAsk` + live `permissions` (allowing `WebFetch`/`WebSearch`, denying `Write`/`Edit`/`NotebookEdit` and non-read user allow rules) + `sphyrna:Ask` output style (`--plugin-dir`). Refused while a tool approval waits. On any terminal spawn, `Ask` automatically falls back to `Ask before edits` with a notice.
   2. **`Ask before edits`** (`default`, accent `shield`).
   3. **`Accept edits`** (`acceptEdits`, green `pencil.line`).
   4. **`Auto`** (`auto`, yellow `bolt`).
@@ -311,14 +311,16 @@ Deletion is an end-to-end state machine persisted in the `deletions` table (`req
 
 ## 9. Cross-Session Coordination & Sphyrna Plugin ([D-40](DECISIONS.md), [D-42](DECISIONS.md), [D-83 (b)](DECISIONS.md), [D-85](DECISIONS.md))
 
-- **Plugin delivery (`ClaudeLoomPlugin`):** Written to `<data root>/claude-plugin` and passed via `--plugin-dir` to every Claude session started with the control socket (`LOOM_CONTROL_SOCKET`, `LOOM_CLI`). Contains one skill (`loom:open-session`, description ≤ 300 characters opening with `"This session runs inside Sphyrna, the desktop app that hosts it."`, `D-85`) and the `loom:Ask` output style.
-- **Verb 1 — Read-only session directory (`"$LOOM_CLI" sessions`, `C5a`):**
-  - Returns up to **100 sessions** (max `60,000` bytes) from `SessionDirectory`: `id`, `harness`, `title`, `project`, `state` (`SessionStateWord`, pinned to match `SessionIndicator`), `face`, and `lastActivity`.
+- **Plugin delivery (`ClaudeLoomPlugin`):** Written to `<data root>/claude-plugin` and passed via `--plugin-dir` to every Claude session started with the control socket (`LOOM_CONTROL_SOCKET`, `SPHYRNA_CLI`; `LOOM_CLI` stays beside it for agents running 1.7.0's rules). Contains one skill (`sphyrna:open-session`, description ≤ 300 characters opening with `"This session runs inside Sphyrna, the desktop app that hosts it."`, `D-85`) and the `sphyrna:Ask` output style.
+- **Verb 1 — Read-only session directory (`"$SPHYRNA_CLI" sessions`, `C5a`):**
+  - Returns up to **100 sessions** (max `60,000` bytes) from `SessionDirectory`: `id`, `harness`, `title`, `project`, `state` (`SessionStateWord`, pinned to match `SessionIndicator`), `face`, `lastActivity`, and `openedBy` (the requester's id, absent for a session the user started).
   - Exposes **zero** transcript content, file paths, or prompts, and requires **no user approval**.
-- **Verb 2 — Approval-gated session opening (`"$LOOM_CLI" open`, `D-40`, `C5b`):**
-  - Lets an agent request opening a new Claude session in a project with a title and first message.
-  - Sphyrna displays an approval callout/card showing the requesting session, target project, title, and message preview (`Return` never approves).
-  - Only after the user clicks **`Approve and Start`** does Sphyrna start the session in the face named by `Settings → General → Sessions run in` (`C5b`), passing the request's title (skipping `generate_session_title`) and first message, and recording `opened_by` (`"from <session>"`).
+- **Verb 1b — Read-only session identity (`"$SPHYRNA_CLI" whoami`, FB6-16 part 1):** the caller (id, state, project, title), its opener (id, title, state; `-` when the user started it) and the sessions it opened, each a `SessionSummary`; the same no-content rule, no approval, on control-socket wire version 3.
+- **Verb 2 — Approval-gated session opening (`"$SPHYRNA_CLI" open`, `D-40`, `C5b`):**
+  - Lets an agent request opening a new Claude session in a project with a title and first message, and optionally `--model`, `--effort` (`low`, `medium`, `high`, `xhigh`, `max`) and `--mode` (`default` = Ask before edits, `acceptEdits`, `plan`, `auto`). Full access is refused by name: it is never an agent's pick (`D-103`).
+  - A missing mode takes Sphyrna's default (`Settings → General`'s fixed mode, else the project's last used, else Ask before edits), resolved as the draft resolves it. The opened session records its choices but never replaces the project's "last used" (`D-103`).
+  - Sphyrna displays an approval card showing the requesting session, the counter when several wait, the session it will become (title, harness, model, effort, mode, project) and the first three lines of the message (`Return` never approves).
+  - Only after the user clicks **`Open Session`** does Sphyrna start the session in the face named by `Settings → General → Sessions run in` (`C5b`), passing the request's title (skipping `generate_session_title`), first message and choices, and recording `opened_by` (`"from <session>"`).
 
 ---
 
@@ -388,9 +390,9 @@ Deletion is an end-to-end state machine persisted in the `deletions` table (`req
 
 ### 12.2 Subscription Model-Call & Agent Context Guards (`C3`, [D-83 (c)](DECISIONS.md))
 - **Allowed model calls on the user's subscription:** Sphyrna makes a model call **only** when the user explicitly sends, asks, or approves (prompt, Quick Question, Side Chat question, Compact, diff comment / side note sent to main, approved session opening, or explicit Remora question / `Draft Brief` / `Catch Me Up`), plus **at most two background calls**:
-  1. **Chat session title (`generate_session_title`):** At most **once per session** (max 3 tries), passing at most **`2,000` characters** of the first user message (matching the terminal CLI's own title call; skipped for approved `"$LOOM_CLI" open` sessions and side chats).
+  1. **Chat session title (`generate_session_title`):** At most **once per session** (max 3 tries), passing at most **`2,000` characters** of the first user message (matching the terminal CLI's own title call; skipped for approved `"$SPHYRNA_CLI" open` sessions and side chats).
   2. **Remora's automatic morning brief:** At most **once per day** after `04:00` local time when Home is shown on screen, online, Remora is on + `Automatic`, a session moved, and ≥ 10 % of the 5-hour limit remains.
   - Nothing else ever calls a model in the background (no timers, watchers, or per-turn summaries; `get_usage` plan-limit reads do not call a model).
   - **Reading a harness is not a model call (1.6.2, `D-94`).** Claude's plan-limits child sends `initialize` before `get_usage` so its answer names the account, and Codex's probe reads `account/read`, `account/rateLimits/read`, `account/usage/read` and `model/list` from a short `codex app-server` (§2.1): none starts a turn or a thread, writes a transcript or spends tokens. Both go through one `HarnessProbe` that never asks a harness switched off, keeps an answer for **5 minutes** unless a person forces a new one (Update, Check Again) and runs on no timer, so a broken CLI is not started again and again. The health check (`HarnessHealthChecker`) has the same 5-minute floor, and `claude doctor` / `codex doctor --no-color` run only when the person presses Deep Check.
-- **Session context additions:** A session started by Sphyrna receives zero injected system prompts, zero written instruction files, and zero hook stdout. Its context differs from a plain terminal session only by the `loom:open-session` skill description (**≤ 300 characters**) and, while in `Ask` mode, the `loom:Ask` output style.
+- **Session context additions:** A session started by Sphyrna receives zero injected system prompts, zero written instruction files, and zero hook stdout. Its context differs from a plain terminal session only by the `sphyrna:open-session` skill description (**≤ 300 characters**) and, while in `Ask` mode, the `sphyrna:Ask` output style.
 - **Enforced by failing-first guard tests:** `PluginContractTests`, `LaunchContractTests`, `HookSilenceTests`, `ChatModelCallTests`, `RemoraCallTests`, `RemoraPackBuilderTests`, and `RemoraReachTests`.

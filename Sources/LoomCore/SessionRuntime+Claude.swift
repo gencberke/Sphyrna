@@ -35,7 +35,8 @@ extension SessionRuntime {
         let directory = directory
         controlServer = try? OpenSessionControlServer(
             socketPath: controlSocket, authenticationToken: token,
-            sessions: { call in await requests.listSessions(call, directory: directory) }
+            sessions: { call in await requests.listSessions(call, directory: directory) },
+            whoAmI: { call in await requests.whoAmI(call, directory: directory) }
         ) { call in await requests.submit(call) }
         // The skill that tells the agent about that command (D-42) and Ask's output style (D-63): every Claude start passes the
         // plugin, also without the control socket (the style needs none). A failure to write it costs the skill and Ask:
