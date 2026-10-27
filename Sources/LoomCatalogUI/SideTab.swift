@@ -163,7 +163,7 @@ private struct SideDiscardFailure: View {
             Text(text).font(LoomTheme.Side.statusFont).foregroundStyle(LoomTheme.Status.failureLight)
                 .fixedSize(horizontal: false, vertical: true)
             Button("Try Again") { Task { await model.retryDiscardSideChat(id, in: parent) } }
-                .buttonStyle(ControlButtonStyle(kind: .secondary))
+                .buttonStyle(ControlButtonStyle(kind: .outline))
         }
         .padding(.horizontal, LoomTheme.Side.statusInsetH).padding(.vertical, LoomTheme.Side.headerInsetV)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -215,7 +215,7 @@ struct SideAnswerActions: View {
             case .idle, .sending, .failed:
                 let reason: String? = { if case let .off(why) = availability { why } else { nil } }()
                 Button(SideText.sendNote) { notes.send(entryID) }
-                    .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                    .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                     .disabled(reason != nil || status == .sending)
                     .help(reason ?? SideText.sendNote)
                     .accessibilityLabel(SideText.sendNote).accessibilityHint(reason ?? "")
@@ -250,7 +250,7 @@ struct AsideCopyButton: View {
                 Text(copied ? "Copied" : "Copy")
             }
         }
-        .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+        .buttonStyle(ControlButtonStyle(kind: .ghost, size: .small))
         .help("Copy")
         .accessibilityLabel("Copy")
     }

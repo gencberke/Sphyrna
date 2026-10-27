@@ -72,9 +72,9 @@ struct SearchFocusAndHitTests {
         let small = try await hitExtent(of: LoomTheme.Layout.projectMenuButton) // drawn 22 x 20
         print("HITEXTENT 22x20 control answers", small.width, "x", small.height)
         #expect(small.width >= 23.5 && small.height >= 23.5, "a 22 x 20 control answers over at least 24 x 24")
-        let regular = try await hitExtent(of: LoomTheme.Layout.chromeButton) // 26 x 26 stays as drawn
-        print("HITEXTENT 26x26 control answers", regular.width, "x", regular.height)
-        #expect(regular.width >= 25.5 && regular.width <= 26.5 && regular.height >= 25.5 && regular.height <= 26.5)
+        let regular = try await hitExtent(of: LoomTheme.Layout.chromeButton) // 28 x 28 stays as drawn
+        print("HITEXTENT 28x28 control answers", regular.width, "x", regular.height)
+        #expect(regular.width >= 27.5 && regular.width <= 28.5 && regular.height >= 27.5 && regular.height <= 28.5)
     }
 
     /// Mean brightness of a hosted view's rendering.

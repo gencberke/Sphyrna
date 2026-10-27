@@ -72,7 +72,7 @@ struct HomeEntryRow: View {
                     Spacer(minLength: 0)
                     HStack(spacing: LoomTheme.Home.rowActionsGap) {
                         Button("Open Session") { model.select(entry.id) }
-                            .buttonStyle(ControlButtonStyle(kind: .primary, size: .small))
+                            .buttonStyle(ControlButtonStyle(kind: .default, size: .small))
                             .focused($focus, equals: .open)
                             .accessibilityLabel("Open \(entry.title)")
                             .accessibilityIdentifier("home-open")
@@ -193,7 +193,7 @@ private struct HomeContinueRow: View {
                     HomeAgeLabel(model: model, date: entry.endedAt, verb: "Last active")
                         .opacity(revealed ? 0 : 1)
                     Button("Resume") { model.resumeFromHome(entry.id) }
-                        .buttonStyle(ControlButtonStyle(kind: .primary, size: .small))
+                        .buttonStyle(ControlButtonStyle(kind: .default, size: .small))
                         .focused($focused)
                         .opacity(revealed ? 1 : 0)
                         .allowsHitTesting(revealed)

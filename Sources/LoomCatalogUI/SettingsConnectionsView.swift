@@ -112,7 +112,7 @@ private struct ConnectionDetail: View {
             SettingsRow(title: "Location", detail: detail.location, detailStyle: S.path) {
                 if detail.path != nil, let executable = value.executable {
                     Button("Reveal") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: executable)]) }
-                        .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                        .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                         .accessibilityLabel("Reveal \(detail.name) in Finder")
                 }
             }
@@ -129,7 +129,7 @@ private struct ConnectionDetail: View {
             SettingsRowDivider()
             SettingsRow(title: "Check", detail: detail.checked, notice: detail.setup == nil ? value.note : nil) {
                 Button(checking ? "Checking…" : "Check Again") { health.checkAgain(provider) }
-                    .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                    .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                     .disabled(checking || value.state == .disabled)
                     .accessibilityLabel("Check \(detail.name) again")
                     .accessibilityIdentifier("connection-check-again")
@@ -160,7 +160,7 @@ private struct ConnectionDeepCheck: View {
             SettingsRow(title: "Deep Check",
                         detail: "Runs \(detail.deepCheckCommand) and shows what it says. It runs only when you choose it, and stops after \(Int(HarnessDeepCheck.defaultTimeout)) seconds.") {
                 Button(progress == .running ? "Running…" : "Deep Check") { health.runDeepCheck(provider) }
-                    .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                    .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                     .disabled(!health.offersDeepCheck || !detail.canDeepCheck || progress == .running)
                     .accessibilityLabel("Run Deep Check for \(detail.name)")
                     .accessibilityIdentifier("connection-deep-check")

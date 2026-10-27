@@ -270,7 +270,7 @@ struct SystemSettingsCard: View {
                         notice: notifyNotice?.text) {
                 if let notifyNotice {
                     Button(notifyNotice.buttonTitle) { integration.openNotificationSettings() }
-                        .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                        .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                 }
                 SettingsSwitch(title: "Notify when a session needs approval", isOn: Binding(
                     get: { model.notifyApprovals }, set: { model.setNotifyApprovals($0) }))
@@ -285,7 +285,7 @@ struct SystemSettingsCard: View {
             SettingsRow(title: "Open at login", detail: "Start Sphyrna when you log in.", notice: loginNotice?.text) {
                 if let loginNotice {
                     Button(loginNotice.buttonTitle) { integration.openLoginItems() }
-                        .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                        .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                 }
                 SettingsSwitch(title: "Open at login", isOn: Binding(
                     get: { integration.loginItemStatus.switchIsOn }, set: { integration.setLoginItem($0) }))
@@ -322,7 +322,7 @@ struct AboutSettings: View {
                     SettingsRow(title: "Data folder", detail: "Catalog, usage index and logs.") {
                         PathText(url: about.dataFolder)
                         Button("Reveal") { NSWorkspace.shared.activateFileViewerSelecting([about.dataFolder]) }
-                            .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                            .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                             .accessibilityLabel("Reveal data folder in Finder")
                     }
                     if let profile = about.claudeProfile {
@@ -335,7 +335,7 @@ struct AboutSettings: View {
                         SettingsRowDivider()
                         SettingsRow(title: "Diagnostics", detail: "A folder with versions, counts and Sphyrna's log. No session content.") {
                             Button(diagnostics.isRunning ? "Collecting…" : "Collect Diagnostics…") { diagnostics.collect() }
-                                .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                                .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                                 .disabled(!diagnostics.canCollect)
                                 .accessibilityLabel("Collect diagnostics")
                         }

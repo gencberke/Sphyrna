@@ -155,45 +155,6 @@ struct SheetAction: Identifiable {
     var isFilled: Bool { if case .filled = tint { true } else { false } }
 }
 
-/// A tinted button of a sheet: the tone's wash, the tone's text, a step darker under the pointer; disabled it is the hover fill and
-/// tertiary text at full opacity (`.btn.dtint:disabled`).
-struct SheetTintButtonStyle: ButtonStyle {
-    let fill: Color
-    let hoverFill: Color
-    let text: Color
-
-    func makeBody(configuration: Configuration) -> some View {
-        Styled(configuration: configuration, fill: fill, hoverFill: hoverFill, text: text)
-    }
-
-    private struct Styled: View {
-        let configuration: ButtonStyle.Configuration
-        let fill: Color
-        let hoverFill: Color
-        let text: Color
-        @State private var hovering = false
-        @Environment(\.isEnabled) private var enabled
-        @Environment(\.isFocused) private var focused
-
-        var body: some View {
-            let size = LoomTheme.Control.Size.regular
-            let shape = RoundedRectangle(cornerRadius: size.radius)
-            let active = enabled && (hovering || configuration.isPressed)
-            configuration.label
-                .font(size.font)
-                .foregroundStyle(enabled ? text : LoomTheme.Text.tertiary)
-                .padding(.horizontal, size.paddingH)
-                .frame(height: size.height)
-                .background(shape.fill(enabled ? (active ? hoverFill : fill) : LoomTheme.Surface.hover))
-                .controlFocusRing(
-                    visible: ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled),
-                    radius: size.radius)
-                .contentShape(shape)
-                .onHover { hovering = $0 }
-        }
-    }
-}
-
 private struct SheetButton: View {
     let action: SheetAction
     var focus: FocusState<String?>.Binding
@@ -204,21 +165,10 @@ private struct SheetButton: View {
             .focused(focus, equals: action.id)
             .accessibilityIdentifier("sheet-\(action.id)")
         switch action.tint {
-        case .plain: button.buttonStyle(ControlButtonStyle(kind: .secondary))
-        case .filled: button.buttonStyle(ControlButtonStyle(kind: .primary))
-        case .accent:
-            button.buttonStyle(SheetTintButtonStyle(
-                fill: LoomTheme.Accent.base.opacity(LoomTheme.Sheet.tintFill),
-                hoverFill: LoomTheme.Accent.base.opacity(LoomTheme.Sheet.tintHover), text: LoomTheme.Accent.high))
-        case .failure:
-            button.buttonStyle(SheetTintButtonStyle(
-                fill: LoomTheme.Status.failureWash,
-                hoverFill: LoomTheme.Status.failurePair.color.opacity(LoomTheme.Sheet.failureHover),
-                text: LoomTheme.Status.failureLight))
-        case let .tone(pair):
-            button.buttonStyle(SheetTintButtonStyle(
-                fill: pair.color.opacity(LoomTheme.Sheet.tintFill), hoverFill: pair.color.opacity(LoomTheme.Sheet.tintHover),
-                text: pair.color))
+        case .plain: button.buttonStyle(ControlButtonStyle(kind: .secondary, size: .page))
+        case .filled: button.buttonStyle(ControlButtonStyle(kind: .default, size: .page))
+        case .accent, .tone: button.buttonStyle(ControlButtonStyle(kind: .outline, size: .page))
+        case .failure: button.buttonStyle(ControlButtonStyle(kind: .destructive, size: .page))
         }
     }
 }

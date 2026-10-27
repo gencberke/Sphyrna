@@ -94,7 +94,7 @@ struct EndedUndeliveredLine: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(texts.joined(separator: "\n\n"), forType: .string)
             }
-            .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+            .buttonStyle(ControlButtonStyle(kind: .ghost, size: .small))
         }
         .padding(.horizontal, LoomTheme.Pinned.linePaddingH)
         .frame(minHeight: LoomTheme.Pinned.lineHeight)

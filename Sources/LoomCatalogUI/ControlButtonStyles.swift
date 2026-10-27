@@ -1,12 +1,12 @@
 import SwiftUI
 
-/// The text buttons of the control family (DESIGN §6 Controls). One filled accent style with on-accent text for the default or
-/// main action; secondary buttons with a strong-hairline edge; ghost buttons in secondary text; destructive buttons in the
-/// failure text with the failure wash on hover. Hover adds the hover fill, a press the pressed fill, a disabled button is drawn
-/// at 38 %, and keyboard focus draws Sphyrna's ring (accent, 2 pt, 2 pt outside). `tinted` is the quieter accent action (accent
-/// text on the accent wash). Sizes: 26 high with radius 6 (regular), 30 with radius 8 (a page's main action), 22 with radius 5.
+/// The text buttons of the control family (DESIGN §0.4 Buttons): six roles at four heights (`LoomTheme.Control.Size`), one radius
+/// and one focus ring. Default is the neutral fill of the one affirmative action; secondary the muted fill; outline the input fill
+/// and edge at elevation 2; ghost no fill; link the accent text; destructive the failure red with white text. Hover adds the hover
+/// fill (a default action's fill fades to 90 %), a press the pressed fill, a disabled button is drawn at 38 %, and keyboard focus
+/// draws Sphyrna's ring.
 struct ControlButtonStyle: ButtonStyle {
-    enum Kind: CaseIterable, Sendable { case primary, secondary, ghost, destructive, tinted }
+    enum Kind: CaseIterable, Sendable { case `default`, secondary, outline, ghost, link, destructive }
 
     var kind: Kind = .secondary
     var size: LoomTheme.Control.Size = .regular
@@ -20,11 +20,11 @@ struct ControlButtonStyle: ButtonStyle {
     /// The label's colour for a kind, hovered or not.
     static func text(_ kind: Kind, hovering: Bool) -> AnyShapeStyle {
         switch kind {
-        case .primary: AnyShapeStyle(LoomTheme.Accent.onAccent)
-        case .secondary: AnyShapeStyle(LoomTheme.Text.primary)
+        case .default: AnyShapeStyle(LoomTheme.Control.defaultTextPair.color)
+        case .secondary, .outline: AnyShapeStyle(LoomTheme.Text.primary)
         case .ghost: hovering ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle)
-        case .destructive: AnyShapeStyle(LoomTheme.Status.failureLight)
-        case .tinted: AnyShapeStyle(LoomTheme.Accent.high)
+        case .link: AnyShapeStyle(LoomTheme.Accent.high)
+        case .destructive: AnyShapeStyle(LoomTheme.Control.destructiveText)
         }
     }
 
@@ -48,8 +48,9 @@ struct ControlButtonStyle: ButtonStyle {
                 .foregroundStyle(ControlButtonStyle.text(kind, hovering: active || pressed))
                 .padding(.horizontal, size.paddingH)
                 .frame(height: size.height)
-                .background(shape.fill(fill(active: active, pressed: pressed)))
+                .background(shape.fill(base(active: active, pressed: pressed)).overlay(shape.fill(layer(active: active, pressed: pressed))))
                 .overlay(shape.strokeBorder(edge(active: active), lineWidth: LoomTheme.Line.hairline))
+                .depth(kind == .outline ? LoomTheme.Elevation.lift : LoomTheme.Elevation.card)
                 .controlFocusRing(
                     visible: ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled),
                     radius: size.radius)
@@ -58,26 +59,36 @@ struct ControlButtonStyle: ButtonStyle {
                 .onHover { hovering = $0 }
         }
 
-        private func fill(active: Bool, pressed: Bool) -> Color {
+        /// The fill under the label: the kind's own fill; the default action's fades under the pointer and the press.
+        private func base(active: Bool, pressed: Bool) -> Color {
             switch kind {
-            case .primary:
-                if pressed { return LoomTheme.Accent.base.opacity(LoomTheme.Opacity.accentPressed) }
-                return active ? LoomTheme.Control.primaryHover : LoomTheme.Accent.base
-            case .secondary, .ghost:
-                return pressed ? LoomTheme.Surface.pressed : (active ? LoomTheme.Surface.hover : .clear)
+            case .default:
+                let fill = LoomTheme.Control.defaultFillPair.color
+                if pressed { return fill.opacity(LoomTheme.Control.defaultPressedOpacity) }
+                return active ? fill.opacity(LoomTheme.Control.defaultHoverOpacity) : fill
+            case .secondary: return LoomTheme.Surface.muted
+            case .outline: return LoomTheme.Surface.inputFill
+            case .ghost, .link: return .clear
             case .destructive:
-                return pressed || active ? LoomTheme.Status.failureWash : .clear
-            case .tinted:
-                return LoomTheme.Accent.base.opacity(pressed ? LoomTheme.Opacity.accentTintPressed : LoomTheme.Opacity.accentTint)
+                return pressed || active ? LoomTheme.Control.destructiveHover.color : LoomTheme.Control.destructiveFill.color
             }
         }
 
-        /// A secondary button has the strong hairline for an edge, the stronger one while hovered; under Increase Contrast the
-        /// raised hairline.
+        /// The layer over the fill under the pointer or the press (the family's hover and pressed fills).
+        private func layer(active: Bool, pressed: Bool) -> Color {
+            switch kind {
+            case .secondary, .outline, .ghost:
+                return pressed ? LoomTheme.Surface.pressed : (active ? LoomTheme.Surface.hover : .clear)
+            case .default, .link, .destructive:
+                return .clear
+            }
+        }
+
+        /// An outline button's edge: the input edge, the strong hairline under the pointer, the raised hairline under Increase Contrast.
         private func edge(active: Bool) -> AnyShapeStyle {
-            guard kind == .secondary else { return AnyShapeStyle(Color.clear) }
+            guard kind == .outline else { return AnyShapeStyle(Color.clear) }
             if contrast == .increased { return AnyShapeStyle(LoomTheme.Surface.hairlineStyle) }
-            return AnyShapeStyle(active ? LoomTheme.Surface.strongerHairline : LoomTheme.Surface.strongHairline)
+            return AnyShapeStyle(active ? LoomTheme.Surface.strongHairline : LoomTheme.Surface.inputEdge)
         }
     }
 }

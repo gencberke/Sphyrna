@@ -157,7 +157,7 @@ struct HomeRemoraPutInDraft: View {
             let read = reads.generation
             ui.placed[sessionID] = HomeRemoraUI.Placed(result: model.putRemoraLineInDraft(line, record: record), line: line, read: read)
         }
-        .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+        .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
         .onHover { hover.wrappedValue = $0 }
         .help(label.help ?? "")
         .accessibilityLabel(label.title)
@@ -257,7 +257,7 @@ struct HomeRemoraProposal: View {
                     Text(fact).homeType(R.proposalFact).foregroundStyle(LoomTheme.Text.primary).lineLimit(2)
                     HStack(spacing: R.proposalActionsGap) {
                         Button("Save") { model.confirmRemoraFact(fact) }
-                            .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                            .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                             .accessibilityIdentifier("home-remora-save")
                         Button("Not Now") { model.dismissRemoraFact(fact) }
                             .buttonStyle(ControlButtonStyle(kind: .ghost, size: .small))

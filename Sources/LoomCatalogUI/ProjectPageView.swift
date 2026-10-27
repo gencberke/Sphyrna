@@ -114,7 +114,7 @@ private struct ProjectPageHeader: View {
                         Text("New session").lineLimit(1)
                     }
                 }
-                .buttonStyle(ControlButtonStyle(kind: .primary, size: .page))
+                .buttonStyle(ControlButtonStyle(kind: .default, size: .page))
                 .accessibilityIdentifier("project-new-session")
             }
             .fixedSize()

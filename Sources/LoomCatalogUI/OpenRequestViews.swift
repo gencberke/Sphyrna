@@ -132,7 +132,7 @@ struct OpenRequestBox: View {
         if content.hasMore {
             HStack {
                 Button(showsFullMessage ? "Show less" : "Show full message") { showsFullMessage.toggle() }
-                    .buttonStyle(ControlButtonStyle(kind: .ghost))
+                    .buttonStyle(ControlButtonStyle(kind: .link))
                 Spacer(minLength: 0)
             }
         }
@@ -156,12 +156,12 @@ struct OpenRequestBox: View {
                     } else {
                         // Neither button is the default action: Return belongs to the terminal below.
                         Button("Open Session") { model.approveOpenRequest(request.id) }
-                            .buttonStyle(AccentButtonStyle(kind: .filled))
+                            .buttonStyle(ControlButtonStyle(kind: .default))
                             .disabled(content.actionsDisabled)
                     }
                 case .dismiss:
                     Button("Dismiss") { model.dismissOpenRequest(request.id) }
-                        .buttonStyle(ControlButtonStyle(kind: .secondary))
+                        .buttonStyle(ControlButtonStyle(kind: .ghost))
                 }
             }
         }

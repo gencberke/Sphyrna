@@ -310,7 +310,7 @@ private struct ChangesFooter: View {
                     Button("Discard") { model.discardChangeComments(in: sessionID) }
                         .buttonStyle(SettingsButtonStyle()).disabled(sending)
                     Button("Send to Claude") { Task { await model.sendChangeComments(for: sessionID) } }
-                        .buttonStyle(AccentButtonStyle(kind: .filled))
+                        .buttonStyle(ControlButtonStyle(kind: .default))
                         .disabled(availability != .ready || sending)
                 }
                 if availability == .notChat {

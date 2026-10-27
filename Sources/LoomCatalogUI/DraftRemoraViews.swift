@@ -34,7 +34,7 @@ struct DraftRemoraRowView: View {
                         .accessibilityIdentifier("draft-remora-time")
                 }
                 Button(row.actionTitle) { act(row.action, projectID: projectID) }
-                    .buttonStyle(ControlButtonStyle(kind: row.action == .draft ? .secondary : .ghost, size: .small))
+                    .buttonStyle(ControlButtonStyle(kind: row.action == .draft ? .outline : .ghost, size: .small))
                     .disabled(!row.actionEnabled)
                     .fixedSize()
                     .accessibilityIdentifier(Self.identifier(row.action))

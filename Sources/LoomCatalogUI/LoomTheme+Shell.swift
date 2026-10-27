@@ -63,56 +63,83 @@ extension LoomTheme {
         static let neutralSquare = Surface.selectedTone
     }
 
-    /// The control family (DESIGN §6 Controls): one height, radius, hover and focus ring for every control. A button is 26 high
-    /// with radius 6 in 12.5 medium; a page's main action 30 with radius 8 in 13; a small button 22 with radius 5 in 11.5.
+    /// The control family (DESIGN §0.3, §0.4): four heights, one radius, one hover and one focus ring for every control. The heights
+    /// are xs 24 (chips, inline buttons), sm 28 (toolbar and icon buttons), default 32 (pages and sheets) and lg 36 (a sheet's or an
+    /// empty state's main action); the radius is 8.
     enum Control {
+        /// A button's size: its height, its inside padding and its type (13 medium, 12 medium at 24 high).
         enum Size: CaseIterable, Sendable {
-            case regular, page, small
+            case small, regular, page, large
 
             var height: CGFloat {
                 switch self {
-                case .regular: InkHeight.control
-                case .page: InkHeight.field
-                case .small: InkHeight.chip
+                case .small: InkHeight.xs
+                case .regular: InkHeight.sm
+                case .page: InkHeight.standard
+                case .large: InkHeight.lg
                 }
             }
 
-            var radius: CGFloat {
-                switch self {
-                case .regular: InkRadius.control
-                case .page: InkRadius.row
-                case .small: 5
-                }
-            }
+            var radius: CGFloat { InkRadius.row }
 
             var font: Font {
                 switch self {
+                case .small: InkType.smallButton.font
                 case .regular: InkType.button.font
-                case .page: InkType.pageButton.font
-                case .small: .system(size: 11.5, weight: .medium)
+                case .page, .large: InkType.pageButton.font
                 }
             }
 
             var paddingH: CGFloat {
                 switch self {
+                case .small: 8
                 case .regular: 10
                 case .page: 14
-                case .small: 8
+                case .large: 16
                 }
             }
         }
 
+        /// The default action is neutral (DESIGN §0.1, Q1): Ink `#EDEDED` with `#171717` text, Paper `#171717` with `#FAFAFA` text.
+        /// Its fill is at 90 % under the pointer and 80 % pressed.
+        static let defaultFillPair = Adaptive(dark: RGB(hex: 0xEDEDED), light: RGB(hex: 0x171717))
+        static let defaultTextPair = Adaptive(dark: RGB(hex: 0x171717), light: RGB(hex: 0xFAFAFA))
+        static let defaultHoverOpacity = 0.9
+        static let defaultPressedOpacity = 0.8
+
+        /// The destructive button (DESIGN §0.4): the failure red, at 60 % in Ink and solid in Paper, with white text. Under the
+        /// pointer it is 74 % in Ink and 90 % in Paper, which keeps the white text at 4.5:1 or more.
+        static let destructiveFill = AdaptiveTone(
+            dark: Tone(rgb: Status.failurePair.dark, opacity: 0.60),
+            light: Tone(rgb: Status.failurePair.light, opacity: 1))
+        /// The destructive button's label: white on the failure red in both appearances.
+        static let destructiveText = whiteRGB.color
+        static let destructiveHover = AdaptiveTone(
+            dark: Tone(rgb: Status.failurePair.dark, opacity: 0.74),
+            light: Tone(rgb: Status.failurePair.light, opacity: 0.90))
+
+        /// Sphyrna's focus ring (DESIGN §0.1): a 1 pt edge in the accent and a 3 pt halo of the accent at 45 % outside the
+        /// control's edge (75 % under Increase Contrast), drawn on keyboard focus only.
+        static let focusEdge: CGFloat = 1
+        static let focusHalo: CGFloat = 3
+        static let focusHaloOpacity = 0.45
+        static let focusHaloIncreasedOpacity = 0.75
+
+        /// The shared controls' sizes (DESIGN §0.4): a switch 32 × 18; a field and a segmented control 32 high; a badge 18 high;
+        /// a key cap of radius 4.
+        static let switchSize = CGSize(width: 32, height: 18)
+        static let segmentedHeight: CGFloat = InkHeight.standard
+        static let segmentRadius: CGFloat = 6
+        static let fieldHeight: CGFloat = InkHeight.standard
+        static let fieldRadius: CGFloat = InkRadius.row
+        static let badgeHeight: CGFloat = 18
+        static let keyCapRadius: CGFloat = InkRadius.key
+
         /// The glyph of an icon button: 16 pt, in secondary until hovered.
         static let iconGlyph = Font.system(size: 16)
+        /// An icon button is 28 × 28 with radius 8 (`Layout.chromeButton`, `InkRadius.row`).
         static let iconSize = Layout.chromeButton
-        static let iconRadius = InkRadius.control
-
-        /// The filled accent button under the pointer: the accent a step toward white in Ink and toward black in Paper
-        /// (`color-mix(accent 86 %, #fff)` in the reference).
-        static let primaryHoverPair = Adaptive(
-            dark: Accent.basePair.dark.mixed(with: whiteRGB, share: 0.14),
-            light: Accent.basePair.light.mixed(with: RGB(red: 0, green: 0, blue: 0), share: 0.14))
-        static let primaryHover = primaryHoverPair.color
+        static let iconRadius = InkRadius.row
     }
 
     /// The window's divider and the colours the app target needs from the shell.
@@ -164,7 +191,7 @@ extension LoomTheme.ProjectColor {
 
 /// What the app target reads from the shell: the colour of the split view's divider (DESIGN §2 item 2).
 public enum ShellChrome {
-    /// The canvas's hairline, white 7.5 % in Ink and the ink 8.5 % in Paper; 30 % and 45 % under Increase Contrast.
+    /// The canvas's hairline, white 7 % in Ink and #E5E5E5 in Paper; 30 % and 45 % under Increase Contrast.
     public static var dividerColor: NSColor {
         NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
             ? LoomTheme.Shell.dividerIncreasedColor : LoomTheme.Shell.dividerColor
@@ -203,22 +230,29 @@ public final class CanvasSplitView: NSSplitView {
 
 // MARK: Focus ring
 
-/// Sphyrna's focus ring on a control: the accent, 2 pt wide and 2 pt outside it (2.5 wide under Increase Contrast), drawn
-/// only while `visible` (focused and keyboard navigation on, `ChromeButtonStyle.showsFocusRing`).
+/// Sphyrna's focus ring on a control (DESIGN §0.1): the accent's 1 pt edge and a 3 pt halo of the accent outside it, drawn only
+/// while `visible` (focused and keyboard navigation on, `ChromeButtonStyle.showsFocusRing`).
 private struct ControlFocusRing: ViewModifier {
     let visible: Bool
     let radius: CGFloat
     @Environment(\.colorSchemeContrast) private var contrast
 
     func body(content: Content) -> some View {
-        let width = LoomTheme.Line.focusRing(for: contrast)
-        let reach = LoomTheme.Line.focusRingOffset + width
+        let halo = LoomTheme.Control.focusHalo
+        let haloOpacity = contrast == .increased
+            ? LoomTheme.Control.focusHaloIncreasedOpacity : LoomTheme.Control.focusHaloOpacity
         content.overlay {
-            RoundedRectangle(cornerRadius: radius + reach)
-                .strokeBorder(visible ? LoomTheme.Surface.focusRing : .clear, lineWidth: width)
-                .padding(-reach)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+            ZStack {
+                // A stroke centred half the halo's width outside the edge covers the band from the edge out to the halo's width.
+                RoundedRectangle(cornerRadius: radius + halo / 2)
+                    .stroke(LoomTheme.Surface.focusRing.opacity(haloOpacity), lineWidth: halo)
+                    .padding(-halo / 2)
+                RoundedRectangle(cornerRadius: radius)
+                    .strokeBorder(LoomTheme.Surface.focusRing, lineWidth: LoomTheme.Control.focusEdge)
+            }
+            .opacity(visible ? 1 : 0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
         }
     }
 }

@@ -46,14 +46,14 @@ struct EndedScreenNotice: View {
                     case .showDetails:
                         Button("Show Details") { model.closeEndedScreen(row.id) }
                             .disabled(busy == .resuming)
-                            .buttonStyle(ControlButtonStyle(kind: .secondary))
+                            .buttonStyle(ControlButtonStyle(kind: .outline))
                             .help("Closes this screen and shows the session's details")
                     case .resume:
                         Button(Self.resumeTitle(stale: row.record.lifecycle == .stale)) {
                             model.resumeConversation(row.id)
                         }
                         .disabled(!model.canResume(row) || busy == .resuming)
-                        .buttonStyle(AccentButtonStyle(kind: .filled))
+                        .buttonStyle(ControlButtonStyle(kind: .default))
                         .onAppear { SidebarRenderProbe.appeared("resume", session: row.id) }
                         .onDisappear { SidebarRenderProbe.disappeared("resume", session: row.id) }
                     }

@@ -230,7 +230,7 @@ private struct HomeRemoraSentence: View {
                 .accessibilityIdentifier("home-remora-state")
             if let button {
                 Button(button.title, action: button.action)
-                    .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                    .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                     .accessibilityIdentifier("home-remora-state-action")
             }
             Spacer(minLength: 0)

@@ -473,7 +473,7 @@ struct ComposerContextPopover: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, usage?.fraction == nil ? LoomTheme.Composer.ringBarMarginTop : 0)
             Button("Compact Now", action: onCompact)
-                .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small)).disabled(!canCompact)
+                .buttonStyle(ControlButtonStyle(kind: .outline, size: .small)).disabled(!canCompact)
                 .help(canCompact ? "Ask Claude to compact this session now" : "Available when Claude is idle and nothing waits for you")
                 .padding(.top, LoomTheme.Composer.ringBarMarginTop)
                 .accessibilityIdentifier("composer-compact")

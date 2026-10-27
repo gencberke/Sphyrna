@@ -75,7 +75,7 @@ struct PinnedButtonStyle: ButtonStyle {
             let shape = RoundedRectangle(cornerRadius: LoomTheme.Pinned.buttonRadius)
             configuration.label
                 .font(LoomTheme.InkType.button.font)
-                .foregroundStyle(accent ? LoomTheme.Accent.onAccent : LoomTheme.Text.primary)
+                .foregroundStyle(accent ? LoomTheme.Control.defaultTextPair.color : LoomTheme.Text.primary)
                 .padding(.horizontal, LoomTheme.Pinned.buttonPaddingH)
                 .frame(height: LoomTheme.Pinned.buttonHeight)
                 .background(shape.fill(fill(active: active, pressed: pressed)))
@@ -88,8 +88,8 @@ struct PinnedButtonStyle: ButtonStyle {
 
         private func fill(active: Bool, pressed: Bool) -> Color {
             if accent {
-                if pressed { return LoomTheme.Accent.base.opacity(LoomTheme.Opacity.accentPressed) }
-                return active ? LoomTheme.Control.primaryHover : LoomTheme.Accent.base
+                if pressed { return LoomTheme.Control.defaultFillPair.color.opacity(LoomTheme.Control.defaultPressedOpacity) }
+                return active ? LoomTheme.Control.defaultFillPair.color.opacity(LoomTheme.Control.defaultHoverOpacity) : LoomTheme.Control.defaultFillPair.color
             }
             return pressed ? LoomTheme.Surface.pressed : (active ? LoomTheme.Surface.hover : .clear)
         }

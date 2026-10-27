@@ -82,7 +82,7 @@ struct ComposerQueueStrip: View {
                 Text(pause).font(LoomTheme.Composer.queueFont).foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
                     .accessibilityIdentifier("composer-queue-pause")
                 Spacer(minLength: 0)
-                Button("Resume") { model.resumeQueue() }.buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                Button("Resume") { model.resumeQueue() }.buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                     .accessibilityIdentifier("composer-queue-resume")
                 Button("Clear") { model.clearQueue() }.buttonStyle(ControlButtonStyle(kind: .ghost, size: .small))
                     .accessibilityIdentifier("composer-queue-clear")

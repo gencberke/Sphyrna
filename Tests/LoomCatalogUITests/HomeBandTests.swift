@@ -122,7 +122,7 @@ import Testing
     @Test func theBandAndTheCardsHaveDesignsValues() {
         typealias H = LoomTheme.Home
         #expect(H.bandAbove == 84 && H.bandBelow == 34 && H.blockGap == 14 && H.maxWidth == 1_280 && H.sideInset == 32)
-        #expect(LoomTheme.InkType.statement.size == 42 && LoomTheme.InkType.statement.weight == .ultraLight)
+        #expect(LoomTheme.InkType.statement.size == 34 && LoomTheme.InkType.statement.weight == .light)
         #expect(H.eyebrow.size == 11 && H.eyebrow.mono && H.eyebrow.tracking == 0.04)
         #expect(H.headHeight == 42 && H.pip == 7 && H.headGap == 9 && H.itemPadding == 16)
         #expect(H.sideCardPadding == 16 && H.sideHeadGap == 4 && H.paceGap == 14)
@@ -137,7 +137,7 @@ import Testing
         #expect(LoomTheme.Layout.harnessMarkRow == 12, "the harness's mark is 12")
         #expect(H.rowTitle.size == 13 && H.rowTitle.weight == .medium && H.rowMeta.mono && H.rowMeta.size == 11)
         #expect(H.reason.size == 12 && H.reasonMono.size == 11.5 && H.reasonMono.mono)
-        #expect(LoomTheme.Control.Size.small.height == 22, "Open Session, Mark as Read and Resume are small buttons")
+        #expect(LoomTheme.Control.Size.small.height == 24, "Open Session, Mark as Read and Resume are small buttons")
         #expect(H.continueShown == 5)
         // The actions: the pointer, the held hover of an evidence run, or keyboard focus.
         #expect(!HomeRowActions.revealed(hovering: false, focused: false))

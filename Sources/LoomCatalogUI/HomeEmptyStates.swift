@@ -37,7 +37,7 @@ struct HomeCheckAgainButton: View {
                 Text(HomeCheckAgain.title(checking: checking))
             }
         }
-        .buttonStyle(ControlButtonStyle(kind: .secondary, size: size))
+        .buttonStyle(ControlButtonStyle(kind: .outline, size: size))
         .disabled(checking)
         .accessibilityIdentifier("home-check-again")
     }
@@ -79,7 +79,7 @@ struct HomeEmptyCatalog: View {
             HStack(alignment: .top, spacing: LoomTheme.Home.firstActionsGap) {
                 Button("Add Project…") { model.presentAddProject() }
                     .keyboardShortcut("o", modifiers: .command)
-                    .buttonStyle(ControlButtonStyle(kind: .primary))
+                    .buttonStyle(ControlButtonStyle(kind: .default))
                     .accessibilityIdentifier("home-add-project")
                 if connect {
                     HomeCheckAgainButton(model: model)

@@ -567,7 +567,7 @@ enum LoomTheme {
         /// Detail header (collapsed sidebar): space reserved for the native buttons.
         static let detailButtonsGap: CGFloat = 66
         /// An icon button: 26 pt, radius 6, a 16 pt glyph (DESIGN §6 Controls).
-        static let chromeButton = CGSize(width: 26, height: 26)
+        static let chromeButton = CGSize(width: 28, height: 28)
         static let projectMenuButton = CGSize(width: 22, height: 20)
         /// Every control answers a click within at least this area, whatever it draws.
         static let minimumHitTarget = CGSize(width: 24, height: 24)

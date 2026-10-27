@@ -210,7 +210,7 @@ private struct NoteCardView: View {
             body(editing: editing).padding(.top, M.noteBodyTop)
             HStack(spacing: M.noteButtonsGap) {
                 Button(editing ? RemoraMemoryText.doneEditing : RemoraMemoryText.edit) { memory.toggleEditing(card) }
-                    .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                    .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                     .accessibilityLabel((editing ? RemoraMemoryText.doneEditing : RemoraMemoryText.edit) + " the note of " + card.name)
                 Button(RemoraMemoryText.remove) { memory.removeNote(card) }
                     .buttonStyle(ControlButtonStyle(kind: .ghost, size: .small))
@@ -311,7 +311,7 @@ private struct NoteFilePane: View {
                     .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
                 Spacer(minLength: 0)
                 Button(RemoraMemoryText.openTitle(note: url)) { if let url { navigation.noteActions.open(url) } }
-                    .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                    .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                     .disabled(url == nil)
             }
             .padding(.top, M.pathTop)

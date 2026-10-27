@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// The icon button of the control family (DESIGN §6 Controls): 26 pt, radius 6, a 16 pt glyph in secondary until hovered
+/// The icon button of the control family (DESIGN §6 Controls): 28 pt, radius 8, a 16 pt glyph in secondary until hovered
 /// (explicit colors: a plain button otherwise picks up the accent tint for its symbol), the pill's hover, selected and pressed
-/// fills, and Sphyrna's focus ring (accent, 2 pt, 2 pt outside) with keyboard navigation (the system focus effect is switched off).
+/// fills, and Sphyrna's focus ring (an accent edge and a 3 pt halo, DESIGN §0.1) with keyboard navigation (the system focus effect is switched off).
 struct ChromeButtonStyle: ButtonStyle {
     var selected = false
     var size = LoomTheme.Layout.chromeButton

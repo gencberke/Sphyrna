@@ -83,7 +83,7 @@ private struct ProjectSessionList: View {
                     Button { model.loadMoreProjectSessions() } label: {
                         Text(page.isLoadingMore ? "Loading\u{2026}" : "Show more sessions")
                     }
-                    .buttonStyle(ControlButtonStyle(kind: .secondary)).disabled(page.isLoadingMore)
+                    .buttonStyle(ControlButtonStyle(kind: .outline)).disabled(page.isLoadingMore)
                     .padding(.top, LoomTheme.ProjectPage.blockGap)
                     .accessibilityIdentifier("project-more-sessions")
                 }

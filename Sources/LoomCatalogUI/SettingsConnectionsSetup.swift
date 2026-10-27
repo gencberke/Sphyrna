@@ -36,11 +36,11 @@ struct HarnessSetupBlock: View {
             }
             HStack(spacing: C.commandGap) {
                 Button("Copy") { health.copy(command, for: provider) }
-                    .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                    .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                     .accessibilityLabel("Copy the \(command.title.lowercased()) command for \(name)")
                     .accessibilityIdentifier("setup-copy-\(provider.rawValue)")
                 Button("Open Terminal") { health.openTerminal(for: provider) }
-                    .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                    .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                     .accessibilityLabel("Open Terminal")
                     .accessibilityIdentifier("setup-open-terminal-\(provider.rawValue)")
             }

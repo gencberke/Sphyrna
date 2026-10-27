@@ -50,11 +50,6 @@ extension LoomTheme {
         static let buttonsTop: CGFloat = 20
         static let buttonGap: CGFloat = 8
 
-        /// A tinted button: the tone at 14 % and at 24 % under the pointer. The failure tint's hover is the failure hue at 22 %.
-        static let tintFill = 0.14
-        static let tintHover = 0.24
-        static let failureHover = 0.22
-
         /// A sheet comes down under the window's header: Settings' band is 52.
         static let defaultHeaderOffset = InkHeight.header
 

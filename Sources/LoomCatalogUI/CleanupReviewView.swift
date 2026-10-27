@@ -90,7 +90,7 @@ struct CleanupReviewView: View {
                     Button(all ? "Clear" : "Select All") {
                         if all { review.clearSelection() } else { review.selectAll() }
                     }
-                    .buttonStyle(SettingsLinkButtonStyle(key: "settings-select-all")).disabled(review.isBusy)
+                    .buttonStyle(ControlButtonStyle(kind: .link, key: "settings-select-all")).disabled(review.isBusy)
                 }
             },
             content: {
@@ -233,7 +233,7 @@ private struct CleanupSettingsSection: View {
                 label: "Cleanup",
                 trailing: {
                     Button("Reset to Defaults") { review.resetSettings() }
-                        .buttonStyle(SettingsLinkButtonStyle(key: "settings-reset-defaults"))
+                        .buttonStyle(ControlButtonStyle(kind: .link, key: "settings-reset-defaults"))
                         .disabled(review.settings.isStandard || review.isBusy)
                 },
                 content: {

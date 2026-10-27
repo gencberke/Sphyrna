@@ -129,9 +129,9 @@ struct BannerBox: View {
         let base = Button(action.title, action: action.perform).disabled(!action.enabled)
         Group {
             switch action.style {
-            case .secondary: base.buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
-            case .accent: base.buttonStyle(AccentButtonStyle(kind: .tinted, size: .small))
-            case .failure: base.buttonStyle(BannerFailureTintStyle())
+            case .secondary: base.buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
+            case .accent: base.buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
+            case .failure: base.buttonStyle(ControlButtonStyle(kind: .destructive, size: .small))
             }
         }
         .modifier(OptionalHelp(text: action.help))
@@ -166,14 +166,6 @@ private struct BannerStackTab: View {
             .padding(.horizontal, edges.stackTabInset)
             .offset(y: -edges.stackTabHeight)
             .accessibilityHidden(true)
-    }
-}
-
-/// The failure tint of a banner's way out (D-78: "Remove from Sphyrna Only"): the failure text on the failure wash.
-struct BannerFailureTintStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        ControlButtonStyle(kind: .destructive, size: .small).makeBody(configuration: configuration)
-            .background(RoundedRectangle(cornerRadius: LoomTheme.Control.Size.small.radius).fill(LoomTheme.Status.failureWash))
     }
 }
 

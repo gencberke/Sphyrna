@@ -160,10 +160,10 @@ struct RemoraSettingsView: View {
         SettingsRow(title: RemoraSettingsText.workingTitle,
                     detail: RemoraSettingsLine.workingMemory(days: counts.days, notes: counts.notes, updated: counts.updated), detailStyle: R.fact) {
             Button(RemoraSettingsText.show) { navigation.sheets.present(.remoraMemory) }
-                .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                 .disabled(!model.hasRemora)
             Button(RemoraSettingsText.clear) { navigation.askToClearRemoraMemory(fromMemorySheet: false) }
-                .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                .buttonStyle(ControlButtonStyle(kind: .ghost, size: .small))
                 .disabled(!model.hasRemora)
         }
     }
@@ -175,9 +175,9 @@ struct RemoraSettingsView: View {
             Button(RemoraSettingsText.choose) {
                 if let chosen = navigation.noteActions.choose() { controls.setNoteFile(chosen) }
             }
-            .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+            .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
             Button(RemoraSettingsText.open) { if let url { navigation.noteActions.open(url) } }
-                .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                 .disabled(url == nil)
         }
     }

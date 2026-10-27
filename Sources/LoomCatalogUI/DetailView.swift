@@ -359,7 +359,7 @@ struct RequestList: View {
                                 model.answerRequest(sessionID: row.id, requestID: request.id, accept: true)
                             }
                             .keyboardShortcut(returnApproves ? .defaultAction : nil)
-                            .buttonStyle(AccentButtonStyle(kind: .filled))
+                            .buttonStyle(ControlButtonStyle(kind: .default))
                         }
                     }
                     .padding(LoomTheme.Space.requestPadding)
@@ -410,19 +410,6 @@ struct RenameSheet: View {
 
     private func save() {
         Task { await model.commitRename() }
-    }
-}
-
-/// The brand accent on a button, in the control family (`ControlButtonStyle`). `filled` is the default action (on-accent text on
-/// the accent; light text on it is only 2.2 to 3.0:1); `tinted` is a quieter action such as Try again (accent text on a faint
-/// accent fill). `size` is the family's: 26 high by default, 30 for a page's main action.
-struct AccentButtonStyle: ButtonStyle {
-    enum Kind { case filled, tinted }
-    let kind: Kind
-    var size: LoomTheme.Control.Size = .regular
-
-    func makeBody(configuration: Configuration) -> some View {
-        ControlButtonStyle(kind: kind == .filled ? .primary : .tinted, size: size).makeBody(configuration: configuration)
     }
 }
 

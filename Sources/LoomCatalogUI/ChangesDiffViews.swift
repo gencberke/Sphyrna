@@ -272,7 +272,7 @@ struct ChangesCommentBox: View {
                 HStack(spacing: LoomTheme.Changes.commentGap) {
                     Spacer(minLength: 0)
                     Button("Cancel") { model.cancelChangeComment(in: sessionID) }.buttonStyle(SettingsButtonStyle())
-                    Button("Add comment") { model.saveChangeComment(in: sessionID) }.buttonStyle(AccentButtonStyle(kind: .filled))
+                    Button("Add comment") { model.saveChangeComment(in: sessionID) }.buttonStyle(ControlButtonStyle(kind: .default))
                         .disabled(session.composingText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             } else if let saved {

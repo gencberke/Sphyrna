@@ -199,7 +199,7 @@ struct SettingsNote: View {
             }
             if let retry {
                 Button("Try again", action: retry)
-                    .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                    .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                     .padding(.top, S.noteButtonTop)
             }
         }

@@ -1,7 +1,7 @@
 import SwiftUI
 
 // The control family as Settings draws it (DESIGN §6 Controls; the reference's `.seg`, `.sw`, `.popup`, `.stepper`, `.cbx`, `.lk2`):
-// a segmented control, a switch, a checkbox, a stepper, a menu picker and a link-style button. The older `SegmentButtonStyle` and
+// a segmented control, a switch, a checkbox, a stepper, a menu picker. The older `SegmentButtonStyle` and
 // `SettingsButtonStyle` stay for the Changes tab.
 
 // MARK: Segmented control
@@ -301,43 +301,6 @@ private struct PopupButtonStyle: ButtonStyle {
         private func edge(active: Bool) -> AnyShapeStyle {
             if contrast == .increased { return AnyShapeStyle(LoomTheme.Surface.hairlineStyle) }
             return AnyShapeStyle(active ? LoomTheme.Surface.strongerHairline : LoomTheme.Surface.strongHairline)
-        }
-    }
-}
-
-// MARK: Link
-
-/// A link-style button at the end of a group label ("Select All", "Reset to Defaults"): 18 high, radius 6, medium 11.5 in secondary, the
-/// hover fill and primary text under the pointer, drawn at 45 % when disabled.
-struct SettingsLinkButtonStyle: ButtonStyle {
-    var key: String?
-
-    func makeBody(configuration: Configuration) -> some View { LinkFace(configuration: configuration, key: key) }
-
-    private struct LinkFace: View {
-        let configuration: ButtonStyle.Configuration
-        let key: String?
-        @State private var hovering = false
-        @Environment(\.isEnabled) private var enabled
-        @Environment(\.isFocused) private var focused
-
-        private typealias S = LoomTheme.Settings
-
-        var body: some View {
-            let active = enabled && (hovering || LookEvidence.forcesHover(key))
-            let shape = RoundedRectangle(cornerRadius: S.linkRadius)
-            configuration.label
-                .projectType(S.linkFont)
-                .foregroundStyle(active || configuration.isPressed ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
-                .padding(.horizontal, S.linkPaddingH)
-                .frame(height: S.linkHeight)
-                .background(shape.fill(configuration.isPressed && enabled ? LoomTheme.Surface.pressed : (active ? LoomTheme.Surface.hover : .clear)))
-                .controlFocusRing(
-                    visible: ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled),
-                    radius: S.linkRadius)
-                .contentShape(shape)
-                .opacity(enabled ? 1 : S.linkDisabled)
-                .onHover { hovering = $0 }
         }
     }
 }

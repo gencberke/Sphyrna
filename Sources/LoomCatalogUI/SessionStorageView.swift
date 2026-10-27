@@ -26,7 +26,7 @@ struct StorageSection: View {
         SettingsGroup(label: "Storage") {
             SettingsRow(title: "Claude's retention", detail: StorageText.retention(storage.retention)) {
                 Button("Change\u{2026}") { sheets.present(.retention) }
-                    .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                    .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                     .disabled(storage.retentionDays == nil)
                     .accessibilityLabel("Change Claude's retention")
             }

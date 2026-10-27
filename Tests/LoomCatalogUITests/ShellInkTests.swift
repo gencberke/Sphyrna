@@ -36,47 +36,17 @@ struct ShellInkTests {
 
     // MARK: The control family
 
-    @Test func theControlFamilyHasOneHeightRadiusAndFocusRing() {
-        typealias S = LoomTheme.Control.Size
-        #expect(S.regular.height == 26 && S.regular.radius == 6 && S.page.height == 30 && S.page.radius == 8
-                && S.small.height == 22 && S.small.radius == 5)
-        #expect(LoomTheme.Layout.chromeButton == CGSize(width: 26, height: 26), "an icon button is 26 pt")
-        #expect(LoomTheme.Control.iconRadius == 6 && LoomTheme.Header.groupHeight == 26 && LoomTheme.Header.toggleSize == 26)
+    @Test func theIconButtonIsTwentyEightAndKeepsItsHitArea() {
+        #expect(LoomTheme.Layout.chromeButton == CGSize(width: 28, height: 28), "an icon button is 28 pt")
+        #expect(LoomTheme.Control.iconRadius == 8 && LoomTheme.Header.groupHeight == 26 && LoomTheme.Header.toggleSize == 26)
         #expect(LoomTheme.Header.groupRadius == 7 && LoomTheme.TabStrip.tabHeight == 26)
         #expect(LoomTheme.Opacity.disabled == 0.38)
-        // Sphyrna's ring: 2 pt, 2 pt outside; 2.5 under Increase Contrast.
+        // Sphyrna's hand-drawn rings keep their 2 pt line; a control's ring is checked in ControlFamilyTests.
         #expect(LoomTheme.Line.focusRing(for: .standard) == 2 && LoomTheme.Line.focusRingOffset == 2
                 && LoomTheme.Line.focusRing(for: .increased) == 2.5)
         // The icon button's hit area stays at least 24 x 24.
-        #expect(ChromeButtonStyle.hitSize(for: LoomTheme.Layout.chromeButton) == CGSize(width: 26, height: 26))
+        #expect(ChromeButtonStyle.hitSize(for: LoomTheme.Layout.chromeButton) == CGSize(width: 28, height: 28))
         #expect(ChromeButtonStyle.hitSize(for: CGSize(width: 20, height: 20)) == CGSize(width: 24, height: 24))
-    }
-
-    /// The filled button's text is the on-accent colour (light text on the Ink accent is 3.0:1), also under the pointer, where the
-    /// accent steps toward white in Ink and toward black in Paper.
-    @Test func theFilledButtonKeepsItsContrastUnderThePointer() {
-        for appearance in LoomTheme.Appearance.allCases {
-            let onAccent = LoomTheme.Accent.onAccentPair[appearance]
-            let rest = LoomTheme.Accent.basePair[appearance]
-            let hover = LoomTheme.Control.primaryHoverPair[appearance]
-            #expect(onAccent.contrast(with: rest) >= 4.5, "\(appearance) at rest")
-            #expect(onAccent.contrast(with: hover) >= 4.5, "\(appearance) hovered")
-            #expect(appearance == .dark ? hover.luminance > rest.luminance : hover.luminance < rest.luminance)
-        }
-    }
-
-    /// The text kinds: filled on-accent, secondary with the primary text, ghost in secondary until hovered, destructive in the
-    /// failure text variant (4.5:1 on its own wash), tinted in the accent's high step.
-    @Test func theButtonKindsUseTheTextTheFamilyAsksFor() {
-        for appearance in LoomTheme.Appearance.allCases {
-            let canvas = LoomTheme.Surface.greys(appearance, tone: .neutral).canvas
-            let failureWash = LoomTheme.Status.failureWashTone[appearance]
-            let wash = failureWash.rgb.composited(over: canvas, opacity: failureWash.opacity)
-            #expect(LoomTheme.Status.failureLightPair[appearance].contrast(with: wash) >= 4.5, "\(appearance) destructive on hover")
-            let tint = LoomTheme.Accent.basePair[appearance].composited(over: canvas, opacity: LoomTheme.Opacity.accentTintPressed)
-            #expect(LoomTheme.Accent.highPair[appearance].contrast(with: tint) >= 4.5, "\(appearance) tinted")
-        }
-        #expect(ControlButtonStyle.Kind.allCases.count == 5)
     }
 
     // MARK: The canvas
@@ -90,8 +60,8 @@ struct ShellInkTests {
             return result
         }
         let ink = resolved(.darkAqua), paper = resolved(.aqua)
-        #expect(abs(Double(ink.alphaComponent) - 0.075) < 0.002 && ink.redComponent > 0.99, "white 7.5 % in Ink")
-        #expect(abs(Double(paper.alphaComponent) - 0.085) < 0.002 && paper.redComponent < 0.2, "the ink 8.5 % in Paper")
+        #expect(abs(Double(ink.alphaComponent) - 0.07) < 0.002 && ink.redComponent > 0.99, "white 7 % in Ink")
+        #expect(paper.alphaComponent > 0.99 && abs(paper.redComponent - 229.0 / 255.0) < 0.01, "the solid #E5E5E5 in Paper")
     }
 
     /// FB6-1: the divider's 1 pt gap is painted with the opaque canvas under the hairline, so a clear window behind the split

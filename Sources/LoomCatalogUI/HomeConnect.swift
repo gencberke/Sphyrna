@@ -145,7 +145,7 @@ struct HomeConnectNotice: View {
                 }
                 Spacer(minLength: LoomTheme.Home.noticeGap)
                 Button("Set Up…") { model.showConnections() }
-                    .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                    .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                     .accessibilityLabel("Set up your agents in Settings")
                     .accessibilityIdentifier("home-connect-set-up")
                 HomeCheckAgainButton(model: model, size: .small)

@@ -268,7 +268,7 @@ private struct HomeRemoraAnswerCard: View {
                     Text(HomeRemoraText.failure(kind)).homeType(R.answerText).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
                     if kind != .notLoggedIn {
                         Button(HomeRemoraText.tryAgain) { HomeRemoraCalls.ask(model, ui: ui, asked.question, retry: true) }
-                            .buttonStyle(ControlButtonStyle(kind: .secondary, size: .small))
+                            .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                             .accessibilityIdentifier("home-remora-try-again")
                     }
                     Spacer(minLength: 0)

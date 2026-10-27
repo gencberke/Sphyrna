@@ -116,18 +116,18 @@ struct ConversationDetail: View {
                         model.resumeConversation(row.id)
                     }
                     .disabled(!model.canResume(row))
-                    .buttonStyle(AccentButtonStyle(kind: .filled))
+                    .buttonStyle(ControlButtonStyle(kind: .default))
                     .onAppear { SidebarRenderProbe.appeared("resume", session: row.id) }
                     .onDisappear { SidebarRenderProbe.disappeared("resume", session: row.id) }
                 }
                 // Stop only where a run can be stopped; a session that is not running has nothing to stop.
                 if model.canStop(row) {
                     Button("Stop") { model.stopConversation(row.id) }
-                        .buttonStyle(ControlButtonStyle(kind: .secondary))
+                        .buttonStyle(ControlButtonStyle(kind: .outline))
                         .accessibilityIdentifier("record-stop")
                 }
                 Button("Rename…") { model.beginRename(row.id) }
-                    .buttonStyle(ControlButtonStyle(kind: .secondary))
+                    .buttonStyle(ControlButtonStyle(kind: .outline))
             }
             .padding(.top, LoomTheme.Edges.stateActionsTop)
         }
