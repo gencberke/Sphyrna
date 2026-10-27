@@ -109,13 +109,8 @@ DOCS = {
         'title': 'Sphyrna · Ink · Identity',
         'css': ['shared/settings.css', 'docs/identity/identity.css'],
         'body': ['docs/identity/body.html'],
+        # the engine stays for the icon's drawing (iconart.js builds its Ocean); no art is drawn beyond it
         'js': ['shared/base.js', 'shared/engine.js', 'shared/iconart.js', 'shared/marks.js', 'docs/identity/identity.js'],
-        # the identity page shows the reduced motion beside the full one, with a switch of its own
-        'js_rep': [("const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');",
-                    "const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');\n"
-                    "// This page plays the motion even when macOS asks to reduce it; the top bar's Reduce Motion switch shows the reduced version.\n"
-                    "let motionOff = false;\nconst motionReduced = () => motionOff;"),
-                   ("!document.hidden && !this.opt.still", "!document.hidden && !motionReduced() && !this.opt.still")],
     },
 }
 
