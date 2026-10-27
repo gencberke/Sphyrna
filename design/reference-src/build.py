@@ -94,11 +94,9 @@ DOCS = {
     },
     'edges': {
         'title': 'Sphyrna · Ink · The edges',
-        'css': ['shared/chat.css', 'shared/harness.css', 'shared/project.css', 'docs/edges/edge.css'],
+        'css': ['shared/chat.css', 'shared/harness.css', 'shared/project.css', 'docs/edges/edge.css', 'shared/side4.css'],
         'body': ['docs/edges/body.html'],
-        'js': ['shared/base.js', 'shared/engine.js',
-               "=sea('ocean-intro', { cell: 11, alpha: .6, specs: [{ kind: 'hammerhead', L: 520, depth: .66, speed: 16 }, { kind: 'thresher', L: 300, depth: .9, speed: 20 }, { kind: 'whale', L: 820, depth: .26, speed: 8 }] });\n" + LISTEN,
-               'shared/marks.js', 'shared/band.js', 'docs/edges/edge.js'],
+        'js': ['shared/base.js', 'shared/side4.js', 'shared/marks.js', 'docs/edges/edge.js'],
         'js_rep': [('<!--ICON-->', lambda: data_url('docs/edges/icon-256.png'))],
     },
     'remora': {

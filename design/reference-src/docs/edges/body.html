@@ -10,34 +10,30 @@
     <div class="rule"><div class="n">03</div><h3>Ended is not failed</h3><p>A session that ended has no pill and no mark, and what it left stays readable. Only a failure, a stop Sphyrna could not verify, or a problem takes the failure colour.</p></div>
     <div class="rule"><div class="n">04</div><h3>Banners stack above</h3><p>A banner sits under the header, one at a time, with the rest behind a "+N" peek. It never covers the terminal or the chat, and it comes in over 200 ms by opacity only.</p></div>
     <div class="rule"><div class="n">05</div><h3>Outside, the same marks</h3><p>The menu bar, its menu and the Dock read the sidebar's status column: the spinner, the attention dot, the unviewed dot and the failure dot. A notification names the session and says why.</p></div>
-    <div class="rule"><div class="n">06</div><h3>Art only where nothing is read</h3><p>The school roams behind the first launch, one hammerhead circles Home's band, and a small one swims where Sphyrna waits, also under Reduce Motion. None swims behind a problem, an ended screen, a banner or a menu.</p></div>
+    <div class="rule"><div class="n">06</div><h3>Nothing on the edges is art</h3><p>Home's band says its sentence and nothing swims in it; the first launch shows the app icon, still, above its message (D-102). The states are read, not drawn.</p></div>
   </div>
   </section>
 
   <!-- ================= 01 FIRST LAUNCH AND HOME ================= -->
   <section class="sec" id="first">
     <div class="sechead"><span class="num">01</span><h2>First launch and Home</h2>
-      <p>Home is where Sphyrna opens, so its edges are the first thing you see: the first launch, a Mac without Claude, a day with nothing waiting, and the morning after a quit with sessions running. Switch the states. On the first launch the school roams behind the message, and Replay brings the hammerhead in again; on Home one hammerhead circles the band on its loop. Check Again finds Claude.</p></div>
+      <p>Home is where Sphyrna opens, so its edges are the first thing you see: the first launch, a Mac without Claude, a day with nothing waiting, and the morning after a quit with sessions running. Switch the states. On the first launch the app icon heads the message, still; Replay shows it again. Check Again finds Claude.</p></div>
     <div class="pbar">
       <div class="seg" id="homeSeg"><button class="on" data-h="first">First launch</button><button data-h="noclaude">No Claude</button><button data-h="quiet">Nothing needs you</button><button data-h="noclaude2">No Claude, with sessions</button><button data-h="quit">After a quit</button></div>
       <button class="btn sec sm" id="homeReplay">Replay</button>
-      <span class="grp"><span class="hint">Small ones</span><span class="seg" id="smallSeg"><button class="on" data-k="remora">Remoras</button><button data-k="thresher">Threshers</button></span></span>
     </div>
-    <div class="stage"><div class="win" id="winH" data-w="1280" data-h="760">
-      <aside class="side" data-role="side"></aside>
+    <div class="stage"><div class="win i4grid" id="winH" data-w="1280" data-h="760">
+      <aside class="i4side" data-role="side" data-view="projects"></aside>
       <main class="detail">
-        <div class="artbg" data-art="first"></div>
-        <canvas class="ocean calm" id="ocean-first" data-art="first"></canvas>
-        <div class="artbg" data-art="band" style="height:300px;-webkit-mask-image:linear-gradient(#000 30%,transparent);mask-image:linear-gradient(#000 30%,transparent)" hidden></div>
-        <canvas class="ocean band" id="ocean-band" data-art="band" style="height:300px" hidden></canvas>
         <div class="hbody" data-role="home"></div>
       </main>
+      <footer class="i4status" data-i4status></footer>
       <span class="pin" id="pinH1">H1</span><span class="pin" id="pinH2">H2</span><span class="pin" id="pinH3">H3</span><span class="pin" id="pinH4">H4</span>
       <span class="pin" id="pinH5">H5</span><span class="pin" id="pinH6">H6</span><span class="pin" id="pinH7">H7</span><span class="pin" id="pinH8">H8</span><span class="pin" id="pinH9">H9</span><span class="pin" id="pinH10">H10</span>
     </div></div>
     <ol class="legend">
       <li><b>H1</b>First launch: the app icon at 84 heads the message (D-77, DESIGN §9). The words are the app's as built; the code still draws the menu bar mark there.</li>
-      <li><b>H2</b>The school roams behind the message: the hammerhead comes in from the right, as the icon faces, the whale shark keeps to the deep, and a few small ones swim with them. Remoras keep to the big two, so none swims alone; threshers roam on their own. The message's middle stays faint.</li>
+      <li><b>H2</b>The first launch: the app icon, still, at 84 heads the message, and nothing is drawn behind it.</li>
       <li><b>H3</b>The sidebar says only "No projects yet.": Home holds the explanation and the button. Today it says "No sessions yet. Add a project folder to begin." in both views, also when projects exist.</li>
       <li><b>H4</b>New Codex Session is off, with "Codex comes in a later version" under it (D-69).</li>
       <li><b>H5</b>Without Claude, the attention triangle takes the icon's place, the title says what is missing, and Check Again takes New Claude Session's place. Add Project… stays the main action. No shark: the art waits with you, never with a problem.</li>
@@ -45,7 +41,6 @@
       <li><b>H7</b>The Needs you card stays, empty, and says what will appear there. It replaces the built "Nothing needs you" card, whose title the band now says.</li>
       <li><b>H8</b>Over a catalog with sessions, the no-Claude notice is a card under the band, with Check Again. Plan limits is left out, since the notice already says why, and the sidebar's New session row is off.</li>
       <li><b>H9</b>After a quit that cut sessions short, Continue comes first: its lead line, then each session with "Last active … ago" and Resume on hover. "Show 3 More" follows the fifth row.</li>
-      <li><b>H10</b>Home's band: one hammerhead, always there, slow and faint, on one fixed loop of 180 seconds. It turns out of sight past the band's edges, so you see it swim and never turn. The thresher is gone from Home.</li>
     </ol>
     <div class="parts" style="margin-top:34px">
       <div class="spec"><span class="label">The sidebar's empty lines</span>
@@ -70,27 +65,6 @@
           <div class="ckrow"><span class="muted">Found: the message goes, and Home is itself.</span></div>
         </div>
         <p class="note">Check Again asks what Home already asks at launch: the plan limits, which find the claude command. "Checking…" is new; the code's button gives no sign that it asked. Still missing, nothing else moves.</p></div>
-      <div class="spec w6"><span class="label">Home's hammerhead, on one loop</span>
-        <div class="pcanvas loopfig">
-          <svg viewBox="0 0 560 176" aria-hidden="true">
-            <defs><clipPath id="bandclip"><rect x="70" y="14" width="420" height="124" rx="10"/></clipPath></defs>
-            <rect class="band" x="70" y="14" width="420" height="124" rx="10"/>
-            <text class="lb" x="84" y="32">Home's band</text>
-            <rect class="sent" x="110" y="62" width="230" height="12" rx="3"/><rect class="sent" x="110" y="80" width="140" height="6" rx="3"/>
-            <ellipse class="path out" cx="280" cy="70" rx="269" ry="30"/>
-            <ellipse class="path" cx="280" cy="70" rx="269" ry="30" clip-path="url(#bandclip)"/>
-            <path class="arw" d="M214 40 l-9 0 m0 0 l5 -4 m-5 4 l5 4"/><path class="arw" d="M384 40 l-9 0 m0 0 l5 -4 m-5 4 l5 4"/>
-            <path class="arw" d="M176 100 l9 0 m0 0 l-5 -4 m5 4 l-5 4"/><path class="arw" d="M346 100 l9 0 m0 0 l-5 -4 m5 4 l-5 4"/>
-            <text class="lb mid" x="280" y="160">one loop · 180 s · 12 frames a second</text>
-            <text class="lb" x="8" y="104">turn</text><text class="lb end" x="552" y="104">turn</text>
-          </svg>
-        </div>
-        <p class="note">The hammerhead never leaves the band. It swims left along the top and back along the bottom, and turns out of sight past the edges: as its tail leaves on one side, its head comes back on the other. The loop repeats, so the app can work out its frames once and then only draw them, with nothing simulated while Home is open; the art's spike (§5) measures which way is cheaper. It draws only while Home is on screen in an active window.</p></div>
-      <div class="spec w6"><span class="label">The art under Reduce Motion</span>
-        <div class="pcanvas setrow">
-          <div class="srow2"><div class="tx"><b>Animated art</b><span>The drawings on Home, empty pages and waiting panes move, also when Reduce Motion is on. Off, each stands still on one frame.</span></div><div class="ctl"><span class="sw on" data-role="artsw" title="The same as the top bar's Sharks switch"></span></div></div>
-        </div>
-        <p class="note">Settings → Theme, under Appearance, on by default. The art moves under Reduce Motion, as the working spinner does (D-12): it is slow and faint, and never behind what you read. This switch stops it; then Remora's arrival is its fade. Reduce Motion still makes the transitions instant. The page plays the art the same way, whatever macOS says, and the top bar's Sharks switch is this switch.</p></div>
     </div>
   </section>
 
@@ -103,8 +77,8 @@
       <div class="seg" id="recSeg" hidden><button class="on" data-r="ended">Not running</button><button data-r="away">Finished while away</button><button data-r="failed">Failed</button><button data-r="stopunv">Stop not verified</button><button data-r="problem">Problem</button><button data-r="unclear">Identity unclear</button><button data-r="unknown">State unknown</button></div>
       <button class="btn sec sm" id="endReset">Reset</button>
     </div>
-    <div class="stage"><div class="win" id="winE" data-w="1280" data-h="800">
-      <aside class="side" data-role="side"></aside>
+    <div class="stage"><div class="win i4grid" id="winE" data-w="1280" data-h="800">
+      <aside class="i4side" data-role="side" data-i4sel="ink" data-view="projects"></aside>
       <main class="detail" data-role="pane">
         <header class="dhead">
           <span class="hm claude md" title="Claude Code"></span><span class="dtitle">Port the sidebar to Ink tokens</span>
@@ -126,6 +100,7 @@
           <div class="ebody" data-role="body"></div>
         </div></div>
       </main>
+      <footer class="i4status" data-i4status></footer>
       <span class="pin" id="pinE1">E1</span><span class="pin" id="pinE2">E2</span><span class="pin" id="pinE3">E3</span><span class="pin" id="pinE4">E4</span>
       <span class="pin" id="pinE5">E5</span><span class="pin" id="pinE6">E6</span><span class="pin" id="pinE7">E7</span><span class="pin" id="pinE8">E8</span><span class="pin" id="pinE9">E9</span>
     </div></div>
@@ -164,8 +139,8 @@
       <button class="btn sec sm" id="banReset">Reset</button>
       <span class="hint">Click "+2" to open the stack. × closes a banner at once, and the next comes in over 200 ms.</span>
     </div>
-    <div class="stage"><div class="win" id="winB" data-w="1280" data-h="620">
-      <aside class="side" data-role="side"></aside>
+    <div class="stage"><div class="win i4grid" id="winB" data-w="1280" data-h="620">
+      <aside class="i4side" data-role="side" data-i4sel="ink" data-view="projects"></aside>
       <main class="detail" data-theme="dark">
         <header class="dhead">
           <span class="hm claude md" title="Claude Code"></span><span class="dtitle">Port the sidebar to Ink tokens</span>
@@ -187,6 +162,7 @@
           <div class="term kept" data-role="kept"></div>
         </div></div>
       </main>
+      <footer class="i4status" data-i4status></footer>
       <span class="pin" id="pinB1">B1</span><span class="pin" id="pinB2">B2</span><span class="pin" id="pinB3">B3</span><span class="pin" id="pinB4">B4</span><span class="pin" id="pinB5">B5</span>
     </div></div>
     <ol class="legend">
