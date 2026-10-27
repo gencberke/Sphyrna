@@ -8,7 +8,6 @@ import SwiftUI
 /// kept per session and read again only when the session's last activity has changed since.
 @MainActor @Observable
 final class SidebarPeekStore {
-    static let shared = SidebarPeekStore()
 
     /// What a hover stays still for before anything is read, so a pointer that crosses rows (or a list that scrolls under it)
     /// reads nothing.
@@ -85,10 +84,11 @@ extension CatalogModel {
 struct SidebarPeekHover: ViewModifier {
     let record: CatalogSession
     let model: CatalogModel
-    var store = SidebarPeekStore.shared
     @State private var resting = false
 
     func body(content: Content) -> some View {
+        // The app's one store is held by the model (`CatalogModel.sidebarPeek`), not by a shared instance.
+        let store = model.sidebarPeek
         let canPeek = model.peekTarget(for: record) != nil
         content
             .help(canPeek ? store.tooltip(for: record.session.id) ?? "" : "")
