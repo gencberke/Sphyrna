@@ -62,9 +62,9 @@ def build_doc(name):
 DOCS = {
     'v4': {
         'title': 'Sphyrna · Ink v4 · The proposal',
-        'css': ['shared/chat.css', 'shared/harness.css', 'shared/settings.css', 'docs/v4/v4.css'],
+        'css': ['shared/chat.css', 'shared/harness.css', 'shared/settings.css', 'shared/side4.css', 'docs/v4/v4.css'],
         'body': ['docs/v4/body.html'],
-        'js': ['shared/base.js', 'shared/engine.js', 'docs/v4/v4.js'],
+        'js': ['shared/base.js', 'shared/engine.js', 'shared/side4.js', 'docs/v4/v4.js'],
     },
     'chat': {
         'title': 'Sphyrna · Ink · The turn style',
@@ -172,7 +172,8 @@ def store(blocks, text):
 
 
 SHARED_PIECES = ['shared/head.css', 'shared/chat.css', 'shared/harness.css', 'shared/project.css', 'shared/settings.css', 'shared/sheets.css',
-                 'shared/base.js', 'shared/frame.js', 'shared/engine.js', 'shared/iconart.js', 'shared/marks.js', 'shared/band.js', 'shared/bridge.js']
+                 'shared/side4.css', 'shared/base.js', 'shared/frame.js', 'shared/engine.js', 'shared/iconart.js', 'shared/marks.js', 'shared/band.js',
+                 'shared/side4.js', 'shared/bridge.js']
 
 SHARED_IMAGES = ['docs/edges/icon-256.png', 'docs/review/icon-128.png']
 

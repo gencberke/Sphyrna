@@ -4,7 +4,6 @@
    ============================================================ */
 
 /* ---------- labels and type ---------- */
-.ink4 .i4lab{display:inline-block;font:600 11px/1 var(--ui);letter-spacing:.05em;text-transform:uppercase;color:var(--fg-3);white-space:nowrap}
 .ink4 .label{font:600 11px/1 var(--ui);letter-spacing:.05em;text-transform:uppercase;color:var(--fg-3)}
 .ink4 .i4ask{font:300 34px/1.15 var(--display);letter-spacing:-.022em;color:var(--fg-1)}
 .ink4 .i4note{font-size:11px;line-height:1.45;color:var(--fg-3)}
@@ -40,10 +39,6 @@
 .ink4 .i4brow + .i4brow{margin-top:10px}
 .ink4 .i4bh{font:10.5px var(--mono);color:var(--fg-3);text-align:right}
 .ink4 .i4brow .i4btn{width:100%}
-.ink4 .i4ib{width:28px;height:28px;display:inline-grid;place-items:center;border-radius:8px;color:var(--fg-2);flex:none;transition:background .12s,color .12s}
-.ink4 .i4ib:hover{background:var(--hover);color:var(--fg-1)}
-.ink4 .i4ib.on{background:var(--selected);color:var(--fg-1)}
-.ink4 .i4ib svg{width:16px;height:16px}
 .ink4 .i4ib.model{width:auto;display:inline-flex;gap:6px;padding:0 8px;font:12px var(--ui);color:var(--fg-2)}
 .ink4 .i4eff{font-size:11px;color:var(--fg-3)}
 .ink4 .i4fld{height:32px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:8px;background:var(--input-fill);box-shadow:inset 0 0 0 1px var(--input-edge);color:var(--faint);font-size:13px;position:relative;transition:box-shadow .12s}
@@ -56,10 +51,6 @@
 .ink4 .i4val{color:var(--fg-1);font:12px var(--mono)}
 .ink4 .i4caret{width:1.5px;height:15px;background:var(--accent);flex:none;animation:blink 1.1s steps(1) infinite}
 .ink4 .i4fmsg{position:absolute;left:1px;top:36px;font-size:11px;line-height:15px;color:var(--fail-text);white-space:nowrap}
-.ink4 .i4sw{width:32px;height:18px;border-radius:9px;background:var(--line-3);position:relative;flex:none;cursor:pointer;transition:background .12s}
-.ink4 .i4sw::after{content:"";position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .12s}
-.ink4 .i4sw.on{background:var(--accent)}
-.ink4 .i4sw.on::after{transform:translateX(14px)}
 .ink4 .i4fl{font-size:13px;color:var(--fg-1)}
 .ink4 .i4seg{display:inline-flex;height:32px;padding:3px;border-radius:8px;background:var(--muted);gap:2px;flex:none}
 .ink4 .i4seg button{height:26px;padding:0 12px;border-radius:6px;font:500 12px var(--ui);color:var(--fg-2);display:inline-flex;align-items:center;white-space:nowrap}
@@ -71,17 +62,8 @@
 .ink4 .i4badge.unv{background:var(--unv-wash);color:var(--unv-text)}
 .ink4 .i4badge.fail{background:var(--fail-wash);color:var(--fail-text)}
 .ink4 .i4badge .dot{width:6px;height:6px}
-.ink4 .i4key{font:11px/20px var(--mono);color:var(--fg-3);height:20px;padding:0 6px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line-2);white-space:nowrap;flex:none}
 .ink4 .i4tipwrap{position:relative;display:inline-flex}
 .ink4 .i4tip{position:absolute;left:50%;bottom:calc(100% + 7px);transform:translateX(-50%);padding:5px 8px;border-radius:6px;background:var(--popover);box-shadow:var(--sh-pop);font:11px var(--ui);color:var(--fg-1);white-space:nowrap;z-index:5}
-.ink4 .i4stt{display:inline-flex;align-items:center;gap:5px;font:11px var(--ui);color:var(--fg-2);white-space:nowrap}
-.ink4 .i4stt b{font:10.5px var(--mono);color:var(--fg-3);font-weight:400}
-.ink4 .i4stt.work{color:var(--fg-1)}
-.ink4 .i4stt.attn{color:var(--attn-text)}
-.ink4 .i4stt.unv{color:var(--unv-text)}
-.ink4 .i4stt.fail{color:var(--fail-text)}
-.ink4 .i4stt .spin{width:11px;height:11px;font-size:13px;color:currentColor}
-.ink4 .i4stt .dot{width:6px;height:6px}
 
 /* ---------- 03 tokens, type, depth ---------- */
 .ink4 .i4ctab{width:100%;border-collapse:collapse;font-size:12px}
@@ -108,90 +90,6 @@
 .ink4 .i4mwrap{display:grid;grid-template-columns:1fr 1fr;gap:28px 24px;margin-top:4px;width:1304px;margin-left:-12px}
 .ink4 .i4cropwin{background:var(--sidebar)}
 
-/* ============================================================
-   The sidebar: two planes, a search, two nav rows, project
-   heads that reveal their actions, and the three-line card.
-   ============================================================ */
-.ink4 .i4side{width:280px;flex:none;min-height:0;display:flex;flex-direction:column;background:var(--sidebar);border-right:1px solid var(--line);color:var(--fg-1);position:relative;overflow:hidden}
-.ink4 .i4cropwin .i4side{width:100%;height:100%;border-right:0}
-.ink4 .i4side *{min-width:0}
-.ink4 .i4lights{height:52px;flex:none;display:flex;align-items:center;gap:8px;padding:0 16px}
-.ink4 .i4lights i{width:12px;height:12px;border-radius:50%;background:#FF5F57;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.25)}
-.ink4 .i4lights i:nth-child(2){background:#FEBC2E}.ink4 .i4lights i:nth-child(3){background:#28C840}
-.ink4 .i4cropwin .i4lights{display:none}
-.ink4 .i4stop{flex:none;padding:10px 10px 4px}
-.ink4 .i4search{width:100%;height:32px;display:flex;align-items:center;gap:8px;padding:0 8px 0 10px;border-radius:8px;background:var(--input-fill);box-shadow:inset 0 0 0 1px var(--input-edge);font-size:13px;color:var(--faint);text-align:left;transition:box-shadow .12s}
-.ink4 .i4search:hover{box-shadow:inset 0 0 0 1px var(--line-3)}
-.ink4 .i4search svg{width:15px;height:15px;flex:none}
-.ink4 .i4search .i4key{margin-left:auto}
-.ink4 .i4nav{flex:none;padding:4px 8px 2px}
-.ink4 .i4navr{width:100%;height:28px;display:flex;align-items:center;gap:8px;padding:0 8px;border-radius:8px;font-size:13px;color:var(--fg-1);text-align:left}
-.ink4 .i4navr:hover{background:var(--hover)}
-.ink4 .i4navr.on{background:var(--selected)}
-.ink4 .i4navr svg{width:15px;height:15px;color:var(--fg-2);flex:none}
-.ink4 .i4navr .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ink4 .i4navr .i4key{margin-left:auto}
-.ink4 .i4count{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--attn-wash);color:var(--attn-text);font:600 10.5px/18px var(--ui);text-align:center;flex:none}
-.ink4 .i4sech{height:32px;flex:none;display:flex;align-items:center;gap:2px;padding:6px 8px 0 18px}
-.ink4 .i4sech .sp{flex:1}
-.ink4 .i4sech .i4ib{width:24px;height:24px}
-.ink4 .i4sech .i4ib svg{width:14px;height:14px}
-.ink4 .i4laba{display:none}
-.ink4 .i4side[data-view=activity] .i4labp{display:none}
-.ink4 .i4side[data-view=activity] .i4laba{display:inline-block}
-.ink4 .i4plist,.ink4 .i4alist{flex:1;min-height:0;overflow:hidden;padding:4px 8px 6px}
-/* a window's list is scrollable in the app; the still shows the next card fading under the footer */
-.ink4 .i4win .i4plist,.ink4 .i4win .i4alist{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 18px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 18px),transparent)}
-.ink4 .i4side[data-view=activity] .i4plist{display:none}
-.ink4 .i4side:not([data-view=activity]) .i4alist{display:none}
-.ink4 .i4pgroup{padding:0 0 2px}
-.ink4 .i4phead{height:28px;display:flex;align-items:center;gap:6px;padding:0 4px 0 10px;border-radius:8px;font:500 12.5px var(--ui);color:var(--fg-1)}
-.ink4 .i4phead:hover,.ink4 .i4phead.hov{background:var(--hover)}
-.ink4 .i4phead .i4pmark{margin-right:1px}
-.ink4 .i4phead .pn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ink4 .i4pacts{display:flex;align-items:center;gap:0;opacity:0;transition:opacity .12s}
-.ink4 .i4phead:hover .i4pacts,.ink4 .i4phead.hov .i4pacts{opacity:1}
-.ink4 .i4pact{width:20px;height:20px;display:grid;place-items:center;color:var(--fg-3)}
-.ink4 .i4pact svg{width:12px;height:12px}
-.ink4 .i4pmark{width:14px;height:14px;border-radius:4px;display:inline-grid;place-items:center;flex:none;background:color-mix(in srgb,var(--tone) 24%,transparent);color:var(--tone);font:700 8.5px/1 var(--ui)}
-[data-theme=light] .ink4 .i4pmark{background:color-mix(in srgb,var(--tone) 15%,transparent)}
-.ink4 .i4pmark.sm{width:14px;height:14px}
-.ink4 .i4pmark.lg{width:18px;height:18px;border-radius:5px;font-size:10px}
-.ink4 .i4blank{width:13px;height:13px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line-2);display:inline-block;flex:none}
-.ink4 .i4blank.lg{width:14px;height:14px}
-.ink4 .i4sc{padding:10px 12px;border-radius:10px;cursor:default;transition:background .12s,box-shadow .12s}
-.ink4 .i4sc + .i4sc{margin-top:1px}
-.ink4 .i4sc:hover{background:var(--hover)}
-.ink4 .i4sc.sel{background:var(--raise-2);box-shadow:inset 0 0 0 1px var(--line-2),var(--sh-lift)}
-.ink4 .i4sct{display:flex;align-items:center;gap:5px;height:18px;font-size:11px;color:var(--fg-3);white-space:nowrap}
-.ink4 .i4sct .pn{overflow:hidden;text-overflow:ellipsis;color:var(--fg-2)}
-.ink4 .i4sct .i4stt,.ink4 .i4sct .i4time{margin-left:auto;flex:none}
-.ink4 .i4sc.sel .i4sct .pn{color:var(--fg-1)}
-.ink4 .i4time{font:10.5px var(--mono);color:var(--fg-3)}
-.ink4 .i4sc .i4stt{font-size:10.5px;gap:4px}
-.ink4 .i4sc .i4stt b{font-size:10px}
-.ink4 .i4scti{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font:500 13px/20px var(--ui);color:var(--fg-1);overflow:hidden}
-.ink4 .i4scb{display:flex;align-items:center;gap:6px;height:16px;color:var(--fg-3);white-space:nowrap}
-.ink4 .i4brn{font:10.5px var(--mono);color:var(--fg-3);min-width:0;overflow:hidden;text-overflow:ellipsis}
-.ink4 .i4scb .hm{margin-left:auto;width:11px;height:11px}
-.ink4 .i4scr{display:block;height:16px;font-size:11.5px;line-height:16px;color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ink4 .i4scr .mono{font-size:10.5px;color:var(--fg-1)}
-.ink4 .i4scb .i4scr{flex:1;min-width:0}
-.ink4 .i4subs{position:relative;margin:3px 0 0;padding-left:27px}
-.ink4 .i4subs::before{content:"";position:absolute;left:17px;top:-2px;bottom:10px;border-left:1px solid var(--tree)}
-.ink4 .i4sub{position:relative;height:24px;display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--fg-2);white-space:nowrap}
-.ink4 .i4sub::before{content:"";position:absolute;left:-10px;top:-3px;width:10px;height:14px;border-left:1px solid var(--tree);border-bottom:1px solid var(--tree);border-bottom-left-radius:6px}
-.ink4 .i4sub .ind{width:12px;height:12px;display:grid;place-items:center;flex:none}
-.ink4 .i4sub .ind svg{width:10px;height:10px}
-.ink4 .i4sub .spin{font-size:12px;color:var(--fg-2)}
-.ink4 .i4sub b{font:500 11.5px var(--ui);color:var(--fg-1);flex:none}
-.ink4 .i4sub span{min-width:0;overflow:hidden;text-overflow:ellipsis}
-.ink4 .i4sub em{font:normal 10.5px var(--mono);color:var(--fg-3);margin-left:auto;flex:none}
-.ink4 .i4day{height:23px;display:flex;align-items:center;gap:8px;padding:0 10px;font:10.5px var(--mono);color:var(--fg-3)}
-.ink4 .i4day::after{content:"";flex:1;height:1px;background:var(--line)}
-.ink4 .i4sfoot{margin-top:auto;height:38px;flex:none;display:flex;align-items:center;gap:2px;padding:0 8px;border-top:1px solid var(--line)}
-.ink4 .i4sfoot .i4ib{width:26px;height:26px}
-.ink4 .i4sfoot .i4ib svg{width:15px;height:15px}
 
 /* ============================================================
    The session window: plane, header, tab row, terminal, the
@@ -263,52 +161,6 @@
 .ink4 .i4arow .i4stt .spin{width:10px;height:10px;font-size:12px}
 
 
-/* the status bar: sidebar plane, hairline, caption type */
-.ink4 .i4status{height:26px;flex:none;display:flex;align-items:center;gap:4px;padding:0 8px;background:var(--sidebar);border-top:1px solid var(--line);font:11px var(--ui);color:var(--fg-2);position:relative;z-index:5;white-space:nowrap}
-.ink4 .i4status .sp{flex:1}
-.ink4 .i4sseg{height:26px;display:inline-flex;align-items:center;gap:7px;padding:0 6px;border-radius:6px;color:var(--fg-2)}
-.ink4 .i4sseg:hover{background:var(--hover)}
-.ink4 .i4sseg .hm{width:12px;height:12px}
-.ink4 .i4sgrp{display:inline-flex;align-items:center;gap:5px}
-.ink4 .i4sgrp + .i4sgrp{margin-left:7px}
-.ink4 .i4smeter{width:40px;height:4px;border-radius:2px;background:var(--line-3);position:relative;overflow:hidden;flex:none}
-.ink4 .i4smeter i{position:absolute;left:0;top:0;bottom:0;background:var(--fg-2);border-radius:2px}
-.ink4 .i4smeter.low i{background:var(--attn)}
-.ink4 .i4sgrp b{font:10.5px var(--mono);color:var(--fg-2);font-weight:400}
-.ink4 .i4sgrp b.low{color:var(--attn-text)}
-.ink4 .i4sgrp .rs{font:10px var(--mono);color:var(--fg-3)}
-.ink4 .i4swork{display:inline-flex;align-items:center;gap:5px;padding:0 6px;color:var(--fg-2)}
-.ink4 .i4swork .spin{width:10px;height:10px;font-size:12px;color:var(--fg-2)}
-.ink4 .i4keep{height:26px;display:inline-flex;align-items:center;gap:7px;padding:0 6px;border-radius:6px;font-size:11px;color:var(--fg-2)}
-.ink4 .i4keep:hover{background:var(--hover)}
-.ink4 .i4keep .i4sw{width:28px;height:16px;border-radius:8px}
-.ink4 .i4keep .i4sw::after{width:12px;height:12px}
-.ink4 .i4keep .i4sw.on::after{transform:translateX(12px)}
-.ink4 .i4supd{height:26px;display:inline-flex;align-items:center;gap:5px;padding:0 6px;border-radius:6px;font-size:11px;color:var(--attn-text)}
-.ink4 .i4supd:hover{background:var(--attn-wash)}
-.ink4 .i4supd svg{width:12px;height:12px}
-
-/* the status popover, floating at elevation 3 over the pane */
-.ink4 .i4stpop{position:absolute;left:14px;bottom:34px;width:360px;z-index:40;padding:11px 14px 10px;border-radius:12px;background:var(--popover);box-shadow:var(--sh-pop);color:var(--fg-1)}
-.ink4 .i4stph{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.ink4 .i4stph .hm{width:13px;height:13px}
-.ink4 .i4stph b{font:600 12.5px var(--ui)}
-.ink4 .i4stpr{font:10.5px var(--mono);color:var(--fg-3);margin-left:auto}
-.ink4 .i4stph .i4ib{width:22px;height:22px;margin-right:-6px}
-.ink4 .i4stph .i4ib svg{width:11px;height:11px}
-.ink4 .i4strow{display:flex;align-items:center;gap:9px;height:26px;font-size:11.5px}
-.ink4 .i4strow .k{width:92px;flex:none;color:var(--fg-2)}
-.ink4 .i4strow .i4meter{flex:1}
-.ink4 .i4strow b{width:58px;flex:none;font:10.5px var(--mono);color:var(--fg-2);font-weight:400;text-align:right}
-.ink4 .i4strow b.low{color:var(--attn-text)}
-.ink4 .i4strow .rs{width:108px;flex:none;font:10px var(--mono);color:var(--fg-3);text-align:right}
-.ink4 .i4meter{height:6px;border-radius:3px;background:var(--line-3);position:relative;overflow:hidden;min-width:40px}
-.ink4 .i4meter i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--fg-2)}
-.ink4 .i4meter.low i{background:var(--attn)}
-.ink4 .i4stpn{margin-top:7px;padding-top:8px;border-top:1px solid var(--line);font-size:10.5px;line-height:1.45;color:var(--fg-3)}
-.ink4 .i4stpf{display:flex;align-items:center;gap:6px;margin-top:8px}
-.ink4 .i4stpf .sp{flex:1}
-.ink4 .i4stpf .mono{font-size:10.5px;color:var(--fg-3)}
 
 /* ============================================================
    The model and effort panel: a 440 popover under the chip, a 44 rail of marks, the list

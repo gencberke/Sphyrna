@@ -1,0 +1,156 @@
+/* ============================================================
+   Ink v4 shared parts (B0b): the sidebar and its session cards, the
+   status bar with its popover, and the small parts they draw with
+   (labels, icon buttons, keys, status words, switches, meters, marks).
+   Every document that draws a sidebar or a status bar loads this file;
+   the rules are not scoped, so the names are the i4* ones (no renames).
+   ============================================================ */
+
+.i4lab{display:inline-block;font:600 11px/1 var(--ui);letter-spacing:.05em;text-transform:uppercase;color:var(--fg-3);white-space:nowrap}
+.i4ib{width:28px;height:28px;display:inline-grid;place-items:center;border-radius:8px;color:var(--fg-2);flex:none;transition:background .12s,color .12s}
+.i4ib:hover{background:var(--hover);color:var(--fg-1)}
+.i4ib.on{background:var(--selected);color:var(--fg-1)}
+.i4ib svg{width:16px;height:16px}
+.i4sw{width:32px;height:18px;border-radius:9px;background:var(--line-3);position:relative;flex:none;cursor:pointer;transition:background .12s}
+.i4sw::after{content:"";position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .12s}
+.i4sw.on{background:var(--accent)}
+.i4sw.on::after{transform:translateX(14px)}
+.i4key{font:11px/20px var(--mono);color:var(--fg-3);height:20px;padding:0 6px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line-2);white-space:nowrap;flex:none}
+.i4stt{display:inline-flex;align-items:center;gap:5px;font:11px var(--ui);color:var(--fg-2);white-space:nowrap}
+.i4stt b{font:10.5px var(--mono);color:var(--fg-3);font-weight:400}
+.i4stt.work{color:var(--fg-1)}
+.i4stt.attn{color:var(--attn-text)}
+.i4stt.unv{color:var(--unv-text)}
+.i4stt.fail{color:var(--fail-text)}
+.i4stt .spin{width:11px;height:11px;font-size:13px;color:currentColor}
+.i4stt .dot{width:6px;height:6px}
+/* ============================================================
+   The sidebar: two planes, a search, two nav rows, project
+   heads that reveal their actions, and the three-line card.
+   ============================================================ */
+.i4side{width:280px;flex:none;min-height:0;display:flex;flex-direction:column;background:var(--sidebar);border-right:1px solid var(--line);color:var(--fg-1);position:relative;overflow:hidden}
+.i4cropwin .i4side{width:100%;height:100%;border-right:0}
+.i4side *{min-width:0}
+.i4lights{height:52px;flex:none;display:flex;align-items:center;gap:8px;padding:0 16px}
+.i4lights i{width:12px;height:12px;border-radius:50%;background:#FF5F57;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.25)}
+.i4lights i:nth-child(2){background:#FEBC2E}.i4lights i:nth-child(3){background:#28C840}
+.i4cropwin .i4lights{display:none}
+.i4stop{flex:none;padding:10px 10px 4px}
+.i4search{width:100%;height:32px;display:flex;align-items:center;gap:8px;padding:0 8px 0 10px;border-radius:8px;background:var(--input-fill);box-shadow:inset 0 0 0 1px var(--input-edge);font-size:13px;color:var(--faint);text-align:left;transition:box-shadow .12s}
+.i4search:hover{box-shadow:inset 0 0 0 1px var(--line-3)}
+.i4search svg{width:15px;height:15px;flex:none}
+.i4search .i4key{margin-left:auto}
+.i4nav{flex:none;padding:4px 8px 2px}
+.i4navr{width:100%;height:28px;display:flex;align-items:center;gap:8px;padding:0 8px;border-radius:8px;font-size:13px;color:var(--fg-1);text-align:left}
+.i4navr:hover{background:var(--hover)}
+.i4navr.on{background:var(--selected)}
+.i4navr svg{width:15px;height:15px;color:var(--fg-2);flex:none}
+.i4navr .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.i4navr .i4key{margin-left:auto}
+.i4count{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--attn-wash);color:var(--attn-text);font:600 10.5px/18px var(--ui);text-align:center;flex:none}
+.i4sech{height:32px;flex:none;display:flex;align-items:center;gap:2px;padding:6px 8px 0 18px}
+.i4sech .sp{flex:1}
+.i4sech .i4ib{width:24px;height:24px}
+.i4sech .i4ib svg{width:14px;height:14px}
+.i4laba{display:none}
+.i4side[data-view=activity] .i4labp{display:none}
+.i4side[data-view=activity] .i4laba{display:inline-block}
+.i4plist,.i4alist{flex:1;min-height:0;overflow:hidden;padding:4px 8px 6px}
+/* a window's list is scrollable in the app; the still shows the next card fading under the footer */
+.i4win .i4plist,.i4win .i4alist{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 18px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 18px),transparent)}
+.i4side[data-view=activity] .i4plist{display:none}
+.i4side:not([data-view=activity]) .i4alist{display:none}
+.i4pgroup{padding:0 0 2px}
+.i4phead{height:28px;display:flex;align-items:center;gap:6px;padding:0 4px 0 10px;border-radius:8px;font:500 12.5px var(--ui);color:var(--fg-1)}
+.i4phead:hover,.i4phead.hov{background:var(--hover)}
+.i4phead .i4pmark{margin-right:1px}
+.i4phead .pn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.i4pacts{display:flex;align-items:center;gap:0;opacity:0;transition:opacity .12s}
+.i4phead:hover .i4pacts,.i4phead.hov .i4pacts{opacity:1}
+.i4pact{width:20px;height:20px;display:grid;place-items:center;color:var(--fg-3)}
+.i4pact svg{width:12px;height:12px}
+.i4pmark{width:14px;height:14px;border-radius:4px;display:inline-grid;place-items:center;flex:none;background:color-mix(in srgb,var(--tone) 24%,transparent);color:var(--tone);font:700 8.5px/1 var(--ui)}
+[data-theme=light] .i4pmark{background:color-mix(in srgb,var(--tone) 15%,transparent)}
+.i4pmark.sm{width:14px;height:14px}
+.i4pmark.lg{width:18px;height:18px;border-radius:5px;font-size:10px}
+.i4blank{width:13px;height:13px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line-2);display:inline-block;flex:none}
+.i4blank.lg{width:14px;height:14px}
+.i4sc{padding:10px 12px;border-radius:10px;cursor:default;transition:background .12s,box-shadow .12s}
+.i4sc + .i4sc{margin-top:1px}
+.i4sc:hover{background:var(--hover)}
+.i4sc.sel{background:var(--raise-2);box-shadow:inset 0 0 0 1px var(--line-2),var(--sh-lift)}
+.i4sct{display:flex;align-items:center;gap:5px;height:18px;font-size:11px;color:var(--fg-3);white-space:nowrap}
+.i4sct .pn{overflow:hidden;text-overflow:ellipsis;color:var(--fg-2)}
+.i4sct .i4stt,.i4sct .i4time{margin-left:auto;flex:none}
+.i4sc.sel .i4sct .pn{color:var(--fg-1)}
+.i4time{font:10.5px var(--mono);color:var(--fg-3)}
+.i4sc .i4stt{font-size:10.5px;gap:4px}
+.i4sc .i4stt b{font-size:10px}
+.i4scti{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font:500 13px/20px var(--ui);color:var(--fg-1);overflow:hidden}
+.i4scb{display:flex;align-items:center;gap:6px;height:16px;color:var(--fg-3);white-space:nowrap}
+.i4brn{font:10.5px var(--mono);color:var(--fg-3);min-width:0;overflow:hidden;text-overflow:ellipsis}
+.i4scb .hm{margin-left:auto;width:11px;height:11px}
+.i4scr{display:block;height:16px;font-size:11.5px;line-height:16px;color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.i4scr .mono{font-size:10.5px;color:var(--fg-1)}
+.i4scb .i4scr{flex:1;min-width:0}
+.i4subs{position:relative;margin:3px 0 0;padding-left:27px}
+.i4subs::before{content:"";position:absolute;left:17px;top:-2px;bottom:10px;border-left:1px solid var(--tree)}
+.i4sub{position:relative;height:24px;display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--fg-2);white-space:nowrap}
+.i4sub::before{content:"";position:absolute;left:-10px;top:-3px;width:10px;height:14px;border-left:1px solid var(--tree);border-bottom:1px solid var(--tree);border-bottom-left-radius:6px}
+.i4sub .ind{width:12px;height:12px;display:grid;place-items:center;flex:none}
+.i4sub .ind svg{width:10px;height:10px}
+.i4sub .spin{font-size:12px;color:var(--fg-2)}
+.i4sub b{font:500 11.5px var(--ui);color:var(--fg-1);flex:none}
+.i4sub span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.i4sub em{font:normal 10.5px var(--mono);color:var(--fg-3);margin-left:auto;flex:none}
+.i4day{height:23px;display:flex;align-items:center;gap:8px;padding:0 10px;font:10.5px var(--mono);color:var(--fg-3)}
+.i4day::after{content:"";flex:1;height:1px;background:var(--line)}
+.i4sfoot{margin-top:auto;height:38px;flex:none;display:flex;align-items:center;gap:2px;padding:0 8px;border-top:1px solid var(--line)}
+.i4sfoot .i4ib{width:26px;height:26px}
+.i4sfoot .i4ib svg{width:15px;height:15px}
+/* the status bar: sidebar plane, hairline, caption type */
+.i4status{height:26px;flex:none;display:flex;align-items:center;gap:4px;padding:0 8px;background:var(--sidebar);border-top:1px solid var(--line);font:11px var(--ui);color:var(--fg-2);position:relative;z-index:5;white-space:nowrap}
+.i4status .sp{flex:1}
+.i4sseg{height:26px;display:inline-flex;align-items:center;gap:7px;padding:0 6px;border-radius:6px;color:var(--fg-2)}
+.i4sseg:hover{background:var(--hover)}
+.i4sseg .hm{width:12px;height:12px}
+.i4sgrp{display:inline-flex;align-items:center;gap:5px}
+.i4sgrp + .i4sgrp{margin-left:7px}
+.i4smeter{width:40px;height:4px;border-radius:2px;background:var(--line-3);position:relative;overflow:hidden;flex:none}
+.i4smeter i{position:absolute;left:0;top:0;bottom:0;background:var(--fg-2);border-radius:2px}
+.i4smeter.low i{background:var(--attn)}
+.i4sgrp b{font:10.5px var(--mono);color:var(--fg-2);font-weight:400}
+.i4sgrp b.low{color:var(--attn-text)}
+.i4sgrp .rs{font:10px var(--mono);color:var(--fg-3)}
+.i4swork{display:inline-flex;align-items:center;gap:5px;padding:0 6px;color:var(--fg-2)}
+.i4swork .spin{width:10px;height:10px;font-size:12px;color:var(--fg-2)}
+.i4keep{height:26px;display:inline-flex;align-items:center;gap:7px;padding:0 6px;border-radius:6px;font-size:11px;color:var(--fg-2)}
+.i4keep:hover{background:var(--hover)}
+.i4keep .i4sw{width:28px;height:16px;border-radius:8px}
+.i4keep .i4sw::after{width:12px;height:12px}
+.i4keep .i4sw.on::after{transform:translateX(12px)}
+.i4supd{height:26px;display:inline-flex;align-items:center;gap:5px;padding:0 6px;border-radius:6px;font-size:11px;color:var(--attn-text)}
+.i4supd:hover{background:var(--attn-wash)}
+.i4supd svg{width:12px;height:12px}
+
+/* the status popover, floating at elevation 3 over the pane */
+.i4stpop{position:absolute;left:14px;bottom:34px;width:360px;z-index:40;padding:11px 14px 10px;border-radius:12px;background:var(--popover);box-shadow:var(--sh-pop);color:var(--fg-1)}
+.i4stph{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.i4stph .hm{width:13px;height:13px}
+.i4stph b{font:600 12.5px var(--ui)}
+.i4stpr{font:10.5px var(--mono);color:var(--fg-3);margin-left:auto}
+.i4stph .i4ib{width:22px;height:22px;margin-right:-6px}
+.i4stph .i4ib svg{width:11px;height:11px}
+.i4strow{display:flex;align-items:center;gap:9px;height:26px;font-size:11.5px}
+.i4strow .k{width:92px;flex:none;color:var(--fg-2)}
+.i4strow .i4meter{flex:1}
+.i4strow b{width:58px;flex:none;font:10.5px var(--mono);color:var(--fg-2);font-weight:400;text-align:right}
+.i4strow b.low{color:var(--attn-text)}
+.i4strow .rs{width:108px;flex:none;font:10px var(--mono);color:var(--fg-3);text-align:right}
+.i4meter{height:6px;border-radius:3px;background:var(--line-3);position:relative;overflow:hidden;min-width:40px}
+.i4meter i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--fg-2)}
+.i4meter.low i{background:var(--attn)}
+.i4stpn{margin-top:7px;padding-top:8px;border-top:1px solid var(--line);font-size:10.5px;line-height:1.45;color:var(--fg-3)}
+.i4stpf{display:flex;align-items:center;gap:6px;margin-top:8px}
+.i4stpf .sp{flex:1}
+.i4stpf .mono{font-size:10.5px;color:var(--fg-3)}
