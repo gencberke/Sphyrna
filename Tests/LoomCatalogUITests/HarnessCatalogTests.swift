@@ -1,8 +1,20 @@
+import AppKit
 import Foundation
 @testable import LoomChat
 import LoomCore
 import Testing
 @testable import LoomCatalogUI
+
+/// Intents that start nothing: a model with one can ask whether a start is available (C2B).
+@MainActor
+private final class StartIntents: ConversationIntents {
+    func start(provider: ManagedSession.Provider, projectID: UUID?) {}
+    func resume(sessionID: UUID) {}
+    func stop(sessionID: UUID) {}
+    func answer(sessionID: UUID, requestID: String, accept: Bool) {}
+    func viewed(sessionID: UUID) {}
+    func terminalView(sessionID: UUID) -> NSView? { nil }
+}
 
 /// The connect switch's preference and the composer's model lists as they come from `ModelCatalog` (D-98, D-99).
 @MainActor
@@ -118,4 +130,114 @@ struct HarnessCatalogTests {
         #expect(picker().groups()[1].rows.map(\.title) == ModelCatalog.codexFallback.map(\.title))
         #expect(picker().groups(codex: []).map(\.provider) == [.claude], "switched off: Claude's group only")
     }
+
+    // MARK: Startable (C2B)
+
+    /// One rule for "startable": a harness switched off is not startable, and switching it on again makes it startable with no
+    /// restart. (The lists follow in their own test.)
+    @Test func aHarnessSwitchedOffIsNotStartableUntilSwitchedOn() {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-harness-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = CatalogModel(catalog: nil, events: SessionEventHub(),
+                                 preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
+        let intents = StartIntents()
+        model.intents = intents
+        let connections = HarnessConnections(choices: [.claude: false])
+        model.harnessConnections = connections
+        #expect(!model.canStart(.claude, projectID: nil), "switched off: nothing starts Claude")
+        #expect(!model.canStart(.newSessionDefault, projectID: nil), "the default harness is the same harness")
+        connections.setOn(.claude, true)
+        #expect(model.canStart(.claude, projectID: nil), "switched on again: startable with no restart")
+    }
+
+    /// A CLI that is not on the PATH is never startable, whatever the switch says: Codex keeps its entry, disabled with the reason,
+    /// and the default harness has no entry where it cannot start.
+    @Test func aNotFoundCLIIsNeverStartableAndSaysWhy() {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-harness-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = CatalogModel(catalog: nil, events: SessionEventHub(),
+                                 preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
+        let intents = StartIntents()
+        model.intents = intents
+        model.harnessAvailability = [
+            .claude: HarnessAvailability(id: .claude, state: .notFound),
+            .codex: HarnessAvailability(id: .codex, state: .on, executable: "/fake/bin/codex"),
+        ]
+        #expect(model.canStart(.codex, projectID: nil), "found and switched on: startable")
+        #expect(!model.canStart(.claude, projectID: nil) && !model.offersNewSession(.claude), "not found: no entry for the default harness")
+        #expect(model.startUnavailableReason(.claude) == nil)
+
+        model.harnessAvailability?[.codex] = HarnessAvailability(id: .codex, state: .notFound)
+        #expect(!model.canStart(.codex, projectID: nil))
+        #expect(model.offersNewSession(.codex), "not found: the entry is offered, disabled")
+        #expect(model.startUnavailableReason(.codex) == CatalogModel.notFoundReason)
+        #expect(CatalogModel.notFoundReason == "Not found on this Mac")
+
+        model.harnessConnections = HarnessConnections(choices: [.codex: false])
+        #expect(!model.offersNewSession(.codex) && !model.canStart(.codex, projectID: nil), "switched off: no entry at all")
+    }
+
+    /// The app's reader looks for the CLIs on the terminal environment's PATH when it is installed, and then at most once a minute
+    /// (a forced read at once). Nothing runs the CLI: the lookup only checks that the file is there.
+    @Test func theCLIsAreLookedForOnTheTerminalPathAtMostOnceAMinute() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("loom-path-\(UUID())", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let claude = folder.appendingPathComponent("claude")
+        try Data("#!/bin/sh\nexit 0\n".utf8).write(to: claude)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: claude.path)
+
+        let reads = LookupCount()
+        let reader = HarnessAvailabilityReader(environment: {
+            await reads.bump()
+            return ["PATH": folder.path]
+        })
+        let clock = LookupClock(Date(timeIntervalSince1970: 2_000_000))
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-harness-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = CatalogModel(catalog: nil, events: SessionEventHub(),
+                                 preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
+        let intents = StartIntents()
+        model.intents = intents
+        model.currentDate = { clock.now }
+        model.installHarnessAvailability(reader)
+        #expect(await inspectorWaitUntil { model.harnessAvailability != nil })
+        #expect(model.harnessAvailability?[.claude]?.isFound == true && model.harnessAvailability?[.codex]?.isFound == false)
+        #expect(model.canStart(.claude, projectID: nil) && !model.canStart(.codex, projectID: nil))
+        #expect(await lookups(reads, reached: 1) == 1)
+
+        clock.now = clock.now.addingTimeInterval(30)
+        model.refreshHarnessAvailability()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await reads.value == 1, "activation within the minute reads nothing")
+
+        clock.now = clock.now.addingTimeInterval(31)
+        model.refreshHarnessAvailability()
+        #expect(await lookups(reads, reached: 2) == 2, "a minute on: read again")
+
+        model.refreshHarnessAvailability(force: true)
+        #expect(await lookups(reads, reached: 3) == 3, "Check Again or a switch: at once")
+    }
+
+    /// Waits until the lookups reach `count`, for a read that runs off the main actor; returns how many there were.
+    private func lookups(_ reads: LookupCount, reached count: Int) async -> Int {
+        for _ in 0..<500 {
+            let value = await reads.value
+            if value >= count { return value }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return await reads.value
+    }
+}
+
+/// Counts the PATH lookups a test's reader makes.
+private actor LookupCount {
+    private(set) var value = 0
+    func bump() { value += 1 }
+}
+
+/// A clock a test moves by hand.
+private final class LookupClock: @unchecked Sendable {
+    var now: Date
+    init(_ now: Date) { self.now = now }
 }

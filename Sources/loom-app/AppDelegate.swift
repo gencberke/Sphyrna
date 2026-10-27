@@ -549,6 +549,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         var loginEnvironment: (@Sendable () async throws -> [String: String])?
         if evidence == nil {
             loginEnvironment = { try await system.terminalEnvironment().environment }
+            // Which CLIs the lists offer (C2B) is looked up in the same terminal environment; an acceptance run reads none.
+            model.installHarnessAvailability(HarnessAvailabilityReader(toolchains: system))
         }
         // The commit names the build for Codex; CFBundleVersion is only a growing number.
         let info = Bundle.main.infoDictionary

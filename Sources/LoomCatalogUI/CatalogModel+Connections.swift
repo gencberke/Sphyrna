@@ -7,8 +7,11 @@ extension CatalogModel {
     /// Hands the model its health object, once, at install.
     public func installHarnessHealth(_ health: HarnessHealthModel?) { harnessHealth = health }
 
-    /// "Check Again" on Home: every connected harness, asked now whatever the floor says.
-    func recheckHarnesses() { harnessHealth?.checkAll(force: true) }
+    /// "Check Again" on Home: every connected harness, asked now whatever the floor says, and the CLIs looked for again (C2B).
+    func recheckHarnesses() {
+        harnessHealth?.checkAll(force: true)
+        refreshHarnessAvailability(force: true)
+    }
 
     /// Opens Settings on the Connections page.
     func showConnections() { onShowSettings?(.connections) }

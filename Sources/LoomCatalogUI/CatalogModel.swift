@@ -333,6 +333,13 @@ public final class CatalogModel {
     /// The composer's model lists (D-99): one catalogue for the app, made at install with the connect switch and handed here
     /// (`AppDelegate+Harness`). A model built without the app (a test) has its own. Views read it through their model.
     @ObservationIgnored public var modelCatalog = ModelCatalog()
+    /// Which CLIs were found on the PATH at the last read (`HarnessAvailabilityReader`, off the main actor; no CLI runs). Nil until a
+    /// read has answered. Observed: the lists that show a harness redraw when a reading lands (C2B).
+    public internal(set) var harnessAvailability: [HarnessID: HarnessAvailability]?
+    /// The reader the app installs once the runtime exists (its terminal environment is the runtime's toolchains').
+    @ObservationIgnored var availabilityReader: HarnessAvailabilityReader?
+    @ObservationIgnored private var availabilityReadAt: Date?
+    @ObservationIgnored private var availabilityTask: Task<Void, Never>?
     /// The sidebar's Peek store (SidebarPeek.swift): one for the app, held here and read by the rows through their model.
     let sidebarPeek = SidebarPeekStore()
     /// The harnesses' health (D-98): Settings → Connections and Home's "Connect your agents" read it. Set once at install; nil
@@ -1788,11 +1795,65 @@ public final class CatalogModel {
             && row.live?.runID == nil && busy[row.id] == nil && !isDeleting(row.id)
     }
 
-    /// What the harness may do in this build identity (`startableProviders`): the one value the model layer asks instead of
-    /// the harness itself.
+    /// What the harness may do now: the one rule for "startable" (C2B). The build's answer (`startableProviders`), narrowed to the
+    /// harnesses whose connect switch is on and whose CLI is found. Every start path and every list asks this, never the build alone.
     func capabilities(of provider: ManagedSession.Provider) -> HarnessCapabilities {
-        HarnessCapabilities.of(provider, startable: startableProviders)
+        HarnessCapabilities.of(provider, startable: startableProviders.filter { isSwitchedOn($0) && isFound($0) })
     }
+
+    /// Whether the connect switch is on for `provider`: the app's switch, or with none around the model (a test) the descriptor's default.
+    func isSwitchedOn(_ provider: ManagedSession.Provider) -> Bool {
+        if let harnessConnections { return harnessConnections.isConnected(provider) }
+        return HarnessCatalogue.descriptor(for: HarnessID(provider))?.onWhenFound ?? false
+    }
+
+    /// Whether the CLI was on the PATH at the last read. True before any read has answered: the build and the switch decide then.
+    func isFound(_ provider: ManagedSession.Provider) -> Bool {
+        guard let harnessAvailability else { return true }
+        return harnessAvailability[HarnessID(provider)]?.isFound ?? false
+    }
+
+    /// Whether a list shows `provider`'s new-session entry (C2B): the harness is switched on, and it can start now or a reason is
+    /// shown under the entry (`startUnavailableReason`). A harness that is off, and the default harness where it cannot start, has none.
+    public func offersNewSession(_ provider: ManagedSession.Provider) -> Bool {
+        guard isSwitchedOn(provider) else { return false }
+        return capabilities(of: provider).startable || startUnavailableReason(provider) != nil
+    }
+
+    /// Why a list shows `provider`'s new-session entry disabled: the build's reason (`newSessionUnavailableReason`), else
+    /// `notFoundReason` for a switched-on harness other than the default whose CLI is not found. Nil when the entry starts.
+    public func startUnavailableReason(_ provider: ManagedSession.Provider) -> String? {
+        if let reason = newSessionUnavailableReason(provider) { return reason }
+        guard provider != .newSessionDefault, isSwitchedOn(provider), !isFound(provider) else { return nil }
+        return Self.notFoundReason
+    }
+
+    /// What a new-session entry says when its CLI is not on the PATH (the Connections page says the same).
+    public static let notFoundReason = "Not found on this Mac"
+
+    /// The app installs the reader once the runtime exists, and the first read follows at once.
+    public func installHarnessAvailability(_ reader: HarnessAvailabilityReader) {
+        availabilityReader = reader
+        refreshHarnessAvailability(force: true)
+    }
+
+    /// Looks the CLIs up on the terminal environment's PATH, off the main actor (no CLI runs). Asked at launch (the install), when a
+    /// connect switch changes and on Check Again (`force`), and on app activation, which asks at most once a minute.
+    public func refreshHarnessAvailability(force: Bool = false) {
+        guard let reader = availabilityReader else { return }
+        let now = currentDate()
+        if !force, let last = availabilityReadAt, now.timeIntervalSince(last) < Self.availabilityInterval { return }
+        availabilityReadAt = now
+        let connections = harnessConnections ?? HarnessConnections()
+        availabilityTask?.cancel()
+        availabilityTask = Task { [weak self] in
+            guard let read = try? await reader.read(connections), !Task.isCancelled, let self else { return }
+            let next = Dictionary(uniqueKeysWithValues: read.map { ($0.id, $0) })
+            if self.harnessAvailability != next { self.harnessAvailability = next }
+        }
+    }
+
+    private static let availabilityInterval: TimeInterval = 60
 
     /// The provider of a conversation the model has a row for.
     func knownProvider(of id: UUID) -> ManagedSession.Provider? {
@@ -1803,7 +1864,8 @@ public final class CatalogModel {
     /// that is not the reason (a busy or running conversation has its own state line).
     public func resumeUnavailableReason(_ row: SessionRowModel) -> String? {
         let provider = row.record.session.provider
-        let capabilities = capabilities(of: provider)
+        // The build's answer only: a harness that is off or not found has no reason of its own here (no copy for it yet).
+        let capabilities = HarnessCapabilities.of(provider, startable: startableProviders)
         guard capabilities.hasHarness, !capabilities.startable else { return nil }
         return "\(ProviderName.title(provider)) sessions can't be resumed in this version."
     }
