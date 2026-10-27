@@ -26,17 +26,17 @@ extension AppDelegate {
         fileMenu.addItem(withTitle: "Add Project…", action: #selector(addProjectFromMenu(_:)),
                          keyEquivalent: "o").target = self
         // New conversations start in the selected conversation's project (or none), through the new-session holder.
-        addShellItem(.newSession, to: fileMenu)
+        let claude = shell.addItem(.newSession, to: fileMenu)
         // Codex is listed in every build (D-69). A build that cannot start it shows the item disabled
         // (`validateMenuItem` asks the model) with the reason under it.
         let codex = fileMenu.addItem(withTitle: "New Codex Session", action: #selector(newCodexFromMenu(_:)),
                                      keyEquivalent: "n")
         codex.keyEquivalentModifierMask = [.command, .shift]
         codex.target = self
-        if let reason = CatalogModel.newSessionUnavailableReason(.codex, startable: startableProviders) {
-            codex.subtitle = reason
-            codex.toolTip = reason
-        }
+        // The two starts are listed where the model offers them; the reason under Codex is read when the menu opens (C2B).
+        let starts = FileMenuStarts(catalog: { [weak self] in self?.model }, claude: claude, codex: codex)
+        fileMenu.delegate = starts
+        fileItem.representedObject = starts // the menu holds its delegate weakly; the item keeps it for the app's life
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "Resume Session", action: #selector(resumeFromMenu(_:)),
                          keyEquivalent: "r").target = self
@@ -167,5 +167,30 @@ extension AppDelegate {
         NSApp.mainMenu = main
         NSApp.windowsMenu = windowMenu
         NSApp.helpMenu = helpMenu
+    }
+}
+
+/// The File menu's two new-session items (C2B): each is listed where the model offers its harness, and the Codex reason is written
+/// under it. Asked each time the menu opens, so a switch or a CLI found since the last opening needs no restart.
+@MainActor
+private final class FileMenuStarts: NSObject, NSMenuDelegate {
+    private let catalog: () -> CatalogModel?
+    private let claude: NSMenuItem
+    private let codex: NSMenuItem
+
+    init(catalog: @escaping () -> CatalogModel?, claude: NSMenuItem, codex: NSMenuItem) {
+        self.catalog = catalog
+        self.claude = claude
+        self.codex = codex
+        super.init()
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard let model = catalog() else { return }
+        claude.isHidden = !model.offersNewSession(.newSessionDefault)
+        codex.isHidden = !model.offersNewSession(.codex)
+        let reason = model.startUnavailableReason(.codex)
+        codex.subtitle = reason
+        codex.toolTip = reason
     }
 }

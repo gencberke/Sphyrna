@@ -108,10 +108,12 @@ public struct MenuBarState: Equatable, Sendable {
     public let needsYouMore: Int
     public let working: [MenuBarRow]
     public let workingMore: Int
+    /// Whether the menu lists New Claude Session (C2B): the model's `offersNewSession` for the default harness.
+    public let offersNewSession: Bool
 
     public var isEmpty: Bool { needsYou.isEmpty && working.isEmpty }
 
-    public static func derive(_ entries: [MenuBarEntry]) -> MenuBarState {
+    public static func derive(_ entries: [MenuBarEntry], offersNewSession: Bool = true) -> MenuBarState {
         // The class first (failure, attention, unviewed), then the most recent activity, then the id so
         // two equal sessions never swap places between two openings of the menu.
         func recentFirst(_ lhs: MenuBarEntry, _ rhs: MenuBarEntry) -> Bool {
@@ -133,7 +135,8 @@ public struct MenuBarState: Equatable, Sendable {
             working: working.prefix(maxRows).map {
                 MenuBarRow(id: $0.id, title: $0.title, project: $0.project, attention: nil)
             },
-            workingMore: max(0, working.count - maxRows))
+            workingMore: max(0, working.count - maxRows),
+            offersNewSession: offersNewSession)
     }
 }
 
@@ -185,7 +188,9 @@ public enum MenuBarMenu {
             }
         }
         items.append(item(.separator, ""))
-        items.append(item(.newSession, "New Claude Session", enabled: canStartSession, key: "⌘N"))
+        if state.offersNewSession {
+            items.append(item(.newSession, "New Claude Session", enabled: canStartSession, key: "⌘N"))
+        }
         items.append(item(.openLoom, "Open Sphyrna"))
         items.append(item(.separator, ""))
         items.append(item(.settings, "Settings…", key: "⌘,"))

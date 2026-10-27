@@ -1,7 +1,8 @@
 import Foundation
 
 /// The Dock icon's menu (W3-f): the sessions with a request waiting for the user, then the sessions working, at most five each,
-/// then New Claude Session. Built when the Dock asks, from what the model already holds (the menu bar's entries): no read.
+/// then New Claude Session where the model offers it (C2B). Built when the Dock asks, from what the model already holds (the menu
+/// bar's entries): no read.
 public enum DockMenu {
     public static let needsYouHeader = MenuBarMenu.needsYouHeader
     public static let workingHeader = MenuBarMenu.workingHeader
@@ -17,7 +18,7 @@ public enum DockMenu {
         }
     }
 
-    public static func items(for entries: [MenuBarEntry], canStartSession: Bool) -> [MenuBarMenuItem] {
+    public static func items(for entries: [MenuBarEntry], canStartSession: Bool, offersNewSession: Bool = true) -> [MenuBarMenuItem] {
         func recentFirst(_ lhs: MenuBarEntry, _ rhs: MenuBarEntry) -> Bool {
             if lhs.lastActivityAt != rhs.lastActivityAt { return lhs.lastActivityAt > rhs.lastActivityAt }
             return lhs.id.uuidString < rhs.id.uuidString
@@ -39,8 +40,10 @@ public enum DockMenu {
             items.append(item(.header, workingHeader, enabled: false))
             items += working.map { item(.workingSession, $0.title, entry: $0) }
         }
-        if !items.isEmpty { items.append(item(.separator, "")) }
-        items.append(item(.newSession, newSessionTitle, enabled: canStartSession))
+        if offersNewSession {
+            if !items.isEmpty { items.append(item(.separator, "")) }
+            items.append(item(.newSession, newSessionTitle, enabled: canStartSession))
+        }
         return items
     }
 
@@ -52,9 +55,10 @@ public enum DockMenu {
 }
 
 extension CatalogModel {
-    /// The Dock menu now (`DockMenu`). New Claude Session is enabled where ⌘N is.
+    /// The Dock menu now (`DockMenu`). New Claude Session is enabled where ⌘N is, and listed where the model offers it (C2B).
     public func dockMenuItems() -> [MenuBarMenuItem] {
-        DockMenu.items(for: menuBarEntries(), canStartSession: canStart(.newSessionDefault, projectID: contextProjectID))
+        DockMenu.items(for: menuBarEntries(), canStartSession: canStart(.newSessionDefault, projectID: contextProjectID),
+                       offersNewSession: offersNewSession(.newSessionDefault))
     }
 }
 

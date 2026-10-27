@@ -6,9 +6,12 @@ import LoomCatalogUI
 extension AppDelegate {
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         guard let model else { return nil }
+        let specs = model.dockMenuItems()
+        // Nothing to list (no request, no working session, no new session offered): the Dock shows no menu (C2B).
+        guard !specs.isEmpty else { return nil }
         let menu = NSMenu()
         menu.autoenablesItems = false
-        for spec in model.dockMenuItems() {
+        for spec in specs {
             switch spec.kind {
             case .header:
                 menu.addItem(.sectionHeader(title: spec.title))

@@ -83,21 +83,21 @@ struct HomeEmptyCatalog: View {
                     .accessibilityIdentifier("home-add-project")
                 if connect {
                     HomeCheckAgainButton(model: model)
-                } else {
+                } else if model.offersNewSession(.claude) {
                     Button("New Claude Session") { model.beginNewSession(projectID: nil) }
                         .buttonStyle(ControlButtonStyle(kind: .secondary))
                         .disabled(!model.canStart(.claude, projectID: nil))
                         .accessibilityIdentifier("home-new-session")
                 }
-                // Codex is listed in every build (D-69); a build that cannot start it shows the entry disabled, with
-                // the reason (`startableProviders` is the build's decision). Over the cards, Codex's card says it.
-                if !connect {
+                // Codex is listed where its switch is on (C2B): a build that cannot start it, or a CLI not found, shows the entry
+                // disabled, with the reason. Over the cards, Codex's card says it.
+                if !connect, model.offersNewSession(.codex) {
                     VStack(spacing: LoomTheme.Home.codexNoteGap) {
                         Button("New Codex Session") { model.startConversation(.codex, projectID: nil) }
                             .buttonStyle(ControlButtonStyle(kind: .secondary))
                             .disabled(!model.canStart(.codex, projectID: nil))
                             .accessibilityIdentifier("home-new-codex-session")
-                        if let reason = model.newSessionUnavailableReason(.codex) {
+                        if let reason = model.startUnavailableReason(.codex) {
                             Text(reason).homeType(LoomTheme.Home.codexNote).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                                 .accessibilityIdentifier("home-new-codex-reason")
                         }

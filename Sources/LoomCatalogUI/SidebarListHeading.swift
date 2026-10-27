@@ -62,15 +62,17 @@ struct SidebarListHeading: View {
                 .foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 .lineLimit(1)
                 .accessibilityAddTraits(.isHeader)
-            Button { Self.perform(action, on: model) } label: {
-                Image(systemName: action.symbol).font(LoomTheme.Sidebar.headingGlyph)
+            if Self.isOffered(action, on: model) {
+                Button { Self.perform(action, on: model) } label: {
+                    Image(systemName: action.symbol).font(LoomTheme.Sidebar.headingGlyph)
+                }
+                .buttonStyle(ChromeButtonStyle(size: LoomTheme.Sidebar.headingButton, key: "sidebar-heading-action"))
+                .focusEffectDisabled()
+                .disabled(!Self.isEnabled(action, on: model))
+                .help(action.title)
+                .accessibilityLabel(action.title)
+                .accessibilityIdentifier("sidebar-heading-action")
             }
-            .buttonStyle(ChromeButtonStyle(size: LoomTheme.Sidebar.headingButton, key: "sidebar-heading-action"))
-            .focusEffectDisabled()
-            .disabled(!Self.isEnabled(action, on: model))
-            .help(action.title)
-            .accessibilityLabel(action.title)
-            .accessibilityIdentifier("sidebar-heading-action")
             Spacer(minLength: LoomTheme.Space.headerSpacing)
             ViewPicker(model: model)
         }
@@ -83,6 +85,14 @@ struct SidebarListHeading: View {
         switch action {
         case .addProject: model.isReady
         case .newSession: model.newSessionRowAvailable
+        }
+    }
+
+    /// Whether the action is listed at all (C2B): New Session only where the model offers Claude.
+    static func isOffered(_ action: Action, on model: CatalogModel) -> Bool {
+        switch action {
+        case .addProject: true
+        case .newSession: model.offersNewSession(.newSessionDefault)
         }
     }
 
@@ -125,16 +135,18 @@ struct ViewPicker: View {
     }
 }
 
-/// What a right-click on the list's empty space offers (RESCUE C3): Add Project… and New Session always, then the session
-/// without a project where the build can start one.
+/// What a right-click on the list's empty space offers (RESCUE C3): Add Project… always, New Session where the model offers
+/// Claude (C2B), then the session without a project where the build can start one.
 struct SidebarEmptySpaceMenu: View {
     let model: CatalogModel
 
     var body: some View {
         Button(SidebarListHeading.Action.addProject.title) { model.presentAddProject() }
             .disabled(!SidebarListHeading.isEnabled(.addProject, on: model))
-        Button(SidebarListHeading.Action.newSession.title) { model.beginNewSessionInRecentProject() }
-            .disabled(!SidebarListHeading.isEnabled(.newSession, on: model))
+        if SidebarListHeading.isOffered(.newSession, on: model) {
+            Button(SidebarListHeading.Action.newSession.title) { model.beginNewSessionInRecentProject() }
+                .disabled(!SidebarListHeading.isEnabled(.newSession, on: model))
+        }
         WithoutProjectStartButton(model: model, title: ClaudeStartEntry.withoutProjectTitle)
     }
 }

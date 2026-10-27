@@ -79,7 +79,10 @@ extension CatalogModel {
         }
     }
 
-    public func menuBarState() -> MenuBarState { MenuBarState.derive(menuBarEntries()) }
+    /// The menu bar's menu: New Claude Session where the model offers it (C2B).
+    public func menuBarState() -> MenuBarState {
+        MenuBarState.derive(menuBarEntries(), offersNewSession: offersNewSession(.newSessionDefault))
+    }
 
     /// A session's title and project as a notification prints them; nil when its record is not known.
     public func titleAndProject(of id: UUID) -> (title: String, project: String?)? {

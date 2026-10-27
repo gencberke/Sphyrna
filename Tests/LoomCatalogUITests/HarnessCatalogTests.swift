@@ -177,6 +177,39 @@ struct HarnessCatalogTests {
         #expect(!model.offersNewSession(.codex) && !model.canStart(.codex, projectID: nil), "switched off: no entry at all")
     }
 
+    /// Every list follows the catalogue (C2B): the sidebar's entries, the Dock menu and the menu bar lose a switched-off harness at once,
+    /// and a Codex whose CLI is not found stays listed, disabled, with its reason.
+    @Test func theListsFollowTheSwitchAndTheCLIsWithNoRestart() {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-harness-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = CatalogModel(catalog: nil, events: SessionEventHub(),
+                                 preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
+        let intents = StartIntents()
+        model.intents = intents
+        let connections = HarnessConnections(choices: [.claude: false])
+        model.harnessConnections = connections
+        func listedProviders() -> [ManagedSession.Provider] { NewConversationAction.listed(on: model).map(\.provider) }
+        func dockHasNewSession() -> Bool { model.dockMenuItems().contains { $0.kind == .newSession } }
+        func menuBarHasNewSession() -> Bool { MenuBarMenu.items(for: model.menuBarState()).contains { $0.kind == .newSession } }
+
+        #expect(listedProviders() == [.codex], "Claude switched off: its entries are gone")
+        #expect(NewConversationAction.startable(on: model).map(\.provider) == [.codex])
+        #expect(!dockHasNewSession() && !menuBarHasNewSession())
+
+        connections.setOn(.claude, true)
+        #expect(listedProviders() == [.claude, .codex] && dockHasNewSession() && menuBarHasNewSession(), "switched on again: no restart")
+
+        // The CLIs are not found: Claude has no entry, Codex stays listed, disabled with the reason.
+        model.harnessAvailability = [
+            .claude: HarnessAvailability(id: .claude, state: .notFound),
+            .codex: HarnessAvailability(id: .codex, state: .notFound),
+        ]
+        #expect(listedProviders() == [.codex] && !dockHasNewSession() && !menuBarHasNewSession())
+        let codex = NewConversationAction.listed(on: model).last
+        #expect(codex?.unavailableReason(on: model) == CatalogModel.notFoundReason)
+        #expect(codex?.isEnabled(on: model, projectID: nil) == false)
+    }
+
     /// The app's reader looks for the CLIs on the terminal environment's PATH when it is installed, and then at most once a minute
     /// (a forced read at once). Nothing runs the CLI: the lookup only checks that the file is there.
     @Test func theCLIsAreLookedForOnTheTerminalPathAtMostOnceAMinute() async throws {

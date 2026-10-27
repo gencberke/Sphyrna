@@ -116,6 +116,11 @@ struct NewSessionRow: View {
     static func titleIsPrimary(hovering: Bool) -> Bool { hovering }
 
     var body: some View {
+        // Drawn only where the model offers Claude (C2B): switched off, or its CLI not found, the row is not there.
+        if model.offersNewSession(.newSessionDefault) { newSessionRow }
+    }
+
+    @ViewBuilder private var newSessionRow: some View {
         // Whether Claude can start at all is asked here. A start somewhere else does not matter: the row opens a draft, it
         // starts nothing, and the project is read when the row is clicked.
         let enabled = model.newSessionRowAvailable
@@ -900,20 +905,20 @@ struct NewConversationAction {
         NewConversationAction(provider: .codex, title: "New Codex Session"),
     ]
 
-    /// The actions the model may start (production: Claude only).
+    /// The actions the model may start now: the build's, narrowed by the connect switch and the CLI (C2B).
     @MainActor static func startable(on model: CatalogModel) -> [NewConversationAction] {
-        all.filter { model.startableProviders.contains($0.provider) }
+        all.filter { model.capabilities(of: $0.provider).startable }
     }
 
-    /// The entries a menu lists: the startable ones, and Codex even where this build cannot start it (shown,
-    /// disabled, with `unavailableReason`).
+    /// The entries a menu lists (C2B): the harnesses that are switched on and can start, or say why they cannot. So Codex stays
+    /// listed, disabled, where this build cannot start it or its CLI is not found; a switched-off harness is not listed.
     @MainActor static func listed(on model: CatalogModel) -> [NewConversationAction] {
-        all.filter { model.startableProviders.contains($0.provider) || model.newSessionUnavailableReason($0.provider) != nil }
+        all.filter { model.offersNewSession($0.provider) }
     }
 
-    /// Why this entry is disabled for good in this build; nil when the build can start the provider.
+    /// Why this entry is disabled now (`CatalogModel.startUnavailableReason`); nil when it starts.
     @MainActor func unavailableReason(on model: CatalogModel) -> String? {
-        model.newSessionUnavailableReason(provider)
+        model.startUnavailableReason(provider)
     }
 
     @MainActor func perform(on model: CatalogModel, projectID: UUID?) {
