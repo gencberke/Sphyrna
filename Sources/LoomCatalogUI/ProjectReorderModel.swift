@@ -15,8 +15,13 @@ final class ProjectReorderModel {
 
     // MARK: The measured layout
 
-    /// The blocks by project, in content coordinates and with no slide applied.
+    /// The blocks by project, in content coordinates and with no slide applied: each from its head's top to the lowest part
+    /// the list has measured.
     private(set) var blocks: [UUID: ProjectReorderBlock] = [:]
+    /// The frames of each project's parts, and the gap above each head (A1). They feed `blocks` and are not observed: a part
+    /// that is measured or forgotten redraws nothing but the gap it changes.
+    @ObservationIgnored private var parts: [UUID: [ProjectReorderPart: CGRect]] = [:]
+    @ObservationIgnored private var headTopGaps: [UUID: CGFloat] = [:]
 
     /// The blocks in list order: the one the pointer's gap is counted against.
     var orderedBlocks: [ProjectReorderBlock] { blocks.values.sorted { $0.minY < $1.minY } }
@@ -47,24 +52,45 @@ final class ProjectReorderModel {
 
     // MARK: Measuring
 
-    /// A block reported its frame, in the content's coordinates and before its slide; `topGap` is the list's gap above its
-    /// head. The layout is kept while a drag runs, so a slide never feeds back into the geometry the drag reads; a block
-    /// the list loads then (while it scrolls itself) is added.
+    /// A project's head reported its frame, in the content's coordinates and before its slide; `topGap` is the list's gap
+    /// above the head. The head is where a block starts. The layout is kept while a drag runs (a known part is not updated,
+    /// a new one is added), so a slide never feeds back into the geometry the drag reads.
     func measure(_ id: UUID, frame: CGRect, topGap: CGFloat) {
         guard frame.height > 0, frame.width > 0 else { return }
-        let block = ProjectReorderBlock(id: id, minX: frame.minX, minY: frame.minY, width: frame.width,
-                                        height: frame.height, headTop: frame.minY + topGap)
-        guard blocks[id] != block else { return }
-        if dragging != nil, blocks[id] != nil { return }
-        blocks[id] = block
-        refreshGap()
+        if dragging != nil, parts[id]?[.head] != nil { return }
+        parts[id, default: [:]][.head] = frame
+        headTopGaps[id] = topGap
+        refreshBlock(id)
+    }
+
+    /// Another part of a project (its drafts, a card or the note) reported its frame; a part with no height is not in the list.
+    func measurePart(_ id: UUID, _ part: ProjectReorderPart, frame: CGRect) {
+        guard frame.height > 0, frame.width > 0 else {
+            forgetPart(id, part)
+            return
+        }
+        if dragging != nil, parts[id]?[part] != nil { return }
+        parts[id, default: [:]][part] = frame
+        refreshBlock(id)
+    }
+
+    /// A part left the list: scrolled past the built rows, collapsed or deleted. Nothing is forgotten while a drag runs, so
+    /// the block the drag started with keeps its extent.
+    func forgetPart(_ id: UUID, _ part: ProjectReorderPart) {
+        guard dragging == nil, parts[id]?[part] != nil else { return }
+        parts[id]?[part] = nil
+        refreshBlock(id)
     }
 
     /// Drops the blocks of projects that left the list (removed, or the list changed views).
     func forget(notIn ids: Set<UUID>) {
-        let gone = blocks.keys.filter { !ids.contains($0) }
+        let gone = parts.keys.filter { !ids.contains($0) }
         guard !gone.isEmpty else { return }
-        for id in gone { blocks.removeValue(forKey: id) }
+        for id in gone {
+            parts.removeValue(forKey: id)
+            headTopGaps.removeValue(forKey: id)
+            blocks.removeValue(forKey: id)
+        }
         refreshGap()
     }
 
@@ -154,6 +180,20 @@ final class ProjectReorderModel {
     }
 
     // MARK: Private
+
+    /// A project's block: from its head's top to the lowest of its measured parts. A project without its head measured has none.
+    private func refreshBlock(_ id: UUID) {
+        guard let measured = parts[id], let head = measured[.head] else {
+            if blocks.removeValue(forKey: id) != nil { refreshGap() }
+            return
+        }
+        let bottom = measured.values.map(\.maxY).max() ?? head.maxY
+        let block = ProjectReorderBlock(id: id, minX: head.minX, minY: head.minY, width: head.width,
+                                        height: bottom - head.minY, headTop: head.minY + (headTopGaps[id] ?? 0))
+        guard blocks[id] != block else { return }
+        blocks[id] = block
+        refreshGap()
+    }
 
     private func refreshGap() {
         guard dragging != nil else {

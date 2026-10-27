@@ -316,8 +316,29 @@ struct ProjectList: View {
         if model.projects.isEmpty && unassigned.rows.isEmpty {
             EmptyListHint(isLoaded: model.isReady)
         }
+        // A project's head, drafts, cards and note are direct children of the list, each a part of the live reorder (A1).
+        // A wrapper view around a project's rows would be one child of the list and build every row at once
+        // (SidebarPagingTests).
         ForEach(Array(model.projects.enumerated()), id: \.element.id) { index, project in
-            ProjectBlock(model: model, project: project, index: index, isFirst: index == 0, reorder: reorder)
+            let list = model.list(for: .project(project.id))
+            let topGap = ProjectHeader.topGap(isFirst: index == 0)
+            ProjectHeader(model: model, project: project, reorder: reorder)
+                .padding(.top, topGap)
+                .projectReorderPart(reorder, project: project.id, part: .head, index: index, topGap: topGap)
+            if !project.collapsed {
+                DraftRows(model: model, scope: .project(project.id))
+                    .projectReorderPart(reorder, project: project.id, part: .drafts, index: index)
+                ForEach(list.rows) { row in
+                    SessionListEntry(row: row, model: model)
+                        .projectReorderPart(reorder, project: project.id, part: .session(row.id), index: index)
+                        .id(row.id)
+                        .onAppear { if row.id == list.rows.last?.id { model.loadMore(.project(project.id)) } }
+                }
+                if list.rows.isEmpty && list.isLoaded {
+                    NoSessionsNote(model: model, projectID: project.id)
+                        .projectReorderPart(reorder, project: project.id, part: .note, index: index)
+                }
+            }
         }
         if unassigned.rows.isEmpty {
             LoneDraftsSection(model: model)
@@ -330,42 +351,6 @@ struct ProjectList: View {
                     .onAppear { if row.id == unassigned.rows.last?.id { model.loadMore(.unassigned) } }
             }
         }
-    }
-}
-
-/// One project's whole block: its head, its drafts, its session cards and its "No sessions" note (A1). The block is what
-/// the live reorder measures, hides while its head is lifted, and slides when another project hovers over its place. The
-/// head's top gap sits inside the block, so a block that slides takes its own gap with it and the list stays contiguous.
-private struct ProjectBlock: View {
-    let model: CatalogModel
-    let project: CatalogProject
-    let index: Int
-    var isFirst = false
-    let reorder: ProjectReorderModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        let list = model.list(for: .project(project.id))
-        let topGap = ProjectHeader.topGap(isFirst: isFirst)
-        VStack(alignment: .leading, spacing: 0) {
-            ProjectHeader(model: model, project: project, reorder: reorder)
-            if !project.collapsed {
-                DraftRows(model: model, scope: .project(project.id))
-                ForEach(list.rows) { row in
-                    SessionListEntry(row: row, model: model)
-                        .id(row.id)
-                        .onAppear { if row.id == list.rows.last?.id { model.loadMore(.project(project.id)) } }
-                }
-                if list.rows.isEmpty && list.isLoaded {
-                    NoSessionsNote(model: model, projectID: project.id)
-                }
-            }
-        }
-        .padding(.top, topGap)
-        .opacity(reorder.isDragging(project.id) ? 0 : 1)
-        .projectReorderBlock(reorder, id: project.id, topGap: topGap,
-                             slide: reorder.offsetY(blockAt: index),
-                             animation: reduceMotion ? nil : .easeOut(duration: LoomTheme.Sidebar.reorderSlide))
     }
 }
 

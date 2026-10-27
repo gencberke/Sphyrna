@@ -23,6 +23,13 @@ struct ProjectReorderBlock: Equatable, Sendable {
     var midY: CGFloat { minY + height / 2 }
 }
 
+/// A part of a project's block in the project list (A1): the head row, the drafts, one session card or the "No sessions"
+/// note. Each part is its own child of the list and is measured and slid on its own: a view that wraps a project's rows
+/// would hand the list one child for the whole project, build every row at once and read every page (SidebarPagingTests).
+enum ProjectReorderPart: Hashable {
+    case head, drafts, note, session(UUID)
+}
+
 /// The project view's live reorder (A1, FEEDBACK-7 FB7-3). The pointer against the blocks' mid-lines picks the gap the
 /// dragged project lands in, and every block between its place and that gap slides by the dragged block's height. The
 /// numbers are plain functions, so the gap, the slide and the outcome are tested without a window; `ProjectReorderModel`

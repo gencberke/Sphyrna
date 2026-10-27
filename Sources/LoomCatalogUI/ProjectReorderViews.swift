@@ -46,23 +46,56 @@ struct ProjectReorderLiftedOverlay: View {
     }
 }
 
-extension View {
-    /// Makes the view a project's block for the live reorder (A1): it slides by `slide` without changing its layout, the
-    /// slide is one 150 ms movement (`animation`, nil under Reduce Motion), and the block's layout frame is measured for the
-    /// gap. The slide sits inside the measured view, so the geometry the drag reads is never the one it moved.
-    func projectReorderBlock(_ reorder: ProjectReorderModel, id: UUID, topGap: CGFloat, slide: CGFloat,
-                             animation: Animation?) -> some View {
+/// One part of a project's block in the project list (A1): a head, the drafts, a card or the note. It is a direct child of the
+/// list, so the list still builds its rows lazily. The part slides with its project's place (`index`) by one 150 ms movement
+/// (none under Reduce Motion), is hidden while its project is the one moved, and reports its frame for the gap. The frame is
+/// read outside the slide, so a slide never moves what is measured.
+struct ProjectReorderPartModifier: ViewModifier {
+    let reorder: ProjectReorderModel
+    let project: UUID
+    let part: ProjectReorderPart
+    let index: Int
+    /// The list's gap above the head (read for the head only).
+    let topGap: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(reorder: ProjectReorderModel, project: UUID, part: ProjectReorderPart, index: Int, topGap: CGFloat) {
+        self.reorder = reorder
+        self.project = project
+        self.part = part
+        self.index = index
+        self.topGap = topGap
+    }
+
+    func body(content: Content) -> some View {
+        let slide = reorder.offsetY(blockAt: index)
+        // Read here, on the main actor, and captured as a plain string: the geometry closure is Sendable.
+        let space = ProjectReorderModel.contentSpace
         ZStack(alignment: .topLeading) {
-            self
+            content
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .opacity(reorder.isDragging(project) ? 0 : 1)
                 .offset(y: slide)
-                .animation(animation, value: slide)
+                .animation(reduceMotion ? nil : .easeOut(duration: LoomTheme.Sidebar.reorderSlide), value: slide)
         }
         .onGeometryChange(for: CGRect.self) { proxy in
-            proxy.frame(in: .named(ProjectReorderModel.contentSpace))
+            proxy.frame(in: .named(space))
         } action: { frame in
-            reorder.measure(id, frame: frame, topGap: topGap)
+            if part == .head {
+                reorder.measure(project, frame: frame, topGap: topGap)
+            } else {
+                reorder.measurePart(project, part, frame: frame)
+            }
         }
+        .onDisappear { if part != .head { reorder.forgetPart(project, part) } }
+    }
+}
+
+extension View {
+    /// Makes the view one part of a project's block for the live reorder (A1); see `ProjectReorderPartModifier`.
+    func projectReorderPart(_ reorder: ProjectReorderModel, project: UUID, part: ProjectReorderPart, index: Int,
+                            topGap: CGFloat = 0) -> some View {
+        modifier(ProjectReorderPartModifier(reorder: reorder, project: project, part: part, index: index, topGap: topGap))
     }
 }
 
