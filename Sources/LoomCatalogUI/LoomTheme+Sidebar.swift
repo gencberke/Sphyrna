@@ -68,6 +68,21 @@ extension LoomTheme {
         static let headSpacing: CGFloat = 6
         /// The gap above a project head (and the "Sessions" head) that follows a group: the reference's `.pgroup` pads 8 below
         /// and 2 above. The list puts no gap between its entries (`listSpacing`).
+        // MARK: The live reorder (A1, FEEDBACK-7 FB7-3)
+
+        /// How far the pointer moves before a held project head becomes a drag, so a click and a right click still work.
+        static let reorderStartDistance: CGFloat = ProjectReorder.startDistance
+        /// The slide of the blocks between the dragged head's place and its gap (DESIGN-V4 §4: 150 ms; none under Reduce Motion).
+        static let reorderSlide: Double = 0.15
+        /// The lifted head reads as held: a little opacity over the list.
+        static let reorderLiftOpacity: Double = 0.96
+        /// The lifted head is a card on elevation 2: raised 1, a hairline, and the small 0 1 2 drop (black 20 % in Ink, ink 6 % in Paper).
+        static var reorderLiftFill: Color { Surface.raised1 }
+        static let reorderLiftShadow: AdaptiveTone = AdaptiveTone(
+            dark: Tone(rgb: blackRGB, opacity: 0.20), light: Tone(rgb: inkRGB, opacity: 0.06))
+        static let reorderLiftShadowRadius: CGFloat = 1
+        static let reorderLiftShadowY: CGFloat = 1
+
         static let groupGap: CGFloat = 10
         /// The first head sits 2 under the label's gap.
         static let firstHeadTop: CGFloat = 2
