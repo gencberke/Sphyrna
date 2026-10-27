@@ -14,7 +14,6 @@ its own slice. Where either differs from `@user`'s chat, the chat wins.
   `<id>` is the brief's id in lower case (`b0`, `c1`, …). If the branch exists, the slice is being resumed: use the existing
   worktree and do not recreate it.
 - **Build scratch:** `~/Library/Caches/loom-v2/build/r9-<id>`. **Evidence and logs:** `~/Library/Caches/loom-v2/evidence/r9/<id>/`.
-- `v2`'s uncommitted `Package.resolved` is not yours; leave it.
 
 ## 2. Read first
 
@@ -75,6 +74,9 @@ its own slice. Where either differs from `@user`'s chat, the chat wins.
   `scripts/check.sh --scratch ~/Library/Caches/loom-v2/build/r9-<id> --tests`. A failure you caused is yours to fix. A failure
   that was there before your branch is reported, not fixed.
 - `check-theme-literals.sh` and `check-user-wording.sh` pass (`check.sh` runs both).
+- **Long checks.** A build or `--tests` run takes minutes and queues on the shared build slot. When your tool has a command
+  timeout, start it with `~/Library/Caches/loom-v2/tools/bgcheck.sh <ID> <check.sh arguments>` (it prints a log path and returns),
+  then call `~/Library/Caches/loom-v2/tools/waitcheck.sh <log> 9` until it prints PASS or FAIL. Both use the paths above.
 
 ## 5. Docs
 
@@ -84,7 +86,9 @@ for any new surface, file or evidence key), `design/DESIGN.md`, `DEVELOPMENT.md`
 
 ## 6. The report
 
-The last message of your session, in English, short, in this order:
+The last message of your session, in English, short, in this order. Write the same text to
+`~/Library/Caches/loom-v2/evidence/r9/<id>/REPORT.md`: the planner asks for this file explicitly, so a general rule against
+creating report files does not apply to it.
 - **Status:** done, partly done, or blocked, for each part of the brief.
 - **Commits:** the SHAs on `slice/r9-<id>`, with one line each.
 - **What changed:** by file and type, one line each.

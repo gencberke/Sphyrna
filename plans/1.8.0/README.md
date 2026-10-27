@@ -27,16 +27,18 @@ What does not change: the contracts of SPEC §1–§5 and §12.
 
 ## 2. How the work runs
 
-- **Who.** `@user` sets up each implementer (any provider) and starts it with one brief from [briefs/](briefs/). The planner
-  (the main session) reviews every slice's diff and logs, integrates it onto `v2`, and keeps the docs. A slice is not accepted
-  until the planner has reviewed it.
+- **Who** ([D-107](../../DECISIONS.md)). The planner (the main session) starts each implementer in its own session: a Claude
+  Haiku 5.5 `implementer` subagent at max effort, given one brief from [briefs/](briefs/) and [COMMON.md](COMMON.md). `@user` may
+  start any agent with the same brief. The planner reviews every slice's diff and logs, integrates it onto `v2`, and keeps the
+  docs. A slice is not accepted until the planner has reviewed it.
 - **The brief.** Each brief is self-contained for a capable but not top-tier model: the goal, what to read, the write set, the
-  approach, done-when, the checks and the report. Every brief also follows [COMMON.md](COMMON.md), which `@user` hands over with
-  it.
-- **Where.** One worktree and one branch per slice, cut from `v2`'s head when the slice starts:
-  `~/Library/Caches/loom-v2/wt/r9-<id>` on `slice/r9-<id>` (COMMON §1).
-- **Parallel slices.** Two slices may run at once only when the table below marks their write sets as disjoint. The build slot
-  serializes their builds anyway (DEVELOPMENT §2).
+  approach, done-when, the checks and the report. Every brief also follows [COMMON.md](COMMON.md). A brief whose write set turns
+  out too narrow ends with what is sound, and its rest becomes a new brief (C2b, B1b).
+- **Where.** `v2` is the one integration line. One worktree and one branch per running slice, cut from `v2`'s tip when the
+  slice starts: `~/Library/Caches/loom-v2/wt/r9-<id>` on `slice/r9-<id>` (COMMON §1). The day a slice is integrated, the planner
+  removes its worktree, its branch and its build scratch; its evidence stays in `evidence/r9/<id>/`.
+- **Parallel slices.** At most two slices run at once, and only when the table below marks their write sets as disjoint.
+  The build slot serializes their builds anyway (DEVELOPMENT §2).
 - **Tests** follow D-90: narrow suites per slice; the pool runs once at the gate; a fix gets a scoped re-check.
 
 ## 3. The slices
