@@ -76,12 +76,8 @@ extension LoomTheme {
         static let reorderSlide: Double = 0.15
         /// The lifted head reads as held: a little opacity over the list.
         static let reorderLiftOpacity: Double = 0.96
-        /// The lifted head is a card on elevation 2: raised 1, a hairline, and the small 0 1 2 drop (black 20 % in Ink, ink 6 % in Paper).
+        /// The lifted head is a card on elevation 2 (`Elevation.lift`): raised 1, a hairline, and the small 0 1 2 drop.
         static var reorderLiftFill: Color { Surface.raised1 }
-        static let reorderLiftShadow: AdaptiveTone = AdaptiveTone(
-            dark: Tone(rgb: blackRGB, opacity: 0.20), light: Tone(rgb: inkRGB, opacity: 0.06))
-        static let reorderLiftShadowRadius: CGFloat = 1
-        static let reorderLiftShadowY: CGFloat = 1
 
         static let groupGap: CGFloat = 10
         /// The first head sits 2 under the label's gap.

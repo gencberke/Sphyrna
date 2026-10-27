@@ -411,8 +411,8 @@ The exact values are the reference's `--sh-card`, `--sh-pop`, `--sh-composer` an
 | Tier | Ink | Paper | Use | Floor |
 | --- | --- | --- | --- | --- |
 | Primary | `#EDEDED` | `#0A0A0A` | Titles, body text and values | 7:1; about 16:1 on the canvas |
-| Secondary | `#A2A2A2` | `#525252` | Supporting text, descriptions, inactive tabs | 4.5:1; 7.4 and 6.0 on the canvas |
-| Tertiary | `#8F8F8F` | `#6B6B6B` | The quiet voice: labels, meta, key hints, counts, line numbers | 4.5:1 on the canvas, both raised levels and the hover and selected fills; 5.4 and 5.2 on the canvas |
+| Secondary | `#A2A2A2` | `#525252` | Supporting text, descriptions, inactive tabs | 4.5:1; 7.8 and 7.8 on the canvas |
+| Tertiary | `#8F8F8F` | `#6B6B6B` | The quiet voice: labels, meta, key hints, counts, line numbers | 4.5:1 on the canvas, both raised levels and the hover and selected fills; 6.1 and 5.3 on the canvas |
 | Faint | `#6B6B6B` | `#9C9C9C` | Placeholders, disabled items and decorative marks, never text you need | 2.5:1 |
 
 A first draft drew tertiary one step dimmer (`#6B6B75`, 3.7:1). Ink keeps the app's contrast floors, so quiet text is a step brighter, and the dimmer value became the faint tier. On a popover, quiet text uses secondary.

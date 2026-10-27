@@ -22,8 +22,7 @@ struct ProjectReorderLiftedHead: View {
         .frame(height: LoomTheme.InkHeight.sidebarRow)
         .background(shape.fill(LoomTheme.Sidebar.reorderLiftFill))
         .overlay(shape.strokeBorder(LoomTheme.Surface.strongEdgeStyle, lineWidth: LoomTheme.Line.hairline))
-        .shadow(color: LoomTheme.Sidebar.reorderLiftShadow.color, radius: LoomTheme.Sidebar.reorderLiftShadowRadius,
-                x: 0, y: LoomTheme.Sidebar.reorderLiftShadowY)
+        .depth(LoomTheme.Elevation.lift)
         .opacity(LoomTheme.Sidebar.reorderLiftOpacity)
     }
 }
