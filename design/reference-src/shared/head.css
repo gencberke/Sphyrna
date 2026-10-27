@@ -42,6 +42,9 @@
   --sh-win:0 0 0 1px rgba(255,255,255,.085),0 50px 140px rgba(0,0,0,.72);
   --sh-composer:0 0 0 1px rgba(255,255,255,.12),0 30px 90px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.045);
   --rose:#E68EBA;--orchid:#D194E6;--aqua:#80D5DB;--mint:#83D8B0;--sage:#92C186;--lemon:#CCE07B;
+  /* v4's names, with v3's answers (B0). No v3 rule reads them. */
+  --sidebar:var(--canvas);--muted:var(--hover);--input-fill:transparent;--input-edge:var(--line-2);--scrim:rgba(0,0,0,.4);
+  --sh-lift:0 1px 2px rgba(0,0,0,.35);--pri-fill:var(--accent);--pri-fill-hover:var(--accent-hi);--pri-text:var(--on-accent);
 }
 [data-theme=light]{
   color-scheme:light;
@@ -72,6 +75,9 @@
   --sh-win:0 0 0 1px rgba(30,28,26,.13),0 50px 120px rgba(30,28,26,.22);
   --sh-composer:0 0 0 1px rgba(30,28,26,.12),0 24px 70px rgba(30,28,26,.13);
   --rose:#B03F78;--orchid:#8A42AC;--aqua:#10747E;--mint:#1A7A51;--sage:#557A28;--lemon:#6F7500;
+  /* v4's names, with v3's answers (B0). No v3 rule reads them. */
+  --sidebar:var(--canvas);--muted:var(--hover);--input-fill:transparent;--input-edge:var(--line-2);--scrim:rgba(42,38,34,.22);
+  --sh-lift:0 1px 2px rgba(30,28,26,.1);--pri-fill:var(--accent);--pri-fill-hover:var(--accent-hi);--pri-text:var(--on-accent);
 }
 
 /* ---------- base ---------- */
@@ -81,6 +87,71 @@ body[data-cast=warm] :is(.win,.pc2){--canvas:#0E0C0A;--raise-1:#15120F;--raise-2
 body[data-cast=cool] :is(.win,.pc2){--canvas:#0A0C10;--raise-1:#0F1217;--raise-2:#14171D;--popover:#191D24;--seg-on:#232833;--tree:#363E4C}
 [data-theme=light] body[data-cast=warm] :is(.win,.pc2){--canvas:#F8F2E8;--raise-1:#FCF8F1;--raise-2:#FEFCF8;--popover:#FFFDF9;--seg-on:#FFFDF9;--tree:#CFC4B3}
 [data-theme=light] body[data-cast=cool] :is(.win,.pc2){--canvas:#F1F3F6;--raise-1:#F8F9FB;--raise-2:#FCFDFE;--popover:#FFFFFF;--seg-on:#FFFFFF;--tree:#BCC2CB}
+
+/* ============================================================
+   Ink v4 (B0, D-105): the same names, a second set. The reference
+   bar's v3/v4 switch sets [data-ink] on the page and every frame,
+   so the v3 chapters keep drawing v3 while the v4 chapter and the
+   palette under it can be compared. The values are DESIGN-V4 §2.
+   ============================================================ */
+[data-ink=v4]{
+  color-scheme:dark;
+  --canvas:#0A0A0A;
+  --sidebar:#161616;
+  --raise-1:#171717;
+  --raise-2:#1E1E1E;
+  --popover:#1C1C1C;
+  --muted:#262626;
+  --seg-on:#0A0A0A;
+  --line:rgba(255,255,255,.07);
+  --line-2:rgba(255,255,255,.10);
+  --line-3:rgba(255,255,255,.15);
+  --input-edge:rgba(255,255,255,.15);
+  --input-fill:rgba(255,255,255,.04);
+  --hover:rgba(255,255,255,.07);
+  --selected:rgba(255,255,255,.08);
+  --pressed:rgba(255,255,255,.12);
+  --scrim:rgba(0,0,0,.5);
+  --fg-1:#EDEDED;--fg-2:#A1A1A1;--fg-3:#8F8F8F;--faint:#6B6B6B;--fg-4:#454545;
+  --sh-card:none;
+  --sh-lift:0 1px 2px rgba(0,0,0,.2);
+  --sh-pop:0 0 0 1px rgba(255,255,255,.08),0 10px 24px rgba(0,0,0,.35);
+  --sh-win:0 0 0 1px rgba(255,255,255,.085),0 40px 120px rgba(0,0,0,.7);
+  --sh-composer:0 0 0 1px rgba(255,255,255,.1),0 1px 2px rgba(0,0,0,.2);
+  /* the default action is a neutral fill; periwinkle stays the mark of focus (§2, Q1) */
+  --pri-fill:#EDEDED;--pri-fill-hover:#DEDEDE;--pri-text:#171717;
+}
+[data-theme=light][data-ink=v4]{
+  color-scheme:light;
+  --canvas:#FFFFFF;
+  --sidebar:#F7F7F7;
+  --raise-1:#FFFFFF;
+  --raise-2:#FAFAFA;
+  --popover:#FFFFFF;
+  --muted:#F4F4F5;
+  --seg-on:#FFFFFF;
+  --line:#E5E5E5;
+  --line-2:#D9D9D9;
+  --line-3:#C9C9C9;
+  --input-edge:#E0E0E0;
+  --input-fill:#FFFFFF;
+  --hover:rgba(30,28,26,.045);
+  --selected:rgba(30,28,26,.06);
+  --pressed:rgba(30,28,26,.09);
+  --scrim:rgba(42,38,34,.2);
+  --fg-1:#0A0A0A;--fg-2:#525252;--fg-3:#6B6B6B;--faint:#9E9E9E;--fg-4:#C6C6C6;
+  --sh-card:none;
+  --sh-lift:0 1px 2px rgba(30,28,26,.06);
+  --sh-pop:0 0 0 1px rgba(30,28,26,.1),0 10px 24px rgba(30,28,26,.14);
+  --sh-win:0 0 0 1px rgba(30,28,26,.13),0 40px 110px rgba(30,28,26,.2);
+  --sh-composer:0 0 0 1px rgba(30,28,26,.1),0 1px 2px rgba(30,28,26,.06);
+  --pri-fill:#171717;--pri-fill-hover:#2B2B2B;--pri-text:#FAFAFA;
+}
+/* v4's tone casts: Warm and Cool recompute the six greys from v4's neutrals, as v3's do (D-81) */
+[data-ink=v4] body[data-cast=warm] :is(.win,.pc2){--canvas:#0C0A08;--sidebar:#181512;--raise-1:#191613;--raise-2:#201A16;--popover:#1E1915;--muted:#2A231C;--seg-on:#0C0A08}
+[data-ink=v4] body[data-cast=cool] :is(.win,.pc2){--canvas:#080A0C;--sidebar:#121619;--raise-1:#131719;--raise-2:#191D24;--popover:#171B21;--muted:#20262E;--seg-on:#080A0C}
+[data-theme=light][data-ink=v4] body[data-cast=warm] :is(.win,.pc2){--canvas:#FFFDF9;--sidebar:#FAF5EF;--raise-1:#FFFFFF;--raise-2:#FDF8F2;--popover:#FFFFFF;--muted:#F7F1E9;--seg-on:#FFFFFF}
+[data-theme=light][data-ink=v4] body[data-cast=cool] :is(.win,.pc2){--canvas:#FFFFFF;--sidebar:#F3F5F8;--raise-1:#FFFFFF;--raise-2:#F8FAFC;--popover:#FFFFFF;--muted:#F0F3F6;--seg-on:#FFFFFF}
 
 html{background:var(--page)}
 body{font:13px/1.45 var(--ui);color:var(--fg-1);-webkit-font-smoothing:antialiased;background:var(--page);

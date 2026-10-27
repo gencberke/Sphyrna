@@ -162,5 +162,10 @@ $$('#themeSeg button').forEach(b => b.addEventListener('click', () => {
   $$('#themeSeg button').forEach(x => x.classList.toggle('on', x === b));
   oceans.forEach(o => { o.readInk(); o.draw(); });
 }));
+// v3 or the v4 proposal (B0): every token has a v4 answer, and the page passes the choice to every frame.
+$$('#inkSeg button').forEach(b => b.addEventListener('click', () => {
+  document.documentElement.dataset.ink = b.dataset.inkSet;
+  $$('#inkSeg button').forEach(x => x.classList.toggle('on', x === b));
+}));
 $$('.seg').forEach(s => { if (s.id !== 'themeSeg') s.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $$('button', s).forEach(x => x.classList.toggle('on', x === b)); }); });
 $$('.spec .sw, .minic .sw').forEach(s => s.addEventListener('click', () => s.classList.toggle('on')));

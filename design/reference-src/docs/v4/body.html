@@ -1,0 +1,458 @@
+<body data-cast="neutral">
+
+<!--TOPBAR-->
+
+<div class="wrap">
+
+  <!-- ================= 01 RULES ================= -->
+  <section class="sec ink4" id="rules">
+    <div class="sechead"><span class="num">01</span><h2>The six rules, v4</h2>
+      <p>Ink v4 takes Orca's quiet system and keeps what makes Sphyrna recognisable. The switches above this chapter (Q1–Q6) redraw every window below both ways, the default first; the v3/v4 switch in the bar changes the tokens under every chapter. Nothing here is approved yet: this page is the proposal.</p></div>
+    <div class="rules">
+      <div class="rule"><div class="n">01</div><h3>Two planes</h3><p>The sidebar is a plane one step lighter than the content. The content is the canvas. Hairlines divide; nothing is boxed twice; only what you act on is lifted.</p></div>
+      <div class="rule"><div class="n">02</div><h3>Two voices</h3><p>SF Pro for what you read, labels included. SF Mono only for what the machine says: branches, paths, model ids, times, tokens, counts, keys.</p></div>
+      <div class="rule"><div class="n">03</div><h3>Colour means state</h3><p>The chrome is neutral grey; the default action is a neutral fill. Periwinkle marks focus and what is current. Orange, blue and red are status; green is content only. A project's tone is its mark and its tab.</p></div>
+      <div class="rule"><div class="n">04</div><h3>One control family</h3><p>Four heights (24, 28, 32, 36), one radius (8), one hover, one focus ring, six button roles. A control looks the same wherever it appears.</p></div>
+      <div class="rule"><div class="n">05</div><h3>Three reading points</h3><p>The sidebar says how every session is doing. The header says how this one is doing and what you can do with it. The status bar says how the accounts are doing.</p></div>
+      <div class="rule"><div class="n">06</div><h3>Quiet by default</h3><p>Feedback matches the duration, the way back is never coloured, a tooltip only names, and copy never claims more than the state proves.</p></div>
+    </div>
+    <div class="i4choices">
+      <div class="i4ch"><span class="i4cn">Q1</span><div><b>The default button</b><span>Neutral fill. Periwinkle stays focus, current and on.</span></div><span class="i4cd">neutral</span></div>
+      <div class="i4ch"><span class="i4cn">Q2</span><div><b>The sidebar</b><span>Lifted one step above the content.</span></div><span class="i4cd">lifted</span></div>
+      <div class="i4ch"><span class="i4cn">Q3</span><div><b>The selected session</b><span>Neutral raised card. The tone stays on mark and tab.</span></div><span class="i4cd">raised</span></div>
+      <div class="i4ch"><span class="i4cn">Q4</span><div><b>Section labels</b><span>SF Pro 11 semibold capitals. Mono for machine text only.</span></div><span class="i4cd">sans</span></div>
+      <div class="i4ch"><span class="i4cn">Q5</span><div><b>Display type</b><span>34 light on Home and the draft, not 46 ultralight.</span></div><span class="i4cd">light</span></div>
+      <div class="i4ch"><span class="i4cn">Q6</span><div><b>Session tabs</b><span>The 36 pt row stays; the tabs go flat.</span></div><span class="i4cd">row</span></div>
+    </div>
+  </section>
+
+  <!-- ================= 02 CONTROLS ================= -->
+  <section class="sec ink4" id="controls">
+    <div class="sechead"><span class="num">02</span><h2>The control family</h2>
+      <p>Six roles at four heights, one radius, one hover and one focus ring. Filled means Return: the one filled button is the one Return presses. A back-out path (Cancel, Dismiss, Close, Discard) is ghost or secondary, never coloured, and carries no key chip.</p></div>
+    <div class="parts">
+      <div class="spec w12"><span class="label">Buttons · six roles × four heights</span>
+        <div class="i4bmatrix">
+          <div class="i4brow"><span class="i4bh">36</span><button class="i4btn pri h36">Start Session</button><button class="i4btn sec h36">Mark as Read</button><button class="i4btn out h36">Add Project…</button><button class="i4btn gh h36">Dismiss</button><button class="i4btn lnk">Open Usage</button><button class="i4btn dan h36">Delete…</button></div>
+          <div class="i4brow"><span class="i4bh">32</span><button class="i4btn pri">Start</button><button class="i4btn sec">Mark Read</button><button class="i4btn out">Add Project…</button><button class="i4btn gh">Dismiss</button><button class="i4btn lnk">Open Usage</button><button class="i4btn dan">Delete…</button></div>
+          <div class="i4brow"><span class="i4bh">28</span><button class="i4btn pri h28">Start</button><button class="i4btn sec h28">Mark Read</button><button class="i4btn out h28">Add…</button><button class="i4btn gh h28">Dismiss</button><button class="i4btn lnk">Details</button><button class="i4btn dan h28">Delete</button></div>
+          <div class="i4brow"><span class="i4bh">24</span><button class="i4btn pri h24">Start</button><button class="i4btn sec h24">Mark</button><button class="i4btn out h24">Add…</button><button class="i4btn gh h24">Close</button><button class="i4btn lnk">More</button><button class="i4btn dan h24">Delete</button></div>
+        </div>
+        <div class="ln" style="margin-top:18px"><span class="cap">icon · 28</span><button class="i4ib" data-i="side-l" title="Hide the sidebar"></button><button class="i4ib on" data-i="side-r" title="Inspector"></button><button class="i4ib" data-i="plus" title="New"></button><button class="i4ib" data-i="more" title="More"></button><button class="i4ib" data-i="gear" title="Settings"></button><span class="vline"></span><button class="i4btn out" disabled>Disabled</button><button class="i4btn pri" disabled>Start</button><button class="i4btn out i4focus">Focused</button></div>
+        <p class="note">36 for a sheet's or an empty state's main action, 32 in pages and sheets, 28 for toolbar buttons, tabs, menu rows and sidebar rows, 24 for chips and the status bar. The focus ring is a 3 pt halo of the accent at 45 % outside the edge, with the edge in the accent, on keyboard focus only.</p>
+      </div>
+      <div class="spec w6"><span class="label">Fields, switches, segments</span>
+        <div class="i4fld"><span data-i="search"></span><span class="i4ph">Search sessions</span><kbd class="i4key">⌘K</kbd></div>
+        <div class="i4fld i4focus"><span class="i4val">feature/bg/EDDP-20625</span><span class="i4caret"></span></div>
+        <div class="i4fld i4bad"><span class="i4val">feature/bg/…</span><span class="i4fmsg">A branch name has no spaces.</span></div>
+        <div class="ln" style="margin-top:18px"><span class="i4sw on"></span><span class="i4fl">Allow edits</span><span class="i4sw" style="margin-left:18px"></span><span class="i4fl" style="color:var(--fg-2)">Project colors</span></div>
+        <div class="ln" style="margin-top:16px"><div class="i4seg"><button class="on">Last turn</button><button>Whole session</button><button>Branch</button></div></div>
+        <p class="note">Fields are 32 high, radius 8, input fill and edge, 12 inside. Focus is the accent edge and halo; an error is the failure edge with one line under it. The switch is 32 × 18. The segment is 32 high, its chosen segment the canvas (Ink) or white (Paper) at elevation 2.</p>
+      </div>
+      <div class="spec w6"><span class="label">Badges, keys, a tooltip</span>
+        <div class="ln"><span class="i4badge">Muted</span><span class="i4badge out">Outline</span><span class="i4badge attn"><span class="dot attn"></span>Needs you</span><span class="i4badge unv"><span class="dot unv"></span>Finished</span><span class="i4badge fail"><span class="dot fail"></span>Failed</span></div>
+        <div class="ln" style="margin-top:16px"><span class="cap">key chips</span><kbd class="i4key">⌘K</kbd><kbd class="i4key">⌘N</kbd><kbd class="i4key">esc</kbd><kbd class="i4key">↵</kbd><span class="i4note">never on a back-out action</span></div>
+        <div class="ln" style="margin-top:20px"><span class="cap">tooltip</span><span class="i4tipwrap"><button class="i4ib" data-i="copy" title="Copy path"></button><span class="i4tip">Copy path</span></span><span class="i4note">names, never warns; after 400 ms</span></div>
+        <div class="ln" style="margin-top:20px"><span class="cap">status words</span><span class="i4stt work"><span class="spin">⠋</span>Working <b>37s</b></span><span class="i4stt attn"><i class="dot attn"></i>Needs you</span><span class="i4stt unv"><i class="dot unv"></i>Finished</span><span class="i4stt fail"><i class="dot fail"></i>Failed</span><span class="i4stt">Ready</span></div>
+        <p class="note">Working is the braille spinner and a word; Needs you, Finished and Failed are a dot and a word in the status's text colour. Ready is nothing at all, and its time sits in mono tertiary.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 03 TOKENS ================= -->
+  <section class="sec ink4" id="tokens">
+    <div class="sechead"><span class="num">03</span><h2>Tokens, type and depth</h2>
+      <p>Every token keeps one name with an Ink and a Paper value. Tone casts (Warm, Cool) recompute the six greys from v4's neutrals, as they do today. The accent, the status colours and the project tones keep their v3 values.</p></div>
+    <div class="tok">
+      <div class="spec w6"><span class="label">Surfaces and lines</span>
+        <div class="swatches">
+          <div class="swcol"><h4>Ink</h4>
+            <div class="sw-row"><i style="background:#0A0A0A"></i><span>canvas · content</span><span>#0A0A0A</span></div>
+            <div class="sw-row"><i style="background:#161616"></i><span>sidebar plane</span><span>#161616</span></div>
+            <div class="sw-row"><i style="background:#171717"></i><span>card</span><span>#171717</span></div>
+            <div class="sw-row"><i style="background:#1E1E1E"></i><span>raised · selected card</span><span>#1E1E1E</span></div>
+            <div class="sw-row"><i style="background:#1C1C1C"></i><span>popover</span><span>#1C1C1C</span></div>
+            <div class="sw-row"><i style="background:#262626"></i><span>muted · secondary fill</span><span>#262626</span></div>
+            <div class="sw-row"><i style="background:#0A0A0A;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)"></i><span>hairline</span><span>white 7 %</span></div>
+            <div class="sw-row"><i style="background:#0A0A0A;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15)"></i><span>input edge</span><span>white 15 %</span></div>
+            <div class="sw-row"><i style="background:#EDEDED"></i><span>default button</span><span>#EDEDED · #171717 text</span></div>
+          </div>
+          <div class="swcol"><h4>Paper</h4>
+            <div class="sw-row"><i style="background:#FFFFFF"></i><span>canvas · content</span><span>#FFFFFF</span></div>
+            <div class="sw-row"><i style="background:#F7F7F7"></i><span>sidebar plane</span><span>#F7F7F7</span></div>
+            <div class="sw-row"><i style="background:#FFFFFF;box-shadow:inset 0 0 0 1px #E5E5E5"></i><span>card · white + hairline</span><span>#FFFFFF</span></div>
+            <div class="sw-row"><i style="background:#FAFAFA"></i><span>raised · selected card</span><span>#FAFAFA</span></div>
+            <div class="sw-row"><i style="background:#FFFFFF;box-shadow:inset 0 0 0 1px #E5E5E5"></i><span>popover</span><span>#FFFFFF</span></div>
+            <div class="sw-row"><i style="background:#F4F4F5"></i><span>muted · secondary fill</span><span>#F4F4F5</span></div>
+            <div class="sw-row"><i style="background:#FFFFFF;box-shadow:inset 0 0 0 1px #E5E5E5"></i><span>hairline</span><span>#E5E5E5</span></div>
+            <div class="sw-row"><i style="background:#FFFFFF;box-shadow:inset 0 0 0 1px #E0E0E0"></i><span>input edge</span><span>#E0E0E0</span></div>
+            <div class="sw-row"><i style="background:#171717"></i><span>default button</span><span>#171717 · #FAFAFA text</span></div>
+          </div>
+        </div>
+        <p class="note">Hairline white 7 % in Ink, #E5E5E5 in Paper; hover is white 7 % or ink 4.5 %; pressed white 12 % or ink 9 %; the scrim is black 50 % or ink 20 %. A floating surface is opaque: no blur, no vibrancy.</p>
+      </div>
+      <div class="spec w6"><span class="label">Text and its floors</span>
+        <table class="i4ctab">
+          <thead><tr><th></th><th>canvas</th><th>sidebar</th><th>card</th><th>hover</th></tr></thead>
+          <tbody>
+            <tr><th>Ink · primary <span>#EDEDED</span></th><td>16.9</td><td>15.5</td><td>15.3</td><td>15.0</td></tr>
+            <tr><th>Ink · secondary <span>#A1A1A1</span></th><td>7.7</td><td>7.0</td><td>6.9</td><td>6.4</td></tr>
+            <tr><th>Ink · tertiary <span>#8F8F8F</span></th><td>6.1</td><td>5.6</td><td>5.5</td><td>4.7</td></tr>
+            <tr><th>Ink · faint <span>#6B6B6B</span></th><td>3.7</td><td>3.4</td><td>3.4</td><td>2.9</td></tr>
+            <tr><th>Paper · primary <span>#0A0A0A</span></th><td>19.8</td><td>18.5</td><td>19.8</td><td>18.7</td></tr>
+            <tr><th>Paper · secondary <span>#525252</span></th><td>7.8</td><td>7.3</td><td>7.8</td><td>7.2</td></tr>
+            <tr><th>Paper · tertiary <span>#6B6B6B</span></th><td>5.3</td><td>5.0</td><td>5.3</td><td>4.9</td></tr>
+            <tr><th>Paper · faint <span>#9E9E9E</span></th><td>2.7</td><td>2.5</td><td>2.7</td><td>2.4</td></tr>
+          </tbody>
+        </table>
+        <p class="note">Floors: primary 7:1, secondary 4.5:1 on every plane and fill, tertiary 4.5:1 on the canvas, the sidebar, the card and the hover fill, faint 2.5:1. Two values are drawn one step above DESIGN-V4: tertiary is <b>#8F8F8F</b> because #8A8A8A measures 4.38:1 on the hover fill over the lifted sidebar, and Paper's faint is <b>#9E9E9E</b> because #A3A3A3 measures 2.35:1 on the sidebar plane. Both are proposed corrections, not silent changes.</p>
+      </div>
+      <div class="spec w6"><span class="label">Type</span>
+        <div class="tyrow"><span class="k">display · 34 / 300</span><span class="i4ask" style="font-size:30px;display:block">What should we work on?</span></div>
+        <div class="tyrow"><span class="k">title · 20 / 600</span><span style="font:600 20px var(--ui)">Release C health check</span></div>
+        <div class="tyrow"><span class="k">header · 13 / 600</span><span style="font:600 13px var(--ui)">Port the sidebar to Ink tokens</span></div>
+        <div class="tyrow"><span class="k">body · 13 / 400</span><span style="font-size:13px">Claude's file edits since your last prompt.</span></div>
+        <div class="tyrow"><span class="k">small · 12 / 400</span><span style="font-size:12px;color:var(--fg-2)">Resets 16:40 · at this pace it lasts</span></div>
+        <div class="tyrow"><span class="k">caption · 11 / 400</span><span style="font-size:11px;color:var(--fg-2)">4% left · 3h 39m</span></div>
+        <div class="tyrow"><span class="k">label · pro 11 / 600</span><span class="i4lab">Plan limits</span></div>
+        <div class="tyrow"><span class="k">meta · mono 11</span><span class="mono" style="font-size:11px;color:var(--fg-2)">ui/ink-sidebar · 14:02 · 76.1K</span></div>
+        <p class="note">Weight carries hierarchy before size. The label is SF Pro 11 semibold capitals at 5 % tracking (Q4); the mono label is the alternate. No Dynamic Type, as before.</p>
+      </div>
+      <div class="spec w6"><span class="label">Shape, heights and the three elevations</span>
+        <div class="shape">
+          <div><b style="border-radius:4px"></b>4 · keys</div>
+          <div><b style="border-radius:8px"></b>8 · controls</div>
+          <div><b style="border-radius:12px"></b>12 · cards</div>
+          <div><b style="border-radius:16px"></b>16 · composer</div>
+          <div><b style="border-radius:18px"></b>capsule · badges</div>
+        </div>
+        <div class="hts">
+          <div><b style="height:24px"></b>24 · chips</div>
+          <div><b style="height:28px"></b>28 · rows</div>
+          <div><b style="height:32px"></b>32 · fields</div>
+          <div><b style="height:36px"></b>36 · actions</div>
+          <div><b style="height:26px"></b>26 · status</div>
+          <div><b style="height:52px"></b>52 · header</div>
+        </div>
+        <div class="i4elev">
+          <div><span class="i4ev one">1 · hairline</span><span class="i4ev two">2 · lift</span><span class="i4ev three">3 · floating</span></div>
+          <p class="note">One. A hairline: almost everything, cards included. Two. A hairline and a small shadow: outline buttons, the selected segment, the selected session, the composer. Three. Floating: popovers, menus, the model panel, sheets. There is no fourth.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 04 SIDEBAR ================= -->
+  <section class="sec ink4" id="sidebar">
+    <div class="sechead"><span class="num">04</span><h2>The sidebar</h2>
+      <p>The same sidebar in its two views, on its own plane. The search field opens the palette; Home carries the count that needs you. A working session, one that needs you, one finished, one ready and one failed; the selected card; a card with two subagents; and a project head under the pointer. Q2 lifts the plane, Q3 chooses the selected card's look.</p></div>
+    <div class="i4duo">
+      <div>
+        <div class="i4cap"><b>Projects</b><span>the card carries its status, its title and its branch</span></div>
+        <div class="stage"><div class="win i4cropwin" data-w="300" data-h="820"><aside class="i4side" data-i4side="ink" data-view="projects"></aside></div></div>
+      </div>
+      <div>
+        <div class="i4cap"><b>Activity</b><span>the same sessions, newest first, with the reason Sphyrna holds</span></div>
+        <div class="stage"><div class="win i4cropwin" data-w="300" data-h="820"><aside class="i4side" data-i4side="ink" data-view="activity"></aside></div></div>
+      </div>
+    </div>
+    <ol class="legend">
+      <li><b>1</b>Search (32) and the two nav rows (28). Home's count is the sessions that need you, as Orca's Agent Dashboard carries one.</li>
+      <li><b>2</b>The section heading is Small medium secondary with its icon buttons at the trailing end; the project head is 28 and shows its chevron, + and ⋯ under the pointer.</li>
+      <li><b>3</b>The card has three lines: mark and project with the status, the title, the branch with the harness's mark. Ten by twelve of padding, radius 10, no fill at rest.</li>
+      <li><b>4</b>Working is the spinner, the word and the elapsed time; Needs you, Finished and Failed are a dot, the word and the time; Ready is nothing, so the time since the last activity takes the top line's end.</li>
+      <li><b>5</b>Subagents branch from the mark's column, the line leaving the mark's centre. Their rows are 24 with a still running mark.</li>
+      <li><b>6</b>Under the pointer the card takes the hover fill; selected it is raised with the strong hairline at elevation 2 (Q3). The tone stays on the project mark.</li>
+      <li><b>7</b>The footer chip is gone: the status bar takes it. Settings and Help stay as ghost icon buttons at the sidebar's bottom edge.</li>
+      <li><b>8</b>In Activity the reason line replaces the branch, and the days divide the list. Nothing else changes.</li>
+    </ol>
+  </section>
+
+  <!-- ================= 05 SESSION ================= -->
+  <section class="sec ink4" id="session">
+    <div class="sechead"><span class="num">05</span><h2>The session window</h2>
+      <p>The sidebar plane beside the canvas, the header (52), the tab row (36), the untouched terminal, the inspector's Overview and the status bar (26) under the whole window with its popover open. Q6 moves the tabs into the header; Q2 and Q3 change the plane and the selected card.</p></div>
+    <div class="stage"><div class="win i4win" id="winS" data-w="1280" data-h="860">
+      <div class="i4shell">
+        <div class="i4body">
+          <aside class="i4side" data-i4side="ink" data-view="projects"></aside>
+          <main class="i4main">
+            <header class="i4h">
+              <span class="hm claude md" title="Claude Code"></span><span class="i4htitle">Port the sidebar to Ink tokens</span>
+              <span class="i4stt work"><span class="spin">⠋</span>Working <b>37s</b></span>
+              <nav class="i4hdtabs" aria-label="Session tabs"></nav>
+              <div class="i4hend">
+                <span class="i4chip"><span class="i4pmark sm" style="--tone:var(--orchid)">L</span>loom<span class="i4sep"></span><span class="i4brn"><span data-i="branch"></span>ui/ink-sidebar</span></span>
+                <button class="i4ib model" title="Model and effort"><span class="hm claude"></span>Opus 5.5<span class="i4eff">· High</span><span data-i="chev-d" style="width:12px;height:12px"></span></button>
+                <span class="vline"></span>
+                <button class="i4ib on" data-i="side-r" title="Inspector"></button>
+                <div class="i4cgroup"><button><span class="stopsq"></span>Stop</button><span class="div"></span><button data-i="more" title="More"></button></div>
+              </div>
+            </header>
+            <div class="i4tabrow">
+              <div class="i4tab on" style="--tone:var(--orchid)"><span class="i4pmark sm">L</span><span class="i4tind"><span class="spin">⠋</span></span><span class="i4tt">Port the sidebar to Ink tokens</span><span class="i4tx"><span class="hm claude"></span><span class="i4x" data-i="x"></span></span></div>
+              <div class="i4tab" style="--tone:var(--orchid)"><span class="i4pmark sm">L</span><span class="i4tind"><i class="dot attn"></i></span><span class="i4tt">Review the gate failure</span><span class="i4tx"><span class="hm claude"></span><span class="i4x" data-i="x"></span></span></div>
+              <div class="i4tab" style="--tone:var(--aqua)"><span class="i4pmark sm">S</span><span class="i4tind"><i class="dot unv"></i></span><span class="i4tt">Thesis outline</span><span class="i4tx"><span class="hm codex"></span><span class="i4x" data-i="x"></span></span></div>
+              <button class="i4ib add" data-i="plus" title="New tab"></button>
+            </div>
+            <div class="i4pane">
+              <div class="term i4term"><span class="o"> ▐▛███▜▌</span>   <span class="b">Claude Code</span> <span class="d">v2.1.300</span>
+<span class="o">▝▜█████▛▘</span>  <span class="d">Opus 5.5 · Claude Max</span>
+<span class="o">  ▘▘ ▝▝</span>    <span class="d">~/Library/Caches/loom-v2/wt/ink</span>
+
+<span class="u">&gt; Port the sidebar rows to the Ink tokens: one status column,
+  the project's mark, the status as a word. Keep the branch.</span>
+
+<span class="w">⏺</span> I'll start with the card's three lines, then the five statuses.
+
+<span class="g">⏺</span> <span class="b">Read</span>(Sources/LoomCatalogUI/SidebarCard.swift)
+  <span class="d">⎿  Read 168 lines</span>
+
+<span class="g">⏺</span> <span class="b">Search</span>(pattern: "cardRowHeight", path: "Sources/LoomCatalogUI")
+  <span class="d">⎿  Found 3 files</span>
+
+<span class="g">⏺</span> <span class="b">Update</span>(Sources/LoomCatalogUI/SidebarCard.swift)
+  <span class="d">⎿  Updated SidebarCard.swift with 61 additions and 24 removals</span>
+      <span class="d">24</span> <span class="rm">-    static let stripeWidth: CGFloat = 3</span>
+      <span class="d">24</span> <span class="ad">+    static let cardRadius: CGFloat = 10</span>
+      <span class="d">25</span> <span class="ad">+    static let statusWord: Bool = true</span>
+
+<span class="g">⏺</span> <span class="b">Update</span>(Tests/LoomCatalogUITests/SidebarCardTests.swift)
+  <span class="d">⎿  Updated SidebarCardTests.swift with 46 additions and 2 removals</span>
+
+<span class="g">⏺</span> <span class="b">Bash</span>(scripts/check.sh --suite SidebarCardTests)
+  <span class="d">⎿  Running…</span>
+
+<span class="o">✻</span> <span class="b">Threading…</span> <span class="d">(1m 12s · ↓ 3.4k tokens · esc to interrupt)</span>
+<span class="trule"></span><span class="u">&gt; </span><span class="cur"></span>
+<span class="trule"></span>  <span class="d">? for shortcuts</span>                                       <span class="d">Opus 5.5 · ui/ink-sidebar</span></div>
+              <aside class="i4insp">
+                <div class="i4itabs">
+                  <button class="i4itab on">Overview</button>
+                  <button class="i4itab">Changes <span class="n">4</span></button>
+                  <button class="i4itab">Agents <span class="n">2</span></button>
+                  <button class="i4itab">Side</button>
+                </div>
+                <div class="i4ipanel">
+                  <div class="i4icard">
+                    <div class="i4ilab"><span class="i4lab">Session</span></div>
+                    <dl class="i4facts">
+                      <dt>State</dt><dd><span class="i4stt work"><span class="spin">⠋</span>Working</span></dd>
+                      <dt>Started</dt><dd class="mono">14:02 today</dd>
+                      <dt>Harness</dt><dd>Claude Code <span class="mono">2.1.300</span></dd>
+                      <dt>Model</dt><dd>Opus 5.5 <span class="mono">· high</span></dd>
+                      <dt>Mode</dt><dd class="acc"><span data-i="shield"></span>Ask before edits</dd>
+                    </dl>
+                  </div>
+                  <div class="i4icard">
+                    <div class="i4ilab"><span class="i4lab">Context</span><span class="i4labr mono">38%</span></div>
+                    <div class="i4ctx"><svg viewBox="0 0 30 30" width="30" height="30"><circle cx="15" cy="15" r="12" fill="none" stroke="var(--line-2)" stroke-width="2.4"/><circle cx="15" cy="15" r="12" fill="none" stroke="var(--fg-2)" stroke-width="2.4" stroke-dasharray="28.7 75.4" transform="rotate(-90 15 15)" stroke-linecap="round"/></svg>
+                      <div><b>76.1K of 200K</b><span>tokens of the window</span></div></div>
+                  </div>
+                  <div class="i4icard">
+                    <div class="i4ilab"><span class="i4lab">Worktree</span></div>
+                    <dl class="i4facts">
+                      <dt>Project</dt><dd><span class="i4pmark sm" style="--tone:var(--orchid)">L</span>loom</dd>
+                      <dt>Branch</dt><dd class="mono">ui/ink-sidebar → main</dd>
+                      <dt>Folder</dt><dd class="mono ell">~/…/loom-v2/wt/ink</dd>
+                    </dl>
+                  </div>
+                  <div class="i4icard">
+                    <div class="i4ilab"><span class="i4lab">Agents</span><span class="i4labr mono">2 running</span></div>
+                    <div class="i4arow"><span class="i4stt work"><span class="spin">⠋</span></span><b>explorer</b><span>Map every sidebar token</span><em>2m</em></div>
+                    <div class="i4arow"><span class="i4stt work"><span class="spin">⠋</span></span><b>implementer</b><span>Port SidebarCard</span><em>now</em></div>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </main>
+        </div>
+        <footer class="i4status" data-i4status></footer>
+      </div>
+      <div class="i4stpop">
+        <div class="i4stph"><span class="hm claude"></span><b>Claude Code</b><span class="i4stpr">Read 17:20</span><button class="i4ib" data-i="x" title="Close"></button></div>
+        <div class="i4strow"><span class="k">5-hour window</span><span class="i4meter low"><i style="width:4%"></i></span><b class="low">4% left</b><span class="rs">resets 21:05</span></div>
+        <div class="i4strow"><span class="k">Weekly</span><span class="i4meter"><i style="width:38%"></i></span><b>38% left</b><span class="rs">resets Mon 10:00</span></div>
+        <div class="i4stpn">Claude Max · read from Claude Code's own usage, nothing asked of the model.</div>
+        <div class="i4stpf"><button class="i4btn out h28">Check Again</button><button class="i4btn gh h28">Open Usage</button><span class="sp"></span><span class="mono">17:20</span></div>
+      </div>
+    </div></div>
+    <ol class="legend">
+      <li><b>1</b>The header says what this is and how it is doing (title, state) and what you can do with it at the trailing edge: the project chip, the model and effort, the inspector toggle and Stop | ⋯.</li>
+      <li><b>2</b>The tab row is 36 with 28-high flat tabs: no tint at rest, the hover fill under the pointer, the selected tab raised at elevation 2. The project's mark keeps the tone.</li>
+      <li><b>3</b>The terminal is untouched and flush on its own dark canvas in both appearances: no panel inset, no border, no second background.</li>
+      <li><b>4</b>The inspector is cards on the canvas with a hairline, a label, and mono only for what the machine says. The current view is underlined in the accent.</li>
+      <li><b>5</b>The status bar is 26 under sidebar and content, the sidebar plane's colour with a hairline on top. Claude and Codex each have a segment; the click opens the 360-wide popover.</li>
+      <li><b>6</b>The popover gives each window's full line, its reset time, when it was read, Check Again and Open Usage. It floats at elevation 3, opaque.</li>
+    </ol>
+  </section>
+
+  <!-- ================= 06 MODEL ================= -->
+  <section class="sec ink4" id="model">
+    <div class="sechead"><span class="num">06</span><h2>The model and effort panel</h2>
+      <p>640 × 440, floating over the palette's scrim, opened from the model chip. The rail is 200; the list row is 32 with the model's full name, its description and its context size. ↵ on a model with levels shows its own levels; ⌫ goes back; ↵ confirms and closes. Q1 has nothing to do here; the current model is marked with the accent.</p></div>
+    <div class="i4mwrap">
+      <div class="stage"><div class="win i4float" data-w="640" data-h="440">
+        <div class="i4panel">
+          <div class="i4rail">
+            <div class="i4railr"><span data-i="clock"></span>Recent</div>
+            <div class="i4railsep"></div>
+            <div class="i4railh i4lab">Harnesses</div>
+            <div class="i4railr on"><span class="hm claude md"></span>Claude Code<span class="n">5</span></div>
+            <div class="i4railr"><span class="hm codex md"></span>Codex<span class="n">4</span></div>
+            <div class="i4railr dim"><span class="i4blank"></span>opencode<span class="st">Not found</span><span class="con">Connect…</span></div>
+            <div class="i4railr dim"><span class="i4blank"></span>agy<span class="st">Off</span><span class="con">Connect…</span></div>
+            <div class="i4railr"><span class="i4blank"></span>pi<span class="n">3</span></div>
+          </div>
+          <div class="i4pool">
+            <div class="i4msearch"><span data-i="search"></span><span class="i4val">opus</span><span class="i4caret"></span><span class="i4mcount">4 models</span></div>
+            <div class="i4mlist">
+              <div class="i4mh i4lab">Claude Code</div>
+              <div class="i4mrow cur"><span class="nm">Opus 5.5</span><span class="d">Long agentic coding</span><span class="ctx">200K</span></div>
+              <div class="i4mrow"><span class="nm">Fable 5.1</span><span class="d">Hardest, long-horizon work</span><span class="ctx">1M</span></div>
+              <div class="i4mrow"><span class="nm">Sonnet 5.5</span><span class="d">Fast, everyday work</span><span class="ctx">200K</span></div>
+              <div class="i4mrow"><span class="nm">Haiku 5.5</span><span class="d">Quick answers, no effort</span><span class="ctx">200K</span></div>
+              <div class="i4mh i4lab">Codex</div>
+              <div class="i4mrow"><span class="nm">GPT-6 Astra</span><span class="d">Most capable</span><span class="ctx">400K</span></div>
+              <div class="i4mrow"><span class="nm">GPT-6.1 Sol</span><span class="d">Near Astra, for less</span><span class="ctx">400K</span></div>
+            </div>
+            <div class="i4mfoot"><span><b>↑↓</b> model</span><span><b>↵</b> effort or done</span><span><b>esc</b> close</span></div>
+          </div>
+        </div>
+      </div></div>
+      <div class="stage"><div class="win i4float" data-w="640" data-h="440">
+        <div class="i4panel">
+          <div class="i4rail">
+            <div class="i4railr"><span data-i="clock"></span>Recent</div>
+            <div class="i4railsep"></div>
+            <div class="i4railh i4lab">Harnesses</div>
+            <div class="i4railr on"><span class="hm claude md"></span>Claude Code<span class="n">5</span></div>
+            <div class="i4railr"><span class="hm codex md"></span>Codex<span class="n">4</span></div>
+            <div class="i4railr dim"><span class="i4blank"></span>opencode<span class="st">Not found</span><span class="con">Connect…</span></div>
+            <div class="i4railr dim"><span class="i4blank"></span>agy<span class="st">Off</span><span class="con">Connect…</span></div>
+            <div class="i4railr"><span class="i4blank"></span>pi<span class="n">3</span></div>
+          </div>
+          <div class="i4pool">
+            <div class="i4back"><span data-i="chev-l"></span>Opus 5.5</div>
+            <div class="i4effh"><span class="i4lab">Effort</span><span class="i4effm">Opus 5.5 · Claude Code</span></div>
+            <div class="i4mlist">
+              <div class="i4mrow ef"><span class="nm">Low</span><span class="d">Shortest runs, smallest spend</span><span class="ctx"></span></div>
+              <div class="i4mrow ef"><span class="nm">Medium</span><span class="d">Everyday edits</span><span class="ctx">default</span></div>
+              <div class="i4mrow ef cur"><span class="nm">High</span><span class="d">Long agentic coding</span><span class="ctx"></span></div>
+              <div class="i4mrow ef"><span class="nm">Extra high</span><span class="d">Hardest problems</span><span class="ctx"></span></div>
+              <div class="i4mrow ef"><span class="nm">Max</span><span class="d">Runs until it is done</span><span class="ctx"></span></div>
+            </div>
+            <div class="i4mfoot"><span><b>↑↓</b> level</span><span><b>↵</b> confirm</span><span><b>⌫</b> back</span><span><b>esc</b> close</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+    <p class="i4mn">The chip reads <span class="i4chip inl"><span class="hm claude"></span>Opus 5.5<span class="i4sep"></span><span class="i4brn">High</span></span> in a session's header and in the draft's composer.</p>
+  </section>
+
+  <!-- ================= 07 CONNECTIONS ================= -->
+  <section class="sec ink4" id="connections">
+    <div class="sechead"><span class="num">07</span><h2>Settings → Connections</h2>
+      <p>Five harnesses in five states: Ready, Not signed in, Not found, Off, and Update recommended. A row names the harness, says what it read and gives the one action that changes it. Sphyrna reads each CLI's own login and never writes one.</p></div>
+    <div class="stage"><div class="win i4win" id="winC" data-w="680" data-h="520">
+      <div class="swin i4swin">
+        <div class="stitle"><div class="lights"><i></i><i></i><i></i></div>
+          <nav class="stabs i4stabs"><button class="i4itab">General</button><button class="i4itab">Theme</button><button class="i4itab">Usage</button><button class="i4itab">Sessions</button><button class="i4itab">Remora</button><button class="i4itab on">Connections</button><button class="i4itab">About</button></nav>
+        </div>
+        <div class="sbody i4sbody">
+          <div class="i4ctop"><span class="i4lab">Harnesses</span><span class="i4csum">5 harnesses · 2 ready</span><button class="i4btn gh h28"><span data-i="refresh"></span>Recheck All</button></div>
+          <div class="scard i4scard">
+            <div class="srw i4srw"><span class="hm claude md"></span><div class="tx"><b>Claude Code</b><span class="hp">Claude Max · gencberke@… · v2.1.300 · read just now</span></div><span class="i4cstate">Ready</span><button class="i4btn out h28">Manage</button></div>
+            <div class="srw i4srw"><span class="hm codex md"></span><div class="tx"><b>Codex</b><span class="hp">Found at /opt/homebrew/bin/codex · not signed in</span></div><span class="i4cstate dim">Not signed in</span><button class="i4btn out h28">Sign In…</button></div>
+            <div class="srw i4srw"><span class="i4blank lg"></span><div class="tx"><b>opencode</b><span class="hp">Not on this Mac. Sphyrna can use a path you choose.</span></div><span class="i4cstate dim">Not found</span><button class="i4btn out h28">Set Path…</button></div>
+            <div class="srw i4srw"><span class="i4blank lg"></span><div class="tx"><b>agy</b><span class="hp">Connected once, then turned off. Its sessions stay in the sidebar.</span></div><span class="i4cstate dim">Off</span><button class="i4btn out h28">Turn On</button></div>
+            <div class="srw i4srw"><span class="i4blank lg"></span><div class="tx"><b>pi</b><span class="hp">v0.9.2 · a newer CLI is installed. Sessions keep the old one until you update.</span><span class="nt">Update recommended: v0.9.6 reads plan limits.</span></div><span class="i4cstate">Ready</span><button class="i4btn out h28">Update…</button></div>
+          </div>
+          <p class="i4snote">Sphyrna reads each CLI's own settings and login. It never writes one.</p>
+        </div>
+        <div class="sfoot i4sfoot"><span>Connections are read at launch and when you press Recheck All.</span><span class="sp"></span><span class="mono">17:20</span></div>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ================= 08 PAGES ================= -->
+  <section class="sec ink4" id="pages">
+    <div class="sechead"><span class="num">08</span><h2>The draft and Home</h2>
+      <p>v4's type on the two pages that speak: the new-session question and Home's statement, 34 at weight 300 (Q5), with the display at 46 / 200 as the alternate. The composer is 680, radius 16, at elevation 2; the default action is the neutral fill (Q1).</p></div>
+    <div class="i4cap"><b>New session</b><span>the question, the folder, the composer and the one model chip</span></div>
+    <div class="stage"><div class="win i4win" id="winD" data-w="1280" data-h="820">
+      <div class="i4shell">
+        <div class="i4body">
+          <aside class="i4side" data-i4side="home" data-view="projects"></aside>
+          <main class="i4main">
+            <header class="i4h bare"><span class="i4crumb"><b>loom</b> / new session</span><div class="i4hend"><button class="i4btn gh h28"><span data-i="clock"></span>9 sessions in loom</button></div></header>
+            <div class="i4draft" style="--tone:var(--orchid)">
+              <h1 class="i4ask">What should we work on in <button class="i4pick">loom<span data-i="chev-d"></span></button>?</h1>
+              <div class="i4folder"><span>~/Documents/github/loom</span><span>·</span><span>swarm/1</span><span>·</span><span>clean</span></div>
+              <div class="i4composer">
+                <textarea spellcheck="false">Port the sidebar to Ink v4: the card's three lines, the five status words, and the lifted plane.</textarea>
+                <div class="i4cbar">
+                  <button class="i4cchip mode"><span data-i="shield"></span>Ask before edits</button>
+                  <button class="i4cchip"><span class="hm claude"></span>Opus 5.5<span class="i4eff">High</span><span data-i="chev-d" style="width:12px;height:12px"></span></button>
+                  <span class="sp"></span>
+                  <span class="i4send"><span data-i="up"></span></span>
+                </div>
+              </div>
+              <div class="i4keys"><span><b>↵</b> Start</span><span><b>⇧↵</b> New line</span><span><b>@</b> Files</span><span><b>/</b> Commands</span></div>
+              <div class="i4presets"><button class="i4pchip">Run tests, fix failures</button><button class="i4pchip">Plan the next slice</button><button class="i4pchip">Review the branch</button></div>
+            </div>
+          </main>
+        </div>
+        <footer class="i4status" data-i4status></footer>
+      </div>
+    </div></div>
+    <div class="i4cap" style="margin-top:34px"><b>Home</b><span>the statement at 34 / 300, the lists as cards, and the accounts in the bar</span></div>
+    <div class="stage"><div class="win i4win" id="winH" data-w="1280" data-h="840">
+      <div class="i4shell">
+        <div class="i4body">
+          <aside class="i4side" data-i4side="home" data-view="projects"></aside>
+          <main class="i4main">
+            <div class="i4home">
+              <div class="i4hero"><div class="i4eyebrow">tuesday 27 october · 09:12</div><h1>Three sessions are working. <em>One needs you.</em></h1><p><b>3</b> working · <b>1</b> needs you · <b>6</b> sessions today</p></div>
+              <div class="i4hcols">
+                <div>
+                  <article class="i4list">
+                    <div class="i4lh"><span class="dot attn"></span>Needs you<span class="n">1</span></div>
+                    <div class="i4hrow" style="--tone:var(--orchid)"><span class="i4stt attn"><i class="dot attn"></i></span><div class="i4hmain"><span class="t">Review the gate failure<span class="pj"><span class="i4pmark sm">L</span>loom</span></span><span class="why">Claude asks to run <span class="mono">scripts/check.sh --full</span>.</span></div><span class="age">3m</span><span class="i4hacts"><button class="i4btn out h24">Review</button></span></div>
+                  </article>
+                  <article class="i4list" style="margin-top:14px">
+                    <div class="i4lh"><span class="spin">⠋</span>Working<span class="n">3</span></div>
+                    <div class="i4hrow" style="--tone:var(--orchid)"><span class="i4stt work"><span class="spin">⠋</span></span><div class="i4hmain"><span class="t">Port the sidebar to Ink tokens<span class="pj"><span class="i4pmark sm">L</span>loom</span></span><span class="why">Step 6 of 6 · <span class="mono">SidebarCard.swift</span></span></div><span class="age">37s</span><span class="i4hacts"><button class="i4btn gh h24">Open</button></span></div>
+                    <div class="i4hrow" style="--tone:var(--mint)"><span class="i4stt work"><span class="spin">⠋</span></span><div class="i4hmain"><span class="t">Remove Task Config Status<span class="pj"><span class="i4pmark sm">B</span>edd-backend</span></span><span class="why">Editing <span class="mono">TaskConfig.swift</span></span></div><span class="age">3m</span><span class="i4hacts"><button class="i4btn gh h24">Open</button></span></div>
+                    <div class="i4hrow" style="--tone:var(--aqua)"><span class="i4stt work"><span class="spin">⠋</span></span><div class="i4hmain"><span class="t">Weekly vault maintenance<span class="pj"><span class="i4pmark sm">S</span>second-brain</span></span><span class="why">Reading <span class="mono">Inbox/2026-10-27.md</span></span></div><span class="age">1m</span><span class="i4hacts"><button class="i4btn gh h24">Open</button></span></div>
+                  </article>
+                </div>
+                <div>
+                  <article class="i4list">
+                    <div class="i4lh">Plan limits<span class="n">today</span></div>
+                    <div class="i4lbody">
+                      <div class="i4lim"><span>5-hour</span><span class="i4meter low"><i style="width:4%"></i></span><b class="low">4% left</b></div>
+                      <div class="i4lim"><span>Weekly</span><span class="i4meter"><i style="width:38%"></i></span><b>38% left</b></div>
+                      <p class="i4lfoot">Resets 21:05 · 3h 39m at this pace</p>
+                    </div>
+                  </article>
+                  <article class="i4list" style="margin-top:14px">
+                    <div class="i4lh">Today</div>
+                    <div class="i4lbody">
+                      <div class="i4today"><b>2 finished</b> · Release C health check, Thesis outline</div>
+                      <div class="i4today"><b>1 failed</b> · Migrate auth to JWT</div>
+                      <div class="i4today"><b>6 sessions</b> · 3 harnesses</div>
+                    </div>
+                  </article>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+        <footer class="i4status" data-i4status></footer>
+      </div>
+    </div></div>
+  </section>
+
+  <footer>Ink v4 · a proposal for 1.8.0, drawn from DESIGN-V4.md · the windows are drawn at their real sizes · nothing here is approved</footer>
+</div>

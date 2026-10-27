@@ -27,7 +27,7 @@ def data_url(rel):
     return 'data:image/png;base64,' + base64.b64encode(open(HERE + rel, 'rb').read()).decode()
 
 
-HEAD = ('<!doctype html>\n<html lang="en" data-theme="dark">\n<head>\n<meta charset="utf-8">\n'
+HEAD = ('<!doctype html>\n<html lang="en" data-theme="dark"{html}>\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>{title}</title>\n'
         # errors are kept for the reference page and for checks
         '<script>window.__errs = []; addEventListener(\'error\', e => __errs.push(e.message + \' @\' + e.lineno + \':\' + e.colno));</script>\n'
@@ -44,7 +44,7 @@ def build_doc(name):
     """One document of the reference, as a whole HTML page."""
     d = DOCS[name]
     css = ['shared/head.css'] + d['css'] + ['shared/media.css']
-    style = HEAD.format(title=d['title']) + '\n'.join(read(c) for c in css) + '\n</style>\n</head>\n'
+    style = HEAD.format(title=d['title'], html=d.get('html', '')) + '\n'.join(read(c) for c in css) + '\n</style>\n</head>\n'
     body = '\n\n'.join(read(b) for b in d['body'])
     body = rep(body, '<!--TOPBAR-->', read('shared/topbar.html'))
     for old, new in d.get('body_rep', []):
@@ -60,6 +60,14 @@ def build_doc(name):
 
 
 DOCS = {
+    'v4': {
+        'title': 'Sphyrna · Ink v4 · The proposal',
+        # the v4 chapter opens on v4's tokens and defaults; the bar switches back to v3
+        'html': ' data-ink="v4" data-q1="neutral" data-q2="lifted" data-q3="raised" data-q4="sans" data-q5="light" data-q6="row"',
+        'css': ['shared/chat.css', 'shared/harness.css', 'shared/settings.css', 'docs/v4/v4.css'],
+        'body': ['docs/v4/body.html'],
+        'js': ['shared/base.js', 'shared/engine.js', 'docs/v4/v4.js'],
+    },
     'foundations': {
         'title': 'Sphyrna · Ink · Foundations',
         'css': ['shared/chat.css', 'shared/harness.css'],
@@ -169,7 +177,7 @@ def page(docs, name):
     body = body.replace('<!--ICON-->', data_url('docs/edges/icon-256.png'))
     css = ['shared/head.css'] + p['css'] + ['shared/media.css']
     js = ['shared/base.js', 'shared/engine.js'] + p['js']
-    return (HEAD.format(title=p['title']) + '\n'.join(read(c) for c in css) + '\n</style>\n</head>\n' + body
+    return (HEAD.format(title=p['title'], html=p.get('html', '')) + '\n'.join(read(c) for c in css) + '\n</style>\n</head>\n' + body
             + '\n\n<script type="text/plain" id="ref-docs">' + payload + '</script>\n'
             + '<script>\n(() => {\n' + '\n'.join(read(j) for j in js) + '\n})();\n</script>\n</body>\n</html>\n')
 
