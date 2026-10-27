@@ -328,6 +328,21 @@ struct UsageHarnessTests {
         #expect(rig.usage.limits == Self.claudeLimits(), "the chip and Home keep the last good windows too")
     }
 
+    @Test func anotherAccountWithNoLimitsLeavesNoLimitsOfTheFirst() async {
+        // Account A had limits; account B's check names no windows. The chip, Home and Pace must not keep A's (optimizer 4).
+        let rig = rig()
+        await openPage(rig)
+        #expect(rig.usage.limits == Self.claudeLimits())
+        rig.clock.advance(400)
+        rig.claude.set(PlanLimitsReading(limits: nil, account: .subscription(email: "other@example.invalid", plan: "pro")))
+        rig.usage.windowActivityChanged(false)
+        rig.usage.windowActivityChanged(true)
+        await rig.usage.settle()
+        #expect(rig.claude.asks == 2)
+        #expect(rig.usage.limits == nil, "account B has no windows: the limits of account A do not stay")
+        #expect(rig.usage.paces(at: rig.clock.now).isEmpty)
+    }
+
     @Test func claudeIsNotAskedOnceItIsSwitchedOff() async {
         let rig = rig()
         await openPage(rig)
