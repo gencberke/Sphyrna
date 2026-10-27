@@ -360,7 +360,6 @@ struct AboutSettings: View {
                         LinearGradient(colors: [S.iconHighlight, .clear], startPoint: .top, endPoint: .center),
                         lineWidth: LoomTheme.Line.hairline)
                 }
-                .shadow(color: S.iconDrop, radius: 1.5, x: 0, y: 1)
                 .accessibilityHidden(true)
             Text("Sphyrna").projectType(LoomTheme.InkType.title).foregroundStyle(LoomTheme.Text.primary)
                 .padding(.top, S.aboutNameTop)

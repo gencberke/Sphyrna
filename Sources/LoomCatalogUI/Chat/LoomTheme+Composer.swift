@@ -287,9 +287,6 @@ extension LoomTheme {
         static let effortDotOnFill = effortDotOnTone.color
         static let effortDotOffTone = overlay(dark: 0.22, light: 0.22)
         static let effortDotOffFill = effortDotOffTone.color
-        static let effortThumbShadowTone = AdaptiveTone(dark: Tone(rgb: RGB(red: 0, green: 0, blue: 0), opacity: 0.35), light: Tone(rgb: inkRGB, opacity: 0.30))
-        static let effortThumbShadow = effortThumbShadowTone.color
-        static let effortThumbShadowRadius: CGFloat = 2
         /// The keys line under the effort: mono 10.5, 14 between keys, a hairline above it (optical).
         static let keysLineFont = Font.system(size: 10.5, design: .monospaced)
         static let keysLineGap: CGFloat = 14

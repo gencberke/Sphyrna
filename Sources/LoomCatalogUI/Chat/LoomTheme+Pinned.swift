@@ -101,7 +101,6 @@ extension LoomTheme {
         static let optionSelectedEdge = Accent.base.opacity(0.55)
         static let optionNumberFill = Accent.base
         /// The chosen segment's 1 pt drop.
-        static let segmentDrop = Color.black.opacity(0.22)
         /// A cut-off card keeps its text but not its force: 92 %.
         static let cutOffOpacity = 0.92
 

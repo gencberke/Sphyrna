@@ -64,10 +64,6 @@ extension LoomTheme {
         static let segmentPadding: CGFloat = 2
         static let segmentGap: CGFloat = 2
         static let segmentPaddingH: CGFloat = 10
-        /// The chosen segment's drop (the reference's `0 1px 2px rgba(0,0,0,.22)`).
-        static let segmentDrop = Color.black.opacity(0.22)
-        static let segmentDropRadius: CGFloat = 1
-        static let segmentDropY: CGFloat = 1
 
         // MARK: The popover of a new choice's name
 

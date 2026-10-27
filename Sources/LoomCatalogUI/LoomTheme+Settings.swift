@@ -116,9 +116,6 @@ extension LoomTheme {
         static let segmentRadius = InkRadius.groupInner
         static let segmentPaddingH: CGFloat = 10
         static let segmentFont = InkStyle(size: 12, weight: .medium)
-        static let segmentDrop = Color.black.opacity(0.22)
-        static let segmentDropRadius: CGFloat = 1
-        static let segmentDropY: CGFloat = 1
 
         // MARK: The switch
 
@@ -129,7 +126,6 @@ extension LoomTheme {
         static var switchOffFill: Color { Surface.strongerHairline }
         static var switchOnFill: Color { Accent.base }
         static let switchKnobFill = Color.white
-        static let switchKnobShadow = Color.black.opacity(0.35)
 
         // MARK: The stepper
 
@@ -317,7 +313,6 @@ extension LoomTheme {
         static let iconRadius: CGFloat = 14.336
         static let iconRing = Color.white.opacity(0.13)
         static let iconHighlight = Color.white.opacity(0.16)
-        static let iconDrop = Color.black.opacity(0.35)
         static let aboutTop: CGFloat = 42
         static let aboutNameTop: CGFloat = 12
         static let aboutVersionTop: CGFloat = 4

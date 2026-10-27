@@ -83,7 +83,7 @@ private struct StripSegment: View {
             .background {
                 if segment.isChosen {
                     shape.fill(LoomTheme.Surface.segmentOn)
-                        .shadow(color: D.segmentDrop, radius: D.segmentDropRadius, x: 0, y: D.segmentDropY)
+                        .depth(LoomTheme.Elevation.lift)
                         .overlay(shape.strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline))
                 }
             }

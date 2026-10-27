@@ -131,7 +131,7 @@ struct PinnedSegmentStyle: ButtonStyle {
                 .background {
                     if isOn {
                         shape.fill(LoomTheme.Surface.segmentOn)
-                            .shadow(color: LoomTheme.Pinned.segmentDrop, radius: 1, x: 0, y: 1)
+                            .depth(LoomTheme.Elevation.lift)
                             .overlay(shape.strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline))
                     } else if enabled && (hovering || configuration.isPressed) {
                         shape.fill(configuration.isPressed ? LoomTheme.Surface.pressed : LoomTheme.Surface.hover)

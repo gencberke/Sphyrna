@@ -55,7 +55,7 @@ private struct InkSegment: View {
                 .background {
                     if chosen {
                         shape.fill(LoomTheme.Surface.segmentOn)
-                            .shadow(color: S.segmentDrop, radius: S.segmentDropRadius, x: 0, y: S.segmentDropY)
+                            .depth(LoomTheme.Elevation.lift)
                             .overlay(shape.strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline))
                     }
                 }
@@ -93,7 +93,6 @@ struct InkSwitchStyle: ToggleStyle {
                     .frame(width: S.switchSize.width, height: S.switchSize.height)
                     .overlay(alignment: .leading) {
                         Circle().fill(S.switchKnobFill)
-                            .shadow(color: S.switchKnobShadow, radius: 1, x: 0, y: 1)
                             .frame(width: S.switchKnob, height: S.switchKnob)
                             .offset(x: S.switchInset + (configuration.isOn ? travel : 0))
                     }

@@ -207,7 +207,6 @@ struct ControlSwitchStyle: ToggleStyle {
                 .frame(width: LoomTheme.Side.switchWidth, height: LoomTheme.Side.switchHeight)
                 .overlay(alignment: .leading) {
                     Circle().fill(LoomTheme.Side.switchKnobFill)
-                        .shadow(color: LoomTheme.Side.switchKnobShadow, radius: 1, x: 0, y: 1)
                         .frame(width: LoomTheme.Side.switchKnob, height: LoomTheme.Side.switchKnob)
                         .offset(x: LoomTheme.Side.switchInset
                             + (configuration.isOn ? LoomTheme.Side.switchWidth - LoomTheme.Side.switchKnob - 2 * LoomTheme.Side.switchInset : 0))

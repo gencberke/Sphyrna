@@ -88,6 +88,5 @@ extension LoomTheme {
         static let switchOffFill = Surface.strongerHairline
         static let switchOnFill = Accent.base
         static let switchKnobFill = Color.white
-        static let switchKnobShadow = Color.black.opacity(0.35)
     }
 }

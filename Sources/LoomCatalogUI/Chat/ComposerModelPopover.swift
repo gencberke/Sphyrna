@@ -454,7 +454,6 @@ struct ComposerEffortSlider: View {
                 }
                 if let index, positions.indices.contains(index) {
                     Circle().fill(LoomTheme.Composer.effortThumbFill).frame(width: side, height: side)
-                        .shadow(color: LoomTheme.Composer.effortThumbShadow, radius: LoomTheme.Composer.effortThumbShadowRadius, y: 1)
                         .position(x: positions[index], y: proxy.size.height / 2)
                 }
             }
