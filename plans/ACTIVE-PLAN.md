@@ -29,10 +29,10 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 1 | A1 project reorder | integrated `075cd7d` (after review: rows are direct list children again, `SidebarPagingTests`; the released gap holds until the order lands); a by-hand drag check waits for the gate |
 | 1 | C1 harness catalogue | integrated `59e300e` (with the planner's fix: opencode has no doctor until P1) |
 | 1 | B1 v4 tokens and controls | integrated `fe6f102` + `a81e2c0` (tokens, six button roles at four sizes, the focus halo, three elevations); its rest is B1b |
-| 1 | B1b shared controls and the last buttons | ready: starts after C2b (field, switch, segmented, badge, key chip; the last styles in the six roles; one focus ring; 36 for a sheet's main action; Label) |
+| 1 | B1b shared controls and the last buttons | ready, next (field, switch, segmented, badge, key chip; the last styles in the six roles; one focus ring; 36 for a sheet's main action; Label) |
 | 1 | B0b the rest of the reference in v4 | integrated `bdaad69` (two runs; the planner's fixes: the sheet's subject class, the Destructive note, Settings' Connections tab); a consistency pass is open (below) |
 | 2 | C2 catalogue consumers | integrated `608266d` (one probe outcome, limits from the probe, efforts on the entries, no Peek singleton) |
-| 2 | C2b the catalogue reaches every list | running (C2's rest: no `ModelCatalog.shared`, availability wired, File/Dock/Home/sidebar/menu bar lists) |
+| 2 | C2b the catalogue reaches every list | integrated `175f653` (no `ModelCatalog.shared`; availability on `CatalogModel`; one startable rule; File, Dock, Home, sidebar and menu bar follow the switch and the CLI); its follow-ups are in C3's brief |
 | 2 | C3 Connections · B2 sidebar and card · B3 status bar | queued |
 | 3 | C4 neutral draft · B4 model and effort pickers · D1 Codex sessions · D2 Codex reader and deletion · B5a/b/c surfaces | queued |
 | 4 | E1 opencode · E2 agy · E3 pi · F1 send · F2 Changes → session · G1 Remora backends · H1 usage · I1 names | queued |
