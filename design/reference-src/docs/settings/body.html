@@ -10,14 +10,14 @@
     <div class="rule"><div class="n">03</div><h3>One control family</h3><p>Switches, segments, menu pickers, steppers and buttons are the main window's: 26 high, the same radii, hover and focus ring. A risky choice asks first.</p></div>
     <div class="rule"><div class="n">04</div><h3>A tone is a cast</h3><p>Neutral, Warm and Cool shift every grey level of the window a few degrees, the sidebar and Settings included. Status, accent, project and mode colours stay as they are.</p></div>
     <div class="rule"><div class="n">05</div><h3>Glass is the sidebar's</h3><p>Glass draws the sidebar's canvas at 0.8 over the desktop's material. Solid is the default; nothing else is glass, and Reduce Transparency draws Solid.</p></div>
-    <div class="rule"><div class="n">06</div><h3>About is quiet</h3><p>The app icon, the name and the version, then the facts in mono. A hammerhead crosses once behind the icon when About opens, then rests.</p></div>
+    <div class="rule"><div class="n">06</div><h3>About is quiet</h3><p>The app icon, the name and the version, then the facts in mono. The app icon sits above the facts, and nothing else is drawn on this page.</p></div>
   </div>
   </section>
 
   <!-- ================= 01 SETTINGS ================= -->
   <section class="sec" id="settings">
     <div class="sechead"><span class="num">01</span><h2>Settings</h2>
-      <p>The window at its real size. Switch the tabs and try the controls: the mode menu asks before Full access, the steppers and the checkboxes work, Remora's switch dims what depends on it, and About's hammerhead crosses once each time About opens.</p></div>
+      <p>The window at its real size. Switch the tabs and try the controls: the mode menu asks before Full access, the steppers and the checkboxes work, Remora's switch dims what depends on it, and About shows the facts beside the icon.</p></div>
     <div class="stage"><div class="win" id="winB" data-w="680" data-h="520">
       <div class="swin">
         <div class="stitle"><div class="lights"><i></i><i></i><i></i></div>
@@ -29,7 +29,6 @@
           <div class="sbody">
             <div class="sgrp"><div class="slab"><span class="label">Sessions</span></div>
               <div class="scard">
-                <div class="srw"><div class="tx"><b>Sessions run in</b><span class="hp">Applies when a session starts or resumes. A running session keeps its face until it stops.</span></div><div class="ctl"><div class="seg" data-set="face"><button class="on" data-v="chat">Chat</button><button data-v="terminal">Terminal</button></div></div></div>
                 <div class="srw"><div class="tx"><b>Mode of new sessions</b><span class="hp">Last used in the project, or one mode for every new session. Ask runs in Chat only; in the terminal it starts as Ask before edits.</span></div><div class="ctl"><button class="popup" data-open="modeMenu"><span class="mo" data-role="modeicon"></span><span data-role="modename">Last used in the project</span><span class="ud" data-i="updown"></span></button></div></div>
                 <div class="srw"><div class="tx"><b>Terminal font size</b><span class="hp">Applies to existing and new terminals.</span></div><div class="ctl"><button class="popup" data-open="fontMenu"><span data-role="fontsize">14 pt</span><span class="ud" data-i="updown"></span></button></div></div>
                 <div class="srw"><div class="tx"><b>Search session text</b><span class="hp">Let the command palette look inside your sessions. It reads Claude's transcript files only while you type, and keeps nothing. Off, it searches titles, projects and actions.</span></div><div class="ctl"><span class="sw on" data-set="search"></span></div></div>
@@ -50,7 +49,6 @@
           <div class="sbody">
             <div class="sgrp"><div class="scard">
               <div class="srw"><div class="tx"><b>Appearance</b><span class="hp">Ink is dark and Paper is light; Match system follows macOS. Terminal sessions stay dark in all three.</span></div><div class="ctl"><div class="seg" data-set="appearance"><button class="on" data-v="ink">Ink</button><button data-v="paper">Paper</button><button data-v="system">Match system</button></div></div></div>
-              <div class="srw"><div class="tx"><b>Animated art</b><span class="hp">The drawings on Home, empty pages and waiting panes move, also when Reduce Motion is on. Off, each stands still on one frame.</span></div><div class="ctl"><span class="sw on" data-set="art"></span></div></div>
               <div class="srw stack"><div class="tx"><b>Tone</b><span class="hp">A cast over the window's greys, the sidebar and Settings included. Status, accent and project colors stay as they are.</span></div>
                 <div class="ttiles" data-set="cast">
                   <button class="ttile on" data-v="neutral"><span class="mini"><i class="l1"></i><i class="l2"></i><i class="cd"></i><i class="cp"></i><i class="ac"></i></span><span class="nm">Neutral</span><span class="dt">Ink's own greys.</span></button>
@@ -155,7 +153,6 @@
         <!-- About -->
         <div class="spane" data-stab="about" hidden>
           <div class="about">
-            <canvas class="aart"></canvas>
             <div class="ahead"><span class="icon"><img src="<!--ICON-->" alt=""></span><h2>Sphyrna</h2><span class="ver">Version 1.6.0 (build 214, 371aaf6)</span></div>
             <div class="scard">
               <div class="srw"><div class="tx"><b>Data folder</b><span class="hp">Catalog, usage index and logs.</span></div><div class="ctl"><span class="path" title="~/Library/Application Support/Loom">~/Library/Application Support/Loom</span><button class="btn sec sm">Reveal</button></div></div>
@@ -198,7 +195,7 @@
       <li><b>A3</b>A group is a card on raised 1 under a section label, 20 apart; the content has a 32 inset and scrolls under the band.</li>
       <li><b>A4</b>A row: the label in 13, one line of help in 12 secondary, and the control at the trailing edge, at least 48 high. A notice from macOS adds an attention line and its button.</li>
       <li><b>A5</b>A menu picker is a secondary button with the value and two chevrons. Its menu is the popover, with each mode's icon in its tone; Full access asks first.</li>
-      <li><b>A6</b>Theme: the appearance, Animated art, the tone as three tiles, the sidebar's material and Project colors. Every choice applies at once, and the next section shows them on the app. Animated art is this page's art switch too.</li>
+      <li><b>A6</b>Theme: the appearance and the tone as three tiles, the sidebar's material and Project colors. Every choice applies at once, and the next section shows them on the app.</li>
       <li><b>A7</b>Usage: the period, then four cards, plan limits first. The meters are §3's: 6 pt, what is left in secondary, attention orange when low.</li>
       <li><b>A8</b>Sessions: the cleanup review. Nothing is checked by default, Delete asks first in §6's sheet, and each row then says what happened to it.</li>
       <li><b>A9</b>Remora (§20): its switch first. Off, Home starts with its band and Needs you, ⌘K has no Ask row and the new-session page has no brief row; the memory stays until it is cleared. Then Sonnet 5.5 at low effort (D-64), the morning brief, the projects it reads, its memory, and what it used today with the guard that keeps the morning brief out of the 5-hour limit's last tenth.</li>
@@ -218,8 +215,6 @@
       <div class="appwin" style="left:32px;top:36px;width:1080px;height:760px">
         <aside class="side" data-sel="none"></aside>
         <main class="detail">
-          <div class="artbg"></div>
-          <canvas class="ocean calm" id="ocean-draft"></canvas>
           <header class="dhead bare"><span class="crumb"><b>loom</b> / new session</span>
             <div class="end"><button class="btn gh sm"><span data-i="clock"></span>9 sessions in loom</button></div></header>
           <div class="draftpage" style="--tone:var(--orchid)">

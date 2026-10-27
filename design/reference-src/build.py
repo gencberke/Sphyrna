@@ -82,10 +82,7 @@ DOCS = {
         'title': 'Sphyrna · Ink · Settings and About',
         'css': ['shared/chat.css', 'shared/harness.css', 'shared/project.css', 'shared/settings.css', 'shared/sheets.css'],
         'body': ['docs/settings/body.html'],
-        'js': ['shared/base.js', 'shared/frame.js', 'shared/engine.js',
-               "=sea('ocean-intro', { cell: 11, alpha: .6, specs: [{ kind: 'hammerhead', L: 520, depth: .66, speed: 16 }, { kind: 'whale', L: 820, depth: .26, speed: 8 }] });\n"
-               + DRAFT_SEA + LISTEN,
-               'docs/settings/settings.js'],
+        'js': ['shared/base.js', 'shared/frame.js', 'docs/settings/settings.js'],
         'body_rep': [('<!--ICON-->', lambda: data_url('docs/edges/icon-256.png'))],
     },
     'review': {

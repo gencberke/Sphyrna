@@ -159,7 +159,7 @@ sw('#swZoom', on => { zoom = on; fit(); });
 $$('#themeSeg button').forEach(b => b.addEventListener('click', () => {
   document.documentElement.dataset.theme = b.dataset.themeSet;
   $$('#themeSeg button').forEach(x => x.classList.toggle('on', x === b));
-  oceans.forEach(o => { o.readInk(); o.draw(); });
+  if (typeof oceans !== 'undefined') oceans.forEach(o => { o.readInk(); o.draw(); });
 }));
 $$('.seg').forEach(s => { if (s.id !== 'themeSeg') s.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $$('button', s).forEach(x => x.classList.toggle('on', x === b)); }); });
 $$('.spec .sw, .minic .sw').forEach(s => s.addEventListener('click', () => s.classList.toggle('on')));

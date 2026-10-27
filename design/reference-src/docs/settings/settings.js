@@ -57,7 +57,6 @@ $$('.swin').forEach(sw => FRESH.set(sw, $('[data-role=cbody]', sw).innerHTML));
 function showTab(sw, key) {
   $$('.stabs .itab', sw).forEach(t => t.classList.toggle('on', t.dataset.stab === key));
   $$('.spane', sw).forEach(p => p.hidden = p.dataset.stab !== key);
-  if (key === 'about') replayAbout(sw);
 }
 showTab(deskSettings, 'theme');
 
@@ -176,22 +175,6 @@ function setStep(stp, v) {
   $('[data-d="1"]', stp).classList.toggle('dis', v >= +stp.dataset.max);
 }
 const paintDefaults = sw => $('[data-act=cdefaults]', sw).classList.toggle('dis', $$('.stepper', sw).every(s => s.dataset.val === s.dataset.def));
-
-/* ---------- About: a hammerhead crosses once behind the icon, then rests ---------- */
-function aboutSea(c) {
-  const o = new Ocean(c, { cell: 9, alpha: .5, plankton: 10, specs: [{ kind: 'hammerhead', L: 170, depth: 1, speed: 72, fx: -.3, fy: .3, angle: 0 }] });
-  const s = o.sharks[0], step0 = s.step.bind(s), spawn0 = s.spawn.bind(s);
-  // At rest it swims in place to the right of the icon; it crosses under Reduce Motion too (D-79).
-  s.spawn = (init, i) => { const rest = s.rested; s.fx = rest ? .88 : -.3; s.speed = rest ? 0 : 72; spawn0(init, i); };
-  s.step = (dt, t) => { step0(dt, t); if (s.speed && s.x > o.w * .88) { s.speed = 0; s.rested = true; } };
-  s.spawn(true);
-  c._sea = o;
-}
-$$('.aart').forEach(aboutSea);
-function replayAbout(sw) {
-  const c = $('.aart', sw), o = c && c._sea; if (!o) return;
-  const s = o.sharks[0]; s.rested = false; s.spawn(true); o.draw();
-}
 
 /* ---------- one delegated listener for clicks ---------- */
 document.addEventListener('click', e => {
