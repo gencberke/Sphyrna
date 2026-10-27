@@ -3,18 +3,6 @@
 <!--TOPBAR-->
 
 <div class="wrap">
-  <section class="sec principles" id="rules">
-  <div class="rules">
-    <div class="rule"><div class="n">01</div><h3>The head is the header</h3><p>The project's mark, its name in title type and its folder sit on the window's header line, where a session's title would be. What you can do sits at the trailing edge: ⋯ and New session.</p></div>
-    <div class="rule"><div class="n">02</div><h3>Sessions read like the sidebar</h3><p>A row is the status, the harness's mark, the title and its last line, then the branch and the time. The list lies flat on the canvas between hairlines, and the pill comes on hover.</p></div>
-    <div class="rule"><div class="n">03</div><h3>Cards hold the summaries</h3><p>Presets and the past seven days are the only lifted things on the page: beside the list, or above and below it when the pane is narrow.</p></div>
-    <div class="rule"><div class="n">04</div><h3>Three tabs, one at a time</h3><p>Sessions, Branches and Instructions are view tabs. Branches and Instructions read in a column of at most 700, and the page opens on Sessions every time.</p></div>
-    <div class="rule"><div class="n">05</div><h3>The model picks the harness</h3><p>On a new session, the one chip lists Claude Code's and Codex's models together. The model you pick decides the harness the session starts on, and the session keeps it.</p></div>
-    <div class="rule"><div class="n">06</div><h3>Nothing new runs</h3><p>The page reads the catalog, the usage index, the git files and CLAUDE.md once per visit, and lets them go when it closes. Nothing is watched.</p></div>
-  </div>
-  </section>
-
-  <!-- ================= 01 PROJECT ================= -->
   <section class="sec" id="project">
     <div class="sechead"><span class="num">01</span><h2>Project page</h2>
       <p>A click on a project's name in the sidebar opens its page. Switch the tabs, hover the rows and the presets, open ⋯ and try a colour. New session takes you to the next frame.</p></div>
@@ -136,81 +124,6 @@
   </section>
 
   <!-- ================= 02 NEW SESSION ================= -->
-  <section class="sec" id="new">
-    <div class="sechead"><span class="num">02</span><h2>New session</h2>
-      <p>The new-session page with the one model chip. Its popover is open: Claude Code's and Codex's models in one list, the effort under them. Pick a GPT model and the chip takes the knot, because the session will start on Codex. The switch shows a build that cannot start Codex yet; ↑ ↓ ← → and ↵ work while the popover is open.</p></div>
-    <div class="ln" style="margin:0 0 18px 56px">
-      <div class="seg" id="codexSeg"><button class="on" data-codex-set="on">Codex can start</button><button data-codex-set="off">Codex comes later</button></div>
-    </div>
-    <div class="stage"><div class="win" id="winB" data-w="1280" data-h="880">
-      <aside class="side" data-sel="none"></aside>
-      <main class="detail">
-        <div class="artbg"></div>
-        <canvas class="ocean calm" id="ocean-draft"></canvas>
-        <header class="dhead bare"><span class="crumb"><b>loom</b> / new session</span>
-          <div class="end"><button class="btn gh sm" data-jump="#project" title="Opens the project's page"><span data-i="clock"></span>9 sessions in loom</button></div></header>
-        <div class="draftpage" style="--tone:var(--orchid)">
-          <h1 class="ask">What should we work on in <button class="pick">loom<span data-i="chev-d"></span></button>?</h1>
-          <div class="folder"><span>~/Documents/github/loom</span><span>·</span><span>swarm/1</span><span>·</span><span>clean</span></div>
-          <div class="composer">
-            <textarea id="draftTextB" placeholder="Describe the task. @ mentions a file, / runs a command."></textarea>
-            <div class="cbar">
-              <button class="cchip" title="Attach, mention or run a command" data-i="plus"></button>
-              <button class="cchip mode" style="--mt:var(--m-abe)"><span data-i="shield"></span>Ask before edits</button>
-              <button class="cchip mdl" data-open="modelB" data-role="modelchip" title="Model and effort"><span class="hm claude" data-role="hmark"></span><span data-role="modelname">Opus 5.5</span><span class="eff" data-role="effname">High</span><span class="cv" data-i="chev-d"></span></button>
-              <button class="send" id="draftSendB" data-i="up" title="Start a Claude Code session"></button>
-            </div>
-          </div>
-          <div class="keys"><span><b>↵</b> start</span><span><b>⌘↵</b> start in the background</span><span><b>⇧↵</b> new line</span></div>
-          <div class="under"><div class="seg"><button class="on"><span data-i="branch"></span>Stay on swarm/1</button><button>New branch</button><button>New worktree</button></div></div>
-          <div class="presets"><span class="label" style="margin-right:4px">Presets</span><button class="pchip">Run tests, fix failures</button><button class="pchip">Plan the next slice</button><button class="pchip">Second opinion</button></div>
-        </div>
-      </main>
-      <div class="pop pl mpick" data-pop="modelB" data-place="below-right" id="draftModels">
-        <div class="hgrp" data-h="claude">
-          <div class="hhead"><span class="hm claude"></span><b>Claude Code</b><span class="hnote"></span></div>
-          <button class="mrow" data-model="Default" data-levels="low medium high xhigh max"><b>Default</b><span class="d">Opus 5.5, recommended</span><span class="ck"></span></button>
-          <button class="mrow" data-model="Fable 5.1" data-levels="low medium high xhigh max"><b>Fable 5.1</b><span class="d">Hardest, long-horizon work</span><span class="ck"></span></button>
-          <button class="mrow cur" data-model="Opus 5.5" data-levels="low medium high xhigh max"><b>Opus 5.5</b><span class="d">Long agentic coding</span><span class="ck" data-i="check"></span></button>
-          <button class="mrow" data-model="Sonnet 5.5" data-levels="low medium high xhigh max"><b>Sonnet 5.5</b><span class="d">Fast, everyday work</span><span class="ck"></span></button>
-          <button class="mrow" data-model="Haiku 5.5" data-levels=""><b>Haiku 5.5</b><span class="d">Quick answers, no effort</span><span class="ck"></span></button>
-        </div>
-        <div class="hgrp" data-h="codex">
-          <div class="hhead"><span class="hm codex"></span><b>Codex</b><span class="hnote"></span></div>
-          <button class="mrow" data-model="GPT-6 Astra" data-levels="none low medium high xhigh max"><b>GPT-6 Astra</b><span class="d">Most capable</span><span class="ck"></span></button>
-          <button class="mrow" data-model="GPT-6.1 Sol" data-levels="none low medium high xhigh max"><b>GPT-6.1 Sol</b><span class="d">Near Astra, for less</span><span class="ck"></span></button>
-          <button class="mrow" data-model="GPT-6 Luna" data-levels="none low medium high xhigh max"><b>GPT-6 Luna</b><span class="d">Focused, high-volume work</span><span class="ck"></span></button>
-        </div>
-        <div class="effort">
-          <div class="eff-h"><span class="lbl">Effort</span><b data-role="efftitle">High</b><button class="lk2 dis" data-act="effreset" title="Back to High, the effort this project starts with">Reset</button></div>
-          <div class="slider" data-role="slider" data-levels="low medium high xhigh max" data-level="high" data-base="high"></div>
-          <div class="lvls"></div>
-          <div class="eff-none">This model has no effort setting.</div>
-        </div>
-        <div class="mkeys"><span><b>↑↓</b> model</span><span><b>←→</b> effort</span><span><b>↵</b> done</span></div>
-      </div>
-      <div class="pop" data-pop="plus" style="left:10px;bottom:52px">
-        <span class="label mlabel">New</span>
-        <button class="mi"><span class="ic"><span class="hm claude md"></span></span>New Claude Session<kbd>⌘N</kbd></button>
-        <button class="mi" data-codex><span class="ic"><span class="hm codex md"></span></span>New Codex Session</button>
-        <div class="mnote" data-codex-note hidden>Codex comes in a later version</div>
-        <div class="msep"></div>
-        <button class="mi"><span class="ic" data-i="folder"></span>Add Project…</button>
-      </div>
-      <span class="pin" data-for=".cbar .cchip.mdl" data-dx="4" data-dy="-26">B1</span>
-      <span class="pin" data-for="#draftModels.open .hgrp[data-h=codex] .hhead" data-at="r" data-dx="-4" data-dy="5">B2</span>
-      <span class="pin" data-for="#draftModels.open .effort" data-at="r" data-dx="-4" data-dy="8">B3</span>
-      <span class="pin" data-for=".dhead .btn.gh" data-dx="-30" data-dy="2">B4</span>
-    </div></div>
-    <ol class="legend">
-      <li><b>B1</b>The one chip, as in a session: the harness's mark, the model and the effort as a lighter word. On a new session it is also how you choose the harness: the knot means the session starts on Codex.</li>
-      <li><b>B2</b>Both harnesses are live here, the models grouped under their marks. A session keeps its harness afterwards, so inside it the other group is dimmed (§11). Switch to "Codex comes later" for a build that cannot start Codex.</li>
-      <li><b>B3</b>The effort follows the picked model's own levels: Claude Code's five, Codex's six, none for Haiku. Reset goes back to what this project starts with.</li>
-      <li><b>B4</b>The new-session page links to the project's page, and the page's New session comes back here. The rest is §8's page.</li>
-    </ol>
-  </section>
-
-  <!-- ================= 03 NARROW AND EMPTY ================= -->
   <section class="sec" id="narrow">
     <div class="sechead"><span class="num">03</span><h2>Narrow and empty</h2>
       <p>Under 760 of pane width the page is one column: Presets above the list, the past seven days under it, and a 20 pt inset. second-brain is not a Git repository, so its rows and its stats line have no branch. Switch to an empty project for a page with no sessions.</p></div>
@@ -265,7 +178,7 @@
                   <div class="sc-h"><b>Presets</b></div>
                   <p class="cardnote">Save a first message as a preset from a new session, and it shows up here.</p>
                 </article>
-                <div class="pempty"><canvas id="empty-proj"></canvas><p>No sessions in this project yet. New session starts one.</p></div>
+                <div class="pempty"><p>No sessions in this project yet. New session starts one.</p></div>
                 <article class="card sc c-week">
                   <div class="sc-h"><b>Past 7 days</b></div>
                   <p class="cardnote">No usage in the past 7 days.</p>
@@ -293,96 +206,8 @@
     <ol class="legend">
       <li><b>C1</b>Under 760 of pane width, one column: Presets above the list and the past seven days under it, with a 20 pt inset. An empty card says how to fill it.</li>
       <li><b>C2</b>Outside a Git repository a row has no branch, and neither has the stats line; the time keeps its column. Under 460 a row drops its branch too.</li>
-      <li><b>C3</b>An empty project: a small hammerhead swims in place over one plain line, as in the empty panes. It stops off screen, and swims on under Reduce Motion unless Animated art is off (D-79).</li>
+      <li><b>C3</b>An empty project says so in one plain line, with the action that starts a session. Nothing else is drawn in its place.</li>
       <li><b>C4</b>In the sidebar an empty project says "No sessions", and a collapsed one keeps only its head and its dot.</li>
     </ol>
-  </section>
-
-  <!-- ================= 04 PARTS ================= -->
-  <section class="sec" id="parts">
-    <div class="sechead"><span class="num">04</span><h2>Parts</h2>
-      <p>Each part of the page in its one look, with its states. The menus and the popover are the frames' own.</p></div>
-    <div class="parts">
-      <div class="spec w12"><span class="label">A session row</span>
-        <div class="pc2"><div class="slist" data-list="states"></div></div>
-        <div class="pc2" style="width:460px"><div class="stlab">under 460: no branch</div><div class="slist" data-list="narrow"></div></div>
-        <p class="note">The status, the harness's mark, the title (13 medium) and its last line (12 secondary), the branch (mono 11.5, 170 wide) and the time (mono, 44 wide). The last line is the reason Sphyrna holds, such as Allow, Asks, Plan ready or Failed; otherwise it is the first line of the transcript's end, read once per visit and only for a row that is drawn. A stale session dims its title.</p>
-      </div>
-      <div class="spec w6"><span class="label">The head and its stats</span>
-        <div class="pc2" style="--tone:var(--orchid)"><div class="phead"><span class="pmark lg">L</span><span class="pname">loom</span><span class="ppath">~/Documents/github/loom</span><div class="end"><button class="ib" data-i="more"></button><button class="btn pri lg"><span data-i="compose"></span>New session</button></div></div>
-          <div class="pstats"><span><b>3</b> running</span><span><b>9</b> sessions</span><span><b>3.1M</b> tokens, past 7 days</span><span class="pbr"><span data-i="branch"></span>swarm/1</span></div></div>
-        <div class="pc2" style="--tone:var(--fg-2)"><div class="phead"><span class="pmark lg">N</span><span class="pname">notes</span><span class="ppath">~/notes</span><div class="end"><button class="btn pri lg"><span data-i="compose"></span>New session</button></div></div>
-          <div class="pstats"><span><b>1</b> session</span></div></div>
-        <p class="note">The head is 52 pt, on the window's header line. A project with no tone (None, or Project colors off) has a neutral mark. Nothing is counted when there is nothing to count: no "running" without a run, no tokens without usage, no branch outside Git.</p>
-      </div>
-      <div class="spec w6"><span class="label">The project menu</span>
-        <div data-clone="#projMenu"></div>
-        <p class="note">The same menu as the sidebar's ⋯ and its right-click: new sessions with their harness's mark, the colour as seven swatches with the current one ringed, Move Up and Move Down, and Remove Empty Project, which works only on an empty project.</p>
-      </div>
-      <div class="spec w6"><span class="label">Presets</span>
-        <div class="pc2"><article class="card sc" style="width:300px">
-          <div class="sc-h"><b>Presets</b><span class="nt">this project</span></div>
-          <div class="psets">
-            <button class="pset" style="--mt:var(--m-acc)"><span class="mo" data-i="penline"></span><span class="nm">Run tests, fix failures</span><span class="md"><span class="hm claude"></span>Sonnet 5.5</span></button>
-            <button class="pset" style="--mt:var(--m-abe)"><span class="mo" data-i="shield"></span><span class="nm">Second opinion</span><span class="md"><span class="hm codex"></span>GPT-6.1 Sol</span></button>
-          </div></article></div>
-        <p class="note">The mode's icon in its tone and the model after its harness's mark say how the session will start; the tooltip has the message. "all" marks a preset every project shares. The context menu removes one.</p>
-      </div>
-      <div class="spec w6"><span class="label">Past 7 days</span>
-        <div class="pc2"><article class="card sc" style="width:300px"><div class="sc-h"><b>Past 7 days</b></div><div class="wk"><div><b>3.1M</b><span>tokens</span></div><div><b>7</b><span>sessions with usage</span></div><div><b>$31</b><span>estimate</span></div></div></article></div>
-        <div class="pc2"><article class="card sc" style="width:300px"><div class="sc-h"><b>Past 7 days</b></div><p class="cardnote">Could not read this project's usage.</p></article></div>
-        <p class="note">Figures are 18 semibold with tabular digits. "Sessions with usage" counts the sessions with usage records this week, not the project's sessions. While the index reads, the card says "Reading usage…".</p>
-      </div>
-      <div class="spec w6"><span class="label">Branches</span>
-        <div class="pc2"><div data-branches="loom" data-max="4"></div><p class="cutnote" style="margin-left:12px">Only the first 200 branches are listed.</p></div>
-        <p class="note">Read from the repository's own files, with no git process: the current branch first, then by when each one changed. A branch another worktree has checked out names that folder; a count says how many listed sessions work on it.</p>
-      </div>
-      <div class="spec w6"><span class="label">Instructions</span>
-        <div class="pc2"><div class="ihd"><span data-i="book"></span><span class="fn">CLAUDE.md</span><span>48 KB · 2d</span><button class="lk2"><span data-i="open"></span>Open in Editor</button></div>
-          <p class="cutnote">Showing the first 32 KB of 48 KB. Open the file to read the rest.</p></div>
-        <div class="pc2"><p class="pnote" style="padding:0">This project has no CLAUDE.md. Claude reads one from the project folder when it starts a session there.</p></div>
-        <p class="note">CLAUDE.md (or .claude/CLAUDE.md), read only, through the chat's Markdown at reading size, the first 32 KB. New here: Open in Editor beside the file's name, so the cut note has somewhere to send you.</p>
-      </div>
-      <div class="spec w12"><span class="label">The model chip on a new session</span>
-        <div class="mdemo">
-          <div class="mcol">
-            <span class="mcap">Claude Code</span>
-            <div class="chiprow"><button class="cchip mdl"><span class="hm claude"></span>Opus 5.5<span class="eff">High</span><span class="cv" data-i="chev-d"></span></button></div>
-            <span class="mcap">Codex</span>
-            <div class="chiprow"><button class="cchip mdl"><span class="hm codex"></span>GPT-6.1 Sol<span class="eff">Medium</span><span class="cv" data-i="chev-d"></span></button></div>
-            <span class="mcap">No effort setting</span>
-            <div class="chiprow"><button class="cchip mdl"><span class="hm claude"></span>Haiku 5.5<span class="cv" data-i="chev-d"></span></button></div>
-          </div>
-          <div class="mcol">
-            <span class="mcap">A build that cannot start Codex</span>
-            <div class="pop pl mpick static">
-              <div class="hgrp" data-h="claude">
-                <div class="hhead"><span class="hm claude"></span><b>Claude Code</b><span class="hnote"></span></div>
-                <button class="mrow" data-model="Default" data-levels="low medium high xhigh max"><b>Default</b><span class="d">Opus 5.5, recommended</span><span class="ck"></span></button>
-                <button class="mrow cur" data-model="Opus 5.5" data-levels="low medium high xhigh max"><b>Opus 5.5</b><span class="d">Long agentic coding</span><span class="ck" data-i="check"></span></button>
-                <button class="mrow" data-model="Sonnet 5.5" data-levels="low medium high xhigh max"><b>Sonnet 5.5</b><span class="d">Fast, everyday work</span><span class="ck"></span></button>
-              </div>
-              <div class="hgrp later" data-h="codex">
-                <div class="hhead"><span class="hm codex"></span><b>Codex</b><span class="hnote">in a later version</span></div>
-                <button class="mrow dis" data-model="GPT-6 Astra" data-levels="none low medium high xhigh max"><b>GPT-6 Astra</b><span class="d">Most capable</span><span class="ck"></span></button>
-                <button class="mrow dis" data-model="GPT-6.1 Sol" data-levels="none low medium high xhigh max"><b>GPT-6.1 Sol</b><span class="d">Near Astra, for less</span><span class="ck"></span></button>
-              </div>
-              <div class="effort">
-                <div class="eff-h"><span class="lbl">Effort</span><b data-role="efftitle">High</b><button class="lk2 dis" data-act="effreset">Reset</button></div>
-                <div class="slider" data-role="slider" data-levels="low medium high xhigh max" data-level="high" data-base="high"></div>
-                <div class="lvls"></div>
-                <div class="eff-none">This model has no effort setting.</div>
-              </div>
-            </div>
-          </div>
-          <div class="mtext">
-            <p><b>The model picks the harness.</b> On a new session both groups are live. A Claude model starts a Claude Code session and a GPT model a Codex one; the chip's mark says which before you press ↵.</p>
-            <p><b>A session keeps it.</b> Once the session runs, the other harness's models are dimmed, "in a new session" (§11).</p>
-            <p><b>Today's build.</b> Codex cannot start yet, so its group is dimmed with "in a later version", and a pick never lands there.</p>
-            <p><b>The mode chip</b> keeps Sphyrna's modes. Codex's own approval modes come with Codex's planning.</p>
-          </div>
-        </div>
-      </div>
-    </div>
   </section>
 </div>

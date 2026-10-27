@@ -137,83 +137,6 @@ const placeOpen = () => $$('.win .pop.open[data-place^=below]').forEach(pop => {
 document.addEventListener('click', e => { if (e.target.closest('[data-open]')) placeOpen(); });
 
 /* ---------- the one model chip: models by harness, the effort under them ---------- */
-const LNAME = { none: 'None', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
-const levelsOf = box => box.dataset.levels.split(' ');
-function buildSlider(box) {
-  const lv = levelsOf(box), n = lv.length, at = k => n > 1 ? k / (n - 1) * 100 : 0;
-  box.innerHTML = '<span class="trk"></span><span class="fill"></span>' + lv.map((_, k) => `<span class="stop" style="left:${at(k)}%"></span>`).join('') + '<span class="th"></span>';
-  const names = $('.lvls', box.closest('.effort')); if (names) names.innerHTML = lv.map(l => `<span>${l}</span>`).join('');
-}
-function paintSlider(box, level) {
-  const lv = levelsOf(box), n = lv.length, i = Math.max(0, lv.indexOf(level)), pct = n > 1 ? i / (n - 1) * 100 : 0;
-  box.dataset.level = lv[i];
-  $('.fill', box).style.width = pct + '%'; $('.th', box).style.left = pct + '%';
-  $$('.stop', box).forEach((d, k) => d.classList.toggle('in', k < i));
-  const root = box.closest('.effort');
-  $$('.lvls span', root).forEach((sp, k) => sp.classList.toggle('on', k === i));
-  const t = $('[data-role=efftitle]', root); if (t) t.textContent = LNAME[lv[i]];
-  const r = $('[data-act=effreset]', root); if (r) r.classList.toggle('dis', lv[i] === (box.dataset.base || 'high'));
-}
-$$('[data-role=slider]').forEach(b => { buildSlider(b); paintSlider(b, b.dataset.level || 'high'); });
-function setEffort(win, box, level) {
-  paintSlider(box, level);
-  if (!win) return;
-  const e = $('[data-role=effname]', win); if (e) e.textContent = LNAME[box.dataset.level];
-}
-const draftModels = $('#draftModels'), modelChip = $('[data-role=modelchip]', winB);
-function pickModel(row) {
-  const menu = row.closest('.pop'), box = $('[data-role=slider]', menu), eff = box.closest('.effort'), lv = row.dataset.levels;
-  $$('.mrow .ck', menu).forEach(c => c.innerHTML = '');
-  $('.ck', row).innerHTML = svg('check');
-  $$('.mrow', menu).forEach(r => r.classList.toggle('cur', r === row));
-  // A model with no effort levels gets no effort word and no track; one with other levels keeps the level, or its lowest.
-  eff.classList.toggle('none', !lv);
-  if (lv && lv !== box.dataset.levels) {
-    const was = box.dataset.level; box.dataset.levels = lv; buildSlider(box);
-    const L = levelsOf(box); paintSlider(box, L.includes(was) ? was : L[0]);
-  }
-  if (menu.classList.contains('static')) return;
-  // On a new session the model decides the harness: the chip's mark says which one the session starts on.
-  const h = row.closest('.hgrp').dataset.h, hm = $('[data-role=hmark]', modelChip);
-  hm.className = `hm ${h}`; hm.title = HNAME[h];
-  $('[data-role=modelname]', modelChip).textContent = row.dataset.model === 'Default' ? 'Default model' : row.dataset.model;
-  const en = $('[data-role=effname]', modelChip); en.hidden = !lv; if (lv) en.textContent = LNAME[box.dataset.level];
-  $('#draftSendB').title = `Start a ${HNAME[h]} session`;
-  if (menu.classList.contains('open')) placeBelow(menu, modelChip);
-}
-// A build that cannot start Codex: its entries are off, and its models are listed dimmed.
-function setCodex(on) {
-  $$('[data-codex]').forEach(el => el.classList.toggle('dis', !on));
-  $$('[data-codex-note]').forEach(el => el.hidden = on);
-  const g = $('.hgrp[data-h=codex]', draftModels);
-  g.classList.toggle('later', !on);
-  $$('.mrow', g).forEach(r => r.classList.toggle('dis', !on));
-  $('.hnote', g).textContent = on ? '' : 'in a later version';
-  if (!on && $('.ck svg', g)) pickModel($('.mrow[data-model="Opus 5.5"]', draftModels));
-}
-$$('#codexSeg button').forEach(b => b.addEventListener('click', () => setCodex(b.dataset.codexSet === 'on')));
-document.addEventListener('keydown', e => {
-  if (!draftModels.classList.contains('open')) return;
-  const box = $('[data-role=slider]', draftModels), k = e.key;
-  if (k === 'ArrowLeft' || k === 'ArrowRight') {
-    if (!box.closest('.effort').classList.contains('none')) {
-      const L = levelsOf(box), i = L.indexOf(box.dataset.level) + (k === 'ArrowRight' ? 1 : -1);
-      if (i >= 0 && i < L.length) setEffort(winB, box, L[i]);
-    }
-  } else if (k === 'ArrowDown' || k === 'ArrowUp') {
-    const rows = $$('.mrow:not(.dis)', draftModels); let i = rows.findIndex(r => r.classList.contains('cur'));
-    if (i < 0) i = rows.findIndex(r => $('.ck svg', r));
-    i = (i + (k === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length;
-    rows.forEach((r, n) => r.classList.toggle('cur', n === i));
-  } else if (k === 'Enter') {
-    const c = $('.mrow.cur', draftModels); if (c && !$('.ck svg', c)) pickModel(c);
-    closeAll();
-  } else return;
-  e.preventDefault(); e.stopImmediatePropagation();
-}, true);
-const draftText = $('#draftTextB'), draftSend = $('#draftSendB');
-draftText.addEventListener('input', () => draftSend.classList.toggle('ready', draftText.value.trim().length > 0));
-
 /* ---------- the project's colour, from the menu ---------- */
 const TONE = { rose: 'Rose', orchid: 'Orchid', aqua: 'Aqua', mint: 'Mint', sage: 'Sage', lemon: 'Lemon', none: 'None' };
 function setTone(sw) {
@@ -221,7 +144,7 @@ function setTone(sw) {
   PROJECTS[0].tone = v;
   $$('.swt', sw.parentElement).forEach(x => x.classList.toggle('on', x === sw));
   $('[data-role=tonename]', sw.closest('.pop')).textContent = TONE[k];
-  $$('.ppage[data-proj=loom], #winB .draftpage').forEach(el => el.style.setProperty('--tone', v));
+  $$('.ppage[data-proj=loom]').forEach(el => el.style.setProperty('--tone', v));
   $$('.side[data-sel]').forEach(drawSide);
 }
 
@@ -246,14 +169,6 @@ document.addEventListener('click', e => {
     page.scrollTop = 0; return;
   }
   const sw = t.closest('.swt'); if (sw && !sw.closest('.static')) return setTone(sw);
-  const model = t.closest('.mrow[data-model]'); if (model) { if (!model.classList.contains('dis')) pickModel(model); return; }
-  const slider = t.closest('[data-role=slider]');
-  if (slider) {
-    const r = slider.getBoundingClientRect(), L = levelsOf(slider), i = Math.round(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (L.length - 1));
-    setEffort(slider.closest('.static') ? null : win, slider, L[i]); return;
-  }
-  const reset = t.closest('[data-act=effreset]');
-  if (reset && !reset.classList.contains('dis')) { const b = $('[data-role=slider]', reset.closest('.effort')); setEffort(reset.closest('.static') ? null : win, b, b.dataset.base || 'high'); }
 });
 
 /* ---------- pins: each sits by the part it names, and hides when that part is out of sight ---------- */
@@ -276,14 +191,9 @@ function placePins(win) {
 const placeAllPins = () => [winA, winB, winC].forEach(placePins);
 document.addEventListener('scroll', e => { const w = e.target instanceof Element && e.target.closest('.win'); if (w) placePins(w); }, true);
 // The page's own switches (the theme, the sharks, the pins, the size, the build) leave a frame's popover open.
-[$('header.top'), $('#codexSeg')].forEach(el => el.addEventListener('click', e => e.stopPropagation()));
+[$('header.top')].forEach(el => el.addEventListener('click', e => e.stopPropagation()));
 const relayout = () => requestAnimationFrame(() => { placeOpen(); placeAllPins(); });
 $('#swPins').parentElement.addEventListener('click', relayout);
 addEventListener('resize', relayout);
 new ResizeObserver(relayout).observe(document.body);
 document.addEventListener('click', () => requestAnimationFrame(placeAllPins));
-
-/* ---------- start: the new-session frame opens with its popover showing ---------- */
-const settle = () => { draftModels.classList.add('open'); placeOpen(); placeAllPins(); };
-requestAnimationFrame(() => requestAnimationFrame(settle));
-addEventListener('load', settle);

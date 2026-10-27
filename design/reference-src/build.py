@@ -76,10 +76,7 @@ DOCS = {
         'title': 'Sphyrna · Ink · The project page',
         'css': ['shared/chat.css', 'shared/harness.css', 'shared/project.css'],
         'body': ['docs/project/body.html'],
-        'js': ['shared/base.js', 'shared/frame.js', 'shared/engine.js',
-               "=sea('ocean-intro', { cell: 11, alpha: .6, specs: [{ kind: 'hammerhead', L: 540, depth: .64, speed: 16 }, { kind: 'whale', L: 840, depth: .26, speed: 8 }] });\n"
-               + DRAFT_SEA + IN_PLACE + "sea('empty-proj', inPlace('hammerhead', 120, 6));\n" + LISTEN,
-               'docs/project/project.js'],
+        'js': ['shared/base.js', 'shared/frame.js', 'docs/project/project.js'],
     },
     'settings': {
         'title': 'Sphyrna · Ink · Settings and About',
