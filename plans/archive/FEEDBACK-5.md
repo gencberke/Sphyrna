@@ -4,11 +4,11 @@ This file records the round that started from `@user`'s first notes on the insta
 - `~/Desktop/gelistirme.md` of 23 Oct;
 - two chat rounds of 24 Oct.
 
-It covers what the code says about each note (`v2` at `988256a`), what other apps do, the decisions `@user` made (D-93 to D-99) and the plan for 1.6.1 and 1.6.2. [FEEDBACK-4](archive/FEEDBACK-4.md) was round 4.
+It covers what the code says about each note (`v2` at `988256a`), what other apps do, the decisions `@user` made (D-93 to D-99) and the plan for 1.6.1 and 1.6.2. [FEEDBACK-4](FEEDBACK-4.md) was round 4.
 
 ## Resume here
 
-- **The go (24 Oct, about 12:50):** `@user` said the Mac would be idle and the work could start. The open questions take their defaults. 1.6.1's slices run from [ACTIVE-PLAN §0](archive/ACTIVE-PLAN-1.6.0-to-1.7.2.md#0-round-5-sphyrna-161-from-24-oct-d-93).
+- **The go (24 Oct, about 12:50):** `@user` said the Mac would be idle and the work could start. The open questions take their defaults. 1.6.1's slices run from [ACTIVE-PLAN §0](ACTIVE-PLAN-1.6.0-to-1.7.2.md#0-round-5-sphyrna-161-from-24-oct-d-93).
 - **State before the go:**
   - The causes are traced by read-only explorers, and the planner checked the decisive lines.
   - Four web and code studies are done: usage with harness health, competitor UX, T3 Code's usage and providers pages, and Chat's streaming cost.

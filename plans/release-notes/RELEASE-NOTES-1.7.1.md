@@ -1,6 +1,6 @@
 # Sphyrna 1.7.1
 
-26 Oct 2026. `@user` asked for the merge, the version bump, the tag, the promote and the install; the push and the GitHub release still wait for `@user` ([D-16](../DECISIONS.md), [D-83](../DECISIONS.md)). The work is [FEEDBACK-6](FEEDBACK-6.md)'s 1.7.1 list, with every default of [D-103](../DECISIONS.md).
+26 Oct 2026. `@user` asked for the merge, the version bump, the tag, the promote and the install; the push and the GitHub release still wait for `@user` ([D-16](../../DECISIONS.md), [D-83](../../DECISIONS.md)). The work is [FEEDBACK-6](../FEEDBACK-6.md)'s 1.7.1 list, with every default of [D-103](../../DECISIONS.md).
 
 1.7.1 fixes what 1.7.0's first days showed: a project that would not drag, a session that read Working after it had finished, a brief that was too long, and a few places that still said Loom. It also makes the sessions know where they stand, and spends less energy while you scroll a terminal.
 

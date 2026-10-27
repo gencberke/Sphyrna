@@ -1,6 +1,6 @@
 # Sphyrna 1.6.2
 
-Draft of 25 Oct 2026, for `@user`'s release (the push and the GitHub release wait for `@user`, [D-16](../DECISIONS.md), [D-83](../DECISIONS.md)). The release line is [D-93](../DECISIONS.md); the work is [D-94](../DECISIONS.md), [D-98](../DECISIONS.md) and [D-99](../DECISIONS.md), from [FEEDBACK-5](FEEDBACK-5.md).
+Draft of 25 Oct 2026, for `@user`'s release (the push and the GitHub release wait for `@user`, [D-16](../../DECISIONS.md), [D-83](../../DECISIONS.md)). The release line is [D-93](../../DECISIONS.md); the work is [D-94](../../DECISIONS.md), [D-98](../../DECISIONS.md) and [D-99](../../DECISIONS.md), from [FEEDBACK-5](../archive/FEEDBACK-5.md).
 
 1.6.2 gets Sphyrna ready for Codex. It shows where each agent stands, reads Codex's limits and models, and sets up a Mac that has neither agent ready. Codex sessions still cannot be started or resumed here; that comes with 1.7.0.
 

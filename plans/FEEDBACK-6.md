@@ -8,7 +8,7 @@ This file records the round that started from `@user`'s notes after a day of rea
 fixed and for a general health check of the logs and the sessions beyond the notes ("bu feedback ile sınırlı kalma").
 
 It covers what the code says about each note (`v2` at `b18543b`), the health check, the proposals, the decisions `@user` has to
-make and the release line. [FEEDBACK-5](FEEDBACK-5.md) was round 5; [RESCUE-PLAN](RESCUE-PLAN.md) built 1.7.0.
+make and the release line. [FEEDBACK-5](archive/FEEDBACK-5.md) was round 5; [RESCUE-PLAN](archive/RESCUE-PLAN.md) built 1.7.0.
 
 ## Resume here
 
@@ -696,7 +696,7 @@ note it, skip that part and go on with the next slice.
 - what was not verified and why; deviations from this file;
 - "Needs": decisions for `@user` and on-screen checks left (S2's real drag, S4's cells, FB6-9's Terminal.app check, the
   full-screen Home);
-- a draft `plans/RELEASE-NOTES-1.7.1.md` committed on the branch.
+- a draft `plans/release-notes/RELEASE-NOTES-1.7.1.md` committed on the branch.
 
 ## Release 1.8.0: outline
 

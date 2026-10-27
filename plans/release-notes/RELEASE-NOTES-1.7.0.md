@@ -1,6 +1,6 @@
 # Sphyrna 1.7.0
 
-Draft of 26 Oct 2026, for `@user`'s release (the push and the GitHub release wait for `@user`, [D-16](../DECISIONS.md), [D-83](../DECISIONS.md)). The work is the rescue ([RESCUE-PLAN](RESCUE-PLAN.md)): [D-100](../DECISIONS.md), [D-101](../DECISIONS.md) and [D-102](../DECISIONS.md).
+Draft of 26 Oct 2026, for `@user`'s release (the push and the GitHub release wait for `@user`, [D-16](../../DECISIONS.md), [D-83](../../DECISIONS.md)). The work is the rescue ([RESCUE-PLAN](../archive/RESCUE-PLAN.md)): [D-100](../../DECISIONS.md), [D-101](../../DECISIONS.md) and [D-102](../../DECISIONS.md).
 
 1.7.0 makes Sphyrna a terminal-first session manager. Every Claude session runs in Claude Code's own terminal, and Sphyrna looks after the sessions: where they are, what they cost and what they keep on disk. The Chat face is frozen. The session channel and Codex sessions, planned for 1.7.0 before, wait.
 

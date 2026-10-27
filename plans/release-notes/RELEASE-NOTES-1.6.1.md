@@ -1,6 +1,6 @@
 # Sphyrna 1.6.1
 
-Draft of 24 Oct 2026, for `@user`'s release (the push and the GitHub release wait for `@user`, [D-16](../DECISIONS.md), [D-83](../DECISIONS.md)). The round is [FEEDBACK-5](FEEDBACK-5.md); the release line is [D-93](../DECISIONS.md).
+Draft of 24 Oct 2026, for `@user`'s release (the push and the GitHub release wait for `@user`, [D-16](../../DECISIONS.md), [D-83](../../DECISIONS.md)). The round is [FEEDBACK-5](../archive/FEEDBACK-5.md); the release line is [D-93](../../DECISIONS.md).
 
 1.6.1 fixes what 1.6.0 got wrong in daily use, lets you move things by dragging, and gives the app a new icon.
 

@@ -9,16 +9,16 @@
 - **Integration branch:** `v2` in `~/Library/Caches/loom-v2/wt/v2` (cut from `swarm/1` at `24d8cfb` on 17 Oct; local only, never pushed). Note: `/Users/gencberke/Documents/github/loom-dev` is on `swarm/1` for canonical doc updates; all code edits, builds, and tests run in `wt/v2` and the slice worktrees below.
 - **Lanes (from 22 Oct):** one main planner session drives Claude implementers as its own subagents, each slice in its own worktree cut from `v2`'s head, and integrates accepted slices straight onto `v2`. The areas keep the tracks' split: **ink** owns `Sources/LoomCatalogUI`, UI files in `Sources/loom-app`, `assets/` and `Tests/LoomCatalogUITests`; **core** owns `Sources/LoomCore`, `LoomChat`, `LoomRemora`, `LoomLaunchOptions`, helper executables, `scripts/` and their tests. Docs are the planner's. The track sessions and branches of 21 Oct (`sphyrna-ink` on `ink`, `sphyrna-core` on `core`, plans in `~/Library/Caches/loom-v2/evidence/{ink,core}/PLAN.md`) are idle, and `opencode` ([D-89](../../DECISIONS.md)) is not used this round (`@user`, 22 Oct).
 - **Canonical specs:** [SPEC.md](../../SPEC.md) (product & behavioral specification), [design/DESIGN.md](../../design/DESIGN.md) (Ink v3 visual system), [design/reference.html](../../design/reference.html) (visual target), and [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md) (system architecture & UI code index).
-- **Now (26 Oct):** 1.7.0, the rescue, is built ([RESCUE-PLAN.md](../RESCUE-PLAN.md), [D-100](../../DECISIONS.md)–[D-102](../../DECISIONS.md)); it is §0.1's first entry. 1.6.1 is §0. The sections after §0.1 are 1.6.0's record.
+- **Now (26 Oct):** 1.7.0, the rescue, is built ([RESCUE-PLAN.md](RESCUE-PLAN.md), [D-100](../../DECISIONS.md)–[D-102](../../DECISIONS.md)); it is §0.1's first entry. 1.6.1 is §0. The sections after §0.1 are 1.6.0's record.
 
 ---
 
 ## 0. Round 5: Sphyrna 1.6.1 (from 24 Oct, [D-93](../../DECISIONS.md))
 
-**The go and the defaults.** `@user` gave the go on 24 Oct at about 12:50, with the Mac idle. The open questions take their defaults ([FEEDBACK-5](../FEEDBACK-5.md#decisions)).
+**The go and the defaults.** `@user` gave the go on 24 Oct at about 12:50, with the Mac idle. The open questions take their defaults ([FEEDBACK-5](FEEDBACK-5.md#decisions)).
 
 **Where the details are.**
-- Each slice's content: [FEEDBACK-5](../FEEDBACK-5.md#release-161-slices).
+- Each slice's content: [FEEDBACK-5](FEEDBACK-5.md#release-161-slices).
 - The Briefs: `~/Library/Caches/loom-v2/evidence/r5/<slice>/BRIEF.md`, with the shared rules in `r5/COMMON.md`.
 
 **How a slice runs.**
@@ -68,7 +68,7 @@
 
 ### 1.7.0 as built (the rescue, 26 Oct)
 
-[RESCUE-PLAN.md](../RESCUE-PLAN.md) replaced D-93's 1.7.0 line (the session channel and Codex's binding wait). The slices
+[RESCUE-PLAN.md](RESCUE-PLAN.md) replaced D-93's 1.7.0 line (the session channel and Codex's binding wait). The slices
 ran on `slice/r7-rescue` with one planner and one implementer ([D-101](../../DECISIONS.md)); the plan's §5 has the commits.
 
 | Built in 1.7.0 | Source |
