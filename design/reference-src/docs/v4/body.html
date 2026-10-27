@@ -183,7 +183,7 @@
               <nav class="i4hdtabs" aria-label="Session tabs"></nav>
               <div class="i4hend">
                 <span class="i4chip"><span class="i4pmark sm" style="--tone:var(--orchid)">L</span>loom<span class="i4sep"></span><span class="i4brn"><span data-i="branch"></span>ui/ink-sidebar</span></span>
-                <button class="i4ib model" title="Model and effort"><span class="hm claude"></span>Opus 5.5<span class="i4eff">· High</span><span data-i="chev-d" style="width:12px;height:12px"></span></button>
+                <button class="i4ib model" title="Model"><span class="hm claude"></span>Opus 5.5<span data-i="chev-d" class="chv"></span></button><button class="i4ib model" title="Effort"><span data-i4i="effort"></span>High<span data-i="chev-d" class="chv"></span></button>
                 <span class="vline"></span>
                 <button class="i4ib on" data-i="side-r" title="Inspector"></button>
                 <div class="i4cgroup"><button><span class="stopsq"></span>Stop</button><span class="div"></span><button data-i="more" title="More"></button></div>
@@ -289,65 +289,24 @@
 
   <!-- ================= 06 MODEL ================= -->
   <section class="sec ink4" id="model">
-    <div class="sechead"><span class="num">06</span><h2>The model and effort panel</h2>
-      <p>640 × 440, floating over the palette's scrim, opened from the model chip. The rail is 200; the list row is 32 with the model's full name, its description and its context size. ↵ on a model with levels shows its own levels; ⌫ goes back; ↵ confirms and closes. Q1 has nothing to do here; the current model is marked with the accent.</p></div>
+    <div class="sechead"><span class="num">06</span><h2>The model and the effort</h2>
+      <p>Two chips side by side, each opening its own popover. The model chip opens the model panel: search, a rail of harness marks and every model grouped by harness. The effort chip opens a short menu with only the levels the chosen model offers; a model with none shows no effort chip.</p></div>
     <div class="i4mwrap">
-      <div class="stage"><div class="win i4float" data-w="640" data-h="440">
-        <div class="i4panel">
-          <div class="i4rail">
-            <div class="i4railr"><span data-i="clock"></span>Recent</div>
-            <div class="i4railsep"></div>
-            <div class="i4railh i4lab">Harnesses</div>
-            <div class="i4railr on"><span class="hm claude md"></span>Claude Code<span class="n">5</span></div>
-            <div class="i4railr"><span class="hm codex md"></span>Codex<span class="n">4</span></div>
-            <div class="i4railr dim"><span class="i4blank"></span>opencode<span class="st">Not found</span><span class="con">Connect…</span></div>
-            <div class="i4railr dim"><span class="i4blank"></span>agy<span class="st">Off</span><span class="con">Connect…</span></div>
-            <div class="i4railr"><span class="i4blank"></span>pi<span class="n">3</span></div>
-          </div>
-          <div class="i4pool">
-            <div class="i4msearch"><span data-i="search"></span><span class="i4ph">Search models</span><span class="i4caret"></span><span class="i4mcount">6 models</span></div>
-            <div class="i4mlist">
-              <div class="i4mh i4lab">Claude Code</div>
-              <div class="i4mrow cur"><span class="nm">Opus 5.5</span><span class="d">Long agentic coding</span><span class="ctx">200K</span></div>
-              <div class="i4mrow"><span class="nm">Fable 5.1</span><span class="d">Hardest, long-horizon work</span><span class="ctx">1M</span></div>
-              <div class="i4mrow"><span class="nm">Sonnet 5.5</span><span class="d">Fast, everyday work</span><span class="ctx">200K</span></div>
-              <div class="i4mrow"><span class="nm">Haiku 5.5</span><span class="d">Quick answers, no effort</span><span class="ctx">200K</span></div>
-              <div class="i4mh i4lab">Codex</div>
-              <div class="i4mrow"><span class="nm">GPT-6 Astra</span><span class="d">Most capable</span><span class="ctx">400K</span></div>
-              <div class="i4mrow"><span class="nm">GPT-6.1 Sol</span><span class="d">Near Astra, for less</span><span class="ctx">400K</span></div>
-            </div>
-            <div class="i4mfoot"><span><b>↑↓</b> model</span><span><b>↵</b> effort or done</span><span><b>esc</b> close</span></div>
-          </div>
-        </div>
-      </div></div>
-      <div class="stage"><div class="win i4float" data-w="640" data-h="440">
-        <div class="i4panel">
-          <div class="i4rail">
-            <div class="i4railr"><span data-i="clock"></span>Recent</div>
-            <div class="i4railsep"></div>
-            <div class="i4railh i4lab">Harnesses</div>
-            <div class="i4railr on"><span class="hm claude md"></span>Claude Code<span class="n">5</span></div>
-            <div class="i4railr"><span class="hm codex md"></span>Codex<span class="n">4</span></div>
-            <div class="i4railr dim"><span class="i4blank"></span>opencode<span class="st">Not found</span><span class="con">Connect…</span></div>
-            <div class="i4railr dim"><span class="i4blank"></span>agy<span class="st">Off</span><span class="con">Connect…</span></div>
-            <div class="i4railr"><span class="i4blank"></span>pi<span class="n">3</span></div>
-          </div>
-          <div class="i4pool">
-            <div class="i4back"><span data-i="chev-l"></span>Opus 5.5</div>
-            <div class="i4effh"><span class="i4lab">Effort</span><span class="i4effm">Opus 5.5 · Claude Code</span></div>
-            <div class="i4mlist">
-              <div class="i4mrow ef"><span class="nm">Low</span><span class="d">Shortest runs, smallest spend</span><span class="ctx"></span></div>
-              <div class="i4mrow ef"><span class="nm">Medium</span><span class="d">Everyday edits</span><span class="ctx">default</span></div>
-              <div class="i4mrow ef cur"><span class="nm">High</span><span class="d">Long agentic coding</span><span class="ctx"></span></div>
-              <div class="i4mrow ef"><span class="nm">Extra high</span><span class="d">Hardest problems</span><span class="ctx"></span></div>
-              <div class="i4mrow ef"><span class="nm">Max</span><span class="d">Runs until it is done</span><span class="ctx"></span></div>
-            </div>
-            <div class="i4mfoot"><span><b>↑↓</b> level</span><span><b>↵</b> confirm</span><span><b>⌫</b> back</span><span><b>esc</b> close</span></div>
-          </div>
-        </div>
-      </div></div>
+      <div><div class="i4cap"><b>The model</b><span>from the model chip; the current model highlighted</span></div>
+        <div class="stage"><div class="win i4mstage" data-w="440" data-h="410" data-i4model="model"></div></div></div>
+      <div><div class="i4cap"><b>Searching</b><span>across every harness that is on</span></div>
+        <div class="stage"><div class="win i4mstage" data-w="440" data-h="410" data-i4model="search"></div></div></div>
+      <div><div class="i4cap"><b>The effort</b><span>from the effort chip: Opus 5.5's five levels</span></div>
+        <div class="stage"><div class="win i4mstage" data-w="470" data-h="264" data-i4model="effort"></div></div></div>
+      <div><div class="i4cap"><b>The effort follows the model</b><span>GPT-6.1 Sol offers three</span></div>
+        <div class="stage"><div class="win i4mstage" data-w="470" data-h="264" data-i4model="effort2"></div></div></div>
     </div>
-    <p class="i4mn">The chip reads <span class="i4chip inl"><span class="hm claude"></span>Opus 5.5<span class="i4sep"></span><span class="i4brn">High</span></span> in a session's header and in the draft's composer.</p>
+    <ol class="legend">
+      <li><b>1</b>The model panel is 412 wide at elevation 3. The rail is 44, marks only, in the list's order: Recent, the harnesses that are on, then the ones that are off or not found, dimmed under a hairline. It follows the list as it scrolls; the name and state are in the tooltip.</li>
+      <li><b>2</b>A model row is 32: the name, its one line in tertiary and the context in mono. The highlighted row has the selected fill; the current model carries the accent check. A search result also shows its harness's mark; a harness that is off or not found is one row with the action that fixes it.</li>
+      <li><b>3</b>The effort menu is 300 wide: the model's own levels, each with one line, its default tagged, the current one checked. ↑↓ and ↵ choose; esc closes. Choosing a model keeps the effort when the new model has that level, and takes its default when it has not.</li>
+      <li><b>4</b>Both chips are ghost buttons, 28 high: the harness mark or the effort icon, the value, a chevron. The open chip has the selected fill. A model with no levels (Haiku 5.5) shows the model chip alone.</li>
+    </ol>
   </section>
 
   <!-- ================= 07 CONNECTIONS ================= -->
@@ -393,7 +352,7 @@
                 <textarea spellcheck="false">Port the sidebar to Ink v4: the card's three lines, the five status words, and the lifted plane.</textarea>
                 <div class="i4cbar">
                   <button class="i4cchip mode"><span data-i="shield"></span>Ask before edits</button>
-                  <button class="i4cchip"><span class="hm claude"></span>Opus 5.5<span class="i4eff">High</span><span data-i="chev-d" style="width:12px;height:12px"></span></button>
+                  <button class="i4cchip"><span class="hm claude"></span>Opus 5.5<span data-i="chev-d" class="chv"></span></button><button class="i4cchip"><span data-i4i="effort"></span>High<span data-i="chev-d" class="chv"></span></button>
                   <span class="sp"></span>
                   <span class="i4send"><span data-i="up"></span></span>
                 </div>
