@@ -38,7 +38,7 @@ struct ShellInkTests {
 
     @Test func theIconButtonIsTwentyEightAndKeepsItsHitArea() {
         #expect(LoomTheme.Layout.chromeButton == CGSize(width: 28, height: 28), "an icon button is 28 pt")
-        #expect(LoomTheme.Control.iconRadius == 8 && LoomTheme.Header.groupHeight == 26 && LoomTheme.Header.toggleSize == 26)
+        #expect(LoomTheme.Control.iconRadius == 8 && LoomTheme.Header.groupHeight == 26 )
         #expect(LoomTheme.Header.groupRadius == 7 && LoomTheme.TabStrip.tabHeight == 26)
         #expect(LoomTheme.Opacity.disabled == 0.38)
         // Sphyrna's hand-drawn rings keep their 2 pt line; a control's ring is checked in ControlFamilyTests.

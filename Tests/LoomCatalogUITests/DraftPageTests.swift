@@ -107,7 +107,7 @@ struct DraftPageTests {
     @Test func theQuestionIsDisplayTypeUnderlinedInTheProjectsTone() {
         typealias D = LoomTheme.Draft
         #expect(D.question == LoomTheme.InkType.display)
-        #expect(D.question.size == 46 && D.question.weight == .ultraLight && D.question.tracking == -0.03)
+        #expect(D.question.size == 34 && D.question.weight == .light && D.question.tracking == -0.03)
         #expect(D.underlineThickness == 2 && D.underlineGap == 4 && D.underlineOpacity == 0.85 && D.chevronBox == 20)
         for tone in ProjectTone.allCases {
             let style = D.underline(tone)

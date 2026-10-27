@@ -431,14 +431,14 @@ struct SessionHeaderTests {
             let frames = try await headerFrames(rig, width: width)
             let toggle = try #require(frames.toggle, "\(width): the toggle"), group = try #require(frames.group)
             toggleSizes.insert(toggle.width)
-            #expect(toggle.width == 26 && toggle.height == 26, "\(width): a 26 pt icon button, \(toggle)")
+            #expect(toggle.width == 28 && toggle.height == 28, "\(width): a 28 pt icon button, \(toggle)")
             #expect(abs(group.minX - toggle.maxX - LoomTheme.Space.detailSpacing) < 1.5, "\(width): 8 before the group")
             #expect(group.height >= 26 - 0.5 && group.height <= 26 + 0.5, "\(width): the group is 26 high, \(group)")
             // One centre line for the title, the pill, the chip, the toggle and the group.
             let centres = [frames.title, frames.pill, frames.chip, frames.toggle, frames.group].compactMap { $0?.midY }
             #expect((centres.max() ?? 0) - (centres.min() ?? 0) < 1.5, "\(width): one line, \(centres)")
         }
-        #expect(toggleSizes == [26])
+        #expect(toggleSizes == [28])
     }
 
     @Test func aNaiveRowFailsTheSameMeasurements() async throws {

@@ -52,12 +52,12 @@ struct DetailShellTests {
     // MARK: Clearance for the window buttons
 
     @Test func aPageKeepsClearOfTheFloatingButtonsOnlyWhileTheSidebarIsCollapsed() {
-        // 128 = 20 in, the 66 pt clearance for the native buttons and 8, the 26 pt "Show Sidebar" and 8 more.
+        // 130 = 20 in, the 66 pt clearance for the native buttons and 8, the 28 pt "Show Sidebar" and 8 more.
         #expect(DetailPageChrome.leadingClearance(sidebarCollapsed: false, isFullScreen: false) == 0)
         #expect(DetailPageChrome.leadingClearance(sidebarCollapsed: false, isFullScreen: true) == 0)
-        #expect(DetailPageChrome.leadingClearance(sidebarCollapsed: true, isFullScreen: false) == 128)
-        // 54 in full screen: the native buttons are gone, "Show Sidebar" is the first thing in the row.
-        #expect(DetailPageChrome.leadingClearance(sidebarCollapsed: true, isFullScreen: true) == 54)
+        #expect(DetailPageChrome.leadingClearance(sidebarCollapsed: true, isFullScreen: false) == 130)
+        // 56 in full screen: the native buttons are gone, "Show Sidebar" is the first thing in the row.
+        #expect(DetailPageChrome.leadingClearance(sidebarCollapsed: true, isFullScreen: true) == 56)
     }
 
     @Test func aBannerOverAPageWithoutARowKeepsTheHeadersHeight() {

@@ -256,10 +256,11 @@ struct UIFixRoundViewTests {
             return hosting.fittingSize.height
         }
         let wide = await height(900)
-        let medium = await height(500)
-        let narrow = await height(330)
-        // At 46 pt one row is about 52 pt and the gap between the two rows 8: the old break (the sentence, the picker, then the
-        // "?") added two rows, about 120 pt; the question mark with the picker adds one, about 60 pt.
+        let medium = await height(370)
+        let narrow = await height(244)
+        // The headline's widths scale with the display size (46 pt when they were measured, 34 pt in v4): 500 and 330 become 370
+        // and 244. At 34 pt one row is about 38 pt and the gap between the two rows 8: the old break (the sentence, the picker,
+        // then the "?") added two rows, about 84 pt; the question mark with the picker adds one, about 46 pt.
         let row = LoomTheme.Draft.question.size * 1.12
         #expect(medium > wide, "the medium headline wraps (\(wide) -> \(medium))")
         #expect(medium - wide < 2 * row, "one extra row, not two (\(wide) -> \(medium))")

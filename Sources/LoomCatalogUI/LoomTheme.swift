@@ -401,7 +401,6 @@ enum LoomTheme {
         // The hairline before the inspector toggle, the toggle and the control group.
         static let ruleHeight: CGFloat = 16
         static let ruleMargin: CGFloat = 2
-        static let toggleSize: CGFloat = InkHeight.control
         /// The control group: 26 high, radius 7, the strong hairline for an edge; it rests on no fill.
         static let groupHeight: CGFloat = InkHeight.control
         static let groupRadius: CGFloat = InkRadius.group

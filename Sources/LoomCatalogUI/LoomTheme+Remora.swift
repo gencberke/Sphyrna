@@ -58,8 +58,9 @@ extension LoomTheme {
         static let tileActionsTop: CGFloat = 12
         static let tileActionsGap: CGFloat = 6
         /// While Remora reads, an empty frame stands in each tile's place (the reference's `.tile.wait`: transparent, the hairline,
-        /// the content hidden): the height of a tile with a one-line "Next:", so the brief's tiles land without a jump.
-        static let readingFrameHeight: CGFloat = 142
+        /// the content hidden): the height of a tile with a one-line "Next:", so the brief's tiles land without a jump. 144 with
+        /// v4's 24 pt inline button (22 before).
+        static let readingFrameHeight: CGFloat = 144
 
         // MARK: Quiet projects, the proposal
 

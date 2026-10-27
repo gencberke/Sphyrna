@@ -15,18 +15,18 @@ struct ProjectPageInkPureTests {
     @Test func theHeadStartsAtTheLargerOfTheColumnsInsetAndTheClearance() {
         let collapsed = DetailPageChrome.leadingClearance(sidebarCollapsed: true, isFullScreen: false)
         let fullScreen = DetailPageChrome.leadingClearance(sidebarCollapsed: true, isFullScreen: true)
-        #expect(collapsed == 128 && fullScreen == 54)
+        #expect(collapsed == 130 && fullScreen == 56)
         // A 1,000 wide pane: the column's edge is its 32 inset.
         #expect(ProjectPageLayout.columnEdge(paneWidth: 1_000) == 32)
         #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 1_000, clearance: 0) == 0, "sidebar open")
-        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 1_000, clearance: collapsed) == 96)
-        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 1_000, clearance: fullScreen) == 22)
+        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 1_000, clearance: collapsed) == 98)
+        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 1_000, clearance: fullScreen) == 24)
         // A wide pane centres the column: its edge is past the clearance already.
         #expect(ProjectPageLayout.columnEdge(paneWidth: 1_400) == 232)
         #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 1_400, clearance: collapsed) == 0)
         // Under 760 the inset is 20.
         #expect(ProjectPageLayout.columnEdge(paneWidth: 700) == 20)
-        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 700, clearance: collapsed) == 108)
+        #expect(ProjectPageLayout.headLeadingExtra(paneWidth: 700, clearance: collapsed) == 110)
     }
 
     @Test func theProjectPageDrawsNoPreparingNoticeOverItsHead() {
@@ -260,7 +260,7 @@ struct ProjectPageInkViewTests {
         #expect(abs(open.new.midY - 26) < 2 && abs(open.actions.midY - 26) < 2, "\(open.new) \(open.actions)")
         // The mark (26) and a gap (10) start at the column's 32 inset: the name begins 36 later; clear of the buttons it moves right.
         #expect(abs(open.name.minX - (32 + 26 + 10)) < 2, "\(open.name)")
-        #expect(abs(collapsed.name.minX - open.name.minX - 96) < 2, "open \(open.name) collapsed \(collapsed.name)")
+        #expect(abs(collapsed.name.minX - open.name.minX - 98) < 2, "open \(open.name) collapsed \(collapsed.name)")
         // A start that prepares does not move the head: the notice is not drawn on this page.
         rig.model.beginStart(StartKey(provider: .claude, projectID: rig.project.id))
         #expect(rig.model.preparingNotice != nil)
