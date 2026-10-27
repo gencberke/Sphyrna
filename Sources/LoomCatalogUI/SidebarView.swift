@@ -348,7 +348,7 @@ private struct ProjectBlock: View {
         let list = model.list(for: .project(project.id))
         let topGap = ProjectHeader.topGap(isFirst: isFirst)
         VStack(alignment: .leading, spacing: 0) {
-            ProjectHeader(model: model, project: project, index: index, reorder: reorder)
+            ProjectHeader(model: model, project: project, reorder: reorder)
             if !project.collapsed {
                 DraftRows(model: model, scope: .project(project.id))
                 ForEach(list.rows) { row in
@@ -424,8 +424,6 @@ struct SectionTitle: View {
 struct ProjectHeader: View {
     let model: CatalogModel
     let project: CatalogProject
-    /// The project's place in the list: the live reorder's gap is counted from it (A1).
-    let index: Int
     let reorder: ProjectReorderModel
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @State private var hovering = false
@@ -520,7 +518,7 @@ struct ProjectHeader: View {
                         coordinateSpace: .named(ProjectReorderModel.viewportSpace))
                 .onChanged { value in
                     if reorder.dragging == nil {
-                        reorder.begin(project.id, pointer: value.location, index: index)
+                        reorder.begin(project.id, pointer: value.location, order: model.projects.map(\.id))
                     }
                     reorder.move(pointer: value.location)
                 }

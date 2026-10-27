@@ -28,15 +28,29 @@ struct ProjectReorderTests {
 
     @Test func thePointerAboveTheFirstBetweenTwoAndBelowTheLastPicksTheGap() {
         let blocks = threeBlocks([UUID(), UUID(), UUID()])
-        #expect(ProjectReorder.gap(pointerY: -20, blocks: blocks) == 0, "above the first head")
-        #expect(ProjectReorder.gap(pointerY: 49, blocks: blocks) == 0, "above the first block's mid-line (50)")
-        #expect(ProjectReorder.gap(pointerY: 51, blocks: blocks) == 1, "under it")
-        #expect(ProjectReorder.gap(pointerY: 119, blocks: blocks) == 1, "above the collapsed block's mid-line (120)")
-        #expect(ProjectReorder.gap(pointerY: 121, blocks: blocks) == 2)
-        #expect(ProjectReorder.gap(pointerY: 289, blocks: blocks) == 2, "above the last block's mid-line (290)")
-        #expect(ProjectReorder.gap(pointerY: 291, blocks: blocks) == 3)
-        #expect(ProjectReorder.gap(pointerY: 10_000, blocks: blocks) == 3, "below the last head")
-        #expect(ProjectReorder.gap(pointerY: 120, blocks: []) == 0, "an empty list has one gap")
+        #expect(ProjectReorder.gap(pointerY: -20, blocks: blocks, order: blocks.map(\.id)) == 0, "above the first head")
+        #expect(ProjectReorder.gap(pointerY: 49, blocks: blocks, order: blocks.map(\.id)) == 0, "above the first block's mid-line (50)")
+        #expect(ProjectReorder.gap(pointerY: 51, blocks: blocks, order: blocks.map(\.id)) == 1, "under it")
+        #expect(ProjectReorder.gap(pointerY: 119, blocks: blocks, order: blocks.map(\.id)) == 1, "above the collapsed block's mid-line (120)")
+        #expect(ProjectReorder.gap(pointerY: 121, blocks: blocks, order: blocks.map(\.id)) == 2)
+        #expect(ProjectReorder.gap(pointerY: 289, blocks: blocks, order: blocks.map(\.id)) == 2, "above the last block's mid-line (290)")
+        #expect(ProjectReorder.gap(pointerY: 291, blocks: blocks, order: blocks.map(\.id)) == 3)
+        #expect(ProjectReorder.gap(pointerY: 10_000, blocks: blocks, order: blocks.map(\.id)) == 3, "below the last head")
+        #expect(ProjectReorder.gap(pointerY: 120, blocks: [], order: []) == 0, "an empty list has one gap")
+    }
+
+    @Test func aMeasuredWindowInALongListPicksTheFullListsGap() {
+        // A lazy list may have measured only the projects around the pointer (here 8 and 9 of 20): the gap is their place
+        // in the full order, not their place in the window.
+        let ids = (0..<20).map { _ in UUID() }
+        let window = [ProjectReorderBlock(id: ids[8], minY: 800, height: 100, headTop: 802),
+                      ProjectReorderBlock(id: ids[9], minY: 900, height: 100, headTop: 902)]
+        #expect(ProjectReorder.gap(pointerY: 799, blocks: window, order: ids) == 8, "above the window: before its first project")
+        #expect(ProjectReorder.gap(pointerY: 820, blocks: window, order: ids) == 8)
+        #expect(ProjectReorder.gap(pointerY: 860, blocks: window, order: ids) == 9)
+        #expect(ProjectReorder.gap(pointerY: 960, blocks: window, order: ids) == 10, "after the window's last measured project")
+        #expect(ProjectReorder.gap(pointerY: 10_000, blocks: window, order: ids) == 10,
+                "below the window, not the end of the list the list has not measured")
     }
 
     @Test func theProjectsOwnPlaceIsBeforeOrAfterItselfAndAReleaseThereMovesNothing() {
@@ -81,9 +95,9 @@ struct ProjectReorderTests {
         #expect(ProjectReorder.offsetY(blockAt: 2, dragging: 1, gap: 3, draggedHeight: 40) == -40)
         #expect(ProjectReorder.offsetY(blockAt: 0, dragging: 2, gap: 0, draggedHeight: 300) == 300)
         let blocks = threeBlocks([UUID(), UUID(), UUID()])
-        #expect(ProjectReorder.gap(pointerY: 130, blocks: blocks) == 2,
+        #expect(ProjectReorder.gap(pointerY: 130, blocks: blocks, order: blocks.map(\.id)) == 2,
                 "the collapsed block is only 40 high, so its mid-line sits at 120, not half of an expanded block")
-        #expect(ProjectReorder.gap(pointerY: 250, blocks: blocks) == 2,
+        #expect(ProjectReorder.gap(pointerY: 250, blocks: blocks, order: blocks.map(\.id)) == 2,
                 "the expanded block below is 300 high")
     }
 
@@ -97,7 +111,7 @@ struct ProjectReorderTests {
     @Test func aDragOverAnotherBlocksMidLineOpensTheGapThereAndReleasesOnce() {
         let ids = [UUID(), UUID(), UUID()]
         let reorder = model(ids)
-        reorder.begin(ids[0], pointer: CGPoint(x: 40, y: 10), index: 0)
+        reorder.begin(ids[0], pointer: CGPoint(x: 40, y: 10), order: ids)
         #expect(reorder.dragging == ids[0])
         #expect(reorder.gap == 0, "its own place")
         #expect(reorder.offsetY(blockAt: 1) == 0)
@@ -118,7 +132,7 @@ struct ProjectReorderTests {
     @Test func aCancelledDragReleasesNothing() {
         let ids = [UUID(), UUID(), UUID()]
         let reorder = model(ids)
-        reorder.begin(ids[1], pointer: CGPoint(x: 40, y: 110), index: 1)
+        reorder.begin(ids[1], pointer: CGPoint(x: 40, y: 110), order: ids)
         reorder.move(pointer: CGPoint(x: 40, y: 500))
         #expect(reorder.gap == 3)
         reorder.cancel()
@@ -131,7 +145,7 @@ struct ProjectReorderTests {
     @Test func aReleaseOutsideTheListCancels() {
         let ids = [UUID(), UUID(), UUID()]
         let reorder = model(ids)
-        reorder.begin(ids[0], pointer: CGPoint(x: 40, y: 10), index: 0)
+        reorder.begin(ids[0], pointer: CGPoint(x: 40, y: 10), order: ids)
         reorder.move(pointer: CGPoint(x: 40, y: 700))
         var releases: [(UUID, Int?)] = []
         reorder.end { releases.append(($0, $1)) }
@@ -143,7 +157,7 @@ struct ProjectReorderTests {
     @Test func aReleaseOverItsOwnPlaceIsReleasedAsItsOwnGapAndMovesNothing() {
         let ids = [UUID(), UUID(), UUID()]
         let reorder = model(ids)
-        reorder.begin(ids[1], pointer: CGPoint(x: 40, y: 110), index: 1)
+        reorder.begin(ids[1], pointer: CGPoint(x: 40, y: 110), order: ids)
         #expect(reorder.gap == 1)
         var released: Int??
         reorder.end { released = $1 }

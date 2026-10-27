@@ -27,6 +27,9 @@ final class ProjectReorderModel {
     private(set) var dragging: UUID?
     private(set) var from: Int?
     private(set) var draggedHeight: CGFloat = 0
+    /// The list's project order at the start of the drag: the measured window's places are read off it, so a lazy list
+    /// that measured only part of itself still lands where the full list says.
+    @ObservationIgnored private var order: [UUID] = []
     /// The gap the pointer picks, and where the pointer is in the viewport.
     private(set) var gap: Int?
     private(set) var pointer: CGPoint = .zero
@@ -76,12 +79,13 @@ final class ProjectReorderModel {
     // MARK: The drag
 
     /// The head under the pointer becomes the drag. It starts after `ProjectReorder.startDistance`, so the click that opens
-    /// the project page never starts one; `pointer` is in the viewport's coordinates.
+    /// the project page never starts one; `pointer` is in the viewport's coordinates, and `order` is the list's projects.
     @discardableResult
-    func begin(_ id: UUID, pointer: CGPoint, index: Int) -> Bool {
-        guard dragging == nil, let block = blocks[id] else { return false }
+    func begin(_ id: UUID, pointer: CGPoint, order: [UUID]) -> Bool {
+        guard dragging == nil, let block = blocks[id], let index = order.firstIndex(of: id) else { return false }
         dragging = id
         from = index
+        self.order = order
         draggedHeight = block.height
         self.pointer = pointer
         grab = pointer.y + contentOffset - block.headTop
@@ -156,7 +160,7 @@ final class ProjectReorderModel {
             if gap != nil { gap = nil }
             return
         }
-        let next = ProjectReorder.gap(pointerY: pointer.y + contentOffset, blocks: orderedBlocks)
+        let next = ProjectReorder.gap(pointerY: pointer.y + contentOffset, blocks: orderedBlocks, order: order)
         guard next != gap else { return }
         gap = next
         if let dragging { LoomLog.notice(.sidebar, "projectReorder gap \(ProjectReorder.shortID(dragging)) \(next)") }
@@ -167,6 +171,7 @@ final class ProjectReorderModel {
         dragging = nil
         from = nil
         draggedHeight = 0
+        order = []
         gap = nil
         grab = 0
         pointer = .zero

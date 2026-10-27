@@ -41,11 +41,18 @@ enum ProjectReorder {
     /// The first 8 digits of an id, lower case: what a log line carries, never a name or a path.
     static func shortID(_ id: UUID) -> String { String(id.uuidString.prefix(8)).lowercased() }
 
-    /// The gap the pointer is over in a list of `blocks` (given in content order): 0 is above the first head and `count`
-    /// below the last. The number of blocks whose middle stands above the pointer; the dragged block counts too, so the
-    /// places before and after it are gaps like any other.
-    static func gap(pointerY: CGFloat, blocks: [ProjectReorderBlock]) -> Int {
-        blocks.reduce(0) { count, block in count + (block.midY < pointerY ? 1 : 0) }
+    /// The gap the pointer is over in a list of `blocks` (given in content order), out of the list's `order` of project
+    /// ids: 0 is above the first head and `order.count` below the last. It counts the measured blocks whose middle stands
+    /// above the pointer and reads the place of the last of them in `order`, so a lazy list that measured only the window
+    /// around the pointer still picks the place the full list would (A1). The dragged block counts too, so the places
+    /// before and after it are gaps like any other.
+    static func gap(pointerY: CGFloat, blocks: [ProjectReorderBlock], order: [UUID]) -> Int {
+        guard let first = blocks.first else { return 0 }
+        guard let above = blocks.last(where: { $0.midY < pointerY }) else {
+            return order.firstIndex(of: first.id) ?? 0
+        }
+        guard let index = order.firstIndex(of: above.id) else { return 0 }
+        return index + 1
     }
 
     /// The place project `from` takes when it is released in `gap`, or nil when that gap is the place it already has
