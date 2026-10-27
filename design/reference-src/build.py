@@ -80,9 +80,9 @@ DOCS = {
     },
     'settings': {
         'title': 'Sphyrna · Ink · Settings and About',
-        'css': ['shared/chat.css', 'shared/harness.css', 'shared/project.css', 'shared/settings.css', 'shared/sheets.css'],
+        'css': ['shared/chat.css', 'shared/harness.css', 'shared/project.css', 'shared/settings.css', 'shared/sheets.css', 'shared/side4.css'],
         'body': ['docs/settings/body.html'],
-        'js': ['shared/base.js', 'shared/frame.js', 'docs/settings/settings.js'],
+        'js': ['shared/base.js', 'shared/side4.js', 'shared/frame.js', 'docs/settings/settings.js'],
         'body_rep': [('<!--ICON-->', lambda: data_url('docs/edges/icon-256.png'))],
     },
     'review': {

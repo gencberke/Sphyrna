@@ -212,52 +212,14 @@
     </div>
     <div class="stage"><div class="win desk" id="winA" data-w="1412" data-h="1020" data-wall="bright">
       <div class="wall"></div>
-      <div class="appwin" style="left:32px;top:36px;width:1080px;height:760px">
-        <aside class="side" data-sel="none"></aside>
-        <main class="detail">
-          <header class="dhead bare"><span class="crumb"><b>loom</b> / new session</span>
-            <div class="end"><button class="btn gh sm"><span data-i="clock"></span>9 sessions in loom</button></div></header>
-          <div class="draftpage" style="--tone:var(--orchid)">
-            <h1 class="ask">What should we work on in <button class="pick">loom<span data-i="chev-d"></span></button>?</h1>
-            <div class="folder"><span>~/Documents/github/loom</span><span>·</span><span>swarm/1</span><span>·</span><span>clean</span></div>
-            <div class="composer">
-              <textarea placeholder="Describe the task. @ mentions a file, / runs a command."></textarea>
-              <div class="cbar">
-                <button class="cchip" title="Attach, mention or run a command" data-i="plus"></button>
-                <button class="cchip mode" style="--mt:var(--m-abe)"><span data-i="shield"></span>Ask before edits</button>
-                <button class="cchip mdl" title="Model and effort"><span class="hm claude"></span><span>Opus 5.5</span><span class="eff">High</span><span class="cv" data-i="chev-d"></span></button>
-                <button class="send" data-i="up" title="Start a Claude Code session"></button>
-              </div>
-            </div>
-            <div class="keys"><span><b>↵</b> start</span><span><b>⌘↵</b> start in the background</span><span><b>⇧↵</b> new line</span></div>
-            <div class="under"><div class="seg"><button class="on"><span data-i="branch"></span>Stay on swarm/1</button><button>New branch</button><button>New worktree</button></div></div>
-            <div class="presets"><span class="label" style="margin-right:4px">Presets</span><button class="pchip">Run tests, fix failures</button><button class="pchip">Plan the next slice</button><button class="pchip">Second opinion</button></div>
-          </div>
-        </main>
-        <div class="pop" data-pop="plus" style="left:10px;bottom:52px">
-          <span class="label mlabel">New</span>
-          <button class="mi"><span class="ic"><span class="hm claude md"></span></span>New Claude Session<kbd>⌘N</kbd></button>
-          <button class="mi"><span class="ic"><span class="hm codex md"></span></span>New Codex Session</button>
-          <div class="msep"></div>
-          <button class="mi"><span class="ic" data-i="folder"></span>Add Project…</button>
-        </div>
-        <div class="scrim" data-close></div>
-        <div class="palette" data-pop="palette">
-          <div class="pal-in"><span data-i="search"></span><input placeholder="Search sessions, projects and commands" autocomplete="off"><kbd>esc</kbd></div>
-          <div class="pal-list">
-            <div class="pal-h label">Sessions</div>
-            <div class="prow cur"><span class="ind" data-mark="work"></span>Port the sidebar to Ink tokens<span class="m" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom · now</span></div>
-            <div class="prow"><span class="ind" data-mark="attn"></span>Review the gate failure<span class="m" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom · needs you</span></div>
-            <div class="pal-h label">Commands</div>
-            <div class="prow"><span class="ind" data-i="claude"></span>New Claude Session<span class="m"><kbd>⌘N</kbd></span></div>
-            <div class="prow"><span class="ind" data-i="gear"></span>Settings<span class="m"><kbd>⌘,</kbd></span></div>
-          </div>
-          <div class="pal-foot"><span><b>↑↓</b> move</span><span><b>↵</b> open</span><span><b>esc</b> close</span></div>
-        </div>
+      <div class="appwin i4grid" style="left:32px;top:36px;width:1080px;height:760px">
+        <aside class="i4side" data-i4sel="ink" data-view="projects"></aside>
+        <main class="detail"><div class="tonepane"><p>The content keeps the canvas; Glass lets the desktop through the sidebar only.</p></div></main>
+        <footer class="i4status" data-i4status></footer>
       </div>
       <div class="setwin" style="left:700px;top:470px;width:680px;height:520px" data-settings-clone></div>
       <span class="pin" data-for=".setwin .ttiles" data-at="r" data-dx="-26" data-dy="-12">B1</span>
-      <span class="pin" data-for=".appwin .side .plist" data-at="r" data-dx="-36" data-dy="2">B2</span>
+      <span class="pin" data-for=".appwin .i4side .i4plist" data-at="r" data-dx="-36" data-dy="2">B2</span>
       <span class="pin" data-for=".setwin [data-set=appearance]" data-dx="-30" data-dy="4">B3</span>
       <span class="pin" data-for=".setwin .stitle" data-dx="96" data-dy="16">B4</span>
       <span class="pin" data-for=".setwin [data-set=pcolors]" data-dx="-30" data-dy="-1">B5</span>

@@ -39,17 +39,18 @@ function filter(pal, q) {
   $$('.prow', pal).forEach(r => r.classList.remove('cur'));
   const first = rows(pal)[0]; if (first) first.classList.add('cur');
 }
-const palA = $('.palette[data-pop="palette"]', winA);
-$('input', palA).addEventListener('input', e => filter(palA, e.target.value));
+// The palette is optional: a window that does not draw one (the tone sample) has no keys for it.
+const palA = winA && $('.palette[data-pop="palette"]', winA);
+if (palA) $('input', palA).addEventListener('input', e => filter(palA, e.target.value));
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { closeAll(); return; }
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('.search', winA).click(); return; }
-  if (palA.classList.contains('open') && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); const op = winA && $('[data-open="palette"]', winA); if (op) op.click(); return; }
+  if (palA && palA.classList.contains('open') && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
     e.preventDefault();
     const list = rows(palA), i = list.findIndex(r => r.classList.contains('cur'));
     const next = list[(i + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length];
     list.forEach(r => r.classList.toggle('cur', r === next));
   }
-  if (palA.classList.contains('open') && e.key === 'Enter') closeAll();
+  if (palA && palA.classList.contains('open') && e.key === 'Enter') closeAll();
 });
-$$('.prow', palA).forEach(r => r.addEventListener('mousemove', () => $$('.prow', palA).forEach(x => x.classList.toggle('cur', x === r))));
+if (palA) $$('.prow', palA).forEach(r => r.addEventListener('mousemove', () => $$('.prow', palA).forEach(x => x.classList.toggle('cur', x === r))));

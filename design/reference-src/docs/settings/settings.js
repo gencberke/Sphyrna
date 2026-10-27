@@ -5,39 +5,6 @@
    ============================================================ */
 const iconize = root => $$('[data-i]', root).forEach(el => { if (!el.querySelector(':scope>svg')) el.insertAdjacentHTML('afterbegin', svg(el.dataset.i)); });
 const winB = $('#winB'), desk = $('#winA');
-const HNAME = { claude: 'Claude Code', codex: 'Codex' };
-const hmark = h => `<span class="hm ${h}" title="${HNAME[h]}"></span>`;
-
-/* ---------- the app's sidebar, as the project page draws it ---------- */
-PROJECTS[0].sessions = [
-  { id: 'ink', t: 'Port the sidebar to Ink tokens', st: 'work', h: 'claude', meta: 'now', ago: 0, br: 'ui/ink-sidebar',
-    subs: [{ st: 'work', type: 'explorer', d: "Check the tree colour's contrast", e: '52s' }, { st: 'done', type: '1 finished' }] },
-  { id: 'gate', t: 'Review the gate failure', st: 'attn', h: 'claude', meta: 'now', ago: 0, br: 'fix/side-chat-race' },
-  { id: 'rc', t: 'Release C health check', st: 'unv', h: 'claude', meta: '12m', ago: 12, br: 'release/c' },
-  { id: 'lb', t: 'Remora spike S10', st: '', h: 'codex', meta: '2h', ago: 120, br: 'spike/remora-s10' },
-  { id: 'p2', t: 'Draw the Ink reference', st: '', h: 'claude', meta: '4h', ago: 240, br: 'swarm/1' },
-  { draft: true, t: 'Try a lighter inspector…' }
-];
-PROJECTS[1].sessions = [
-  { id: 'vm', t: 'Weekly vault maintenance', st: 'work', h: 'claude', meta: 'now', ago: 1 },
-  { id: 'th', t: 'Thesis outline', st: 'unv', h: 'codex', meta: '25m', ago: 25 }
-];
-PROJECTS[2].sessions = [
-  { id: 'jwt', t: 'Migrate auth to JWT', st: 'fail', h: 'codex', meta: '3h', ago: 180, br: 'feat/jwt-auth' },
-  { id: 'rl', t: 'Rate limiter tests', st: '', h: 'codex', meta: '2d', ago: 2880, br: 'main' }
-];
-const rowV = (s, sel) => `<div class="row srow${s.id === sel ? ' sel' : ''}" data-s="${s.id}"><span class="ind">${mark(s.st)}</span>${hmark(s.h)}<span class="t">${s.t}</span><span class="meta">${s.meta}</span></div>` + (s.subs ? subs(s.subs, 1, []) : '');
-const draftV = s => `<div class="row srow draft"><span class="ind"></span><span class="t">${s.t}</span><span class="x" data-i="x"></span></div>`;
-const groupV = (p, sel) => `<div class="pgroup" style="--tone:${p.tone}">
-    <div class="proj-head"><span class="pmark">${initial(p.name)}</span><span class="pn">${p.name}</span>${p.dot ? `<i class="dot ${p.dot}" style="width:6px;height:6px"></i>` : ''}<span class="chev" data-i="chev-d"></span></div>
-    ${p.sessions.map(s => s.draft ? draftV(s) : rowV(s, sel)).join('')}
-  </div>`;
-$$('.side[data-sel]').forEach(side => {
-  side.innerHTML = sidebar(side.dataset.sel);
-  $('.side-sec', side).innerHTML = '<span class="label">Projects</span><span class="view"><button class="on" title="Group by project · ⌘2">projects</button> · <button title="Recent activity · ⌘1">activity</button></span>';
-  $('.plist', side).innerHTML = PROJECTS.map(p => groupV(p, side.dataset.sel)).join('');
-  iconize(side);
-});
 
 /* ---------- the parts sheet shows the window's own menu ---------- */
 $$('[data-clone]').forEach(ph => {
@@ -61,7 +28,7 @@ function showTab(sw, key) {
 showTab(deskSettings, 'theme');
 
 /* ---------- the settings themselves, the same in both windows ---------- */
-const STATE = { appearance: 'ink', cast: 'neutral', sidebar: 'solid', pcolors: true, face: 'chat', search: true, menubar: true, notify: true, login: false, mode: 'last', font: 14, art: true, remora: true, propose: true, brief: 'auto' };
+const STATE = { appearance: 'ink', cast: 'neutral', sidebar: 'solid', pcolors: true, search: true, menubar: true, notify: true, login: false, mode: 'last', font: 14, remora: true, propose: true, brief: 'auto' };
 const MODES = {
   last: { name: 'Last used in the project' }, ask: { name: 'Ask', i: 'bubble', t: 'ask' }, abe: { name: 'Ask before edits', i: 'shield', t: 'abe' },
   acc: { name: 'Accept edits', i: 'penline', t: 'acc' }, auto: { name: 'Auto', i: 'bolt', t: 'auto' }, full: { name: 'Full access', i: 'excl', t: 'full' }
