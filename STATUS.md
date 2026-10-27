@@ -1,11 +1,9 @@
 # Status (Live Relay Board)
 
 - **Updated:** 2026-10-27, evening.
-- **State:** `in progress`. 1.8.0's first wave has run ([plans/1.8.0](plans/1.8.0/README.md)):
-  - B0 (approved, [D-106](DECISIONS.md)) and C1 are integrated on `v2`;
-  - A1 was sent back by review: it breaks the sidebar's lazy paging. Its resume prompt is ready.
-
-  The v4 rules are in `design/DESIGN.md` (its six rules and §0). B1, B0b and C2 can start.
+- **State:** `in progress`. 1.8.0's first wave is mostly in ([plans/1.8.0](plans/1.8.0/README.md)):
+  - B0 (approved, [D-106](DECISIONS.md)), C1, A1 and B0b are integrated on `v2`; `--tests` passes on `v2` with A1;
+  - B1 and C2 are running as Haiku 5.5 implementers (max effort) in the planner's session, on `@user`'s word.
 - **Installed:** Sphyrna 1.7.2 (build 10702) in `/Applications/Loom.app`. The CLIs on this Mac: Claude Code 2.1.311,
   Codex 0.164.0, opencode 2.1.4, agy 1.4.5, pi 0.85.1.
 - **Public:** `0.4.4` is still the latest GitHub release. The tags `v1.6.0` to `v1.7.2` are local in the loom tree; their push
@@ -13,6 +11,19 @@
 - **The record before today:** [plans/archive/STATUS-to-1.7.2.md](plans/archive/STATUS-to-1.7.2.md).
 
 ## 1. Last round (27 Oct)
+
+- **The implementers run in the planner's session** from now on (`@user`: Haiku 5.5 at max effort). Each gets its prompt
+  file's text plus the safety rules the opencode config enforced (no push, switch, reset, stash or merge; builds only
+  through `bgcheck.sh`; writes only in its worktree, evidence and build scratch).
+- **A1 integrated** (`7c42ee5`..`fe4decd` as `d1c9069`..`075cd7d`, plus `689911b`): each project's head, drafts, cards and note are
+  direct children of the lazy list again, each one part of the reorder (`SidebarPagingTests` passes: 100 rows, no extra
+  pages); a released move keeps its gap until the new order lands, and a refused one slides back. `--tests` on `v2` with
+  A1: PASS (365 XCTest, 1902 Swift Testing). Left for the gate: the drag by hand in the dev app, and whether the lifted head
+  should drop into the gap instead of vanishing on release.
+- **B0b integrated** (23 commits to `e17c499`, then `23ee04b` for DESIGN §1): the reference is Ink v4 only, in eleven
+  chapters; every window draws the one v4 sidebar and status bar (`shared/side4.*`); no art (D-102); menus, sheets and the
+  palette are back as the v4 chapter's section 03 (B5c needs them); the build is reproducible (gzip time 0); 375 KB.
+  The planner's answers to run 1's questions are in its `PROGRESS.md`; the planner fixed three things on review.
 
 - **B0 approved** on the rendered reference ([D-106](DECISIONS.md)):
   - Q1–Q6 take their defaults;
@@ -57,11 +68,14 @@
 | Worktree | Branch | HEAD | State |
 | --- | --- | --- | --- |
 | `~/Documents/github/loom-dev` | `swarm/1` | `cd6afa4` | Docs mirror; the docs since 1.6.0 are uncommitted here and committed on `v2` |
-| `~/Library/Caches/loom-v2/wt/v2` | `v2` | the docs commit after `59e300e` | Integration branch: B0 and C1 integrated, then the planner's docs ("D-106 …"), so slice worktrees cut from `v2` carry the plan and the briefs. `Package.resolved` modified by a SwiftPM resolve (not part of any release) |
+| `~/Library/Caches/loom-v2/wt/v2` | `v2` | the STATUS commit after `23ee04b` | Integration branch: B0, C1, A1 and B0b integrated, then the planner's docs ("D-106 …"), so slice worktrees cut from `v2` carry the plan and the briefs. `Package.resolved` modified by a SwiftPM resolve (not part of any release) |
 | `~/Library/Caches/loom-v2/wt/core` | `core` | `e3941fb` | Kept: `build-c8.sh` adds measurement worktrees from it |
 | `~/Library/Caches/loom-v2/wt/r9-b0` | `slice/r9-b0` | `5ba94f1` | Integrated (fast-forward) |
 | `~/Library/Caches/loom-v2/wt/r9-c1` | `slice/r9-c1` | `ad4f128` | Integrated (cherry-picked as `adcff47`..`59e300e`) |
-| `~/Library/Caches/loom-v2/wt/r9-a1` | `slice/r9-a1` | `824f0c3` | Sent back: its resume prompt is `~/Desktop/sphyrna-1.8.0-prompts/A1-resume-1027-2047.md` |
+| `~/Library/Caches/loom-v2/wt/r9-a1` | `slice/r9-a1` | `fe4decd` | Integrated (cherry-picked to `075cd7d`) |
+| `~/Library/Caches/loom-v2/wt/r9-b0b` | `slice/r9-b0b` | `e17c499` | Integrated (cherry-picked) |
+| `~/Library/Caches/loom-v2/wt/r9-b1` | `slice/r9-b1` | — | Running |
+| `~/Library/Caches/loom-v2/wt/r9-c2` | `slice/r9-c2` | — | Running |
 | Later 1.8.0 slices | `slice/r9-<id>` | — | Prepared when their turn comes, from the `v2` of that moment |
 
 Build scratch folders of removed worktrees remain in `~/Library/Caches/loom-v2/build/` (`r6-v2*`, `r7`, `r7cand2`, `r7check`).
@@ -75,13 +89,13 @@ Build scratch folders of removed worktrees remain in `~/Library/Caches/loom-v2/b
 ## 4. Next actions by role
 
 - **`@user`:**
-  1. Start B1, B0b and C2 (prepared), and resume A1 with its new prompt. All four can run side by side.
-  2. Answer FEEDBACK-7's [open questions](plans/FEEDBACK-7.md#decisions-open) Q7–Q13. Q13 is needed before P0 and P1, which
+  1. Answer FEEDBACK-7's [open questions](plans/FEEDBACK-7.md#decisions-open) Q7–Q13. Q13 is needed before P0 and P1, which
      also need the isolated profiles signed in.
-  3. Still open from before: the push of `v1.6.0`–`v1.7.2` and the GitHub release. The Trash folders of 22, 25 and 26 Oct
+  2. Still open from before: the push of `v1.6.0`–`v1.7.2` and the GitHub release. The Trash folders of 22, 25 and 26 Oct
      are `@user`'s to empty.
 - **`@planner`:**
   1. Review each slice as it comes back, and integrate it.
   2. Keep the slice table in ACTIVE-PLAN current.
-- **Implementers:** none running. Each takes its assignment from its prompt file, its brief and COMMON.md.
+- **Implementers:** B1 and C2 running in the planner's session. Each takes its assignment from its prompt, its brief and
+  COMMON.md.
 - **`@optimizer`:** at the 1.8.0 gate (plans/1.8.0/README.md §4).
