@@ -20,28 +20,51 @@ struct HarnessCatalogTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("preferences.json")
         let store = UIPreferencesStore(url: url)
-        #expect(store.current.isHarnessConnected(.claude) && store.current.isHarnessConnected(.codex), "on by default")
-        try store.update { $0.setHarnessConnected(.codex, false) }
+        #expect(store.current.isHarnessConnected(HarnessID.claude) && store.current.isHarnessConnected(HarnessID.codex),
+                "on by default")
+        #expect(!store.current.isHarnessConnected(HarnessID.opencode), "off until switched on")
+        try store.update { $0.setHarnessConnected(HarnessID.codex, false) }
 
         let reread = UIPreferencesStore(url: url).current
-        #expect(!reread.isHarnessConnected(.codex) && reread.isHarnessConnected(.claude))
+        #expect(!reread.isHarnessConnected(HarnessID.codex) && reread.isHarnessConnected(HarnessID.claude))
         #expect(reread.disconnectedHarnesses == [.codex])
-        let connections = HarnessConnections(disconnected: reread.disconnectedHarnesses)
-        #expect(!connections.isConnected(.codex) && connections.isConnected(.claude))
+        #expect(reread.harnessChoices == [.codex: false])
+        let connections = HarnessConnections(choices: reread.harnessChoices)
+        #expect(!connections.isOn(.codex) && connections.isOn(.claude))
 
-        try store.update { $0.setHarnessConnected(.codex, true) }
+        try store.update { $0.setHarnessConnected(HarnessID.codex, true) }
         #expect(UIPreferencesStore(url: url).current == UIPreferences(), "on again is the default, so the file says nothing")
     }
 
-    @Test func anOlderOrDamagedFileReadsEveryHarnessAsOn() throws {
+    @Test func aNewHarnessKeepsItsExplicitChoiceAndAnOlderBuildStillReadsTheFile() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-harness-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("preferences.json")
+        let store = UIPreferencesStore(url: url)
+        try store.update { $0.setHarnessConnected(HarnessID.opencode, true) }
+        #expect(store.current.harnessConnections == ["opencode": true], "an explicit on is written for a harness off by default")
+
+        let reread = UIPreferencesStore(url: url).current
+        #expect(reread.isHarnessConnected(HarnessID.opencode))
+        #expect(reread.harnessChoices == [.opencode: true])
+        #expect(reread.disconnectedHarnesses.isEmpty, "1.7.2 reads the same [String: Bool] and ignores a harness it does not know")
+
+        try store.update { $0.setHarnessConnected(HarnessID.opencode, false) }
+        #expect(UIPreferencesStore(url: url).current == UIPreferences(), "off is its default, so the file says nothing")
+    }
+
+    @Test func anOlderOrDamagedFileReadsClaudeAndCodexOnAndTheNewHarnessesOff() throws {
         for json in ["{}", #"{"viewMode":"projects"}"#, #"{"harnessConnections":{"codex":"no"}}"#, #"{"harnessConnections":[1]}"#] {
             let old = try JSONDecoder().decode(UIPreferences.self, from: Data(json.utf8))
-            #expect(old.isHarnessConnected(.claude) && old.isHarnessConnected(.codex), "\(json)")
+            #expect(old.isHarnessConnected(HarnessID.claude) && old.isHarnessConnected(HarnessID.codex), "\(json)")
+            #expect(!old.isHarnessConnected(HarnessID.opencode) && !old.isHarnessConnected(HarnessID.agy)
+                    && !old.isHarnessConnected(HarnessID.pi), "\(json)")
             #expect(old.disconnectedHarnesses.isEmpty)
         }
         let named = try JSONDecoder().decode(UIPreferences.self, from: Data(#"{"harnessConnections":{"codex":false,"unknown":false}}"#.utf8))
-        #expect(!named.isHarnessConnected(.codex))
+        #expect(!named.isHarnessConnected(HarnessID.codex))
         #expect(named.disconnectedHarnesses == [.codex], "a harness this build does not know is ignored")
+        #expect(named.harnessChoices == [.codex: false])
     }
 
     // MARK: The lists

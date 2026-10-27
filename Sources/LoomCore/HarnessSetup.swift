@@ -11,33 +11,37 @@ public struct HarnessSetupCommand: Equatable, Sendable {
     public let alternative: String?
 
     /// The command for a harness in `state`: how to install it while it is not found, how to sign in while nobody is. Nil for
-    /// any other state.
-    public static func command(for provider: ManagedSession.Provider, state: HarnessHealthState) -> HarnessSetupCommand? {
+    /// any other state, and for a harness whose vendor line is not known yet (agy: P1's spike).
+    public static func command(forHarness id: HarnessID, state: HarnessHealthState) -> HarnessSetupCommand? {
         switch state {
-        case .install: install(provider)
-        case .signIn: signIn(provider)
+        case .install: install(forHarness: id)
+        case .signIn: signIn(forHarness: id)
         default: nil
         }
     }
 
-    /// The vendor's macOS install commands, checked on 25 Oct.
+    /// The vendor's macOS install commands, from the harness's descriptor.
+    public static func install(forHarness id: HarnessID) -> HarnessSetupCommand? {
+        HarnessCatalogue.descriptor(for: id)?.install
+    }
+
+    /// The vendor's sign-in command, from the harness's descriptor.
+    public static func signIn(forHarness id: HarnessID) -> HarnessSetupCommand? {
+        HarnessCatalogue.descriptor(for: id)?.signIn
+    }
+
+    // MARK: Providers (C2 moves these callers to the harness ids)
+
+    public static func command(for provider: ManagedSession.Provider, state: HarnessHealthState) -> HarnessSetupCommand? {
+        command(forHarness: HarnessID(provider), state: state)
+    }
+
     public static func install(_ provider: ManagedSession.Provider) -> HarnessSetupCommand? {
-        switch provider {
-        case .claude:
-            HarnessSetupCommand(title: "Install", command: "brew install --cask claude-code",
-                                alternative: "curl -fsSL https://claude.ai/install.sh | bash")
-        case .codex:
-            HarnessSetupCommand(title: "Install", command: "npm install -g @openai/codex", alternative: "brew install --cask codex")
-        case .synthetic: nil
-        }
+        install(forHarness: HarnessID(provider))
     }
 
     public static func signIn(_ provider: ManagedSession.Provider) -> HarnessSetupCommand? {
-        switch provider {
-        case .claude: HarnessSetupCommand(title: "Sign In", command: "claude auth login", alternative: nil)
-        case .codex: HarnessSetupCommand(title: "Sign In", command: "codex login", alternative: nil)
-        case .synthetic: nil
-        }
+        signIn(forHarness: HarnessID(provider))
     }
 }
 
@@ -55,28 +59,29 @@ public struct HarnessDeepCheck: Sendable {
         }
     }
 
-    /// The CLI arguments of `provider`'s Deep Check. Codex's text form (`--json` is a redacted report for machines).
-    public static func arguments(for provider: ManagedSession.Provider) -> [String] {
-        provider == .codex ? ["doctor", "--no-color"] : ["doctor"]
+    /// The CLI arguments of `id`'s Deep Check, nil when the harness has no health command (agy and pi). Codex's text form
+    /// (`--json` is a redacted report for machines).
+    public static func arguments(forHarness id: HarnessID) -> [String]? {
+        HarnessCatalogue.descriptor(for: id)?.doctorArguments
     }
 
-    /// The child's environment: the toolchain's, without colour. Codex's profile folder is always pinned. Claude's is pinned only
-    /// when the toolchain has a profile of its own: for the default profile the variable stays as the login shell had it, and is
-    /// never set to `~/.claude` (Claude names its stored login after an explicit config folder; see `ClaudePlanLimitsFetcher`).
-    static func environment(for provider: ManagedSession.Provider, toolchain: ProviderToolchain) -> [String: String] {
+    /// The child's environment: the toolchain's, without colour, with the profile pinned where the descriptor says so.
+    /// Codex's profile folder is always pinned (`pinsDefaultProfile`). Claude's is pinned only when the toolchain has a
+    /// profile of its own: for the default profile the variable stays as the login shell had it, and is never set to
+    /// `~/.claude` (Claude names its stored login after an explicit config folder; see `ClaudePlanLimitsFetcher`).
+    static func environment(forHarness id: HarnessID, toolchain: ProviderToolchain) -> [String: String] {
         var environment = toolchain.environment
-        if provider == .codex {
-            environment["CODEX_HOME"] = HarnessHealth.profileDirectory(of: toolchain).path
-        } else if toolchain.profileDirectory != nil {
-            environment["CLAUDE_CONFIG_DIR"] = HarnessHealth.profileDirectory(of: toolchain).path
+        if let descriptor = HarnessCatalogue.descriptor(for: id), let variable = descriptor.profileVariable,
+           descriptor.pinsDefaultProfile || toolchain.profileDirectory != nil {
+            environment[variable] = HarnessHealth.profileDirectory(of: toolchain).path
         }
         environment["NO_COLOR"] = "1"
         return environment
     }
 
-    /// The command as the person reads it: "claude doctor".
-    public static func display(for provider: ManagedSession.Provider) -> String {
-        ([HarnessHealth.command(provider)] + arguments(for: provider)).joined(separator: " ")
+    /// The command as the person reads it ("claude doctor"), nil when the harness has no health command.
+    public static func display(forHarness id: HarnessID) -> String? {
+        HarnessCatalogue.descriptor(for: id)?.doctorCommand
     }
 
     /// How long a Deep Check may run before it is stopped, in seconds.
@@ -101,21 +106,25 @@ public struct HarnessDeepCheck: Sendable {
 
     /// Runs the command. Its output and its status line come back as text; a failure to start or a timeout is told in words.
     public func run(_ provider: ManagedSession.Provider) async -> Result {
+        let id = HarnessID(provider)
+        guard let arguments = Self.arguments(forHarness: id) else {
+            return Result(text: "The \(HarnessHealth.command(forHarness: id)) command has no health check.", succeeded: false)
+        }
         do {
             let resolved = try await toolchain(provider)
             try FileManager.default.createDirectory(
                 at: workingDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            let environment = Self.environment(for: provider, toolchain: resolved)
+            let environment = Self.environment(forHarness: id, toolchain: resolved)
             // A fixed script with the folder and the command as its arguments: nothing is spliced into the shell's text. Standard
             // error joins the output, and the status is printed, so a command that fails still shows what it said.
             let script = #"cd "$1" || exit 1; shift; "$@" 2>&1 </dev/null; printf '\n[exit status %s]\n' "$?""#
             let output = try await supervisor.captureHelper(
-                "/bin/sh", ["-c", script, "sh", workingDirectory.path, resolved.executable] + Self.arguments(for: provider),
+                "/bin/sh", ["-c", script, "sh", workingDirectory.path, resolved.executable] + arguments,
                 environment: environment, timeout: timeout, outputLimit: Self.outputLimit)
             let text = output.trimmingCharacters(in: .whitespacesAndNewlines)
             return Result(text: Self.clipped(text), succeeded: text.hasSuffix("[exit status 0]"))
         } catch ProviderToolchainError.executableNotFound {
-            return Result(text: "The \(HarnessHealth.command(provider)) command was not found.", succeeded: false)
+            return Result(text: "The \(HarnessHealth.command(forHarness: id)) command was not found.", succeeded: false)
         } catch LoomError.environmentTimeout {
             return Result(text: "The check did not finish in \(Int(timeout)) seconds and was stopped.", succeeded: false)
         } catch {
@@ -125,5 +134,19 @@ public struct HarnessDeepCheck: Sendable {
 
     static func clipped(_ text: String) -> String {
         text.count <= keptCharacters ? text : String(text.prefix(keptCharacters)) + "\n[output cut]"
+    }
+
+    // MARK: Providers (C2 moves these callers to the harness ids)
+
+    public static func arguments(for provider: ManagedSession.Provider) -> [String] {
+        arguments(forHarness: HarnessID(provider)) ?? []
+    }
+
+    static func environment(for provider: ManagedSession.Provider, toolchain: ProviderToolchain) -> [String: String] {
+        environment(forHarness: HarnessID(provider), toolchain: toolchain)
+    }
+
+    public static func display(for provider: ManagedSession.Provider) -> String {
+        display(forHarness: HarnessID(provider)) ?? ""
     }
 }

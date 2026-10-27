@@ -24,6 +24,10 @@ public struct ManagedSession: Codable, Equatable, Sendable {
         self.workingDirectory = workingDirectory
         currentRun = nil
     }
+
+    /// The session's harness as the catalogue names it (`HarnessID(provider)`); the stored provider keeps the catalog's
+    /// column and every existing switch.
+    public var harnessID: HarnessID { HarnessID(provider) }
 }
 
 /// One OS execution of a managed conversation. This ID is also carried in the

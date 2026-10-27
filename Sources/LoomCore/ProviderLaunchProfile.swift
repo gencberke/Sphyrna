@@ -45,7 +45,7 @@ public struct ProviderCapabilities: Codable, Sendable {
 
     /// The first `major.minor[.patch]` token of the CLI's `--version` line ("2.1.300 (Claude Code)"); nil
     /// when there is none (a fixture or an unreadable answer).
-    public var claudeVersion: [Int]? {
+    public var cliVersion: [Int]? {
         for token in version.split(whereSeparator: \.isWhitespace) {
             let parts = token.split(separator: ".", omittingEmptySubsequences: false)
             guard (2...3).contains(parts.count) else { continue }
@@ -58,7 +58,7 @@ public struct ProviderCapabilities: Codable, Sendable {
     /// Whether the CLI's version is at least `floor` (a missing patch counts as 0). A version that cannot
     /// be read is not at least anything.
     public func claudeVersionAtLeast(_ floor: [Int]) -> Bool {
-        guard let actual = claudeVersion else { return false }
+        guard let actual = cliVersion else { return false }
         for index in 0..<max(actual.count, floor.count) {
             let have = index < actual.count ? actual[index] : 0
             let need = index < floor.count ? floor[index] : 0

@@ -245,23 +245,51 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     public var keepAwake: KeepAwakeSetting = .off
     /// Settings → General → Notify when a long turn finishes. A file written before the setting existed reads as off.
     public var notifyLongTurns = false
-    /// The connect switch of each harness (D-98), by provider name: `false` is off, and a harness with no entry is on. A file
-    /// written before the switch existed reads as all on. Off only stops Sphyrna's own use of the harness; the CLI is never
+    /// The connect switch of each harness (D-98), by harness id: a harness with no entry takes its descriptor's
+    /// `onWhenFound` (Claude and Codex on, opencode, agy and pi off, FB6-13). A file written before the switch existed reads
+    /// as all on for the harnesses that were on then. Off only stops Sphyrna's own use of the harness; the CLI is never
     /// signed out and its config is never written. `HarnessConnections` is the model views and the probe read.
     public var harnessConnections: [String: Bool] = [:]
     /// Settings → Usage: Limits or Tokens. A file written before the choice existed reads as Limits.
     public var usageSection: UsageSection = .limits
 
-    public func isHarnessConnected(_ provider: ManagedSession.Provider) -> Bool { harnessConnections[provider.rawValue] ?? true }
+    /// Whether Sphyrna offers `id`: the person's explicit choice, else the descriptor's `onWhenFound`. False for an id this
+    /// build does not describe.
+    public func isHarnessConnected(_ id: HarnessID) -> Bool {
+        guard let descriptor = HarnessCatalogue.descriptor(for: id) else { return false }
+        return harnessConnections[id.rawValue] ?? descriptor.onWhenFound
+    }
 
-    /// The harnesses switched off, for `HarnessConnections(disconnected:)`.
+    /// The explicit choices, for `HarnessConnections(choices:)`: only the harnesses this build describes.
+    public var harnessChoices: [HarnessID: Bool] {
+        Dictionary(uniqueKeysWithValues: harnessConnections.compactMap { raw, on in
+            let id = HarnessID(rawValue: raw)
+            return id.isKnown ? (id, on) : nil
+        })
+    }
+
+    /// The harnesses switched off, for `HarnessConnections(disconnected:)`: the old spelling of `harnessChoices`.
     public var disconnectedHarnesses: Set<ManagedSession.Provider> {
         Set(harnessConnections.compactMap { $0.value ? nil : ManagedSession.Provider(rawValue: $0.key) })
     }
 
-    /// An entry exists only for a harness that is off, so the default (on) is the file's absence of it.
+    /// An entry exists only for a choice against the descriptor's default, so an older file keeps meaning what it meant and
+    /// a new one stays readable by 1.7.2. An id this build does not describe is not written.
+    public mutating func setHarnessConnected(_ id: HarnessID, _ connected: Bool) {
+        guard let descriptor = HarnessCatalogue.descriptor(for: id) else { return }
+        if connected == descriptor.onWhenFound { harnessConnections[id.rawValue] = nil } else { harnessConnections[id.rawValue] = connected }
+    }
+
+    // MARK: Providers (C2 moves these callers to the harness ids)
+
+    public func isHarnessConnected(_ provider: ManagedSession.Provider) -> Bool {
+        guard provider != .synthetic else { return false }
+        return isHarnessConnected(HarnessID(provider))
+    }
+
     public mutating func setHarnessConnected(_ provider: ManagedSession.Provider, _ connected: Bool) {
-        if connected { harnessConnections[provider.rawValue] = nil } else { harnessConnections[provider.rawValue] = false }
+        guard provider != .synthetic else { return }
+        setHarnessConnected(HarnessID(provider), connected)
     }
 
     /// The selected session, as every caller before destinations knew it; setting it sets the destination.

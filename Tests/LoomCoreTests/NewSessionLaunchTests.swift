@@ -75,8 +75,8 @@ struct NewSessionLaunchProfileTests {
         #expect(throws: (any Error).self) { try arguments(old, choices: ClaudeLaunchChoices(model: "opus")) }
         #expect(try arguments(old, choices: ClaudeLaunchChoices()).count == 4, "no choice, no refusal")
         // The version reads the first dotted token.
-        #expect(ProviderCapabilities(version: "2.1.300 (Claude Code)", help: "").claudeVersion == [2, 1, 300])
-        #expect(ProviderCapabilities(version: "fake-provider 1 claude_config=/x/1.2", help: "").claudeVersion == nil)
+        #expect(ProviderCapabilities(version: "2.1.300 (Claude Code)", help: "").cliVersion == [2, 1, 300])
+        #expect(ProviderCapabilities(version: "fake-provider 1 claude_config=/x/1.2", help: "").cliVersion == nil)
         #expect(ProviderCapabilities(version: "2.0", help: "").claudeVersionAtLeast([2, 0, 0]))
         #expect(!ProviderCapabilities(version: "1.99.9", help: "").claudeVersionAtLeast([2, 0, 0]))
     }

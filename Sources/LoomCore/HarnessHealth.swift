@@ -28,24 +28,23 @@ public enum HarnessVersionStatus: Equatable, Sendable {
     case current
 }
 
-/// The versions Sphyrna judges a CLI by: the oldest it accepts and the one this release was built against.
+/// The versions Sphyrna judges a CLI by: the oldest it accepts and the one this release was built against. They live in
+/// the harness's `HarnessDescriptor` (`HarnessCatalogue`), so one table describes every harness.
 public struct HarnessVersionTable: Equatable, Sendable {
     /// The oldest version the code's capability checks accept; nil where the checks read `--help` and never a version.
     public let minimum: [Int]?
     /// The version 1.7.2 was built and checked against.
     public let recommended: [Int]
 
-    /// Claude Code: the 2.x series is the first with `--permission-mode` and `--model` (`claudeLaunchChoicesFloor`), the oldest
-    /// version `ProviderCapabilities` accepts. 2.1.300 is the build the app was made against.
-    ///
-    /// Codex: its capability checks read `--help` (`supportsListen` for the app-server), never a version, so it has no minimum
-    /// number here; a CLI whose `app-server` lacks `--listen` counts as below the minimum. 0.160.0 is the build checked against.
+    /// The table `id`'s descriptor holds; nil for a harness with no table yet (opencode, agy and pi) and for an id this
+    /// build does not describe.
+    public static func table(forHarness id: HarnessID) -> HarnessVersionTable? {
+        HarnessCatalogue.descriptor(for: id)?.versions
+    }
+
+    /// The table of `provider`'s harness.
     public static func table(for provider: ManagedSession.Provider) -> HarnessVersionTable? {
-        switch provider {
-        case .claude: HarnessVersionTable(minimum: ProviderCapabilities.claudeLaunchChoicesFloor, recommended: [2, 1, 300])
-        case .codex: HarnessVersionTable(minimum: nil, recommended: [0, 160, 0])
-        case .synthetic: nil
-        }
+        table(forHarness: HarnessID(provider))
     }
 
     /// The version in words: "2.1.300".
@@ -61,13 +60,18 @@ public struct HarnessVersionTable: Equatable, Sendable {
         return 0
     }
 
-    /// Where `capabilities` (what the CLI's own `--version` and `--help` said) stands for `provider`.
-    public static func status(of capabilities: ProviderCapabilities, provider: ManagedSession.Provider) -> HarnessVersionStatus {
-        guard let table = table(for: provider) else { return .unknown }
-        if provider == .codex, !capabilities.supportsListen { return .belowMinimum }
-        guard let version = capabilities.claudeVersion else { return .unknown }
+    /// Where `capabilities` (what the CLI's own `--version` and `--help` said) stands for `id`'s harness.
+    public static func status(of capabilities: ProviderCapabilities, harness id: HarnessID) -> HarnessVersionStatus {
+        guard let descriptor = HarnessCatalogue.descriptor(for: id), let table = descriptor.versions else { return .unknown }
+        if descriptor.requiresAppServerListen, !capabilities.supportsListen { return .belowMinimum }
+        guard let version = capabilities.cliVersion else { return .unknown }
         if let minimum = table.minimum, compare(version, minimum) < 0 { return .belowMinimum }
         return compare(version, table.recommended) < 0 ? .belowRecommended : .current
+    }
+
+    /// Where `capabilities` stands for `provider`'s harness.
+    public static func status(of capabilities: ProviderCapabilities, provider: ManagedSession.Provider) -> HarnessVersionStatus {
+        status(of: capabilities, harness: HarnessID(provider))
     }
 }
 
@@ -132,17 +136,25 @@ public struct HarnessHealth: Equatable, Sendable {
     }
 
     /// The executable's name on the PATH.
-    public static func command(_ provider: ManagedSession.Provider) -> String {
-        provider == .codex ? "codex" : "claude"
+    public static func command(forHarness id: HarnessID) -> String {
+        HarnessCatalogue.descriptor(for: id)?.command ?? ""
     }
 
-    /// Where the CLI keeps its profile: the toolchain's own folder, else the variable the CLI reads, else its default.
+    public static func command(_ provider: ManagedSession.Provider) -> String {
+        command(forHarness: HarnessID(provider))
+    }
+
+    /// Where the CLI keeps its profile: the toolchain's own folder, else the variable the CLI reads, else the folder the
+    /// descriptor names under the home directory.
     public static func profileDirectory(of toolchain: ProviderToolchain) -> URL {
         if let folder = toolchain.profileDirectory { return folder }
-        let variable = toolchain.provider == .codex ? "CODEX_HOME" : "CLAUDE_CONFIG_DIR"
-        if let path = toolchain.environment[variable], path.hasPrefix("/") { return URL(fileURLWithPath: path, isDirectory: true) }
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        return home.appendingPathComponent(toolchain.provider == .codex ? ".codex" : ".claude", isDirectory: true)
+        guard let descriptor = HarnessCatalogue.descriptor(for: HarnessID(toolchain.provider)) else {
+            return FileManager.default.homeDirectoryForCurrentUser
+        }
+        if let variable = descriptor.profileVariable, let path = toolchain.environment[variable], path.hasPrefix("/") {
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        return descriptor.defaultProfileURL
     }
 
     /// "Max" from the CLI's own lower-case `max`.
@@ -160,11 +172,13 @@ public struct HarnessHealth: Equatable, Sendable {
     /// nothing). Pure: `HarnessHealthChecker` supplies the inputs.
     public static func evaluate(provider: ManagedSession.Provider, toolchain: ProviderToolchain, reading: HarnessReading?,
                                 at now: Date) -> HarnessHealth {
-        let name = HarnessCapabilities.intrinsic(of: provider).displayName
-        let status = HarnessVersionTable.status(of: toolchain.capabilities, provider: provider)
+        let id = HarnessID(provider)
+        let descriptor = HarnessCatalogue.descriptor(for: id)
+        let name = descriptor?.displayName ?? provider.rawValue
+        let status = HarnessVersionTable.status(of: toolchain.capabilities, harness: id)
         var health = HarnessHealth(
             provider: provider, state: .ready, headline: "Ready", executable: toolchain.executable,
-            version: toolchain.capabilities.claudeVersion ?? reading?.version.flatMap(Self.parse),
+            version: toolchain.capabilities.cliVersion ?? reading?.version.flatMap(Self.parse),
             versionStatus: status, profileDirectory: profileDirectory(of: toolchain),
             account: reading?.account, limitsReadable: reading.map { !$0.windows.isEmpty }, checkedAt: now)
         if status == .belowMinimum {
@@ -207,6 +221,6 @@ public struct HarnessHealth: Equatable, Sendable {
 
     /// The first `major.minor[.patch]` token of a version text.
     static func parse(_ text: String) -> [Int]? {
-        ProviderCapabilities(version: text, help: "").claudeVersion
+        ProviderCapabilities(version: text, help: "").cliVersion
     }
 }

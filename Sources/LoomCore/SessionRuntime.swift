@@ -811,7 +811,7 @@ public actor SessionRuntime {
     /// the answer held no version. The cache follows the executable on disk, so after a CLI update the next start's
     /// version shows, also for a session that still runs the older one.
     public func toolchainVersion(for provider: ManagedSession.Provider) -> String? {
-        toolchains[provider]?.capabilities.claudeVersion.map { $0.map(String.init).joined(separator: ".") }
+        toolchains[provider]?.capabilities.cliVersion.map { $0.map(String.init).joined(separator: ".") }
     }
 
     /// A start failed: read the CLI again before the next one.

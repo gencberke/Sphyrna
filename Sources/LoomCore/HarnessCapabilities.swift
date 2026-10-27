@@ -56,39 +56,66 @@ public struct HarnessCapabilities: Equatable, Sendable {
         self.displayName = displayName
     }
 
-    /// What `provider`'s harness can do whatever the build starts (`startable` is false here): the answer for code that has
-    /// no build identity in reach and asks about the harness itself (deleting, reading a transcript). A synthetic session (a
-    /// test fixture) has nothing.
-    public static func intrinsic(of provider: ManagedSession.Provider) -> HarnessCapabilities {
-        switch provider {
-        case .claude:
-            HarnessCapabilities(
-                hasHarness: true, startable: false, structuredFace: true, readsTranscript: true, sideChats: true,
-                readsContext: true, readsEdits: true, subagents: true, rewind: true, quickQuestion: true, deletes: true,
-                usageLimits: true, modelCatalog: true, reportsRunSettings: true, displayName: "Claude")
-        case .codex:
-            HarnessCapabilities(
-                hasHarness: true, startable: false, structuredFace: false, readsTranscript: false, sideChats: false,
-                readsContext: false, readsEdits: false, subagents: false, rewind: false, quickQuestion: false, deletes: false,
-                usageLimits: true, modelCatalog: true, reportsRunSettings: false, displayName: "Codex")
-        case .synthetic:
-            HarnessCapabilities(
-                hasHarness: false, startable: false, structuredFace: false, readsTranscript: false, sideChats: false,
-                readsContext: false, readsEdits: false, subagents: false, rewind: false, quickQuestion: false, deletes: false,
-                usageLimits: false, modelCatalog: false, reportsRunSettings: false, displayName: "Synthetic")
+    /// A harness that has no integration in this build yet: a real harness with nothing read, started or deleted
+    /// (opencode, agy and pi), or no harness at all (a synthetic fixture).
+    private static func row(hasHarness: Bool, displayName: String) -> HarnessCapabilities {
+        HarnessCapabilities(
+            hasHarness: hasHarness, startable: false, structuredFace: false, readsTranscript: false, sideChats: false,
+            readsContext: false, readsEdits: false, subagents: false, rewind: false, quickQuestion: false, deletes: false,
+            usageLimits: false, modelCatalog: false, reportsRunSettings: false, displayName: displayName)
+    }
+
+    /// Claude's row: every capability.
+    private static let claude = HarnessCapabilities(
+        hasHarness: true, startable: false, structuredFace: true, readsTranscript: true, sideChats: true,
+        readsContext: true, readsEdits: true, subagents: true, rewind: true, quickQuestion: true, deletes: true,
+        usageLimits: true, modelCatalog: true, reportsRunSettings: true, displayName: "Claude")
+
+    /// Codex's row: a real harness, limits and models read, and nothing else.
+    private static let codex = HarnessCapabilities(
+        hasHarness: true, startable: false, structuredFace: false, readsTranscript: false, sideChats: false,
+        readsContext: false, readsEdits: false, subagents: false, rewind: false, quickQuestion: false, deletes: false,
+        usageLimits: true, modelCatalog: true, reportsRunSettings: false, displayName: "Codex")
+
+    /// What `id`'s harness can do whatever the build starts (`startable` is false here): the answer for code that has no
+    /// build identity in reach and asks about the harness itself (deleting, reading a transcript). opencode, agy and pi
+    /// have their own row with nothing read yet; a synthetic session (a test fixture) and an id this build does not
+    /// describe have nothing.
+    public static func intrinsic(ofHarness id: HarnessID) -> HarnessCapabilities {
+        // A harness this build runs through a stored provider answers its provider's row, so the two spellings agree.
+        if let provider = id.provider { return intrinsic(of: provider) }
+        return switch id {
+        case .opencode, .agy, .pi: row(hasHarness: true, displayName: id.rawValue)
+        default: row(hasHarness: false, displayName: id.rawValue)
         }
     }
 
-    /// The capabilities of `provider` in a build that can start the `startable` harnesses: `intrinsic(of:)`, with `startable`
-    /// per the set (a synthetic session is never startable).
-    public static func of(_ provider: ManagedSession.Provider, startable: Set<ManagedSession.Provider>) -> HarnessCapabilities {
-        let base = intrinsic(of: provider)
+    /// What `provider`'s harness can do whatever the build starts.
+    public static func intrinsic(of provider: ManagedSession.Provider) -> HarnessCapabilities {
+        switch provider {
+        case .claude: claude
+        case .codex: codex
+        case .synthetic: row(hasHarness: false, displayName: "Synthetic")
+        }
+    }
+
+    /// The capabilities of `id` in a build that can start the `startable` harnesses: `intrinsic(ofHarness:)`, with `startable`
+    /// per the set and the harness's own `startable` fact (a harness with no start path, and a synthetic session, is never
+    /// startable).
+    public static func ofHarness(_ id: HarnessID, startable: Set<HarnessID>) -> HarnessCapabilities {
+        let base = intrinsic(ofHarness: id)
+        let hasStartPath = HarnessCatalogue.descriptor(for: id)?.startable ?? false
         return HarnessCapabilities(
-            hasHarness: base.hasHarness, startable: base.hasHarness && startable.contains(provider),
+            hasHarness: base.hasHarness, startable: base.hasHarness && hasStartPath && startable.contains(id),
             structuredFace: base.structuredFace, readsTranscript: base.readsTranscript, sideChats: base.sideChats,
             readsContext: base.readsContext, readsEdits: base.readsEdits, subagents: base.subagents, rewind: base.rewind,
             quickQuestion: base.quickQuestion, deletes: base.deletes, usageLimits: base.usageLimits,
             modelCatalog: base.modelCatalog, reportsRunSettings: base.reportsRunSettings, displayName: base.displayName)
+    }
+
+    /// The capabilities of `provider` in a build that can start the `startable` harnesses.
+    public static func of(_ provider: ManagedSession.Provider, startable: Set<ManagedSession.Provider>) -> HarnessCapabilities {
+        ofHarness(HarnessID(provider), startable: Set(startable.map(HarnessID.init)))
     }
 }
 

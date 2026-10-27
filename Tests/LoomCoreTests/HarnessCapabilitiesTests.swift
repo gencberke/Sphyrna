@@ -59,32 +59,49 @@ struct HarnessCapabilitiesTests {
 
     // MARK: The guard (D-94)
 
-    /// The files that dispatch per provider on purpose: a launch profile built for one harness, and the evidence tooling's choice
-    /// of the harness to fake. No other file asks which harness a session has; it asks the table.
+    /// The files that dispatch per harness on purpose: a launch profile built for one harness, the usage probe's per-harness
+    /// ask cadence (C2 moves it to the catalogue), and the evidence tooling's choice of the harness to fake. No other file asks
+    /// which harness a session has; it asks the table or the descriptor.
     private static let dispatchFiles: Set<String> = [
         "Sources/LoomCore/ProviderResume.swift",
+        "Sources/LoomCatalogUI/UsageModel.swift",
         "Sources/loom-app/Evidence/AppDelegate+Evidence.swift",
         "Sources/loom-app/Evidence/EvidenceCatalogCommands.swift",
     ]
 
-    /// A comparison with `.claude` (`provider == .claude`, `harness != .claude`), not a mention in a comment or a case label.
-    static func asksIfClaude(_ line: String) -> Bool {
+    /// The files that define the catalogue itself: the ids are their values there, not a gate's question.
+    private static let descriptorFiles: Set<String> = [
+        "Sources/LoomCore/HarnessID.swift",
+        "Sources/LoomCore/HarnessDescriptor.swift",
+        "Sources/LoomCore/HarnessCatalogue.swift",
+    ]
+
+    /// A comparison with a harness id (`provider == .claude`, `harness != .opencode`), or a `? "codex" : "claude"` name
+    /// ternary, not a mention in a comment or a case label.
+    static func asksWhichHarness(_ line: String) -> Bool {
         let code = line.trimmingCharacters(in: .whitespaces)
         guard !code.hasPrefix("//") else { return false }
-        return code.range(of: #"(==|!=)\s*\.claude\b(?!\w)|\.claude\s*(==|!=)"#, options: .regularExpression) != nil
+        let comparison = #"(==|!=)\s*\.(claude|codex|opencode|agy|pi)\b(?!\w)|\.(claude|codex|opencode|agy|pi)\s*(==|!=)"#
+        let ternary = #"\?\s*"(claude|codex|opencode|agy|pi)"\s*:\s*""#
+        return code.range(of: comparison, options: .regularExpression) != nil
+            || code.range(of: ternary, options: .regularExpression) != nil
     }
 
-    @Test func theMatcherSeesAComparisonAndNothingElse() {
-        #expect(Self.asksIfClaude("guard record.session.provider == .claude else { return }"))
-        #expect(Self.asksIfClaude("if summary.harness != .claude {"))
-        #expect(Self.asksIfClaude("filter { $0.harness == .claude }"))
-        #expect(!Self.asksIfClaude("/// The UI asks these, never `provider == .claude`"))
-        #expect(!Self.asksIfClaude("case .claude: self = .claude"))
-        #expect(!Self.asksIfClaude("var pick = modePick == .claudeDefault ? .inherit : modePick"))
-        #expect(!Self.asksIfClaude("canStart(.newSessionDefault, projectID: nil)"))
+    @Test func theMatcherSeesAComparisonOrATernaryAndNothingElse() {
+        #expect(Self.asksWhichHarness("guard record.session.provider == .claude else { return }"))
+        #expect(Self.asksWhichHarness("if summary.harness != .opencode {"))
+        #expect(Self.asksWhichHarness("filter { $0.harness == .agy }"))
+        #expect(Self.asksWhichHarness("let isPi = harnessID == .pi"))
+        #expect(Self.asksWhichHarness(#"let name = provider == .codex ? "codex" : "claude""#))
+        #expect(Self.asksWhichHarness(#"let command = isAgy ? "agy" : "pi""#))
+        #expect(!Self.asksWhichHarness("/// The UI asks these, never `provider == .claude`"))
+        #expect(!Self.asksWhichHarness("case .claude: self = .claude"))
+        #expect(!Self.asksWhichHarness("var pick = modePick == .claudeDefault ? .inherit : modePick"))
+        #expect(!Self.asksWhichHarness(#"let mark = "harness-codex""#))
+        #expect(!Self.asksWhichHarness("canStart(.newSessionDefault, projectID: nil)"))
     }
 
-    @Test func noFileOutsideTheDispatchFilesAsksIfASessionIsClaude() throws {
+    @Test func noFileOutsideTheDescriptorAndDispatchFilesAsksWhichHarnessItHas() throws {
         let repoRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let root = repoRoot.appendingPathComponent("Sources", isDirectory: true)
@@ -95,14 +112,15 @@ struct HarnessCapabilitiesTests {
             scanned += 1
             let path = String(url.path.dropFirst(repoRoot.path.count + 1))
             // The probe is a developer tool that runs one named harness.
-            guard !Self.dispatchFiles.contains(path), !path.hasPrefix("Sources/loom-probe/") else { continue }
+            guard !Self.dispatchFiles.contains(path), !Self.descriptorFiles.contains(path),
+                  !path.hasPrefix("Sources/loom-probe/") else { continue }
             let text = try String(contentsOf: url, encoding: .utf8)
             for (index, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated()
-            where Self.asksIfClaude(String(line)) {
+            where Self.asksWhichHarness(String(line)) {
                 offenders.append("\(path):\(index + 1)")
             }
         }
         #expect(scanned > 100, "the walk found the sources")
-        #expect(offenders.isEmpty, "ask HarnessCapabilities, not the provider: \(offenders)")
+        #expect(offenders.isEmpty, "ask HarnessCatalogue, not the harness: \(offenders)")
     }
 }
