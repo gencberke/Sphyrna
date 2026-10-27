@@ -3,7 +3,8 @@
 - **Updated:** 2026-10-27, evening.
 - **State:** `in progress`. 1.8.0's first wave is mostly in ([plans/1.8.0](plans/1.8.0/README.md)):
   - B0 (approved, [D-106](DECISIONS.md)), C1, A1 and B0b are integrated on `v2`; `--tests` passes on `v2` with A1;
-  - B1 and C2 are running as Haiku 5.5 implementers (max effort) in the planner's session, on `@user`'s word.
+  - C2 is integrated too; its rest runs as C2b (the brief's write set was too narrow for three of its Done-when items);
+  - B1 and C2b are running as Haiku 5.5 implementers (max effort) in the planner's session, on `@user`'s word.
 - **Installed:** Sphyrna 1.7.2 (build 10702) in `/Applications/Loom.app`. The CLIs on this Mac: Claude Code 2.1.311,
   Codex 0.164.0, opencode 2.1.4, agy 1.4.5, pi 0.85.1.
 - **Public:** `0.4.4` is still the latest GitHub release. The tags `v1.6.0` to `v1.7.2` are local in the loom tree; their push
@@ -20,6 +21,11 @@
   pages); a released move keeps its gap until the new order lands, and a refused one slides back. `--tests` on `v2` with
   A1: PASS (365 XCTest, 1902 Swift Testing). Left for the gate: the drag by hand in the dev app, and whether the lifted head
   should drop into the gap instead of vanishing on release.
+- **C2 integrated** (`94cb018`..`608266d`): one probe outcome (answered, failed with its reason, cached, not asked); Claude's
+  limits derive from the probe's reading, nil included; `ModelCatalogEntry` carries harness, description, efforts (checked by
+  shape) and default effort; the Peek store lives on `CatalogModel`. Its own `--tests` passed (365 + 1896). Its Needs: the seven
+  readers of `ModelCatalog.shared`, the new-session lists and availability were outside its write set, so the planner wrote
+  C2b; the usage chip's harness names go to B3 (noted in its brief); `SettingsConnectionsModel` stays C3's.
 - **B0b integrated** (23 commits to `e17c499`, then `23ee04b` for DESIGN §1): the reference is Ink v4 only, in eleven
   chapters; every window draws the one v4 sidebar and status bar (`shared/side4.*`); no art (D-102); menus, sheets and the
   palette are back as the v4 chapter's section 03 (B5c needs them); the build is reproducible (gzip time 0); 375 KB.
@@ -75,7 +81,8 @@
 | `~/Library/Caches/loom-v2/wt/r9-a1` | `slice/r9-a1` | `fe4decd` | Integrated (cherry-picked to `075cd7d`) |
 | `~/Library/Caches/loom-v2/wt/r9-b0b` | `slice/r9-b0b` | `e17c499` | Integrated (cherry-picked) |
 | `~/Library/Caches/loom-v2/wt/r9-b1` | `slice/r9-b1` | — | Running |
-| `~/Library/Caches/loom-v2/wt/r9-c2` | `slice/r9-c2` | — | Running |
+| `~/Library/Caches/loom-v2/wt/r9-c2` | `slice/r9-c2` | `94fdb47` | Integrated (cherry-picked to `608266d`) |
+| `~/Library/Caches/loom-v2/wt/r9-c2b` | `slice/r9-c2b` | — | Running (cut from `71e7679`) |
 | Later 1.8.0 slices | `slice/r9-<id>` | — | Prepared when their turn comes, from the `v2` of that moment |
 
 Build scratch folders of removed worktrees remain in `~/Library/Caches/loom-v2/build/` (`r6-v2*`, `r7`, `r7cand2`, `r7check`).
@@ -96,6 +103,6 @@ Build scratch folders of removed worktrees remain in `~/Library/Caches/loom-v2/b
 - **`@planner`:**
   1. Review each slice as it comes back, and integrate it.
   2. Keep the slice table in ACTIVE-PLAN current.
-- **Implementers:** B1 and C2 running in the planner's session. Each takes its assignment from its prompt, its brief and
+- **Implementers:** B1 and C2b running in the planner's session. Each takes its assignment from its prompt, its brief and
   COMMON.md.
 - **`@optimizer`:** at the 1.8.0 gate (plans/1.8.0/README.md §4).

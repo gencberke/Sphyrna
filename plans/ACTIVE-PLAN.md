@@ -28,7 +28,8 @@ running, in review, integrated (with the `v2` SHA), cut. The run tooling: `~/Lib
 | 1 | C1 harness catalogue | integrated `59e300e` (with the planner's fix: opencode has no doctor until P1) |
 | 1 | B1 v4 tokens and controls | running (Haiku 5.5 implementer in the planner's session) |
 | 1 | B0b the rest of the reference in v4 | integrated `e17c499` (two runs; the planner's fixes: the sheet's subject class, the Destructive note, Settings' Connections tab) |
-| 2 | C2 catalogue consumers | running (Haiku 5.5 implementer in the planner's session) |
+| 2 | C2 catalogue consumers | integrated `608266d` (one probe outcome, limits from the probe, efforts on the entries, no Peek singleton) |
+| 2 | C2b the catalogue reaches every list | running (C2's rest: no `ModelCatalog.shared`, availability wired, File/Dock/Home/sidebar/menu bar lists) |
 | 2 | C3 Connections · B2 sidebar and card · B3 status bar | queued |
 | 3 | C4 neutral draft · B4 model and effort pickers · D1 Codex sessions · D2 Codex reader and deletion · B5a/b/c surfaces | queued |
 | 4 | E1 opencode · E2 agy · E3 pi · F1 send · F2 Changes → session · G1 Remora backends · H1 usage · I1 names | queued |
