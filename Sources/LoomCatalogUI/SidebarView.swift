@@ -194,7 +194,7 @@ struct SidebarList: View {
                 .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, offset in
                     reorder.setContentOffset(offset)
                 }
-                .overlay(alignment: .topLeading) { liftedHead }
+                .overlay(alignment: .topLeading) { ProjectReorderLiftedOverlay(model: model, reorder: reorder) }
                 // The selection moved by something other than a click here (a tab, a shortcut, "Show Session"):
                 // scroll the least that shows the card, without animation. One turn later, so rows that a
                 // project's expansion just loaded are laid out.
@@ -223,18 +223,6 @@ struct SidebarList: View {
         .onDisappear {
             reorder.cancel()
             reorder.attach(nil)
-        }
-    }
-
-    /// The head that follows the pointer, over the list and its scroll view, in the viewport's coordinates.
-    @ViewBuilder private var liftedHead: some View {
-        if let id = reorder.dragging, let project = model.projects.first(where: { $0.id == id }),
-           let frame = reorder.liftedFrame {
-            ProjectReorderLiftedHead(model: model, project: project)
-                .frame(width: frame.width, height: frame.height, alignment: .leading)
-                .offset(x: frame.minX, y: frame.minY)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
         }
     }
 }

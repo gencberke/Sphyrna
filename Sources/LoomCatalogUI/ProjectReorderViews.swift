@@ -19,11 +19,30 @@ struct ProjectReorderLiftedHead: View {
         .padding(.leading, LoomTheme.Sidebar.headLeading)
         .padding(.trailing, LoomTheme.Sidebar.headTrailing)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: LoomTheme.InkHeight.sidebarRow)
         .background(shape.fill(LoomTheme.Sidebar.reorderLiftFill))
         .overlay(shape.strokeBorder(LoomTheme.Surface.strongEdgeStyle, lineWidth: LoomTheme.Line.hairline))
         .shadow(color: LoomTheme.Sidebar.reorderLiftShadow.color, radius: LoomTheme.Sidebar.reorderLiftShadowRadius,
                 x: 0, y: LoomTheme.Sidebar.reorderLiftShadowY)
         .opacity(LoomTheme.Sidebar.reorderLiftOpacity)
+    }
+}
+
+/// The lifted head over the project list (A1): it reads the pointer, so only this overlay redraws while the pointer moves,
+/// not the list under it.
+struct ProjectReorderLiftedOverlay: View {
+    let model: CatalogModel
+    let reorder: ProjectReorderModel
+
+    @ViewBuilder var body: some View {
+        if let id = reorder.dragging, let project = model.projects.first(where: { $0.id == id }),
+           let frame = reorder.liftedFrame {
+            ProjectReorderLiftedHead(model: model, project: project)
+                .frame(width: frame.width, height: frame.height, alignment: .leading)
+                .offset(x: frame.minX, y: frame.minY)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 }
 
