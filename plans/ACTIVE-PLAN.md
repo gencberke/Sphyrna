@@ -4,8 +4,8 @@
   first-class, the look moved to Ink v4 after Orca's design system, the known bugs closed, `send` between sessions and Remora on
   any harness.
 - **The plan:** [plans/1.8.0/README.md](1.8.0/README.md) (goal, order, slice table, release gate, where each open item went),
-  with [COMMON.md](1.8.0/COMMON.md) (the rules every brief shares), [DESIGN-V4.md](1.8.0/DESIGN-V4.md) (the look, approved by `@user`
-  on 27 Oct, D-106) and one brief per slice in [briefs/](1.8.0/briefs/).
+  with [COMMON.md](1.8.0/COMMON.md) (the rules every brief shares), [DESIGN-V4.md](1.8.0/DESIGN-V4.md) (the record of the look's proposal;
+  its approved rules are in `design/DESIGN.md` §0, D-106) and one brief per slice in [briefs/](1.8.0/briefs/).
 - **Why:** [FEEDBACK-7](FEEDBACK-7.md) (round 7: the card, the design language, the project drag, the reading of Orca and T3
   Code) and the 1.8.0 parts of [FEEDBACK-6](FEEDBACK-6.md).
 - **Integration branch:** `v2` in `~/Library/Caches/loom-v2/wt/v2` (local only, never pushed without `@user`). Slices run on
@@ -26,8 +26,8 @@ running, in review, integrated (with the `v2` SHA), cut. The run tooling: `~/Lib
 | 0 | P1 opencode, agy, pi spike | queued: needs Q13 and isolated profiles |
 | 1 | A1 project reorder | in review: done, `--tests` passed at 20:08 |
 | 1 | C1 harness catalogue | integrated `59e300e` (with the planner's fix: opencode has no doctor until P1) |
-| 1 | B1 v4 tokens and controls | queued: after the v4 rules are in DESIGN.md |
-| 1 | B0b the rest of the reference in v4 | queued: after the v4 rules are in DESIGN.md (D-106) |
+| 1 | B1 v4 tokens and controls | can start: the v4 rules are in DESIGN.md §0 |
+| 1 | B0b the rest of the reference in v4 | can start (D-106) |
 | 2 | C2 catalogue consumers | can start: C1 is integrated |
 | 2 | C3 Connections · B2 sidebar and card · B3 status bar | queued |
 | 3 | C4 neutral draft · B4 model and effort pickers · D1 Codex sessions · D2 Codex reader and deletion · B5a/b/c surfaces | queued |

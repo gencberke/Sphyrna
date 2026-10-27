@@ -5,8 +5,8 @@
 - Two token values are corrected by B0's contrast table: Ink tertiary `#8F8F8F` and Paper faint `#9C9C9C` (§2).
 - The model and the effort are two pickers (§6), not one panel with an effort step.
 
-The planner moves these rules into [design/DESIGN.md](../../design/DESIGN.md) before B1 starts, and this file is then archived.
-Until then, this page and the reference's "Ink v4" chapter are the contract for 1.8.0's slices.
+The rules and values now live in [design/DESIGN.md](../../design/DESIGN.md): the six rules at its top and the values in its §0.
+That file is the contract. This page stays as the record of the proposal and its reasons.
 
 **The aim.** The aim is Orca's design system (FEEDBACK-7 FB7-2) in a native macOS app, keeping what makes Sphyrna recognisable:
 - **What it takes from Orca:**

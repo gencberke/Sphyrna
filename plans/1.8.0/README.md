@@ -66,7 +66,7 @@ Wave 5  Z gate (planner): pool, real CLIs, energy, visual pass, optimizer, relea
 | **P1** | opencode, agy and pi spike: the same questions per CLI | FB6-13, Q9 | evidence only | — | everything |
 | **A1** | The project reorder by a live drag gesture | FB7-3 | sidebar project list, `ProjectDrag`, `ProjectBlockDrop`, `DragActivity` | — | B0, C1, P0, P1 |
 | **C1** | The harness catalogue: `HarnessID`, descriptors for five harnesses, availability, On/Off/Not found, the widened guard | FB6-13, optimizer 6 and 11 | `LoomCore` harness files, preferences, guard tests | — | B0, A1, B1 |
-| **B1** | Ink v4 tokens and the control family | FB7-2 | `LoomTheme*.swift`, the shared control styles, DESIGN §3 and §6 | B0 approved | C1, P0, P1 |
+| **B1** | Ink v4 tokens and the control family | FB7-2 | `LoomTheme*.swift`, the shared control styles, DESIGN §0 and §3 | B0 approved, §0 written | C1, P0, P1 |
 | **B0b** | The rest of the reference in v4: every other chapter redrawn with v4's parts; the v3 tokens, the v3/v4 switch and the Q bar removed; one design language in the reference and the landing page | D-106 | `design/reference-src/**`, the built pages | B0 integrated, the v4 rules in DESIGN.md | everything except B0 |
 | **C2** | Everything that lists harnesses reads the catalogue: models with their efforts, probes, usage and limits, menus, palette, Home | FB6-13, FB6-3, optimizer 2, 4 and 10 | `LoomCore` model and usage files, `CatalogModel` (the harness region), menus | C1 | B2 |
 | **C3** | Settings → Connections and Home's connect cards in v4, with Not found | FB6-13 | Connections and Home's connect card files | B1, C1 | C2, B2 |

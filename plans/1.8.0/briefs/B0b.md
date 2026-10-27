@@ -10,8 +10,7 @@ chapters in v4. Remove what v3 alone needed. The landing page follows. This slic
 **Starts after** B0 is integrated on `v2` and the planner has moved the v4 rules into `design/DESIGN.md`.
 
 **Read.**
-- `design/DESIGN.md` (the v4 rules at its top, §3 tokens, §6 components) and [DESIGN-V4.md](../DESIGN-V4.md), both as approved
-  in D-106.
+- `design/DESIGN.md`: the v4 rules at its top and §0 (Ink v4), as approved in D-106.
 - The reference's "Ink v4" chapter: `design/reference-src/docs/v4/` (`body.html`, `v4.css`, `v4.js`). Its control family,
   sidebar, session window, status bar, chips, model and effort pickers, Connections, draft and Home are the source for every
   other drawing.

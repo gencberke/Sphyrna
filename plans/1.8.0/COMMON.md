@@ -22,8 +22,8 @@ its own slice. Where either differs from `@user`'s chat, the chat wins.
 2. `DEVELOPMENT.md` §2 (build and test), §4 (isolation) and §5 (evidence mode), before you build, launch the dev app or touch a
    real CLI.
 3. The sections your brief names in `SPEC.md`, `docs/ARCHITECTURE.md` (§11 maps every surface to its files) and
-   `design/DESIGN.md`. For any visual slice, also read [DESIGN-V4.md](DESIGN-V4.md) in the loom-dev mirror; once B0 lands, read
-   the v4 sections of `design/DESIGN.md` in your worktree instead.
+   `design/DESIGN.md`. For any visual slice, read its six rules and §0 (Ink v4, approved in D-106);
+   DESIGN-V4.md is only the record of the proposal.
 4. The files your brief lists. Read them before you change them.
 
 ## 3. Hard rules

@@ -5,7 +5,7 @@
   - B0 (approved, [D-106](DECISIONS.md)) and C1 are integrated on `v2`;
   - A1 is done and in review.
 
-  Next, the planner moves the v4 rules into `design/DESIGN.md`, which unblocks B1 and B0b. C2 can start.
+  The v4 rules are in `design/DESIGN.md` (its six rules and §0). B1, B0b and C2 can start.
 - **Installed:** Sphyrna 1.7.2 (build 10702) in `/Applications/Loom.app`. The CLIs on this Mac: Claude Code 2.1.311,
   Codex 0.164.0, opencode 2.1.4, agy 1.4.5, pi 0.85.1.
 - **Public:** `0.4.4` is still the latest GitHub release. The tags `v1.6.0` to `v1.7.2` are local in the loom tree; their push
@@ -70,15 +70,14 @@ Build scratch folders of removed worktrees remain in `~/Library/Caches/loom-v2/b
 ## 4. Next actions by role
 
 - **`@user`:**
-  1. Start C2 when it is prepared.
+  1. Start B1, B0b and C2 once they are prepared. They can run side by side.
   2. Answer FEEDBACK-7's [open questions](plans/FEEDBACK-7.md#decisions-open) Q7–Q13. Q13 is needed before P0 and P1, which
      also need the isolated profiles signed in.
   3. Still open from before: the push of `v1.6.0`–`v1.7.2` and the GitHub release. The Trash folders of 22, 25 and 26 Oct
      are `@user`'s to empty.
 - **`@planner`:**
   1. Review A1 and integrate it.
-  2. Move the approved v4 rules into `design/DESIGN.md`; this unblocks B1 and B0b.
-  3. Prepare B1, B0b and C2 for `@user` to start.
-  4. Keep the slice table in ACTIVE-PLAN current.
+  2. Prepare B1, B0b and C2 for `@user` to start.
+  3. Keep the slice table in ACTIVE-PLAN current.
 - **Implementers:** none running. Each takes its assignment from its prompt file, its brief and COMMON.md.
 - **`@optimizer`:** at the 1.8.0 gate (plans/1.8.0/README.md §4).
