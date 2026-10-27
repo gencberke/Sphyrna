@@ -1,11 +1,11 @@
 /* ---------- the landing page: each thing Sphyrna does, said plainly, with its window from the reference ---------- */
 const FEATURES = [
-  { id: 'sessions', kicker: 'Sessions', doc: 'chat', section: 'session', title: 'Every session in one window',
-    text: 'Projects and their sessions share one sidebar, each session with its state: working, waiting for you, finished and unread, or failed. Open one and it fills the window while the others keep running. In Chat, Claude\'s answer is the page, each tool step is one quiet line, and a finished turn folds its work into one.' },
-  { id: 'terminal', kicker: 'The terminal', doc: 'foundations', section: 'session', title: 'Or the terminal, untouched',
-    text: 'A session can also run on the terminal face, exactly as Claude Code draws it, with its own keys and commands. One setting chooses the face. Sphyrna draws the window around the session and nothing inside it.' },
-  { id: 'requests', kicker: 'Requests', doc: 'chat', section: 'requests', title: 'Requests wait where you act',
-    text: 'An approval, a question or a plan waits above the composer, one at a time, with its choices in reach. Return never answers it by accident, and the session keeps one line of what you chose.' },
+  { id: 'sessions', kicker: 'Sessions', doc: 'v4', section: 'sidebar', title: 'Every session in one window',
+    text: 'Projects and their sessions share one sidebar, each session with its state: working, waiting for you, finished, or failed. Open one and it fills the window while the others keep their place.' },
+  { id: 'terminal', kicker: 'The terminal', doc: 'v4', section: 'session', title: 'Or the terminal, untouched',
+    text: 'A session runs in its real terminal, exactly as Claude Code draws it, with its own keys and commands. Sphyrna draws the window around it: the header, the tabs, the inspector and the status bar.' },
+  { id: 'model', kicker: 'Model and effort', doc: 'v4', section: 'model', title: 'Pick the model, then the effort',
+    text: 'The model panel searches every harness that is on, and the effort menu offers only the levels the chosen model has.' },
   { id: 'changes', kicker: 'Changes', doc: 'review', section: 'changes', title: 'See what changed',
     text: 'The Changes tab shows what the last turn, the whole session or the branch changed. Comment on any line, and Send to Claude delivers the comments as one message. A subagent\'s transcript opens in the same place. Nothing is staged or committed for you.' },
   { id: 'remora', kicker: 'Remora', doc: 'remora', section: 'brief', title: 'Where you left off, in a few lines',
@@ -27,6 +27,4 @@ FEATURES.forEach((f, i) => {
   addFrame(sec, f.doc, [f.section], { title: f.title, bare: true, height: 820 });
   featuresEl.appendChild(sec);
 });
-// Home's band: one hammerhead on its loop (D-79), in a strip of its own above the name.
-loopHammer($('#ocean-band'));
 unpack().then(loadNext);

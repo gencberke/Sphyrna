@@ -66,12 +66,6 @@ DOCS = {
         'body': ['docs/v4/body.html'],
         'js': ['shared/base.js', 'shared/engine.js', 'docs/v4/v4.js'],
     },
-    'foundations': {
-        'title': 'Sphyrna · Ink · Foundations',
-        'css': ['shared/chat.css', 'shared/harness.css'],
-        'body': ['docs/foundations/body.html'],
-        'js': ['shared/base.js', 'shared/frame.js', 'shared/engine.js', 'docs/foundations/own.js'],
-    },
     'chat': {
         'title': 'Sphyrna · Ink · The turn style',
         'css': ['shared/chat.css', 'shared/harness.css'],
@@ -175,7 +169,7 @@ PAGES = {
                        'js': ['shell/frames.js', 'shell/shell.js'], 'docs': None},
     # one window for each thing Sphyrna does, from the same documents
     'landing.html': {'title': 'Sphyrna', 'css': ['landing/landing.css'], 'body': 'landing/body.html',
-                     'js': ['shared/band.js', 'shell/frames.js', 'landing/landing.js'], 'docs': ['chat', 'foundations', 'review', 'remora', 'project', 'settings', 'identity']},
+                     'js': ['shared/band.js', 'shell/frames.js', 'landing/landing.js'], 'docs': ['v4', 'chat', 'review', 'remora', 'project', 'settings', 'identity']},
 }
 
 
