@@ -87,13 +87,62 @@ public struct HarnessModel: Equatable, Sendable, Identifiable {
     public var efforts: [String]
     /// The release an alias stands for (Claude's `initialize` names it, e.g. `claude-opus-5-5`); nil when not said.
     public var resolvedModel: String?
+    /// One line the CLI gives about the model; nil when it gives none.
+    public var description: String?
+    /// The level the CLI starts the model at; nil when it names none.
+    public var defaultEffort: String?
 
-    public init(id: String, displayName: String, isDefault: Bool, efforts: [String], resolvedModel: String? = nil) {
+    public init(id: String, displayName: String, isDefault: Bool, efforts: [String], resolvedModel: String? = nil,
+                description: String? = nil, defaultEffort: String? = nil) {
         self.id = id
         self.displayName = displayName
         self.isDefault = isDefault
         self.efforts = efforts
         self.resolvedModel = resolvedModel
+        self.description = description
+        self.defaultEffort = defaultEffort
+    }
+}
+
+/// Why an ask gave nothing usable: the category and time of `PlanLimitsFailure`, the categories the Claude CLI's ask reports.
+/// Codex's ask reports the same ones (no toolchain, a start that failed, a timeout, no answer).
+public typealias HarnessAskFailure = PlanLimitsFailure
+
+/// What one ask of a harness gave: the answer, if any, and why it failed, if it did. An answer with a failure is partial
+/// (the account but not the limits, say), and the probe keeps the parts it read.
+public struct HarnessProbeAsk: Equatable, Sendable {
+    public var answer: HarnessProbeAnswer?
+    public var failure: HarnessAskFailure?
+
+    public init(answer: HarnessProbeAnswer? = nil, failure: HarnessAskFailure? = nil) {
+        self.answer = answer
+        self.failure = failure
+    }
+}
+
+/// What `HarnessProbe.ask(harness:force:)` did for one call. A harness's reading is the same in every case it holds one.
+public enum HarnessProbeOutcome: Equatable, Sendable {
+    /// The harness was asked and answered: its reading, with the answer merged in.
+    case answered(HarnessReading)
+    /// The harness was asked and gave nothing usable, or only part of it. `reading` is the last good reading (nil when none).
+    case failed(HarnessAskFailure, reading: HarnessReading?)
+    /// The last answer is younger than the floor: it stands, and no ask was made.
+    case cached(HarnessReading)
+    /// Not asked: the harness is switched off, or this build has no source for it.
+    case notAsked
+
+    /// The reading the outcome holds, if any.
+    public var reading: HarnessReading? {
+        switch self {
+        case let .answered(reading), let .cached(reading): reading
+        case let .failed(_, reading): reading
+        case .notAsked: nil
+        }
+    }
+
+    /// The reason an ask failed, if it did.
+    public var failure: HarnessAskFailure? {
+        if case let .failed(failure, _) = self { failure } else { nil }
     }
 }
 
@@ -171,6 +220,15 @@ public struct HarnessReading: Equatable, Sendable {
 /// Where a harness's answer comes from; a fake stands in for it in tests. nil means nothing was read.
 public protocol HarnessProbeSource: Sendable {
     func read() async -> HarnessProbeAnswer?
+    /// The same ask with its reason when it gave nothing usable. A source that cannot say why keeps the default.
+    func ask() async -> HarnessProbeAsk
+}
+
+public extension HarnessProbeSource {
+    func ask() async -> HarnessProbeAsk {
+        let answer = await read()
+        return HarnessProbeAsk(answer: answer, failure: answer == nil ? HarnessAskFailure(category: .endedWithoutAnswer, at: Date()) : nil)
+    }
 }
 
 /// Asks each connected harness for its account, windows, token totals and models, and remembers the answer.
@@ -192,7 +250,9 @@ public actor HarnessProbe {
     private let onReading: (@Sendable (HarnessReading) -> Void)?
     private var readings: [ManagedSession.Provider: HarnessReading] = [:]
     private var lastAsked: [ManagedSession.Provider: Date] = [:]
-    private var running: [ManagedSession.Provider: Task<HarnessReading?, Never>] = [:]
+    /// Why the last ask failed; nil after one that answered.
+    private var failures: [ManagedSession.Provider: HarnessAskFailure] = [:]
+    private var running: [ManagedSession.Provider: Task<HarnessProbeOutcome, Never>] = [:]
 
     public init(connections: HarnessConnections, sources: [ManagedSession.Provider: any HarnessProbeSource],
                 floor: TimeInterval = HarnessProbe.defaultFloor, clock: @escaping @Sendable () -> Date = { Date() },
@@ -209,24 +269,32 @@ public actor HarnessProbe {
         HarnessCapabilities.intrinsic(of: provider).usageLimits && sources[provider] != nil
     }
 
-    /// The reading of `harness`: the last answer when it is younger than the floor, else a new ask (always, with `force`).
-    /// nil for a harness that is switched off or has no answer yet.
-    @discardableResult
+    /// The reading of `harness` after `ask(harness:force:)`; nil for a harness that is switched off, or that has no answer yet.
     public func probe(harness: ManagedSession.Provider, force: Bool = false) async -> HarnessReading? {
+        await ask(harness: harness, force: force).reading
+    }
+
+    /// What the probe did for `harness`: the last answer while it is younger than the floor (`cached`, or the failure of the
+    /// ask that made it, if that ask failed), else a new ask (always, with `force`) whose answer or failure it reports.
+    /// `notAsked` for a harness that is switched off or has no source.
+    public func ask(harness: ManagedSession.Provider, force: Bool = false) async -> HarnessProbeOutcome {
         guard asks(harness), connections.isConnected(harness) else {
             readings[harness] = nil
             lastAsked[harness] = nil
-            return nil
+            failures[harness] = nil
+            return .notAsked
         }
         if let task = running[harness] { return await task.value }
         if !force, let asked = lastAsked[harness], clock().timeIntervalSince(asked) < floor, clock() >= asked {
-            return readings[harness]
+            if let failure = failures[harness] { return .failed(failure, reading: readings[harness]) }
+            if let reading = readings[harness] { return .cached(reading) }
+            return .failed(HarnessAskFailure(category: .endedWithoutAnswer, at: asked), reading: nil)
         }
-        guard let source = sources[harness] else { return nil }
+        guard let source = sources[harness] else { return .notAsked }
         lastAsked[harness] = clock()
-        let task = Task { [weak self] () -> HarnessReading? in
-            let answer = await source.read()
-            return await self?.finish(harness, answer)
+        let task = Task { [weak self] () -> HarnessProbeOutcome in
+            let ask = await source.ask()
+            return await self?.finish(harness, ask) ?? .notAsked
         }
         running[harness] = task
         return await task.value
@@ -237,19 +305,26 @@ public actor HarnessProbe {
         connections.isConnected(harness) ? readings[harness] : nil
     }
 
-    private func finish(_ harness: ManagedSession.Provider, _ answer: HarnessProbeAnswer?) -> HarnessReading? {
+    /// Takes one ask's answer into the reading and remembers its failure. The failure is stamped with the probe's clock.
+    private func finish(_ harness: ManagedSession.Provider, _ ask: HarnessProbeAsk) -> HarnessProbeOutcome {
         running[harness] = nil
         // Switched off while the ask ran: what it read is not kept.
         guard connections.isConnected(harness) else {
             readings[harness] = nil
-            return nil
+            failures[harness] = nil
+            return .notAsked
         }
-        guard let answer, !answer.isEmpty else { return readings[harness] }
         let now = clock()
+        let failure = ask.failure.map { HarnessAskFailure(category: $0.category, at: now) }
+        failures[harness] = failure
+        guard let answer = ask.answer, !answer.isEmpty else {
+            return .failed(failure ?? HarnessAskFailure(category: .endedWithoutAnswer, at: now), reading: readings[harness])
+        }
         let base = readings[harness] ?? HarnessReading(provider: harness, readAt: now)
         let updated = base.updated(by: answer, at: now)
         readings[harness] = updated
         onReading?(updated)
-        return updated
+        guard let failure else { return .answered(updated) }
+        return .failed(failure, reading: updated)
     }
 }

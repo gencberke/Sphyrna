@@ -30,13 +30,18 @@ public struct CodexProbeSource: HarnessProbeSource {
         self.timeout = timeout
     }
 
-    public func read() async -> HarnessProbeAnswer? {
+    public func read() async -> HarnessProbeAnswer? { await ask().answer }
+
+    /// The ask, and why it gave nothing: a timeout, no toolchain, a server that did not start, or no answer (or the caller
+    /// was cancelled). An answer that has some parts is returned whole, with its unread parts nil.
+    public func ask() async -> HarnessProbeAsk {
         let run = ProbeRun()
         let work = Task { await exchange(run) }
         let watchdog = Task {
             try? await Task.sleep(for: .seconds(timeout))
             guard !Task.isCancelled else { return }
             LoomLog.error(.usage, key: "codex-probe-timeout", "The Codex probe ran out of time")
+            await run.record(.timedOut)
             work.cancel()
             // The server's start waits on its own task: stopping the server is what makes it give up.
             await run.close(using: supervisor)
@@ -45,13 +50,22 @@ public struct CodexProbeSource: HarnessProbeSource {
         watchdog.cancel()
         await watchdog.value
         await run.close(using: supervisor)
-        return answer
+        if let answer { return HarnessProbeAsk(answer: answer) }
+        let category = await run.category ?? (Task.isCancelled ? .cancelled : .endedWithoutAnswer)
+        return HarnessProbeAsk(answer: nil, failure: HarnessAskFailure(category: category, at: Date()))
     }
 
     private func exchange(_ run: ProbeRun) async -> HarnessProbeAnswer? {
         let started = ProcessInfo.processInfo.systemUptime
+        let resolved: ProviderToolchain
         do {
-            let resolved = try await toolchain()
+            resolved = try await toolchain()
+        } catch {
+            LoomLog.error(.usage, key: "codex-probe", "The Codex probe could not read (\(LoomLog.category(of: error)))")
+            await run.record(Task.isCancelled ? .cancelled : .noToolchain)
+            return nil
+        }
+        do {
             try FileManager.default.createDirectory(
                 at: socketDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             // Unique per ask and short: Unix socket paths are limited to ~100 bytes.
@@ -74,16 +88,17 @@ public struct CodexProbeSource: HarnessProbeSource {
                     scope: scope))
             await run.keep(manager: manager)
             let client = try await manager.start()
-            let answer = await Self.ask(client, timeout: max(1, timeout - (ProcessInfo.processInfo.systemUptime - started)))
+            let answer = await Self.readAll(client, timeout: max(1, timeout - (ProcessInfo.processInfo.systemUptime - started)))
             return answer.isEmpty ? nil : answer
         } catch {
             LoomLog.error(.usage, key: "codex-probe", "The Codex probe could not read (\(LoomLog.category(of: error)))")
+            await run.record(Task.isCancelled ? .cancelled : .spawnFailed)
             return nil
         }
     }
 
     /// The four reads, one after another on the one connection. A read that fails leaves its part nil.
-    static func ask(_ client: CodexAppServerClient, timeout: TimeInterval) async -> HarnessProbeAnswer {
+    static func readAll(_ client: CodexAppServerClient, timeout: TimeInterval) async -> HarnessProbeAnswer {
         var answer = HarnessProbeAnswer()
         answer.version = await client.serverUserAgent.flatMap(version(fromUserAgent:))
         if let result = try? await client.readAccount(timeout: timeout) { answer.account = account(from: result) }
@@ -170,10 +185,13 @@ public struct CodexProbeSource: HarnessProbeSource {
     static func models(from values: [JSONValue]) -> [HarnessModel] {
         values.compactMap { value -> HarnessModel? in
             guard value["hidden"]?.bool != true, let id = value["model"]?.string ?? value["id"]?.string, !id.isEmpty else { return nil }
-            let efforts = (value["supportedReasoningEfforts"]?.array ?? []).compactMap { $0["reasoningEffort"]?.string }
+            // Levels by shape only (`HarnessEffort`); the default is kept only when it has that shape too.
+            let efforts = HarnessEffort.tokens((value["supportedReasoningEfforts"]?.array ?? []).compactMap { $0["reasoningEffort"]?.string })
+            let defaultEffort = value["defaultReasoningEffort"]?.string.flatMap { HarnessEffort.isToken($0) ? $0 : nil }
             return HarnessModel(
                 id: id, displayName: value["displayName"]?.string.flatMap { $0.isEmpty ? nil : $0 } ?? id,
-                isDefault: value["isDefault"]?.bool ?? false, efforts: efforts)
+                isDefault: value["isDefault"]?.bool ?? false, efforts: efforts,
+                description: value["description"]?.string.flatMap { $0.isEmpty ? nil : $0 }, defaultEffort: defaultEffort)
         }
     }
 }
@@ -185,6 +203,12 @@ actor ProbeRun {
     private var scope: RunScope?
     private var socket: String?
     private var closing: Task<Void, Never>?
+    /// Why the ask failed: the first reason recorded (a timeout, a missing toolchain, a start that failed); nil when none.
+    private(set) var category: PlanLimitsFailure.Category?
+
+    func record(_ reason: PlanLimitsFailure.Category) {
+        if category == nil { category = reason }
+    }
 
     func keep(manager: CodexAppServerManager) { self.manager = manager }
     func keep(scope: RunScope?) { self.scope = scope }

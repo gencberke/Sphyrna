@@ -3,17 +3,47 @@ import Observation
 
 /// One model a harness offers in the composer's pickers.
 public struct ModelCatalogEntry: Equatable, Sendable, Identifiable {
+    /// The harness that offers the model.
+    public var harness: HarnessID
     /// What is passed to the CLI to pick it (Claude's alias, Codex's model slug).
     public var id: String
+    /// The name the product shows: Claude's full name ("Opus 5.5"), Codex's display name.
     public var title: String
     /// The line after the title in the popover; nil for none.
     public var note: String?
+    /// One line the CLI gives about the model, when it gives one.
+    public var description: String?
+    /// The effort levels the model takes, in the CLI's order; empty when none is said (see `HarnessEffort`).
+    public var efforts: [String]
+    /// The level the CLI starts the model at, when it names one.
+    public var defaultEffort: String?
 
-    public init(id: String, title: String, note: String? = nil) {
+    public init(harness: HarnessID, id: String, title: String, note: String? = nil, description: String? = nil,
+                efforts: [String] = [], defaultEffort: String? = nil) {
+        self.harness = harness
         self.id = id
         self.title = title
         self.note = note
+        self.description = description
+        self.efforts = efforts
+        self.defaultEffort = defaultEffort
     }
+}
+
+/// An effort level's token, checked by its shape only (`^[a-z][a-z0-9-]{0,31}$`), so a level a newer CLI adds still passes
+/// and no list of levels is fixed here (FB6-8). A token of another shape is dropped where a CLI's answer is read.
+public enum HarnessEffort {
+    public static func isToken(_ text: String) -> Bool {
+        let scalars = Array(text.unicodeScalars)
+        guard (1...32).contains(scalars.count), let first = scalars.first, isLower(first) else { return false }
+        return scalars.dropFirst().allSatisfy { isLower($0) || isDigit($0) || $0.value == 45 }
+    }
+
+    /// The tokens of `levels` with the right shape, in their order.
+    public static func tokens(_ levels: [String]) -> [String] { levels.filter(isToken) }
+
+    private static func isLower(_ scalar: Unicode.Scalar) -> Bool { (97...122).contains(scalar.value) }
+    private static func isDigit(_ scalar: Unicode.Scalar) -> Bool { (48...57).contains(scalar.value) }
 }
 
 /// The models of each harness, as the composer's popover, the draft's picker and the header's segment show them (D-99).
@@ -53,7 +83,7 @@ public final class ModelCatalog {
     public func apply(_ reading: HarnessReading) {
         guard !reading.models.isEmpty else { return }
         switch reading.provider {
-        case .codex: probedCodex = reading.models.map(Self.entry(of:))
+        case .codex: probedCodex = reading.models.map { Self.entry(of: $0, harness: .codex) }
         case .claude: probedClaude = reading.models
         case .synthetic: break
         }
@@ -65,8 +95,10 @@ public final class ModelCatalog {
         let listed = (probedClaude ?? []).filter { $0.id != "default" && !$0.id.hasPrefix("claude-") && !$0.id.contains("[") }
         guard !listed.isEmpty else { return Self.claude }
         return listed.map { model in
-            ModelCatalogEntry(id: model.id, title: Self.claudeFullName(resolvedModel: model.resolvedModel, displayName: model.displayName),
-                              note: Self.claudeNote(forAlias: model.id))
+            ModelCatalogEntry(harness: .claude, id: model.id,
+                              title: Self.claudeFullName(resolvedModel: model.resolvedModel, displayName: model.displayName),
+                              note: Self.claudeNote(forAlias: model.id), description: model.description,
+                              efforts: model.efforts, defaultEffort: model.defaultEffort)
         }
     }
 
@@ -123,9 +155,9 @@ public final class ModelCatalog {
 
     /// Claude Code's models: the aliases the CLI takes, and what each is for.
     public nonisolated static let claude: [ModelCatalogEntry] = [
-        ModelCatalogEntry(id: "opus", title: "Opus", note: "Long agentic coding"),
-        ModelCatalogEntry(id: "sonnet", title: "Sonnet", note: "Fast, everyday work"),
-        ModelCatalogEntry(id: "haiku", title: "Haiku", note: "Quick answers, no effort"),
+        ModelCatalogEntry(harness: .claude, id: "opus", title: "Opus", note: "Long agentic coding"),
+        ModelCatalogEntry(harness: .claude, id: "sonnet", title: "Sonnet", note: "Fast, everyday work"),
+        ModelCatalogEntry(harness: .claude, id: "haiku", title: "Haiku", note: "Quick answers, no effort"),
     ]
 
     /// The title of a Claude alias; the alias itself when it is not one of the three.
@@ -142,12 +174,13 @@ public final class ModelCatalog {
 
     /// What Codex's group shows before a probe has answered.
     public nonisolated static let codexFallback: [ModelCatalogEntry] = [
-        ModelCatalogEntry(id: "GPT-6 Astra", title: "GPT-6 Astra", note: "Most capable"),
-        ModelCatalogEntry(id: "GPT-6.1 Sol", title: "GPT-6.1 Sol", note: "Near Astra, for less"),
-        ModelCatalogEntry(id: "GPT-6 Luna", title: "GPT-6 Luna", note: "Focused, high-volume work"),
+        ModelCatalogEntry(harness: .codex, id: "GPT-6 Astra", title: "GPT-6 Astra", note: "Most capable"),
+        ModelCatalogEntry(harness: .codex, id: "GPT-6.1 Sol", title: "GPT-6.1 Sol", note: "Near Astra, for less"),
+        ModelCatalogEntry(harness: .codex, id: "GPT-6 Luna", title: "GPT-6 Luna", note: "Focused, high-volume work"),
     ]
 
-    private nonisolated static func entry(of model: HarnessModel) -> ModelCatalogEntry {
-        ModelCatalogEntry(id: model.id, title: model.displayName, note: model.isDefault ? "Default" : nil)
+    private nonisolated static func entry(of model: HarnessModel, harness: HarnessID) -> ModelCatalogEntry {
+        ModelCatalogEntry(harness: harness, id: model.id, title: model.displayName, note: model.isDefault ? "Default" : nil,
+                          description: model.description, efforts: model.efforts, defaultEffort: model.defaultEffort)
     }
 }

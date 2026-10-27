@@ -615,24 +615,26 @@ struct UsageFreshnessTests {
         #expect(usage.limits == nil)
         #expect(usage.limitsFailure == failure)
 
-        // The next ask answers: the failure is gone, whatever the source still remembers.
+        // The next ask answers: the failure is gone, whatever the source still remembers. The limits are as of the probe's
+        // read (the time the Usage page says it read them), not the fake's own stamp.
         clock.advance(400)
-        source.setAnswer(limits())
+        source.setAnswer(limits(fetchedAt: clock.now))
         usage.windowActivityChanged(false)
         usage.windowActivityChanged(true)
         await usage.settle()
         #expect(source.asks == 2)
-        #expect(usage.limits == limits())
+        #expect(usage.limits == limits(fetchedAt: clock.now))
         #expect(usage.limitsFailure == nil)
 
         // A later failure keeps the earlier answer and records why it was not refreshed.
+        let answered = clock.now
         clock.advance(400)
         source.setAnswer(nil)
         source.setFailure(PlanLimitsFailure(category: .notAvailable, at: clock.now))
         usage.windowActivityChanged(false)
         usage.windowActivityChanged(true)
         await usage.settle()
-        #expect(usage.limits == limits())
+        #expect(usage.limits == limits(fetchedAt: answered))
         #expect(usage.limitsFailure?.category == .notAvailable)
     }
 

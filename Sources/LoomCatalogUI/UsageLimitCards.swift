@@ -41,8 +41,8 @@ enum UsageHarnessFilter: Hashable, Sendable {
         return [provider]
     }
 
-    /// Every choice: all, then one per harness the connect switch covers.
-    static var allCases: [UsageHarnessFilter] { [.all] + HarnessConnections.switchable.map(UsageHarnessFilter.harness) }
+    /// Every choice: all, then one per harness the Usage page reads (the catalogue's, `UsageModel.usageHarnesses`).
+    static var allCases: [UsageHarnessFilter] { [.all] + UsageModel.usageHarnesses.map(UsageHarnessFilter.harness) }
 
     /// The choices offered: only when more than one harness is connected.
     static func offered(among connected: [ManagedSession.Provider]) -> [UsageHarnessFilter] {
@@ -70,12 +70,12 @@ extension HarnessLimitWindow {
 }
 
 extension PlanLimits {
-    /// The two windows of a Claude reading (`five_hour`, `seven_day`); nil when it holds neither.
+    /// The two windows of a Claude reading (`ClaudeLimitWindow`); nil when it holds neither.
     init?(reading: HarnessReading) {
         func window(_ id: String) -> PlanLimitWindow? {
             reading.windows.first { $0.id == id }.map { PlanLimitWindow(usedPercent: $0.usedPercent, resetsAt: $0.resetsAt) }
         }
-        let five = window("five_hour"), week = window("seven_day")
+        let five = window(ClaudeLimitWindow.fiveHour), week = window(ClaudeLimitWindow.sevenDay)
         guard five != nil || week != nil else { return nil }
         self.init(fiveHour: five, weekly: week, fetchedAt: reading.readAt)
     }

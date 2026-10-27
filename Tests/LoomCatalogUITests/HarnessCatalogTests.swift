@@ -108,8 +108,8 @@ struct HarnessCatalogTests {
     }
 
     @Test func codexRowsComeFromTheGivenListAndTheGroupIsLeftOutWhenThereIsNone() {
-        let probed = [ModelCatalogEntry(id: "fake-alpha", title: "Fake Alpha", note: "Default"),
-                      ModelCatalogEntry(id: "fake-beta", title: "Fake Beta")]
+        let probed = [ModelCatalogEntry(harness: .codex, id: "fake-alpha", title: "Fake Alpha", note: "Default"),
+                      ModelCatalogEntry(harness: .codex, id: "fake-beta", title: "Fake Beta")]
         let codex = picker().groups(codex: probed)[1]
         #expect(codex.rows.map(\.title) == ["Fake Alpha", "Fake Beta"])
         #expect(codex.rows.map(\.subtitle) == ["Default", nil])

@@ -178,7 +178,7 @@ public struct PlanLimitsCadence: Equatable, Sendable {
 /// collected (the changed files, or a full-scan flag after an overflow); coming back reads just those
 /// files, a full scan only after an overflow or on a new local day, and nothing when nothing changed.
 /// Without a watcher, changes mark the numbers stale and the next time one shows walks everything.
-/// Plan limits come from `limitsSource` on `PlanLimitsCadence`.
+/// Plan limits are asked through the harness probe on `PlanLimitsCadence`; the probe reads Claude's fetcher.
 @MainActor @Observable
 public final class UsageModel {
     public private(set) var state: UsageState = .idle
@@ -193,15 +193,24 @@ public final class UsageModel {
     /// Today's tokens by kind, from the read the chip is made from; nil until the first read. Replaced only
     /// when a figure changes.
     public private(set) var todayUsage: UsageToday?
-    /// The Claude plan limits, nil while unknown or unavailable.
-    public private(set) var limits: PlanLimits?
     /// The harness whose plan limits `limits` holds: the one the plan-limits fetcher asks.
     private static let planLimitsHarness: ManagedSession.Provider = .claude
+    /// The harnesses the Usage page reads, in the catalogue's order: those whose capabilities read usage and limits, and that
+    /// this build has a provider for. Claude is asked on its own cadence; the others (Codex) on activation and the minute tick.
+    public nonisolated static var usageHarnesses: [ManagedSession.Provider] {
+        HarnessCatalogue.ids.compactMap { id in
+            guard let provider = id.provider, HarnessCapabilities.intrinsic(ofHarness: id).usageLimits else { return nil }
+            return provider
+        }
+    }
+    /// The Claude plan limits: the windows of Claude's reading, which the probe holds (nil while unknown, unavailable, or
+    /// switched off). There is no second copy to fall out of step with it.
+    public var limits: PlanLimits? { readings[Self.planLimitsHarness].flatMap { PlanLimits(reading: $0) } }
     /// Why the last plan-limits ask failed; nil after a success or before any ask. The page says
     /// "Plan limits unavailable" while it is set.
     public private(set) var limitsFailure: PlanLimitsFailure?
     /// The last reading of each connected harness, from the probe (D-94): the windows the Limits section draws, and Codex's
-    /// token days. A harness switched off has none. Claude's is the reading `limits` is made from.
+    /// token days. A harness switched off has none. Claude's is the reading `limits` is read from.
     public private(set) var readings: [ManagedSession.Provider: HarnessReading] = [:]
     /// Why the last ask of a harness gave nothing new (`Codex did not answer.`); absent after a good one. Claude's own
     /// reason is `limitsFailure`.
@@ -224,8 +233,8 @@ public final class UsageModel {
     @ObservationIgnored private let cadence: PlanLimitsCadence
     @ObservationIgnored private var limitsTask: Task<Void, Never>?
     @ObservationIgnored private var lastLimitsAsk: Date?
-    /// The probe and the connect switch (`attachHarness`). Without a probe Claude's limits are asked of `limitsSource`
-    /// directly and no other harness is shown.
+    /// The probe and the connect switch (`attachHarness`). Every plan-limits ask goes through the probe: the one attached, else
+    /// the one `init` made from `limitsSource`. Without a probe no ask is made.
     @ObservationIgnored private var harnessProbe: HarnessProbe?
     @ObservationIgnored private var connections: HarnessConnections?
     @ObservationIgnored private var onSectionChange: (@Sendable (UsageSection) -> Void)?
@@ -293,6 +302,12 @@ public final class UsageModel {
         self.debounce = debounce
         self.sleep = sleep
         self.activationCooldown = activationCooldown
+        // The plan limits are read through a probe in every case: the one `attachHarness` hands over, else one that asks the
+        // fetcher alone (so a model made without the app's probe reads the same way).
+        harnessProbe = limitsSource.map { source in
+            HarnessProbe(connections: HarnessConnections(), sources: [Self.planLimitsHarness: ClaudeProbeSource(fetcher: source)],
+                         clock: clock)
+        }
     }
 
     // MARK: Events
@@ -427,8 +442,11 @@ public final class UsageModel {
     public func minuteTick() {
         // Pure: a plan window that has ended drops out whenever the window ticks (visible, key or not).
         rebuildChip()
-        // Codex is asked on the minute tick while the window is active; the probe's five-minute floor makes most of them free.
-        if windowIsActive, isConnected(.codex) { refreshHarnesses(askCodex: true, force: false) }
+        // The harnesses other than Claude are asked on the minute tick while the window is active; the probe's five-minute
+        // floor makes most of them free.
+        if windowIsActive, Self.usageHarnesses.contains(where: { $0 != Self.planLimitsHarness && isConnected($0) }) {
+            refreshHarnesses(askCodex: true, force: false)
+        }
         guard windowIsActive, dayChanged else { return }
         refresh(reason: .dayChanged)
     }
@@ -690,32 +708,27 @@ public final class UsageModel {
     /// the one `get_usage` child answers the account and the windows alike, and the probe's reading stays current for
     /// Connections. A harness that is switched off is not asked.
     private func fetchLimitsIfDue(after minimumAge: TimeInterval) {
-        guard let limitsSource, observing, limitsTask == nil, isConnected(.claude) else { return }
+        guard let harnessProbe, observing, limitsTask == nil, isConnected(Self.planLimitsHarness) else { return }
         if let last = lastLimitsAsk, clock().timeIntervalSince(last) < minimumAge { return }
         lastLimitsAsk = clock()
-        limitsTask = Task { [weak self, harnessProbe] in
-            var fetched: PlanLimits?
-            var reading: HarnessReading?
-            if let harnessProbe {
-                reading = await harnessProbe.probe(harness: .claude, force: true)
-                fetched = reading.flatMap { PlanLimits(reading: $0) }
-            } else {
-                fetched = await limitsSource.fetch()
-            }
+        limitsTask = Task { [weak self] in
+            // Forced: one `get_usage` child answers the account and the windows alike, and the probe's reading stays current for
+            // Connections. A failed ask keeps the probe's last good windows, so the chip and Home keep them too.
+            let outcome = await harnessProbe.ask(harness: Self.planLimitsHarness, force: true)
             guard let self, !Task.isCancelled else { return }
             self.limitsTask = nil
             self.lastLimitsAsk = self.clock()
-            // A failed ask (offline after wake, a timeout) keeps the last answer; it carries its
-            // own "updated" time and ended windows drop out by themselves. (The probe keeps the last good
-            // windows itself, so its reading is the last answer either way.)
-            if let fetched, self.limits != fetched { self.limits = fetched }
-            if let reading, self.readings[.claude] != reading { self.readings[.claude] = reading }
-            // A success clears the failure; a cancelled ask is neither. Through the probe a failed ask still returns a
-            // reading, so the fetcher's own record says whether this one failed.
-            let failure = (harnessProbe != nil || fetched == nil) ? limitsSource.lastFailure : nil
-            if failure?.category != .cancelled, self.limitsFailure != failure { self.limitsFailure = failure }
+            self.takeClaude(outcome)
             self.rebuildChip()
         }
+    }
+
+    /// What Claude's ask gave: its reading, nil included (a check that found no limits clears the old ones), and why it failed.
+    /// A cancelled ask is neither an answer nor a failure, so it changes nothing.
+    private func takeClaude(_ outcome: HarnessProbeOutcome) {
+        if let failure = outcome.failure, failure.category == .cancelled { return }
+        if readings[Self.planLimitsHarness] != outcome.reading { readings[Self.planLimitsHarness] = outcome.reading }
+        if limitsFailure != outcome.failure { limitsFailure = outcome.failure }
     }
 
     /// The pace of each plan window at `now` (five-hour first): are you on track for the limit? Pure
@@ -745,19 +758,13 @@ public final class UsageModel {
     /// Whether Sphyrna offers `harness` (the connect switch); on when no switch was attached.
     public func isConnected(_ harness: ManagedSession.Provider) -> Bool { connections?.isConnected(harness) ?? true }
 
-    /// The harnesses the page can show, Claude first: the connected ones that have a source. Without a probe only Claude.
+    /// The harnesses the page can show, Claude first: the connected ones the page reads. Without a probe only Claude.
     public var connectedHarnesses: [ManagedSession.Provider] {
-        HarnessConnections.switchable.filter { isConnected($0) && ($0 == Self.planLimitsHarness || harnessProbe != nil) }
+        Self.usageHarnesses.filter { isConnected($0) && ($0 == Self.planLimitsHarness || harnessProbe != nil) }
     }
 
-    /// The reading the Limits section draws for `harness`: the probe's, or for Claude without a probe the one the plan-limits
-    /// ask made.
-    func limitsReading(of harness: ManagedSession.Provider) -> HarnessReading? {
-        if let reading = readings[harness] { return reading }
-        guard harness == Self.planLimitsHarness, let limits else { return nil }
-        return HarnessReading(
-            provider: harness, windows: ClaudeProbeSource.windows(of: limits), readAt: limits.fetchedAt)
-    }
+    /// The reading the Limits section draws for `harness`: the probe's.
+    func limitsReading(of harness: ManagedSession.Provider) -> HarnessReading? { readings[harness] }
 
     /// The groups of the Limits section for the harnesses shown, at `now`.
     func limitGroups(shown: [ManagedSession.Provider], now: Date) -> [UsageLimitsGroup] {
@@ -782,15 +789,14 @@ public final class UsageModel {
     }
 
     private func readHarnesses(_ probe: HarnessProbe, askCodex: Bool, force: Bool) async {
-        for harness in HarnessConnections.switchable {
+        for harness in Self.usageHarnesses {
             guard isConnected(harness) else {
                 forget(harness)
                 continue
             }
-            if harness == .codex, askCodex {
-                let before = readings[.codex]?.readAt
-                let reading = await probe.probe(harness: .codex, force: force)
-                applyCodex(reading, before: before, forced: force)
+            // Claude is asked on its own cadence (`fetchLimitsIfDue`); the others here, when this pass asks.
+            if askCodex, harness != Self.planLimitsHarness {
+                applyAsk(await probe.ask(harness: harness, force: force), of: harness)
             } else if let last = await probe.lastReading(of: harness) {
                 takeLast(last, of: harness)
             }
@@ -798,33 +804,29 @@ public final class UsageModel {
         rebuildChip()
     }
 
-    /// What Codex's ask gave. The probe answers a failed ask with the last reading (or nothing), so "the ask ran and gave
-    /// nothing new" is a reading no newer than before, when an ask would have run: forced, or the last read is older than
-    /// the probe's floor.
-    private func applyCodex(_ reading: HarnessReading?, before: Date?, forced: Bool) {
-        guard isConnected(.codex) else { return forget(.codex) }
-        let asked = forced || before.map { clock().timeIntervalSince($0) >= HarnessProbe.defaultFloor } ?? true
-        if let reading, reading.readAt != before {
-            if readings[.codex] != reading { readings[.codex] = reading }
-            if readFailures[.codex] != nil { readFailures[.codex] = nil }
-            return
+    /// What a harness's ask gave, other than Claude's: its reading, and "did not answer" when the ask failed. A switched-off
+    /// harness has none; a cached answer clears an old failure.
+    private func applyAsk(_ outcome: HarnessProbeOutcome, of harness: ManagedSession.Provider) {
+        guard isConnected(harness) else { return forget(harness) }
+        if let reading = outcome.reading, readings[harness] != reading { readings[harness] = reading }
+        if case .notAsked = outcome { return forget(harness) }
+        if outcome.failure != nil {
+            readFailures[harness] = UsageHarnessText.didNotAnswer(harness)
+        } else if readFailures[harness] != nil {
+            readFailures[harness] = nil
         }
-        if let reading, readings[.codex] != reading { readings[.codex] = reading }
-        if asked { readFailures[.codex] = UsageHarnessText.didNotAnswer(.codex) }
     }
 
     /// A newer reading another surface's ask left in the probe (Claude's feeds the chip as well).
     private func takeLast(_ reading: HarnessReading, of harness: ManagedSession.Provider) {
         guard readings[harness].map({ $0.readAt < reading.readAt }) ?? true else { return }
         readings[harness] = reading
-        if harness == Self.planLimitsHarness, let fresh = PlanLimits(reading: reading), limits != fresh { limits = fresh }
     }
 
-    /// A harness switched off: its reading goes, and so do Claude's limits (the chip and Home stop showing them).
+    /// A harness switched off: its reading goes (and with it Claude's limits, which the chip and Home stop showing).
     private func forget(_ harness: ManagedSession.Provider) {
         if readings[harness] != nil { readings[harness] = nil }
         if readFailures[harness] != nil { readFailures[harness] = nil }
-        if harness == Self.planLimitsHarness, limits != nil { limits = nil }
     }
 
     /// The facts the diagnostics export carries from here: the index's scan report and the plan-limits failure.

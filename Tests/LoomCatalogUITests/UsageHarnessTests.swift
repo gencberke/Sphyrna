@@ -35,6 +35,9 @@ struct UsageHarnessTests {
         private let state = Mutex((asks: 0, reading: PlanLimitsReading(limits: nil, account: nil), failure: PlanLimitsFailure?.none))
         var asks: Int { state.withLock { $0.asks } }
         func set(_ reading: PlanLimitsReading, failure: PlanLimitsFailure? = nil) {
+            // The failure travels in the reading, as the fetcher reports it; `lastFailure` keeps it for the diagnostics.
+            var reading = reading
+            reading.failure = failure ?? reading.failure
             state.withLock { $0.reading = reading; $0.failure = failure }
         }
         var lastFailure: PlanLimitsFailure? { state.withLock { $0.failure } }
@@ -326,6 +329,12 @@ struct UsageHarnessTests {
         #expect(claude.failure == "Could not read: Claude did not answer in time.")
         #expect(claude.cards.map(\.content.left) == ["62% left", "80% left"])
         #expect(rig.usage.limits == Self.claudeLimits(), "the chip and Home keep the last good windows too")
+    }
+
+    @Test func theUsagePageReadsTheCataloguesUsageHarnessesAndNoOthers() {
+        // Claude and Codex are the harnesses whose capabilities read usage and limits; opencode, agy and pi read none yet.
+        #expect(UsageModel.usageHarnesses == [.claude, .codex])
+        #expect(UsageHarnessFilter.allCases == [.all, .harness(.claude), .harness(.codex)])
     }
 
     @Test func anotherAccountWithNoLimitsLeavesNoLimitsOfTheFirst() async {

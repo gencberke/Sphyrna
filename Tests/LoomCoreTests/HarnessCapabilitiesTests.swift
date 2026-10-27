@@ -59,12 +59,11 @@ struct HarnessCapabilitiesTests {
 
     // MARK: The guard (D-94)
 
-    /// The files that dispatch per harness on purpose: a launch profile built for one harness, the usage probe's per-harness
-    /// ask cadence (C2 moves it to the catalogue), and the evidence tooling's choice of the harness to fake. No other file asks
-    /// which harness a session has; it asks the table or the descriptor.
+    /// The files that dispatch per harness on purpose: a launch profile built for one harness, and the evidence tooling's
+    /// choice of the harness to fake. No other file asks which harness a session has; it asks the table or the descriptor.
+    /// (The usage page's ask cadence reads the catalogue since C2, so `UsageModel.swift` is not here.)
     private static let dispatchFiles: Set<String> = [
         "Sources/LoomCore/ProviderResume.swift",
-        "Sources/LoomCatalogUI/UsageModel.swift",
         "Sources/loom-app/Evidence/AppDelegate+Evidence.swift",
         "Sources/loom-app/Evidence/EvidenceCatalogCommands.swift",
     ]

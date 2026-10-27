@@ -163,7 +163,12 @@ public protocol PlanLimitsFetching: Sendable {
 
 public extension PlanLimitsFetching {
     var lastFailure: PlanLimitsFailure? { nil }
-    func fetchReading() async -> PlanLimitsReading { PlanLimitsReading(limits: await fetch(), account: nil) }
+    /// A source that does not see the account: its limits, and when there are none, the failure it records (so the probe
+    /// reports the same reason as the fetcher does).
+    func fetchReading() async -> PlanLimitsReading {
+        let limits = await fetch()
+        return PlanLimitsReading(limits: limits, account: nil, failure: limits == nil ? lastFailure : nil)
+    }
 }
 
 /// What one plan-limits ask gave: the windows (nil when the ask failed) and, beside them, the account the CLI answered
@@ -174,11 +179,14 @@ public struct PlanLimitsReading: Equatable, Sendable {
     public var account: HarnessAccount?
     /// The models the same `initialize` answer listed (aliases with the release each resolves to); empty when it listed none.
     public var models: [HarnessModel]
+    /// Why the ask failed, when it did (the same failure `ClaudePlanLimitsFetcher.lastFailure` records); nil when it succeeded.
+    public var failure: PlanLimitsFailure?
 
-    public init(limits: PlanLimits?, account: HarnessAccount?, models: [HarnessModel] = []) {
+    public init(limits: PlanLimits?, account: HarnessAccount?, models: [HarnessModel] = [], failure: PlanLimitsFailure? = nil) {
         self.limits = limits
         self.account = account
         self.models = models
+        self.failure = failure
     }
 }
 
@@ -272,9 +280,10 @@ public struct ClaudePlanLimitsFetcher: PlanLimitsFetching {
 
     private func fail(_ category: PlanLimitsFailure.Category, account: HarnessAccount? = nil,
                       models: [HarnessModel] = []) -> PlanLimitsReading {
-        status.record(PlanLimitsFailure(category: category, at: clock()))
+        let failure = PlanLimitsFailure(category: category, at: clock())
+        status.record(failure)
         LoomLog.error(.usage, key: "plan-limits", "Plan limits could not be read (\(category.rawValue))")
-        return PlanLimitsReading(limits: nil, account: account, models: models)
+        return PlanLimitsReading(limits: nil, account: account, models: models, failure: failure)
     }
 }
 
@@ -346,8 +355,11 @@ enum PlanLimitsWire {
         let models = list.compactMap { entry -> HarnessModel? in
             guard let value = entry["value"] as? String, !value.isEmpty else { return nil }
             let resolved = (entry["resolvedModel"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            let about = (entry["description"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            // Effort levels by shape only (`HarnessEffort`): a level a newer CLI adds passes, a malformed one is dropped.
             return HarnessModel(id: value, displayName: entry["displayName"] as? String ?? value, isDefault: value == "default",
-                                efforts: entry["supportedEffortLevels"] as? [String] ?? [], resolvedModel: resolved)
+                                efforts: HarnessEffort.tokens(entry["supportedEffortLevels"] as? [String] ?? []),
+                                resolvedModel: resolved, description: about)
         }
         return models.isEmpty ? nil : models
     }

@@ -157,6 +157,27 @@ struct HarnessHealthTests {
         #expect(disabled.state == .disabled && disabled.headline == "Turned off")
     }
 
+    /// A plan-limits ask that timed out: no account and no windows, and the timeout as its reason.
+    private struct TimedOutFetcher: PlanLimitsFetching {
+        func fetch() async -> PlanLimits? { nil }
+        func fetchReading() async -> PlanLimitsReading {
+            PlanLimitsReading(limits: nil, account: nil, failure: PlanLimitsFailure(category: .timedOut, at: Date()))
+        }
+    }
+
+    @Test func aTimedOutFirstClaudeCheckIsCouldNotCheckNeverNotSignedIn() async {
+        // Optimizer 2: the probe's reason reaches Connections; a check that timed out names no account, so it is unknown.
+        let clock = Clock()
+        let toolchains = Toolchains()
+        let probe = HarnessProbe(connections: HarnessConnections(), sources: [.claude: ClaudeProbeSource(fetcher: TimedOutFetcher())],
+                                 clock: { clock.now })
+        let checker = HarnessHealthChecker(connections: HarnessConnections(), probe: probe, toolchain: { try toolchains.resolve($0) },
+                                           clock: { clock.now })
+        let health = await checker.check(.claude)
+        #expect(health.state == .attention && health.headline == "Could not check", "unknown, not signed out")
+        #expect(health.account == nil && health.limitsReadable == nil, "nothing was read, so nothing is said about the limits")
+    }
+
     @Test func aPlanAnApiKeyAndAnOldVersionShapeTheReadyHeadline() async {
         let api = Rig(codex: [HarnessProbeAnswer(account: .apiKey, windows: [])])
         let key = await api.checker.check(.codex)

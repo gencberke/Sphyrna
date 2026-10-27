@@ -51,9 +51,11 @@ struct HarnessProbeTests {
         #expect(answer.lifetimeTokens == 123_456_789)
         #expect(answer.tokenDays == [HarnessTokenDay(day: "2026-10-23", tokens: 1_200), HarnessTokenDay(day: "2026-10-24", tokens: 3_400)])
         #expect(answer.models == [
-            HarnessModel(id: "fake-codex-alpha", displayName: "Fake Codex Alpha", isDefault: true, efforts: ["low", "medium", "high"]),
-            HarnessModel(id: "fake-codex-beta", displayName: "Fake Codex Beta", isDefault: false, efforts: ["low", "medium", "high"]),
-        ], "the hidden model is dropped")
+            HarnessModel(id: "fake-codex-alpha", displayName: "Fake Codex Alpha", isDefault: true, efforts: ["low", "medium", "high"],
+                         defaultEffort: "medium"),
+            HarnessModel(id: "fake-codex-beta", displayName: "Fake Codex Beta", isDefault: false, efforts: ["low", "medium", "high"],
+                         defaultEffort: "medium"),
+        ], "the hidden model is dropped; the fixture's empty description is none")
 
         // Never a thread, never a turn: the connection made exactly the handshake and the four reads.
         #expect(methods(context) == ["initialize", "initialized", "account/read", "account/rateLimits/read", "account/usage/read", "model/list"])
@@ -86,7 +88,8 @@ struct HarnessProbeTests {
         let context = try await SessionRuntimeTests.makeContext()
         defer { context.cleanup() }
         let start = ProcessInfo.processInfo.systemUptime
-        #expect(await source(context, mode: "hang", timeout: 1.5).read() == nil)
+        let timedOut = await source(context, mode: "hang", timeout: 1.5).ask()
+        #expect(timedOut.answer == nil && timedOut.failure?.category == .timedOut, "the reason is the timeout, not an empty answer")
         #expect(ProcessInfo.processInfo.systemUptime - start < 8, "the ask is bounded by its timeout, not by the request's")
         #expect(await context.supervisor.runningSessionIDs().isEmpty)
         #expect(sockets(context).isEmpty)
@@ -116,8 +119,25 @@ struct HarnessProbeTests {
             supervisor: context.supervisor,
             toolchain: { throw ProviderToolchainError.executableNotFound(provider: .codex, searched: 0) },
             workingDirectory: context.home.path, socketDirectory: context.socketDirectory, clientVersion: "test")
-        #expect(await missing.read() == nil)
+        let none = await missing.ask()
+        #expect(none.answer == nil && none.failure?.category == .noToolchain)
         #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test func effortLevelsAreCheckedByShapeAndTheDefaultAndDescriptionAreKeptWhenTheyHaveOne() {
+        // A level by shape (a newer CLI's level passes, a malformed one is dropped); a default that is not a level is none.
+        #expect(HarnessEffort.isToken("low") && HarnessEffort.isToken("x-high") && HarnessEffort.isToken("level2"))
+        #expect(!HarnessEffort.isToken("") && !HarnessEffort.isToken("High") && !HarnessEffort.isToken("2fast") && !HarnessEffort.isToken("a b"))
+        #expect(!HarnessEffort.isToken(String(repeating: "a", count: 33)) && HarnessEffort.isToken(String(repeating: "a", count: 32)))
+        let listed: [JSONValue] = [
+            ["model": "m-a", "displayName": "", "description": "Fast", "defaultReasoningEffort": "Medium",
+             "supportedReasoningEfforts": [["reasoningEffort": "low"], ["reasoningEffort": "Not Valid"], ["reasoningEffort": "x-high"]]],
+            ["model": "m-b", "description": "", "defaultReasoningEffort": "high", "supportedReasoningEfforts": []],
+        ]
+        #expect(CodexProbeSource.models(from: listed) == [
+            HarnessModel(id: "m-a", displayName: "m-a", isDefault: false, efforts: ["low", "x-high"], description: "Fast"),
+            HarnessModel(id: "m-b", displayName: "m-b", isDefault: false, efforts: [], defaultEffort: "high"),
+        ])
     }
 
     @Test func theAnswersAreReadFromTheirWireShapes() {
@@ -152,12 +172,18 @@ struct HarnessProbeTests {
         catalog.apply(reading)
         #expect(catalog.models(for: .codex).map(\.title) == ["Fake Codex Alpha", "Fake Codex Beta"], "hidden models are not offered")
         #expect(catalog.models(for: .codex).map(\.note) == ["Default", nil])
+        // Each Codex model carries its own levels and default, from the CLI, and the harness that offers it.
+        #expect(catalog.models(for: .codex).map(\.efforts) == [["low", "medium", "high"], ["low", "medium", "high"]])
+        #expect(catalog.models(for: .codex).map(\.defaultEffort) == ["medium", "medium"])
+        #expect(catalog.models(for: .codex).allSatisfy { $0.harness == .codex })
 
         // A reading with no models (their ask failed) leaves the list; Claude's reading changes Claude's list only.
         catalog.apply(HarnessReading(provider: .codex, readAt: Date()))
         #expect(catalog.models(for: .claude) == ModelCatalog.claude, "before a Claude reading: the fixed three")
-        catalog.apply(HarnessReading(provider: .claude, models: [HarnessModel(id: "x", displayName: "X", isDefault: false, efforts: [])], readAt: Date()))
+        catalog.apply(HarnessReading(provider: .claude, models: [HarnessModel(id: "x", displayName: "X", isDefault: false,
+                                                                              efforts: ["low", "high"])], readAt: Date()))
         #expect(catalog.models(for: .codex).count == 2 && catalog.models(for: .claude).map(\.title) == ["X"])
+        #expect(catalog.models(for: .claude).first?.efforts == ["low", "high"] && catalog.models(for: .claude).first?.harness == .claude)
 
         connections.setConnected(.codex, false)
         #expect(catalog.models(for: .codex).isEmpty, "a switched-off harness offers no models")
@@ -251,6 +277,59 @@ struct HarnessProbeTests {
         #expect(await probe.probe(harness: .codex) == nil)
         #expect(script.asks == 1, "a broken CLI is not started again and again")
         #expect(await probe.probe(harness: .codex, force: true)?.windows.first?.usedPercent == 5)
+    }
+
+    /// A probe source that answers each ask with the next scripted `HarnessProbeAsk`, the last one for ever; counts its asks.
+    private final class Asks: HarnessProbeSource, @unchecked Sendable {
+        private let lock = NSLock()
+        private var scripted: [HarnessProbeAsk]
+        private(set) var count = 0
+
+        init(_ scripted: [HarnessProbeAsk]) { self.scripted = scripted }
+
+        func read() async -> HarnessProbeAnswer? { await ask().answer }
+
+        func ask() async -> HarnessProbeAsk {
+            lock.withLock {
+                count += 1
+                return scripted.count > 1 ? scripted.removeFirst() : (scripted.first ?? HarnessProbeAsk())
+            }
+        }
+    }
+
+    private static func kind(_ outcome: HarnessProbeOutcome) -> String {
+        switch outcome {
+        case .answered: "answered"
+        case .failed: "failed"
+        case .cached: "cached"
+        case .notAsked: "notAsked"
+        }
+    }
+
+    @Test func theOutcomeSaysWhatWasAskedWhyAnAskFailedAndWhatItKept() async {
+        let clock = Clock()
+        let connections = HarnessConnections()
+        let source = Asks([HarnessProbeAsk(answer: answer(10)),
+                           HarnessProbeAsk(failure: PlanLimitsFailure(category: .timedOut, at: clock.now)),
+                           HarnessProbeAsk(answer: answer(30))])
+        let probe = HarnessProbe(connections: connections, sources: [.codex: source], clock: { clock.now })
+
+        #expect(Self.kind(await probe.ask(harness: .codex)) == "answered")
+        clock.advance(301)
+        let failed = await probe.ask(harness: .codex)
+        #expect(Self.kind(failed) == "failed" && failed.failure?.category == .timedOut, "the reason of the failed ask")
+        #expect(failed.reading?.windows.first?.usedPercent == 10, "the last good windows stay")
+        clock.advance(10)
+        let within = await probe.ask(harness: .codex)
+        #expect(Self.kind(within) == "failed" && within.failure?.category == .timedOut, "inside the floor the failure stands")
+        #expect(source.count == 2, "and nothing is asked again inside the floor")
+        clock.advance(300)
+        #expect(Self.kind(await probe.ask(harness: .codex)) == "answered", "past the floor: asked again")
+        #expect(Self.kind(await probe.ask(harness: .codex)) == "cached", "a new answer inside the floor is cached")
+        #expect(source.count == 3)
+        connections.setConnected(.codex, false)
+        #expect(Self.kind(await probe.ask(harness: .codex, force: true)) == "notAsked", "switched off: not asked")
+        #expect(source.count == 3)
     }
 
     @Test func aSwitchedOffHarnessIsNeverAskedAndItsReadingIsDropped() async {
