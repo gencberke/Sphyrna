@@ -141,13 +141,6 @@ extension LoomTheme {
         static let connectHeadline = InkType.small
         static let connectWord = InkType.meta
         static let connectSetupTop: CGFloat = 12
-
-        /// The icon's drop: `0 12px 30px` at 40 % black, in both appearances.
-        static let iconDepth: AdaptiveDepth = {
-            let depth = Depth(ring: nil, insetHighlight: nil,
-                              drops: [ShadowLayer(color: Tone(rgb: RGB(red: 0, green: 0, blue: 0), opacity: 0.4), blur: 30, y: 12)])
-            return AdaptiveDepth(dark: depth, light: depth)
-        }()
     }
 }
 

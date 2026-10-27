@@ -254,7 +254,8 @@ struct ThemeAppearanceTests {
             let dot = LoomTheme.Composer.effortDotOnTone[appearance]
             #expect(dot.rgb.composited(over: fill, opacity: dot.opacity).contrast(with: fill) >= 1.5, "\(appearance) dot on fill")
             let pointer = appearance == .dark ? Self.white : Self.ink
-            #expect(LoomTheme.Composer.effortTrackTone[appearance].rgb == pointer)
+            // The track is the strong hairline: white 10 % in Ink, the solid #D9D9D9 in Paper (DESIGN §0.1).
+            #expect(LoomTheme.Composer.effortTrackTone[appearance].rgb == (appearance == .dark ? Self.white : LoomTheme.Surface.strongHairlineLightRGB))
             #expect(LoomTheme.Composer.effortTrackTone == LoomTheme.Surface.strongHairlineTone)
             #expect(LoomTheme.Composer.effortDotOffTone[appearance].rgb == pointer)
             #expect(LoomTheme.Composer.effortDotOffTone[appearance].opacity == 0.22)
@@ -329,20 +330,21 @@ struct ThemeAppearanceTests {
     // MARK: The values
 
     private static func hex(_ greys: LoomTheme.Surface.Greys) -> [UInt32] {
-        [greys.canvas, greys.raised1, greys.raised2, greys.popover, greys.segmentOn, greys.tree].map {
+        [greys.canvas, greys.sidebar, greys.raised1, greys.raised2, greys.popover, greys.muted, greys.segmentOn, greys.tree].map {
             let bytes = $0.bytes
             return UInt32(bytes.0 << 16 | bytes.1 << 8 | bytes.2)
         }
     }
 
-    /// DESIGN §3 Surfaces and Tones, token by token: canvas, raised 1, raised 2, popover, segment on, tree.
-    @Test func theSixGreysAreDesignsTableInEveryToneAndAppearance() {
-        #expect(Self.hex(Self.greys(.dark, .neutral)) == [0x0C0C0E, 0x121215, 0x17171B, 0x1C1C21, 0x26262C, 0x3B3B41])
-        #expect(Self.hex(Self.greys(.light, .neutral)) == [0xF7F6F3, 0xFBFAF8, 0xFEFDFC, 0xFFFFFF, 0xFFFFFF, 0xC4C2BE])
-        #expect(Self.hex(Self.greys(.dark, .warm)) == [0x0E0C0A, 0x15120F, 0x1A1714, 0x201C18, 0x2C2721, 0x433C34])
-        #expect(Self.hex(Self.greys(.light, .warm)) == [0xF8F2E8, 0xFCF8F1, 0xFEFCF8, 0xFFFDF9, 0xFFFDF9, 0xCFC4B3])
-        #expect(Self.hex(Self.greys(.dark, .cool)) == [0x0A0C10, 0x0F1217, 0x14171D, 0x191D24, 0x232833, 0x363E4C])
-        #expect(Self.hex(Self.greys(.light, .cool)) == [0xF1F3F6, 0xF8F9FB, 0xFCFDFE, 0xFFFFFF, 0xFFFFFF, 0xBCC2CB])
+    /// DESIGN §0.1 (Ink v4, D-106), token by token, with the casts of the reference's v4 blocks: canvas, sidebar, card (raised 1),
+    /// raised (raised 2), popover, muted, segment on, tree (the tree keeps v3's value: §0.1 does not name it).
+    @Test func theEightGreysAreDesignsTableInEveryToneAndAppearance() {
+        #expect(Self.hex(Self.greys(.dark, .neutral)) == [0x0A0A0A, 0x161616, 0x171717, 0x1E1E1E, 0x1C1C1C, 0x262626, 0x0A0A0A, 0x3B3B41])
+        #expect(Self.hex(Self.greys(.light, .neutral)) == [0xFFFFFF, 0xF7F7F7, 0xFFFFFF, 0xFAFAFA, 0xFFFFFF, 0xF4F4F5, 0xFFFFFF, 0xC4C2BE])
+        #expect(Self.hex(Self.greys(.dark, .warm)) == [0x0C0A08, 0x181512, 0x191613, 0x201A16, 0x1E1915, 0x2A231C, 0x0C0A08, 0x433C34])
+        #expect(Self.hex(Self.greys(.light, .warm)) == [0xFFFDF9, 0xFAF5EF, 0xFFFFFF, 0xFDF8F2, 0xFFFFFF, 0xF7F1E9, 0xFFFFFF, 0xCFC4B3])
+        #expect(Self.hex(Self.greys(.dark, .cool)) == [0x080A0C, 0x121619, 0x131719, 0x191D24, 0x171B21, 0x20262E, 0x080A0C, 0x363E4C])
+        #expect(Self.hex(Self.greys(.light, .cool)) == [0xFFFFFF, 0xF3F5F8, 0xFFFFFF, 0xF8FAFC, 0xFFFFFF, 0xF0F3F6, 0xFFFFFF, 0xBCC2CB])
         // The terminal face is dark in both appearances and takes the tone's Ink canvas.
         for tone in PaneTone.allCases { #expect(LoomTheme.Surface.terminalBackground(tone: tone) == Self.greys(.dark, tone).canvas) }
     }
@@ -350,16 +352,18 @@ struct ThemeAppearanceTests {
     @Test func theLevelsRiseInBothAppearancesAndTheCastsLeanTheirWay() {
         for tone in PaneTone.allCases {
             let dark = Self.greys(.dark, tone), light = Self.greys(.light, tone)
-            // Ink and Paper both lift what you act on: the canvas is the lowest, the popover the highest.
-            for greys in [dark, light] {
-                #expect(greys.levels == greys.levels.sorted { $0.luminance < $1.luminance }, "\(tone)")
-            }
+            // Ink lifts what you act on: the canvas, the sidebar a step above it, the card and the raised level above that.
+            #expect(dark.canvas.luminance < dark.sidebar.luminance && dark.sidebar.luminance < dark.raised1.luminance
+                    && dark.raised1.luminance < dark.raised2.luminance, "\(tone)")
+            // Paper is white, with the sidebar one step darker than the canvas.
+            #expect(light.sidebar.luminance < light.canvas.luminance, "\(tone): the Paper sidebar is one step darker")
             for level in light.levels { #expect(level.luminance > 0.8, "Paper is a paper, not a mid grey (\(tone))") }
             for level in dark.levels { #expect(level.luminance < 0.05, "Ink stays dark (\(tone))") }
         }
-        // Warm leans red over blue and Cool blue over red, in both appearances; Neutral is Ink's own greys.
+        // Warm leans red over blue and Cool blue over red, in both appearances; Neutral is Ink's own greys. The sidebar is the
+        // plane that carries a cast in Paper too (Paper's canvas is white in Neutral and Cool).
         for appearance in Appearance.allCases {
-            let warm = Self.greys(appearance, .warm).canvas, cool = Self.greys(appearance, .cool).canvas
+            let warm = Self.greys(appearance, .warm).sidebar, cool = Self.greys(appearance, .cool).sidebar
             #expect(warm.red > warm.blue, "warm \(appearance)")
             #expect(cool.blue > cool.red, "cool \(appearance)")
         }
@@ -369,10 +373,12 @@ struct ThemeAppearanceTests {
 
     @Test func theTextAccentAndStatusRolesAreDesignsValues() {
         typealias Text = LoomTheme.Text
-        #expect(Text.primaryPair == LoomTheme.Adaptive(dark: RGB(hex: 0xECECEF), light: RGB(hex: 0x19181B)))
-        #expect(Text.secondaryPair == LoomTheme.Adaptive(dark: RGB(hex: 0x9E9EA8), light: RGB(hex: 0x5F5D63)))
-        #expect(Text.tertiaryPair == LoomTheme.Adaptive(dark: RGB(hex: 0x868690), light: RGB(hex: 0x67656B)))
-        #expect(Text.faintPair == LoomTheme.Adaptive(dark: RGB(hex: 0x6B6B75), light: RGB(hex: 0x8E8B91)))
+        #expect(Text.primaryPair == LoomTheme.Adaptive(dark: RGB(hex: 0xEDEDED), light: RGB(hex: 0x0A0A0A)))
+        // Ink's secondary is one step lighter than DESIGN §0.1's #A1A1A1: the pressed fill over raised 2 gave 4.47:1, under the
+        // 4.5 floor, and §0.1 moves a pair that misses one step (D-106).
+        #expect(Text.secondaryPair == LoomTheme.Adaptive(dark: RGB(hex: 0xA2A2A2), light: RGB(hex: 0x525252)))
+        #expect(Text.tertiaryPair == LoomTheme.Adaptive(dark: RGB(hex: 0x8F8F8F), light: RGB(hex: 0x6B6B6B)))
+        #expect(Text.faintPair == LoomTheme.Adaptive(dark: RGB(hex: 0x6B6B6B), light: RGB(hex: 0x9C9C9C)))
         #expect(Text.secondaryIncreasedPair == LoomTheme.Adaptive(dark: RGB(hex: 0xBDBDC6), light: RGB(hex: 0x47454B)))
         typealias Accent = LoomTheme.Accent
         #expect(Accent.basePair == LoomTheme.Adaptive(dark: RGB(hex: 0x8791CF), light: RGB(hex: 0x4B56A8)))
@@ -401,19 +407,25 @@ struct ThemeAppearanceTests {
     @Test func theLinesTheFillsAndTheOtherRolesAreDesignsValues() {
         typealias Surface = LoomTheme.Surface
         func opacities(_ tone: LoomTheme.AdaptiveTone) -> [Double] { [tone.dark.opacity, tone.light.opacity] }
-        #expect(opacities(Surface.hairlineTone) == [0.075, 0.085])
-        #expect(opacities(Surface.strongHairlineTone) == [0.115, 0.13])
+        // DESIGN §0.1: the Ink lines are white 7 % and 10 %; the Paper lines are the solid #E5E5E5 and #D9D9D9.
+        #expect(opacities(Surface.hairlineTone) == [0.07, 1])
+        #expect(opacities(Surface.strongHairlineTone) == [0.10, 1])
+        #expect(Surface.hairlineTone.light.rgb == RGB(hex: 0xE5E5E5) && Surface.strongHairlineTone.light.rgb == RGB(hex: 0xD9D9D9))
         #expect(opacities(Surface.strongerHairlineTone) == [0.20, 0.24])
         #expect([Surface.hairlineIncreasedOpacity, Surface.hairlineIncreasedLightOpacity] == [0.30, 0.45])
-        #expect(opacities(Surface.hoverTone) == [0.05, 0.045])
+        #expect(opacities(Surface.hoverTone) == [0.07, 0.045])
         #expect(opacities(Surface.selectedTone) == [0.08, 0.07])
-        #expect(opacities(Surface.pressedTone) == [0.12, 0.10])
+        #expect(opacities(Surface.pressedTone) == [0.12, 0.09])
         #expect(opacities(Surface.gridTone) == [0.034, 0.06])
-        #expect(opacities(Surface.scrimTone) == [0.40, 0.22])
+        #expect(opacities(Surface.scrimTone) == [0.50, 0.20])
         #expect(Surface.scrimTone.dark.rgb == Self.black && Surface.scrimTone.light.rgb == Self.ink)
+        // Input edge and input fill: white 15 % and 4 % in Ink; solid #E0E0E0 and white in Paper.
+        #expect(Surface.inputEdgeTone == LoomTheme.AdaptiveTone(dark: LoomTheme.Tone(rgb: Self.white, opacity: 0.15),
+                                                                light: LoomTheme.Tone(rgb: RGB(hex: 0xE0E0E0), opacity: 1)))
+        #expect(Surface.inputFillTone == LoomTheme.AdaptiveTone(dark: LoomTheme.Tone(rgb: Self.white, opacity: 0.04),
+                                                               light: LoomTheme.Tone(rgb: RGB(hex: 0xFFFFFF), opacity: 1)))
         #expect(Surface.artPair == LoomTheme.Adaptive(dark: RGB(hex: 0xECECF0), light: RGB(hex: 0x161518)))
-        for tone in [Surface.hairlineTone, Surface.strongHairlineTone, Surface.strongerHairlineTone, Surface.hoverTone,
-                     Surface.selectedTone, Surface.pressedTone, Surface.gridTone] {
+        for tone in [Surface.strongerHairlineTone, Surface.hoverTone, Surface.selectedTone, Surface.pressedTone, Surface.gridTone] {
             #expect(tone.dark.rgb == Self.white && tone.light.rgb == Self.ink)
         }
         // The pill's fills are the Highlight tokens.
@@ -424,17 +436,20 @@ struct ThemeAppearanceTests {
         #expect(Surface.hairlineStyle.tone(for: .increased, appearance: .light) == LoomTheme.Tone(rgb: Self.ink, opacity: 0.45))
     }
 
-    @Test func theDepthsAreTheReferencesShadows() {
+    /// DESIGN §0.3: three elevations and no fourth. 1 is a hairline (no drop); 2 a hairline and a small drop (outline buttons,
+    /// the selected segment, the selected session card, the composer); 3 floats (popovers, menus, the palette, sheets).
+    @Test func theThreeElevationsAreTheDesignsShadows() {
         typealias Elevation = LoomTheme.Elevation
-        #expect(Elevation.card.dark.drops.map(\.blur) == [2] && Elevation.card.dark.insetHighlight?.opacity == 0.03)
-        #expect(Elevation.card.dark.drops.first?.color.opacity == 0.45 && Elevation.card.light.drops.first?.color.opacity == 0.06)
-        #expect(Elevation.popover.dark.drops.map(\.blur) == [64, 8] && Elevation.popover.dark.drops.map(\.y) == [24, 2])
-        #expect(Elevation.popover.dark.ring?.opacity == 0.08 && Elevation.popover.light.drops.map(\.blur) == [60, 6])
-        #expect(Elevation.composer.dark.drops.map(\.blur) == [90] && Elevation.composer.dark.ring?.opacity == 0.12)
-        #expect(Elevation.composer.dark.insetHighlight?.opacity == 0.045)
-        #expect(Elevation.window.dark.drops.map(\.blur) == [140] && Elevation.window.dark.drops.first?.y == 50)
-        #expect(Elevation.window.light.drops.first?.color.opacity == 0.22 && Elevation.window.light.ring?.opacity == 0.13)
-        #expect(Elevation.popover.dark.drops.first?.radius == 32, "a CSS blur of B is a SwiftUI radius of B / 2")
+        #expect(Elevation.card.dark.drops.isEmpty && Elevation.card.light.drops.isEmpty)
+        #expect(Elevation.card.dark.ring == nil && Elevation.card.light.ring == nil)
+        #expect(Elevation.lift.dark.drops.map(\.blur) == [2] && Elevation.lift.dark.drops.map(\.y) == [1])
+        #expect(Elevation.lift.dark.drops.first?.color == LoomTheme.Tone(rgb: Self.black, opacity: 0.20))
+        #expect(Elevation.lift.light.drops.first?.color == LoomTheme.Tone(rgb: Self.ink, opacity: 0.06))
+        #expect(Elevation.popover.dark.drops.map(\.blur) == [24] && Elevation.popover.dark.drops.map(\.y) == [10])
+        #expect(Elevation.popover.dark.drops.first?.color == LoomTheme.Tone(rgb: Self.black, opacity: 0.35))
+        #expect(Elevation.popover.light.drops.first?.color == LoomTheme.Tone(rgb: Self.ink, opacity: 0.14))
+        #expect(Elevation.popover.dark.ring?.opacity == 0.08 && Elevation.popover.light.ring?.opacity == 0.10)
+        #expect(Elevation.popover.dark.drops.first?.radius == 12, "a CSS blur of B is a SwiftUI radius of B / 2")
     }
 
     @Test func theTonesAreNeutralWarmAndCoolAndTheAppearancesAreInkAndPaper() {
@@ -600,7 +615,7 @@ struct ThemeAppearanceTests {
         }
         #expect(LoomTheme.Surface.card == LoomTheme.Surface.colors(for: .warm).raised1)
         state.tone = .cool
-        #expect(LoomTheme.Surface.sidebar == LoomTheme.Surface.colors(for: .cool).canvas)
+        #expect(LoomTheme.Surface.sidebar == LoomTheme.Surface.colors(for: .cool).sidebar)
         #expect(LoomTheme.Surface.panel == LoomTheme.Surface.colors(for: .cool).canvas)
     }
 
@@ -614,7 +629,7 @@ struct ThemeAppearanceTests {
                 let drawn = try Self.pixel(Rectangle().fill(LoomTheme.Surface.panel).environment(\.colorScheme, appearance.colorScheme))
                 #expect(close(drawn, Self.greys(appearance, tone).canvas), "\(appearance) \(tone): \(drawn.bytes)")
                 let sidebar = try Self.pixel(Rectangle().fill(LoomTheme.Surface.sidebar).environment(\.colorScheme, appearance.colorScheme))
-                #expect(close(sidebar, Self.greys(appearance, tone).canvas), "sidebar \(appearance) \(tone): \(sidebar.bytes)")
+                #expect(close(sidebar, Self.greys(appearance, tone).sidebar), "sidebar \(appearance) \(tone): \(sidebar.bytes)")
             }
         }
     }
@@ -735,16 +750,16 @@ struct ThemeSettingsModelTests {
         let model = model(at: root)
         model.installTheme()
         #expect(model.paneTone == .neutral && state.tone == .neutral)
-        #expect(TerminalTheme.backgroundRGB == TerminalRGB(red: 0x0C, green: 0x0C, blue: 0x0E), "the terminal is Neutral's Ink canvas")
+        #expect(TerminalTheme.backgroundRGB == TerminalRGB(red: 0x0A, green: 0x0A, blue: 0x0A), "the terminal is Neutral's Ink canvas")
         var applied = 0
         model.onThemeChange = { applied += 1 }
 
         model.setPaneTone(.warm)
         #expect(state.tone == .warm && applied == 1)
-        #expect(TerminalTheme.backgroundRGB == TerminalRGB(red: 0x0E, green: 0x0C, blue: 0x0A), "the terminal is the tone's Ink canvas")
+        #expect(TerminalTheme.backgroundRGB == TerminalRGB(red: 0x0C, green: 0x0A, blue: 0x08), "the terminal is the tone's Ink canvas")
         #expect(try stored(root).paneTone == .warm)
         model.setPaneTone(.cool)
-        #expect(TerminalTheme.backgroundRGB == TerminalRGB(red: 0x0A, green: 0x0C, blue: 0x10))
+        #expect(TerminalTheme.backgroundRGB == TerminalRGB(red: 0x08, green: 0x0A, blue: 0x0C))
         model.setPaneTone(.cool)
         #expect(applied == 2, "no change, no signal")
 

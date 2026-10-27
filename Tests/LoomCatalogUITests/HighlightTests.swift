@@ -153,10 +153,11 @@ struct HighlightTests {
             let hover = Self.under(.hover, card, appearance), selected = Self.under(.selected, card, appearance)
             #expect(abs(selected.luminance - card.luminance) > abs(hover.luminance - card.luminance), "\(appearance)")
         }
-        #expect(HighlightState.hover.tone![.dark].opacity == 0.05 && HighlightState.selected.tone![.dark].opacity == 0.08
+        // DESIGN §0.1 (Ink v4): hover 7 % in Ink and 4.5 % in Paper, pressed 12 % and 9 %; selected keeps its 8 % and 7 %.
+        #expect(HighlightState.hover.tone![.dark].opacity == 0.07 && HighlightState.selected.tone![.dark].opacity == 0.08
                 && HighlightState.pressed.tone![.dark].opacity == 0.12)
         #expect(HighlightState.hover.tone![.light].opacity == 0.045 && HighlightState.selected.tone![.light].opacity == 0.07
-                && HighlightState.pressed.tone![.light].opacity == 0.10)
+                && HighlightState.pressed.tone![.light].opacity == 0.09)
     }
 
     // MARK: The 4 pt grid

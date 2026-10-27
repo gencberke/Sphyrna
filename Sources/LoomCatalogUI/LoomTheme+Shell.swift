@@ -135,9 +135,9 @@ extension LoomTheme.RGB {
 extension LoomTheme.Surface {
     /// The edge of controls, fields and chips: the strong hairline; the raised hairline (30 %, ink 45 % in Paper) under Increase Contrast.
     static let strongEdgeStyle = LoomTheme.ContrastStyle(
-        standard: LoomTheme.Tone(rgb: LoomTheme.whiteRGB, opacity: strongHairlineOpacity),
+        standard: strongHairlineTone.dark,
         increased: LoomTheme.Tone(rgb: LoomTheme.whiteRGB, opacity: hairlineIncreasedOpacity),
-        lightStandard: LoomTheme.Tone(rgb: LoomTheme.inkRGB, opacity: strongHairlineLightOpacity),
+        lightStandard: strongHairlineTone.light,
         lightIncreased: LoomTheme.Tone(rgb: LoomTheme.inkRGB, opacity: hairlineIncreasedLightOpacity))
 }
 

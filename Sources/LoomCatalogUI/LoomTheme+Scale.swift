@@ -33,28 +33,30 @@ extension LoomTheme {
         var trackingPoints: CGFloat { CGFloat(tracking ?? 0) * size }
     }
 
-    /// Ink's type roles. Weight carries hierarchy before size. Sizes are fixed (no Dynamic Type).
+    /// Ink v4's type roles (DESIGN §0.2). Weight carries hierarchy before size. Sizes are fixed (no Dynamic Type).
     enum InkType {
-        /// The new-session page's one question.
-        static let display = InkStyle(size: 46, weight: .ultraLight, display: true, tracking: -0.03)
-        /// Home's one sentence.
-        static let statement = InkStyle(size: 42, weight: .ultraLight, display: true, tracking: -0.03)
+        /// The new-session page's one question (34, weight 300).
+        static let display = InkStyle(size: 34, weight: .light, display: true, tracking: -0.03)
+        /// Home's one sentence (34, weight 300).
+        static let statement = InkStyle(size: 34, weight: .light, display: true, tracking: -0.03)
         /// A page's title: a project page, Settings, an empty state.
         static let title = InkStyle(size: 20, weight: .semibold)
         /// The session's title in the header; a card's heading.
         static let header = InkStyle(size: 13, weight: .semibold)
         /// Rows, menus and fields.
         static let body = InkStyle(size: 13)
-        /// Buttons.
-        static let button = InkStyle(size: 12.5, weight: .medium)
-        /// A page's main action (30 high).
-        static let pageButton = InkStyle(size: 13)
-        /// A small button (22 high).
-        static let smallButton = InkStyle(size: 11.5)
+        /// Buttons: 13 medium (12 medium at 24 high, `smallButton`).
+        static let button = InkStyle(size: 13, weight: .medium)
+        /// A default button of 32 high.
+        static let pageButton = InkStyle(size: 13, weight: .medium)
+        /// A button of 24 high.
+        static let smallButton = InkStyle(size: 12, weight: .medium)
         /// Supporting lines, facts, a card's reason line.
         static let small = InkStyle(size: 12)
-        /// Section labels, written in sentence case and drawn in capitals, tracked .09 em.
-        static let label = InkStyle(size: 10.5, weight: .medium, mono: true, tracking: 0.09, capitals: true)
+        /// Caption: a status bar's figures and a badge. Sans, 11 regular.
+        static let caption = InkStyle(size: 11)
+        /// Section labels: SF Pro 11 semibold in capitals (written in sentence case), tracked 5 % (DESIGN §0.2).
+        static let label = InkStyle(size: 11, weight: .semibold, tracking: 0.05, capitals: true)
         /// Branches, paths, times, tokens, counts and key hints (11 to 11.5).
         static let meta = InkStyle(size: 11, mono: true)
         static let metaLarge = InkStyle(size: 11.5, mono: true)
@@ -85,8 +87,14 @@ extension LoomTheme {
         static let palette: CGFloat = 14
     }
 
-    /// Ink's heights.
+    /// Ink's heights. The v4 control scale (DESIGN §0.3) is `xs` 24 (chips, inline buttons, status bar controls), `sm` 28 (toolbar
+    /// and icon buttons, tabs, menu rows), `standard` 32 (buttons in pages and sheets, fields, segmented controls) and `lg` 36 (a
+    /// sheet's or an empty state's main action); the layout values below are the ones views still draw with.
     enum InkHeight {
+        static let xs: CGFloat = 24
+        static let sm: CGFloat = 28
+        static let standard: CGFloat = 32
+        static let lg: CGFloat = 36
         /// A chip, a state pill, a small button.
         static let chip: CGFloat = 22
         /// A subagent row.

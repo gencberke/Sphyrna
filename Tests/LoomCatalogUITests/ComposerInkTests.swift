@@ -183,10 +183,11 @@ struct ComposerInkTests {
         #expect(LoomTheme.Layout.minimumHitTarget.height <= LoomTheme.Composer.effortTrackHeight)
     }
 
-    @Test func theCardIsLiftedWithTheComposersRingHighlightAndShadow() {
-        #expect(LoomTheme.Composer.depth == LoomTheme.Elevation.composer)
+    /// Ink v4 (DESIGN §0.3): the composer is elevation 2, a hairline and a small drop; no ring, no inner highlight.
+    @Test func theCardIsLiftedWithALevelTwoDropOnly() {
+        #expect(LoomTheme.Composer.depth == LoomTheme.Elevation.lift)
         let dark = LoomTheme.Composer.depth[.dark]
-        #expect(dark.ring?.opacity == 0.12 && dark.insetHighlight != nil && dark.drops.first?.blur == 90)
+        #expect(dark.ring == nil && dark.drops.first?.blur == 2 && dark.drops.first?.y == 1)
     }
 
     @Test func theQueueStripIsTuckedBehindTheCardsTopEdge() {

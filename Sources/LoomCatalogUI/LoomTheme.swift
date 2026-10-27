@@ -52,12 +52,13 @@ enum LoomTheme {
         static let sidebarTintNinety = 0.9
         static let sidebarTintSixtyFive = 0.65
 
-        // Lines, white in Ink and the ink `#1E1C1A` in Paper (DESIGN §3 Surfaces, lines and fills).
-        static let hairlineOpacity = 0.075
-        static let hairlineLightOpacity = 0.085
-        /// The edges of controls, fields and chips.
-        static let strongHairlineOpacity = 0.115
-        static let strongHairlineLightOpacity = 0.13
+        // Lines (DESIGN §0.1, Ink v4): white 7 % for a hairline and 10 % for a strong one in Ink; solid greys in Paper, #E5E5E5 and
+        // #D9D9D9. A hovered edge keeps v3's 20 % and 24 % of the ink.
+        static let hairlineOpacity = 0.07
+        static let strongHairlineOpacity = 0.10
+        /// Paper's two lines are solid, not ink overlays.
+        static let hairlineLightRGB = RGB(hex: 0xE5E5E5)
+        static let strongHairlineLightRGB = RGB(hex: 0xD9D9D9)
         /// A hovered edge.
         static let strongerHairlineOpacity = 0.20
         static let strongerHairlineLightOpacity = 0.24
@@ -65,20 +66,31 @@ enum LoomTheme {
         static let hairlineIncreasedOpacity = 0.30
         static let hairlineIncreasedLightOpacity = 0.45
         static let hairlineIncreasedTone = overlay(dark: hairlineIncreasedOpacity, light: hairlineIncreasedLightOpacity)
-        static let hairlineTone = overlay(dark: hairlineOpacity, light: hairlineLightOpacity)
-        static let strongHairlineTone = overlay(dark: strongHairlineOpacity, light: strongHairlineLightOpacity)
+        static let hairlineTone = AdaptiveTone(dark: Tone(rgb: whiteRGB, opacity: hairlineOpacity),
+                                               light: Tone(rgb: hairlineLightRGB, opacity: 1))
+        static let strongHairlineTone = AdaptiveTone(dark: Tone(rgb: whiteRGB, opacity: strongHairlineOpacity),
+                                                     light: Tone(rgb: strongHairlineLightRGB, opacity: 1))
         static let strongerHairlineTone = overlay(dark: strongerHairlineOpacity, light: strongerHairlineLightOpacity)
         static let hairline = hairlineTone.color
         static let strongHairline = strongHairlineTone.color
         static let strongerHairline = strongerHairlineTone.color
 
-        // The pill's fills: hover, selected, pressed (DESIGN §3 The pill).
-        static let hoverOpacity = 0.05
+        /// Fields and outline buttons (DESIGN §0.1): the input edge is white 15 % in Ink and solid `#E0E0E0` in Paper; the input
+        /// fill is white 4 % and white.
+        static let inputEdgeTone = AdaptiveTone(dark: Tone(rgb: whiteRGB, opacity: 0.15),
+                                                light: Tone(rgb: RGB(hex: 0xE0E0E0), opacity: 1))
+        static let inputFillTone = AdaptiveTone(dark: Tone(rgb: whiteRGB, opacity: 0.04),
+                                                light: Tone(rgb: RGB(hex: 0xFFFFFF), opacity: 1))
+        static let inputEdge = inputEdgeTone.color
+        static let inputFill = inputFillTone.color
+
+        // The pill's fills: hover, selected, pressed (DESIGN §0.1 and §3 The pill). Selected is v3's 8 % and 7 %.
+        static let hoverOpacity = 0.07
         static let selectedOpacity = 0.08
         static let pressedOpacity = 0.12
         static let hoverLightOpacity = 0.045
         static let selectedLightOpacity = 0.07
-        static let pressedLightOpacity = 0.10
+        static let pressedLightOpacity = 0.09
         static let hoverTone = overlay(dark: hoverOpacity, light: hoverLightOpacity)
         static let selectedTone = overlay(dark: selectedOpacity, light: selectedLightOpacity)
         static let pressedTone = overlay(dark: pressedOpacity, light: pressedLightOpacity)
@@ -108,9 +120,9 @@ enum LoomTheme {
         /// The sharks' colour, drawn at the art's alpha.
         static let artPair = Adaptive(dark: RGB(hex: 0xECECF0), light: RGB(hex: 0x161518))
         static let art = artPair.color
-        /// Behind the palette and sheets: black 40 % in Ink, the ink at 22 % in Paper.
-        static let scrimTone = AdaptiveTone(dark: Tone(rgb: RGB(red: 0, green: 0, blue: 0), opacity: 0.40),
-                                            light: Tone(rgb: inkRGB, opacity: 0.22))
+        /// Behind the palette and sheets: black 50 % in Ink, the ink at 20 % in Paper (DESIGN §0.1).
+        static let scrimTone = AdaptiveTone(dark: Tone(rgb: RGB(red: 0, green: 0, blue: 0), opacity: 0.50),
+                                            light: Tone(rgb: inkRGB, opacity: 0.20))
         static let scrim = scrimTone.color
         /// The footer usage chip's meter track and the plan meters' track: the strong hairline.
         static let chipMeterTrackTone = strongHairlineTone
@@ -124,7 +136,7 @@ enum LoomTheme {
         static let hairlineStyle = ContrastStyle(
             standard: Tone(rgb: whiteRGB, opacity: hairlineOpacity),
             increased: Tone(rgb: whiteRGB, opacity: hairlineIncreasedOpacity),
-            lightStandard: Tone(rgb: inkRGB, opacity: hairlineLightOpacity),
+            lightStandard: hairlineTone.light,
             lightIncreased: Tone(rgb: inkRGB, opacity: hairlineIncreasedLightOpacity))
 
         /// One hourly cell of the five-hour activity block: the primary text tone at an
@@ -136,21 +148,23 @@ enum LoomTheme {
         }
     }
 
-    /// The four text tiers (DESIGN §3 Text). Primary 7:1; secondary and tertiary 4.5:1 on the canvas and both raised levels;
-    /// faint is for what you never need to read (2.5:1).
+    /// The four text tiers (DESIGN §0.1, Ink v4). Primary 7:1; secondary and tertiary 4.5:1 on the canvas, the sidebar, the card and
+    /// the raised level, and under the hover and selected fills; faint is for what you never need to read (2.5:1).
     enum Text {
-        static let primaryPair = Adaptive(dark: RGB(hex: 0xECECEF), light: RGB(hex: 0x19181B))
-        static let secondaryPair = Adaptive(dark: RGB(hex: 0x9E9EA8), light: RGB(hex: 0x5F5D63))
+        static let primaryPair = Adaptive(dark: RGB(hex: 0xEDEDED), light: RGB(hex: 0x0A0A0A))
+        /// Ink's secondary is one step lighter than v4's first value (#A1A1A1): under the pressed fill over raised 2 that gave 4.47:1
+        /// (DESIGN §0.1: a pair that misses its floor moves one step, D-106).
+        static let secondaryPair = Adaptive(dark: RGB(hex: 0xA2A2A2), light: RGB(hex: 0x525252))
         static let primaryRGB = primaryPair.dark
         static let secondaryRGB = secondaryPair.dark
         static let primary = primaryPair.color
         static let secondary = secondaryPair.color
         /// The quiet voice: labels, meta, key hints, counts and line numbers. On a popover quiet text is secondary.
-        static let tertiaryPair = Adaptive(dark: RGB(hex: 0x868690), light: RGB(hex: 0x67656B))
+        static let tertiaryPair = Adaptive(dark: RGB(hex: 0x8F8F8F), light: RGB(hex: 0x6B6B6B))
         static let tertiaryRGB = tertiaryPair.dark
         static let tertiary = tertiaryPair.color
         /// Placeholders, disabled items and decorative marks, never text you need.
-        static let faintPair = Adaptive(dark: RGB(hex: 0x6B6B75), light: RGB(hex: 0x8E8B91))
+        static let faintPair = Adaptive(dark: RGB(hex: 0x6B6B6B), light: RGB(hex: 0x9C9C9C))
         static let faintRGB = faintPair.dark
         static let faint = faintPair.color
         /// Increase Contrast lifts secondary text toward primary (at least 7:1 on every level).

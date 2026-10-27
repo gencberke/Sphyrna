@@ -50,10 +50,10 @@ struct LoomThemeTests {
 
     @Test func colorTokensAreBackedByTheirRGBData() {
         // The SwiftUI `Color` and the RGB data must not drift apart: one value, two views.
-        #expect(LoomTheme.Text.primaryRGB == RGB(hex: 0xECECEF))
-        #expect(LoomTheme.Text.secondaryRGB == RGB(hex: 0x9E9EA8))
-        #expect(LoomTheme.Text.tertiaryRGB == RGB(hex: 0x868690))
-        #expect(LoomTheme.Text.faintRGB == RGB(hex: 0x6B6B75))
+        #expect(LoomTheme.Text.primaryRGB == RGB(hex: 0xEDEDED))
+        #expect(LoomTheme.Text.secondaryRGB == RGB(hex: 0xA2A2A2))
+        #expect(LoomTheme.Text.tertiaryRGB == RGB(hex: 0x8F8F8F))
+        #expect(LoomTheme.Text.faintRGB == RGB(hex: 0x6B6B6B))
         #expect(LoomTheme.Accent.baseRGB == RGB(hex: 0x8791CF))
         #expect(LoomTheme.Accent.onAccentRGB == RGB(hex: 0x0B0E16))
         #expect(LoomTheme.Surface.sidebarTintOpacity == 0.8)
@@ -99,20 +99,25 @@ struct LoomThemeTests {
 
     // MARK: Ink's scale (tokens for the surface slices; no view draws with them yet)
 
+    /// DESIGN §0.2 (Ink v4): the display and statement roles are 34 in weight 300; buttons are 13 medium (12 medium at 24 high);
+    /// the Label is SF Pro 11 semibold in capitals, tracked 5 %, and Caption is 11 regular.
     @Test func inkTypeRolesHoldDesignsScale() {
         typealias T = LoomTheme.InkType
-        #expect(T.display.size == 46 && T.display.weight == .ultraLight && T.display.tracking == -0.03 && T.display.display)
-        #expect(T.statement.size == 42 && T.statement.weight == .ultraLight && T.statement.tracking == -0.03)
+        #expect(T.display.size == 34 && T.display.weight == .light && T.display.tracking == -0.03 && T.display.display)
+        #expect(T.statement.size == 34 && T.statement.weight == .light && T.statement.tracking == -0.03)
         #expect(T.title.size == 20 && T.title.weight == .semibold)
         #expect(T.header.size == 13 && T.header.weight == .semibold)
         #expect(T.body.size == 13 && T.body.weight == .regular)
-        #expect(T.button.size == 12.5 && T.button.weight == .medium)
-        #expect(T.pageButton.size == 13 && T.smallButton.size == 11.5 && T.small.size == 12)
-        #expect(T.label.size == 10.5 && T.label.mono && T.label.capitals && T.label.tracking == 0.09)
+        #expect(T.button.size == 13 && T.button.weight == .medium)
+        #expect(T.pageButton.size == 13 && T.pageButton.weight == .medium)
+        #expect(T.smallButton.size == 12 && T.smallButton.weight == .medium)
+        #expect(T.small.size == 12 && T.small.weight == .regular)
+        #expect(T.caption.size == 11 && T.caption.weight == .regular && !T.caption.mono && !T.caption.capitals)
+        #expect(T.label.size == 11 && T.label.weight == .semibold && !T.label.mono && T.label.capitals && T.label.tracking == 0.05)
         #expect(T.meta.size == 11 && T.meta.mono && T.metaLarge.size == 11.5 && T.metaLarge.mono)
         #expect(T.reading.size == 14 && T.reading.lineHeight == 22)
         #expect(T.code.size == 12.5 && T.code.mono && T.code.lineHeight == 20)
-        #expect(abs(T.display.trackingPoints - -1.38) < 0.001)
+        #expect(abs(T.display.trackingPoints - -1.02) < 0.001)
     }
 
     @Test func inkRadiiAndHeightsHoldDesignsScale() {
@@ -135,15 +140,18 @@ struct LoomThemeTests {
 
     // MARK: The sidebar's fills and opacity (FB6-6, D-57)
 
-    @Test func theSidebarFillsAreTheCanvasRaisedAndOneStepDeeper() {
+    /// Ink v4 (DESIGN §0.1): Canvas is the canvas, Raised is the sidebar plane (one step lighter), and Deep is one step darker.
+    @Test func theSidebarFillsAreTheCanvasTheSidebarPlaneAndOneStepDeeper() {
         for appearance in LoomTheme.Appearance.allCases {
             let greys = LoomTheme.Surface.greys(appearance, tone: .neutral)
             let canvas = LoomTheme.Surface.sidebarFillRGB(.canvas, appearance: appearance, tone: .neutral)
             let raised = LoomTheme.Surface.sidebarFillRGB(.raised, appearance: appearance, tone: .neutral)
             let deep = LoomTheme.Surface.sidebarFillRGB(.deep, appearance: appearance, tone: .neutral)
-            #expect(canvas == greys.canvas && raised == greys.raised1)
+            #expect(canvas == greys.canvas && raised == greys.sidebar)
             #expect(deep.luminance < canvas.luminance, "\(appearance): Deep is one step darker")
-            #expect(deep.luminance > raised.luminance * 0.3, "\(appearance): and stays a surface, not black")
+            // Deep stays a surface, not black: the canvas mixed 30 % toward black is #070707 in Ink, which is darker than the v4
+            // sidebar plane but not black.
+            #expect(deep.luminance > 0, "\(appearance): and stays a surface, not black")
         }
     }
 

@@ -44,20 +44,6 @@ private struct ComposerCardSurface: ViewModifier {
             .overlay {
                 if let ring = depth.ring { shape.strokeBorder(ring.color, lineWidth: LoomTheme.Line.hairline).allowsHitTesting(false) }
             }
-            .overlay {
-                if let top = depth.insetHighlight {
-                    // The highlight is the shape less the same shape one point lower: a crescent along the top edge.
-                    shape.fill(top.color)
-                        .mask {
-                            ZStack {
-                                Rectangle()
-                                shape.offset(y: LoomTheme.Line.hairline).blendMode(.destinationOut)
-                            }
-                            .compositingGroup()
-                        }
-                        .allowsHitTesting(false)
-                }
-            }
     }
 }
 

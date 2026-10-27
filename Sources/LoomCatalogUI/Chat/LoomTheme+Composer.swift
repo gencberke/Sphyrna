@@ -16,8 +16,8 @@ extension LoomTheme {
         static let radius: CGFloat = InkRadius.composer
         /// The card is raised 2; it follows the tone, so computed, never stored.
         static var fill: Color { Surface.raised2 }
-        /// The lift of the card: a 12 % ring, an inset top highlight and the 90 pt shadow (`--sh-composer`).
-        static let depth = Elevation.composer
+        /// The lift of the card: level 2 (a hairline and a small drop, Ink v4 §0.3).
+        static let depth = Elevation.lift
         static let textInsetH: CGFloat = 16
         static let textTop: CGFloat = 12
         static let minimumTextHeight: CGFloat = 46

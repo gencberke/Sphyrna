@@ -330,8 +330,8 @@ extension View {
 // MARK: Surface
 
 extension View {
-    /// A card's or a line's surface: the fill, a 1 pt edge inside it and, for a lifted card, Ink's inner top highlight and the
-    /// card's drop (`Elevation.card`).
+    /// A card's or a line's surface: the fill and a 1 pt edge inside it. A lifted card takes `Pinned.depth` (level 1 in Ink v4: no
+    /// drop, no inner highlight).
     func pinnedSurface(radius: CGFloat, fill: Color, edge: AnyShapeStyle, lifted: Bool = false) -> some View {
         modifier(PinnedSurface(radius: radius, fill: fill, edge: edge, lifted: lifted))
     }
@@ -342,28 +342,12 @@ private struct PinnedSurface: ViewModifier {
     let fill: Color
     let edge: AnyShapeStyle
     let lifted: Bool
-    @Environment(\.colorScheme) private var scheme
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius)
-        let depth = LoomTheme.Pinned.depth[LoomTheme.Appearance(scheme)]
         content
             .background {
                 if lifted { shape.fill(fill).depth(LoomTheme.Pinned.depth) } else { shape.fill(fill) }
-            }
-            .overlay {
-                if lifted, let top = depth.insetHighlight {
-                    // The highlight is the shape less the same shape one point lower: a crescent along the top edge.
-                    shape.fill(top.color)
-                        .mask {
-                            ZStack {
-                                Rectangle()
-                                shape.offset(y: LoomTheme.Line.hairline).blendMode(.destinationOut)
-                            }
-                            .compositingGroup()
-                        }
-                        .allowsHitTesting(false)
-                }
             }
             .overlay(shape.strokeBorder(edge, lineWidth: LoomTheme.Line.hairline).allowsHitTesting(false))
     }

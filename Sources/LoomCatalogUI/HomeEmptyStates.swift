@@ -61,7 +61,6 @@ struct HomeEmptyCatalog: View {
                 Image(nsImage: NSApplication.shared.applicationIconImage)
                     .resizable().interpolation(.high)
                     .frame(width: LoomTheme.Home.iconSide, height: LoomTheme.Home.iconSide)
-                    .depth(LoomTheme.Home.iconDepth)
                     .accessibilityHidden(true)
                     .accessibilityIdentifier("home-app-icon")
             }

@@ -74,7 +74,7 @@ greys from v4's neutrals as they do today. Status, accent, project and mode colo
 | Tier | Ink v4 | Paper v4 | Use | Floor (unchanged) |
 | --- | --- | --- | --- | --- |
 | Primary | `#EDEDED` | `#0A0A0A` | Titles, body, values | 7:1 |
-| Secondary | `#A1A1A1` | `#525252` | Supporting text, inactive tabs, descriptions | 4.5:1 on every plane and fill |
+| Secondary | `#A2A2A2` (moved from `#A1A1A1`: the pressed fill over raised 2 gave 4.47:1, so it moved one step, D-106) | `#525252` | Supporting text, inactive tabs, descriptions | 4.5:1 on every plane and fill |
 | Tertiary | `#8F8F8F` (B0: `#8A8A8A` missed 4.5 on the hover fill) | `#6B6B6B` | Labels, meta, counts, key hints | 4.5:1 on the canvas, the sidebar, the card and the hover fill |
 | Faint | `#6B6B6B` | `#9C9C9C` (B0: `#A3A3A3` missed 2.5 on the sidebar) | Placeholders, disabled items, decorative marks | 2.5:1 |
 
@@ -367,17 +367,20 @@ All sizes are points. Every token has an Ink value (dark) and a Paper value (lig
 
 | Token | Ink | Paper | Use |
 | --- | --- | --- | --- |
-| Canvas | `#0C0C0E` | `#F7F6F3` | The window: sidebar, main pane, inspector, header and tab row. The terminal face's whole pane uses Ink's canvas in both appearances |
-| Raised 1 | `#121215` | `#FBFAF8` | Cards: Home's lists and side cards, Settings' groups |
-| Raised 2 | `#17171B` | `#FEFDFC` | The composer |
-| Popover | `#1C1C21` | `#FFFFFF` | Menus, pickers, the palette, the inspector when it overlays the content, the quick question |
-| Segment on | `#26262C` | `#FFFFFF` | The chosen segment of a segmented control |
-| Hairline, strong, stronger | white 7.5 %, 11.5 %, 20 % | ink 8.5 %, 13 %, 24 % | Dividers; the edges of controls, fields and chips; a hovered edge |
-| Hover, selected, pressed | white 5 %, 8 %, 12 % | ink 4.5 %, 7 %, 10 % | The pill (below) and the control family |
+| Canvas | `#0A0A0A` | `#FFFFFF` | Content: pages, the inspector, the header and tab row. The terminal face's whole pane uses Ink's canvas in both appearances |
+| Sidebar | `#161616` | `#F7F7F7` | The sidebar plane, one step from the content (the sidebar's "Raised" fill, Ink v4 §0.1) |
+| Raised 1 (Card) | `#171717` | `#FFFFFF` + hairline | Cards: Home's lists and side cards, Settings' groups |
+| Raised 2 (Raised) | `#1E1E1E` | `#FAFAFA` | The composer and the selected session card |
+| Popover | `#1C1C1C` | `#FFFFFF` | Menus, pickers, the palette, the inspector when it overlays the content, the quick question |
+| Muted | `#262626` | `#F4F4F5` | Secondary buttons, a segmented control's track, badges, the status bar's meter track |
+| Segment on | `#0A0A0A` | `#FFFFFF` | The chosen segment of a segmented control |
+| Hairline, strong, stronger | white 7 %, 10 %, 20 % | `#E5E5E5`, `#D9D9D9`, ink 24 % | Dividers; the edges of controls, fields and chips; a hovered edge |
+| Input edge, input fill | white 15 %, white 4 % | `#E0E0E0`, `#FFFFFF` | Fields and outline buttons |
+| Hover, selected, pressed | white 7 %, 8 %, 12 % | ink 4.5 %, 7 %, 9 % | The pill (below) and the control family |
 | Grid | white 3.4 % | ink 6 % | The faint grid of an empty canvas: the new-session page and Home's band |
 | Tree | `#3B3B41` | `#C4C2BE` | The subagent branches. It is opaque, so crossing lines never brighten |
 | Art | `#ECECF0` at the art's alpha | `#161518` at the art's alpha | The sharks (§17) |
-| Scrim | black 40 % | ink 22 % | Behind the palette and sheets |
+| Scrim | black 50 % | ink 20 % | Behind the palette and sheets |
 
 In Paper, "ink" is `#1E1C1A`.
 
@@ -387,16 +390,19 @@ In Paper, "ink" is `#1E1C1A`.
 
 | Token | Warm, Ink | Warm, Paper | Cool, Ink | Cool, Paper |
 | --- | --- | --- | --- | --- |
-| Canvas | `#0E0C0A` | `#F8F2E8` | `#0A0C10` | `#F1F3F6` |
-| Raised 1 | `#15120F` | `#FCF8F1` | `#0F1217` | `#F8F9FB` |
-| Raised 2 | `#1A1714` | `#FEFCF8` | `#14171D` | `#FCFDFE` |
-| Popover | `#201C18` | `#FFFDF9` | `#191D24` | `#FFFFFF` |
-| Segment on | `#2C2721` | `#FFFDF9` | `#232833` | `#FFFFFF` |
+| Canvas | `#0C0A08` | `#FFFDF9` | `#080A0C` | `#FFFFFF` |
+| Sidebar | `#181512` | `#FAF5EF` | `#121619` | `#F3F5F8` |
+| Raised 1 | `#191613` | `#FFFFFF` | `#131719` | `#FFFFFF` |
+| Raised 2 | `#201A16` | `#FDF8F2` | `#191D24` | `#F8FAFC` |
+| Popover | `#1E1915` | `#FFFFFF` | `#171B21` | `#FFFFFF` |
+| Muted | `#2A231C` | `#F7F1E9` | `#20262E` | `#F0F3F6` |
+| Segment on | `#0C0A08` | `#FFFFFF` | `#080A0C` | `#FFFFFF` |
 | Tree | `#433C34` | `#CFC4B3` | `#363E4C` | `#BCC2CB` |
 
-**Depth.** Only lifted things cast a shadow; the canvas, rows and tabs never do.
-- **A card:** a 1 pt inner top highlight in Ink and a 1–2 pt drop.
-- **A popover:** a hairline ring and a 64 pt soft shadow.
+**Depth.** Three elevations and no fourth (Ink v4, §0.3). Only lifted things cast a shadow; the canvas, rows and tabs never do.
+- **1, a card:** a hairline and no drop.
+- **2, outline buttons, the selected segment, the selected session card and the composer:** a hairline and a `0 1 2` drop.
+- **3, popovers, menus, the palette, the model panel and sheets:** a hairline ring and a `0 10 24` drop.
 - **The composer:** a 12 % hairline ring and a 90 pt soft shadow.
 - **The window:** a hairline ring and a deep soft shadow.
 
@@ -406,10 +412,10 @@ The exact values are the reference's `--sh-card`, `--sh-pop`, `--sh-composer` an
 
 | Tier | Ink | Paper | Use | Floor |
 | --- | --- | --- | --- | --- |
-| Primary | `#ECECEF` | `#19181B` | Titles, body text and values | 7:1; about 16:1 on the canvas |
-| Secondary | `#9E9EA8` | `#5F5D63` | Supporting text, descriptions, inactive tabs | 4.5:1; 7.4 and 6.0 on the canvas |
-| Tertiary | `#868690` | `#67656B` | The quiet voice: labels, meta, key hints, counts, line numbers | 4.5:1 on the canvas, both raised levels and the hover and selected fills; 5.4 and 5.2 on the canvas |
-| Faint | `#6B6B75` | `#8E8B91` | Placeholders, disabled items and decorative marks, never text you need | 2.5:1 |
+| Primary | `#EDEDED` | `#0A0A0A` | Titles, body text and values | 7:1; about 16:1 on the canvas |
+| Secondary | `#A2A2A2` | `#525252` | Supporting text, descriptions, inactive tabs | 4.5:1; 7.4 and 6.0 on the canvas |
+| Tertiary | `#8F8F8F` | `#6B6B6B` | The quiet voice: labels, meta, key hints, counts, line numbers | 4.5:1 on the canvas, both raised levels and the hover and selected fills; 5.4 and 5.2 on the canvas |
+| Faint | `#6B6B6B` | `#9C9C9C` | Placeholders, disabled items and decorative marks, never text you need | 2.5:1 |
 
 A first draft drew tertiary one step dimmer (`#6B6B75`, 3.7:1). Ink keeps the app's contrast floors, so quiet text is a step brighter, and the dimmer value became the faint tier. On a popover, quiet text uses secondary.
 
@@ -462,13 +468,14 @@ Each tone stays at least 30° of hue from the status hues and the accent. Their 
 
 | Role | Face, size and weight | Use |
 | --- | --- | --- |
-| Display | SF Pro Display 46, weight 200 (ultralight), tracking −3 % | The new-session page's one question |
-| Statement | SF Pro Display 42, weight 200, tracking −3 % | Home's one sentence |
+| Display | SF Pro Display 34, weight 300 (light), tracking −3 % | The new-session page's one question |
+| Statement | SF Pro Display 34, weight 300, tracking −3 % | Home's one sentence |
 | Title | SF Pro 20, semibold | A page's title: a project page, Settings, an empty state |
 | Header | 13, semibold | The session's title in the header; a card's heading |
-| Body | 13, regular | Rows, menus and fields. Buttons are 12.5 medium |
+| Body | 13, regular | Rows, menus and fields. Buttons are 13 medium (12 medium at 24 high) |
 | Small | 12, regular | Supporting lines, facts, a card's reason line |
-| Label | SF Mono 10.5, capitals, tracked | Section labels (Session, Worktree, Plan limits), written in sentence case and drawn in capitals |
+| Caption | SF Pro 11, regular | A status bar's figures, a badge |
+| Label | SF Pro 11, semibold, capitals, tracked 5 % | Section labels (Session, Worktree, Plan limits), written in sentence case and drawn in capitals |
 | Meta | SF Mono 11 to 11.5 | Branches, paths, times, tokens, counts and key hints |
 | Terminal | SF Mono 14; Settings allows 11 to 20 | The CLI |
 | Reading | 14 / 22 | Chat prose, your message and the composer's text (D-75) |
@@ -495,7 +502,7 @@ Weight carries hierarchy before size. Sizes are fixed (no Dynamic Type), as befo
 ### The pill
 
 One rounded fill sits under a row, a menu row or an icon button for hover, selection and press (D-63).
-- **Fills:** hover 5 %, selected 8 % with a 1 pt hairline, pressed 12 %. Paper uses 4.5 %, 7 % and 10 % of the ink.
+- **Fills:** hover 7 %, selected 8 % with a 1 pt hairline, pressed 12 %. Paper uses 4.5 %, 7 % and 9 % of the ink.
 - **Selected session rows** take their project's tint instead (§6 Project colour). Home, the head of a project whose page is open and every other row keep the neutral selected fill.
 - **Radius:** 8 for rows and menu rows, 6 for icon buttons.
 - **Motion:** it fades in and out in 120 ms (`Motion.selection`), and at once under Reduce Motion.

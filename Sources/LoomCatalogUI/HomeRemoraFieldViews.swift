@@ -7,7 +7,7 @@ import SwiftUI
 
 private typealias R = LoomTheme.Remora
 
-/// The field's surface: raised 2, radius 15, the composer's ring, inner highlight and shadow (the composer card at the field's radius).
+/// The field's surface: raised 2, radius 15, the composer's ring and its shadow (level 2, the composer card at the field's radius).
 private struct HomeRemoraFieldSurface: ViewModifier {
     @Environment(\.colorScheme) private var scheme
 
@@ -18,19 +18,6 @@ private struct HomeRemoraFieldSurface: ViewModifier {
             .background { shape.fill(LoomTheme.Composer.fill).depth(LoomTheme.Composer.depth) }
             .overlay {
                 if let ring = depth.ring { shape.strokeBorder(ring.color, lineWidth: LoomTheme.Line.hairline).allowsHitTesting(false) }
-            }
-            .overlay {
-                if let top = depth.insetHighlight {
-                    shape.fill(top.color)
-                        .mask {
-                            ZStack {
-                                Rectangle()
-                                shape.offset(y: LoomTheme.Line.hairline).blendMode(.destinationOut)
-                            }
-                            .compositingGroup()
-                        }
-                        .allowsHitTesting(false)
-                }
             }
     }
 }

@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Ink's depth (DESIGN §3 Tones → Depth): only lifted things cast a shadow. The values are the reference's `--sh-card`,
-/// `--sh-pop`, `--sh-composer` and `--sh-win`, kept as data: a ring, an inset top highlight and the drops, each a colour at
-/// an opacity, a CSS blur and a y offset. A CSS blur of B is a SwiftUI radius of about B / 2 (`ShadowLayer.radius`).
+/// Ink v4's depth (DESIGN §0.3, Elevation): three levels and no fourth. Only lifted things cast a shadow: a level 1 surface is a
+/// hairline, a level 2 one a hairline and a small drop, and a level 3 one floats. The values are the reference's `--sh-lift`
+/// and `--sh-pop`, kept as data: a ring and each drop, a colour at an opacity, a CSS blur and a y offset. A CSS blur of B is a
+/// SwiftUI radius of about B / 2 (`ShadowLayer.radius`). The hairline is drawn by the view, not by the depth.
 extension LoomTheme {
     /// One drop of a shadow.
     struct ShadowLayer: Equatable, Sendable {
@@ -16,10 +17,8 @@ extension LoomTheme {
 
     /// A surface's depth in one appearance.
     struct Depth: Equatable, Sendable {
-        /// A 1 pt ring around the surface (the `0 0 0 1px` layer); nil for none.
+        /// A 1 pt ring around the surface (the `0 0 0 1px` layer of a floating surface); nil for none.
         let ring: Tone?
-        /// A 1 pt highlight along the top inside edge (the `inset 0 1px 0` layer); nil for none.
-        let insetHighlight: Tone?
         /// The drops, back to front.
         let drops: [ShadowLayer]
     }
@@ -32,35 +31,31 @@ extension LoomTheme {
         subscript(appearance: Appearance) -> Depth { appearance == .dark ? dark : light }
     }
 
-    /// The four depths of the reference.
+    /// The three elevations of Ink v4 (DESIGN §0.3).
     enum Elevation {
         private static func black(_ opacity: Double) -> Tone { Tone(rgb: RGB(red: 0, green: 0, blue: 0), opacity: opacity) }
         private static func white(_ opacity: Double) -> Tone { Tone(rgb: whiteRGB, opacity: opacity) }
         private static func ink(_ opacity: Double) -> Tone { Tone(rgb: inkRGB, opacity: opacity) }
 
-        /// A card: a 1 pt inner top highlight in Ink and a 1 to 2 pt drop.
+        /// 1. A hairline and no drop: almost everything, cards included. Its hairline is the view's own.
         static let card = AdaptiveDepth(
-            dark: Depth(ring: nil, insetHighlight: white(0.03), drops: [ShadowLayer(color: black(0.45), blur: 2, y: 1)]),
-            light: Depth(ring: nil, insetHighlight: nil, drops: [ShadowLayer(color: ink(0.06), blur: 2, y: 1)]))
-        /// A popover: a hairline ring and a 64 pt soft shadow.
+            dark: Depth(ring: nil, drops: []),
+            light: Depth(ring: nil, drops: []))
+        /// 2. A hairline and a small drop (`0 1 2`, black 20 % in Ink, ink 6 % in Paper): outline buttons, the selected segment, the
+        /// selected session card and the composer.
+        static let lift = AdaptiveDepth(
+            dark: Depth(ring: nil, drops: [ShadowLayer(color: black(0.20), blur: 2, y: 1)]),
+            light: Depth(ring: nil, drops: [ShadowLayer(color: ink(0.06), blur: 2, y: 1)]))
+        /// 3. Floating: a hairline and a `0 10 24` drop (black 35 % in Ink, ink 14 % in Paper): popovers, menus, the palette, the
+        /// model panel and sheets.
         static let popover = AdaptiveDepth(
-            dark: Depth(ring: white(0.08), insetHighlight: nil,
-                        drops: [ShadowLayer(color: black(0.62), blur: 64, y: 24), ShadowLayer(color: black(0.4), blur: 8, y: 2)]),
-            light: Depth(ring: ink(0.10), insetHighlight: nil,
-                         drops: [ShadowLayer(color: ink(0.16), blur: 60, y: 24), ShadowLayer(color: ink(0.06), blur: 6, y: 2)]))
-        /// The composer: a 12 % hairline ring and a 90 pt soft shadow.
-        static let composer = AdaptiveDepth(
-            dark: Depth(ring: white(0.12), insetHighlight: white(0.045), drops: [ShadowLayer(color: black(0.6), blur: 90, y: 30)]),
-            light: Depth(ring: ink(0.12), insetHighlight: nil, drops: [ShadowLayer(color: ink(0.13), blur: 70, y: 24)]))
-        /// The window: a hairline ring and a deep soft shadow.
-        static let window = AdaptiveDepth(
-            dark: Depth(ring: white(0.085), insetHighlight: nil, drops: [ShadowLayer(color: black(0.72), blur: 140, y: 50)]),
-            light: Depth(ring: ink(0.13), insetHighlight: nil, drops: [ShadowLayer(color: ink(0.22), blur: 120, y: 50)]))
+            dark: Depth(ring: white(0.08), drops: [ShadowLayer(color: black(0.35), blur: 24, y: 10)]),
+            light: Depth(ring: ink(0.10), drops: [ShadowLayer(color: ink(0.14), blur: 24, y: 10)]))
     }
 }
 
 extension View {
-    /// Draws a depth's drops under this view (the ring and the highlight are strokes the view draws itself).
+    /// Draws a depth's drops under this view (the ring is a stroke the view draws itself).
     func depth(_ depth: LoomTheme.AdaptiveDepth, x: CGFloat = 0) -> some View {
         modifier(DepthShadow(depth: depth, x: x))
     }
