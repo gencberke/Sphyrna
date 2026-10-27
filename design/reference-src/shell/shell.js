@@ -6,7 +6,7 @@ const CHAPTERS = [
   { id: 'sidebar', title: 'The sidebar', text: 'The sidebar in its two views, on a plane one step lighter than the content: the search, the nav rows, the project heads and the session card, which carries the session\'s status.',
     refs: ['DESIGN §0.5', 'FB7-1', 'D-106'], frames: [['v4', ['sidebar']]] },
   { id: 'session', title: 'The session window', text: 'The window around a session: the header, the tab row, the terminal left untouched, the inspector and the status bar with its popover.',
-    refs: ['DESIGN §0.5', 'D-75', 'D-100', 'D-106'], frames: [['v4', ['session']]] },
+    refs: ['DESIGN §0.5', 'D-75', 'D-100', 'D-106'], frames: [['v4', ['session']], ['chat', ['turn']]] },
   { id: 'model', title: 'The model and the effort', text: 'Two pickers side by side: the model panel with search, a rail of harness marks and every model grouped by harness; and the effort menu with only the chosen model\'s levels.',
     refs: ['DESIGN §0.5', 'FB6-7', 'FB6-8', 'D-106'], frames: [['v4', ['model']]] },
   { id: 'pages', title: 'The draft and Home', text: 'The new-session question, its composer and its one model chip; then Home, with its first launch, its statement, its lists and the accounts in the status bar.',

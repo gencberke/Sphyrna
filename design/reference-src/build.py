@@ -73,21 +73,10 @@ DOCS = {
         'js': ['shared/base.js', 'shared/frame.js', 'shared/engine.js', 'docs/foundations/own.js'],
     },
     'chat': {
-        'title': 'Sphyrna · Ink · The chat',
+        'title': 'Sphyrna · Ink · The turn style',
         'css': ['shared/chat.css', 'shared/harness.css'],
         'body': ['docs/chat/body.html'],
-        'js': ['shared/base.js', 'shared/frame.js', 'shared/engine.js',
-               "=sea('ocean-intro', { cell: 11, alpha: .6, specs: [{ kind: 'hammerhead', L: 520, depth: .66, speed: 16 }, { kind: 'thresher', L: 300, depth: .9, speed: 23 }, { kind: 'whale', L: 820, depth: .26, speed: 8 }] });\n"
-               + IN_PLACE + "sea('empty-side-a', inPlace('whale', 130, 6));\nsea('empty-agents-c', inPlace('hammerhead', 130, 6));\nsea('empty-side-p', inPlace('whale', 130, 6));\n" + LISTEN,
-               'docs/chat/chat.js'],
-        # the chat's session has one subagent at work and one finished
-        'js_rep': [("""    { id:'ink', t:'Port the sidebar to Ink tokens', st:'work', h:'claude', meta:'now', subs:[
-      { st:'work', type:'explorer', d:'Map every sidebar token', e:'2m' },
-      { st:'work', type:'implementer', d:'Port SidebarRow to Ink', e:'now', subs:[
-        { st:'work', type:'explorer', d:'Find the footer tokens', e:'now' } ] },
-      { st:'done', type:'2 finished' } ] },""", """    { id:'ink', t:'Port the sidebar to Ink tokens', st:'work', h:'claude', meta:'now', subs:[
-      { st:'work', type:'explorer', d:"Check the tree colour's contrast", e:'52s' },
-      { st:'done', type:'1 finished' } ] },""")],
+        'js': ['shared/base.js', 'docs/chat/chat.js'],
     },
     'project': {
         'title': 'Sphyrna · Ink · The project page',
