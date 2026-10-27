@@ -49,7 +49,7 @@ struct HarnessCatalogueTests {
         #expect(opencode?.install?.command == "curl -fsSL https://opencode.ai/install | bash")
         #expect(opencode?.install?.alternative == "brew install sst/tap/opencode")
         #expect(opencode?.signIn?.command == "opencode auth login")
-        #expect(opencode?.doctorArguments == ["debug", "config"])
+        #expect(opencode?.doctorArguments == nil, "debug config prints credentials; P1 names a safe doctor")
 
         let agy = HarnessCatalogue.descriptor(for: .agy)
         #expect(agy?.install == nil && agy?.signIn == nil && agy?.doctorArguments == nil, "its --help lists none")
@@ -59,7 +59,7 @@ struct HarnessCatalogueTests {
         #expect(pi?.signIn == nil && pi?.doctorArguments == nil)
         #expect(HarnessSetupCommand.command(forHarness: .opencode, state: .install) == opencode?.install)
         #expect(HarnessSetupCommand.command(forHarness: .agy, state: .install) == nil)
-        #expect(HarnessDeepCheck.arguments(forHarness: .opencode) == ["debug", "config"])
+        #expect(HarnessDeepCheck.arguments(forHarness: .opencode) == nil)
         #expect(HarnessDeepCheck.arguments(forHarness: .agy) == nil)
         #expect(HarnessDeepCheck.display(forHarness: .pi) == nil)
     }

@@ -64,8 +64,9 @@ public enum HarnessCatalogue {
         startable: true,
         provider: .codex)
 
-    /// opencode 2.2.0 (2.1.4 when P1 was planned). Install lines, the profile variable and the doctor command are to
-    /// confirm; `opencode auth login` is its own `auth --help`'s.
+    /// opencode 2.2.0 (2.1.4 when P1 was planned). Install lines and the profile variable are to confirm; `opencode auth
+    /// login` is its own `auth --help`'s. It has no doctor yet: `opencode debug config` prints the whole resolved config,
+    /// provider keys and MCP tokens included, and Deep Check shows a doctor's output on screen. P1 names a safe one.
     private static let opencode = HarnessDescriptor(
         id: .opencode,
         displayName: "opencode",
@@ -74,7 +75,7 @@ public enum HarnessCatalogue {
         install: HarnessSetupCommand(title: "Install", command: "curl -fsSL https://opencode.ai/install | bash",
                                      alternative: "brew install sst/tap/opencode"),
         signIn: HarnessSetupCommand(title: "Sign In", command: "opencode auth login", alternative: nil),
-        doctorArguments: ["debug", "config"],
+        doctorArguments: nil,
         docs: URL(string: "https://opencode.ai/docs/cli"),
         profileVariable: "OPENCODE_CONFIG_DIR",
         profileFolder: ".config/opencode",
