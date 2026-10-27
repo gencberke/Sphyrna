@@ -79,7 +79,7 @@ private struct SessionDragSource: ViewModifier {
         let id = id
         content
             .onDrag {
-                MainActor.assumeIsolated { DragActivity.shared.begin(.session, id) }
+                MainActor.assumeIsolated { DragActivity.shared.begin(id) }
                 return SessionDrag.itemProvider(for: id, title: title)
             }
             .dragSourceDimming(id)

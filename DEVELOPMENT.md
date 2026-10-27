@@ -87,7 +87,7 @@ The closing `@optimizer` review ([D-06](DECISIONS.md)) follows the same rule: on
 | `screenshot:<label>` | `screenshot-<label>.png` (fake providers only) |
 | `buttons:<label>` | window button geometry `buttons-<label>.json` |
 | `select:<id\|none>`, `search:<t>`, `view-mode:<activity\|projects>`, `toggle-sidebar`, `resize:<w>x<h>` | catalog/window state. The sidebar's search field is the palette's door: `search:<t>` types into the palette, opening it first, and an empty text closes it |
-| `add-project:<path>`, `remove-project:<id>`, `move-project:<id>:<delta>`, `move-project-to:<id>:<index>`, `toggle-project:<id>`, `rename:<id>:<t>` | catalog edits (moving a project up or down the list, or dropping its head at a zero-based position as a drag does (W3-c), collapsing or expanding it) |
+| `add-project:<path>`, `remove-project:<id>`, `move-project:<id>:<delta>`, `move-project-to:<id>:<index>`, `reorder-project:<id>:<gap>`, `toggle-project:<id>`, `rename:<id>:<t>` | catalog edits (moving a project up or down the list, dropping its head at a zero-based position, or releasing a held head in a gap as the live reorder does (A1), collapsing or expanding it) |
 | `begin-rename:<id>`, `rename-text:<t>`, `rename-commit` | the inline rename as the user does it: open the field, set its text, commit |
 | `open-add-project-panel`, `panel-choose:<path>`, `close-panel` | the Add Project folder panel: open it, choose a folder (closes the panel), cancel it or close an attached sheet |
 | `terminal-title:<id>:<t>` | a title the terminal reports for the session |
@@ -190,7 +190,7 @@ Sphyrna logs through unified logging (`LoomLog`, `Sources/LoomCore/LoomLog.swift
 - `Chat`: the Chat face's driver and host (ready latency, end causes, requests by kind and answer, undecoded output lines);
 - `Remora`: one end line per call (kind, model, duration, tokens, outcome or failure kind), the automatic brief's decision and the day's slot;
 - `Deletion`: each deletion's start, failed step and outcome, and the resume of interrupted ones;
-- `Catalog`, `ClaudeHooks`, `Registry`, `Toolchain`, `Scope`, `Usage`, `Recovery`, `Quit`, `Diagnostics`, `Sidebar` (also a drag's debug lines: `beginDrag <kind> <id8>`, `validateDrop project <id8> accepts=…`, `performDrop project <id8> accepts=…`, `endDrag <why>`; ids only), and `HookClient` (the `loom-hook` helper).
+- `Catalog`, `ClaudeHooks`, `Registry`, `Toolchain`, `Scope`, `Usage`, `Recovery`, `Quit`, `Diagnostics`, `Sidebar` (also a session drag's debug lines: `beginDrag session <id8>`, `endDrag <why>`; and the project reorder's notice lines: `projectReorder start <id8> place <n>`, `projectReorder gap <id8> <gap>`, `projectReorder end <id8> moved|unchanged|cancelled`; ids only), and `HookClient` (the `loom-hook` helper).
 
 The rules, kept by every call site:
 

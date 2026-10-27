@@ -31,6 +31,8 @@ extension DevelopmentEvidence {
             if let id = id(argument), let delta = Int(rest(argument)) { await model.moveProject(id, by: delta) }
         case "move-project-to": // a head dragged to a zero-based position
             if let id = id(argument), let index = Int(rest(argument)) { await model.moveProject(id, to: index) }
+        case "reorder-project": // a held head released in a gap, through the live reorder's own model path (A1)
+            if let id = id(argument), let gap = Int(rest(argument)) { await model.endProjectReorder(id, gap: gap) }
         case "toggle-project": if let id = id(argument) { await model.toggleCollapsed(id) }
         case "rename":
             if let id = id(argument) { try? await model.rename(sessionID: id, to: rest(argument)) }

@@ -1470,24 +1470,26 @@ public final class CatalogModel {
         await moveProject(id, to: index + offset)
     }
 
-    /// A project head dropped into the gap before head `gap` of the project view (`ProjectDrag.gap`).
-    public func dropProject(_ id: UUID, gap: Int) async {
-        guard let from = projects.firstIndex(where: { $0.id == id }) else { return }
-        await moveProject(id, to: ProjectDrag.position(forGap: gap, from: from))
-    }
-
-    /// A project dropped on the block of `blockID` (its head, drafts, cards and note) takes the block's place (`ProjectDrag.gap`).
-    public func dropProject(_ id: UUID, onBlock blockID: UUID) async {
-        guard let gap = projectDropGap(onBlock: blockID, dragged: id) else { return }
-        await dropProject(id, gap: gap)
-    }
-
-    /// The gap a drop on a block lands in, or nil when nothing moves (the block is gone, or it is the dragged project's own).
-    /// `dragged` is the project being moved, when known.
-    func projectDropGap(onBlock blockID: UUID, dragged: UUID?) -> Int? {
-        guard let index = projects.firstIndex(where: { $0.id == blockID }) else { return nil }
-        let from = dragged.flatMap { id in projects.firstIndex { $0.id == id } }
-        return ProjectDrag.gap(onBlock: index, from: from)
+    /// A project head held and released in the project view's live reorder (A1, FEEDBACK-7 FB7-3): `gap` is the gap the
+    /// pointer picked (`ProjectReorder.gap`), or nil when it was released outside the list. A release over the project's
+    /// own place changes nothing. The order is saved by the one `moveProject` path, so a live drag and Move Up/Move Down
+    /// agree. The end is logged once, whatever it does, with the id's first 8 digits only.
+    public func endProjectReorder(_ id: UUID, gap: Int?) async {
+        let short = ProjectReorder.shortID(id)
+        guard let from = projects.firstIndex(where: { $0.id == id }) else {
+            LoomLog.notice(.sidebar, "projectReorder end \(short) cancelled")
+            return
+        }
+        guard let gap else {
+            LoomLog.notice(.sidebar, "projectReorder end \(short) cancelled")
+            return
+        }
+        guard let to = ProjectReorder.position(forGap: gap, from: from) else {
+            LoomLog.notice(.sidebar, "projectReorder end \(short) unchanged")
+            return
+        }
+        LoomLog.notice(.sidebar, "projectReorder end \(short) moved \(from)->\(to)")
+        await moveProject(id, to: to)
     }
 
     /// Moves a project to a zero-based position (clamped); `projects.sort_order` keeps it.

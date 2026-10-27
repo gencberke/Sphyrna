@@ -163,6 +163,8 @@ struct HomeCountBadge: View {
 
 struct SidebarList: View {
     let model: CatalogModel
+    /// The project view's live reorder (A1): one model for the drag, its measured blocks and the list's own scroll.
+    @State private var reorder = ProjectReorderModel()
 
     // The scroll content is at least as tall as the list, so the empty area below short content
     // belongs to the content and its context menu (a menu on the ScrollView itself is not hit there).
@@ -175,16 +177,24 @@ struct SidebarList: View {
                     LazyVStack(alignment: .leading, spacing: LoomTheme.Sidebar.listSpacing) {
                         switch model.viewMode {
                         case .activity: ActivityList(model: model)
-                        case .projects: ProjectList(model: model)
+                        case .projects: ProjectList(model: model, reorder: reorder)
                         }
                     }
                     .padding(.horizontal, LoomTheme.Space.listInset)
                     .padding(.bottom, LoomTheme.Space.listBottom)
                     .frame(maxWidth: .infinity, minHeight: viewport.size.height, alignment: .topLeading)
+                    .coordinateSpace(.named(ProjectReorderModel.contentSpace))
+                    .background(ProjectReorderScrollLocator { reorder.attach($0) }.allowsHitTesting(false))
                     .contentShape(Rectangle())
                     .contextMenu { SidebarEmptySpaceMenu(model: model) }
                 }
                 .scrollContentBackground(.hidden)
+                // The pointer is read in the viewport's coordinates; the blocks are measured in the content's, so the list's
+                // own scroll is what ties them together (and what the edge scroll moves under a held pointer).
+                .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, offset in
+                    reorder.setContentOffset(offset)
+                }
+                .overlay(alignment: .topLeading) { liftedHead }
                 // The selection moved by something other than a click here (a tab, a shortcut, "Show Session"):
                 // scroll the least that shows the card, without animation. One turn later, so rows that a
                 // project's expansion just loaded are laid out.
@@ -196,6 +206,35 @@ struct SidebarList: View {
                     }
                 }
             }
+        }
+        .coordinateSpace(.named(ProjectReorderModel.viewportSpace))
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { reorder.viewportSize = $0 }
+        // Losing the window's key status ends a held drag the way Escape does (A1).
+        .onChange(of: model.windowIsActive) { _, active in if !active { reorder.cancel() } }
+        .onChange(of: model.projects.map(\.id)) { _, ids in reorder.forget(notIn: Set(ids)) }
+        // The list scrolls itself while the pointer stands near its top or bottom edge; the task lives only for the drag.
+        .task(id: reorder.dragging) {
+            guard reorder.dragging != nil else { return }
+            while !Task.isCancelled, reorder.dragging != nil {
+                reorder.scrollByEdgeStep()
+                try? await Task.sleep(for: ProjectReorder.edgeInterval)
+            }
+        }
+        .onDisappear {
+            reorder.cancel()
+            reorder.attach(nil)
+        }
+    }
+
+    /// The head that follows the pointer, over the list and its scroll view, in the viewport's coordinates.
+    @ViewBuilder private var liftedHead: some View {
+        if let id = reorder.dragging, let project = model.projects.first(where: { $0.id == id }),
+           let frame = reorder.liftedFrame {
+            ProjectReorderLiftedHead(model: model, project: project)
+                .frame(width: frame.width, height: frame.height, alignment: .leading)
+                .offset(x: frame.minX, y: frame.minY)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
     }
 }
@@ -281,6 +320,7 @@ struct ActivityHeading: View {
 /// whether a place has a draft, are children that read them.
 struct ProjectList: View {
     let model: CatalogModel
+    let reorder: ProjectReorderModel
 
     var body: some View {
         let _ = SidebarRenderProbe.projectList(of: model)
@@ -288,21 +328,8 @@ struct ProjectList: View {
         if model.projects.isEmpty && unassigned.rows.isEmpty {
             EmptyListHint(isLoaded: model.isReady)
         }
-        ForEach(model.projects) { project in
-            ProjectHeader(model: model, project: project, isFirst: project.id == model.projects.first?.id)
-            let list = model.list(for: .project(project.id))
-            if !project.collapsed {
-                DraftRows(model: model, scope: .project(project.id), dropsOnProject: project.id, endsBlock: list.rows.isEmpty)
-                ForEach(list.rows) { row in
-                    SessionListEntry(row: row, model: model)
-                        .projectBlockDrop(model: model, projectID: project.id, isTail: row.id == list.rows.last?.id)
-                        .id(row.id)
-                        .onAppear { if row.id == list.rows.last?.id { model.loadMore(.project(project.id)) } }
-                }
-                if list.rows.isEmpty && list.isLoaded {
-                    NoSessionsNote(model: model, projectID: project.id)
-                }
-            }
+        ForEach(Array(model.projects.enumerated()), id: \.element.id) { index, project in
+            ProjectBlock(model: model, project: project, index: index, isFirst: index == 0, reorder: reorder)
         }
         if unassigned.rows.isEmpty {
             LoneDraftsSection(model: model)
@@ -318,6 +345,42 @@ struct ProjectList: View {
     }
 }
 
+/// One project's whole block: its head, its drafts, its session cards and its "No sessions" note (A1). The block is what
+/// the live reorder measures, hides while its head is lifted, and slides when another project hovers over its place. The
+/// head's top gap sits inside the block, so a block that slides takes its own gap with it and the list stays contiguous.
+private struct ProjectBlock: View {
+    let model: CatalogModel
+    let project: CatalogProject
+    let index: Int
+    var isFirst = false
+    let reorder: ProjectReorderModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let list = model.list(for: .project(project.id))
+        let topGap = ProjectHeader.topGap(isFirst: isFirst)
+        VStack(alignment: .leading, spacing: 0) {
+            ProjectHeader(model: model, project: project, index: index, reorder: reorder)
+            if !project.collapsed {
+                DraftRows(model: model, scope: .project(project.id))
+                ForEach(list.rows) { row in
+                    SessionListEntry(row: row, model: model)
+                        .id(row.id)
+                        .onAppear { if row.id == list.rows.last?.id { model.loadMore(.project(project.id)) } }
+                }
+                if list.rows.isEmpty && list.isLoaded {
+                    NoSessionsNote(model: model, projectID: project.id)
+                }
+            }
+        }
+        .padding(.top, topGap)
+        .opacity(reorder.isDragging(project.id) ? 0 : 1)
+        .projectReorderBlock(reorder, id: project.id, topGap: topGap,
+                             slide: reorder.offsetY(blockAt: index),
+                             animation: reduceMotion ? nil : .easeOut(duration: LoomTheme.Sidebar.reorderSlide))
+    }
+}
+
 /// "No sessions" under a project, unless the project has a draft row.
 private struct NoSessionsNote: View {
     let model: CatalogModel
@@ -329,7 +392,6 @@ private struct NoSessionsNote: View {
                 .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary)
                 .padding(.horizontal, LoomTheme.Space.emptyNoteInset).padding(.vertical, LoomTheme.Space.emptyNoteVertical)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .projectBlockDrop(model: model, projectID: projectID, isTail: true)
         }
     }
 }
@@ -374,8 +436,9 @@ struct SectionTitle: View {
 struct ProjectHeader: View {
     let model: CatalogModel
     let project: CatalogProject
-    /// The list's first head sits closer to the label than the heads that follow a group.
-    var isFirst = false
+    /// The project's place in the list: the live reorder's gap is counted from it (A1).
+    let index: Int
+    let reorder: ProjectReorderModel
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @State private var hovering = false
     @FocusState private var focused: Control?
@@ -426,6 +489,8 @@ struct ProjectHeader: View {
             .accessibilityHint("Opens the project page")
             .accessibilityAddTraits(selected ? [.isButton, .isHeader, .isSelected] : [.isButton, .isHeader])
             .accessibilityAction { model.showProjectPage(project.id) }
+            .accessibilityAction(named: "Move Up") { Task { await model.moveProject(project.id, by: -1) } }
+            .accessibilityAction(named: "Move Down") { Task { await model.moveProject(project.id, by: 1) } }
             Button { Task { await model.toggleCollapsed(project.id) } } label: {
                 Image(systemName: expanded ? "chevron.down" : "chevron.right").font(LoomTheme.Typography.chevron)
             }
@@ -459,16 +524,28 @@ struct ProjectHeader: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture { model.showProjectPage(project.id) }
-        // Dragged onto another project's block it takes that block's place (W3-c, RESCUE C3, FB6-4); Move Up and Move Down stay in
-        // the menus. The drag source sits under the right-click menu, as on a session card.
-        .onDrag { ProjectDrag.beginDrag(project.id) }
-        .dragSourceDimming(project.id)
+        // A held head becomes the live reorder after a few points (A1, FB7-3): a click still opens the project page, a right
+        // click still opens the menu, and the head's name is still plain content. Move Up and Move Down stay in the menus and
+        // are accessibility actions on the head.
+        .gesture(
+            DragGesture(minimumDistance: LoomTheme.Sidebar.reorderStartDistance,
+                        coordinateSpace: .named(ProjectReorderModel.viewportSpace))
+                .onChanged { value in
+                    if reorder.dragging == nil {
+                        reorder.begin(project.id, pointer: value.location, index: index)
+                    }
+                    reorder.move(pointer: value.location)
+                }
+                .onEnded { value in
+                    reorder.move(pointer: value.location)
+                    reorder.end { id, gap in
+                        Task { @MainActor in await model.endProjectReorder(id, gap: gap) }
+                    }
+                }
+        )
         .contextMenu { ProjectActionsMenu(model: model, project: project) }
-        .projectBlockDrop(model: model, projectID: project.id, isHead: true, isTail: project.collapsed)
         .accessibilityElement(children: .contain)
         .help(project.path)
-        // The gap above a head belongs to the list, not to the head's hover and click.
-        .padding(.top, Self.topGap(isFirst: isFirst))
     }
 }
 

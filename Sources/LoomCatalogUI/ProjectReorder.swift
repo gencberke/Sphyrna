@@ -23,13 +23,6 @@ struct ProjectReorderBlock: Equatable, Sendable {
     var midY: CGFloat { minY + height / 2 }
 }
 
-/// What a released project reorder did (A1): moved a project to another place, left it where it was, or was cancelled.
-enum ProjectReorderOutcome: Equatable, Sendable {
-    case moved(from: Int, to: Int)
-    case unchanged
-    case cancelled
-}
-
 /// The project view's live reorder (A1, FEEDBACK-7 FB7-3). The pointer against the blocks' mid-lines picks the gap the
 /// dragged project lands in, and every block between its place and that gap slides by the dragged block's height. The
 /// numbers are plain functions, so the gap, the slide and the outcome are tested without a window; `ProjectReorderModel`

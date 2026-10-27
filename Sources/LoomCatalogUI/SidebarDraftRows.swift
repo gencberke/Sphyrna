@@ -82,10 +82,6 @@ struct DraftRows: View {
 
     let model: CatalogModel
     var scope = Scope.all
-    /// In a project's block: the project another project dropped on these rows takes the place of (FB6-4), and whether the last
-    /// draft ends the block (no session card follows it).
-    var dropsOnProject: UUID?
-    var endsBlock = false
 
     /// The drafts a scope lists, newest first.
     static func drafts(in scope: Scope, of model: CatalogModel) -> [SessionDraft] {
@@ -102,16 +98,8 @@ struct DraftRows: View {
             ForEach(drafts) { draft in
                 // The same draft is drawn by the activity view and by its project; each place is its own row.
                 DraftRow(model: model, draft: draft, showsProject: scope == .all)
-                    .projectBlock(model: model, project: dropsOnProject, isTail: endsBlock && draft.id == drafts.last?.id)
                     .id("\(scope == .all ? "all" : "project"):\(draft.id)")
             }
         }
-    }
-}
-
-private extension View {
-    /// The draft row as a part of its project's block, as a drop target for another project.
-    @ViewBuilder func projectBlock(model: CatalogModel, project: UUID?, isTail: Bool) -> some View {
-        if let project { projectBlockDrop(model: model, projectID: project, isTail: isTail) } else { self }
     }
 }
