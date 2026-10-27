@@ -403,8 +403,6 @@ In Paper, "ink" is `#1E1C1A`.
 - **1, a card:** a hairline and no drop.
 - **2, outline buttons, the selected segment, the selected session card and the composer:** a hairline and a `0 1 2` drop.
 - **3, popovers, menus, the palette, the model panel and sheets:** a hairline ring and a `0 10 24` drop.
-- **The composer:** a 12 % hairline ring and a 90 pt soft shadow.
-- **The window:** a hairline ring and a deep soft shadow.
 
 The exact values are the reference's `--sh-card`, `--sh-pop`, `--sh-composer` and `--sh-win`.
 
@@ -488,8 +486,8 @@ Weight carries hierarchy before size. Sizes are fixed (no Dynamic Type), as befo
 | Item | Value |
 | --- | --- |
 | Grid | 4 pt. A glyph and its text may be 2 apart. Optical values stay off the grid: hairlines and the tree's offsets |
-| Radii | **4:** key caps. **6:** controls (buttons, icon buttons, chips). **8:** rows, fields and large buttons. **10:** the activity view's cards. **12:** cards, menus and the window. **18:** the composer. A nested control steps down by its padding: a control group or a segmented control is 7, with 5 inside. The palette keeps 14 |
-| Heights | **22:** chip, state pill, small button. **24:** subagent row. **26:** control (button, icon button, segment, control group, session tab); the chat's work row. **28:** sidebar row and project head; the chat's turn fold and live row. **30:** field and large button; a row of the model popover. **36:** tab row. **38:** the composer's bar. **52:** header |
+| Radii | **4:** key caps. **6:** a segmented control and its segments. **8:** controls (buttons, icon buttons), rows and fields. **10:** the activity view's cards. **12:** cards, menus and the window. **18:** the composer. A nested control steps down by its padding: a control group or a segmented control is 7, with 5 inside. The palette keeps 14 |
+| Heights | **22:** chip and state pill (a small button is 24, §0.3). **24:** subagent row. **26:** control group and session tab; the chat's work row. Buttons, icon buttons and segments take §0.3's heights. **28:** sidebar row and project head; the chat's turn fold and live row. **30:** field and large button; a row of the model popover. **36:** tab row. **38:** the composer's bar. **52:** header |
 | Window | Initial 1220×780, minimum 780×500 |
 | Sidebar | Default 300 wide, range 220–520, persisted |
 | Detail pane | Minimum 480 |

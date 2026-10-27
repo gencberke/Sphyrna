@@ -110,7 +110,6 @@ enum LoomTheme {
         static let controlHoverTone = selectedTone
         static let controlPressedTone = pressedTone
         static let control = controlTone.color
-        static let controlSelected = selected
         static let controlHover = controlHoverTone.color
         static let controlPressed = controlPressedTone.color
 
@@ -435,9 +434,6 @@ enum LoomTheme {
     enum Opacity {
         /// A disabled control is drawn at 38 % (DESIGN §6 Controls).
         static let disabled = 0.38
-        static let accentPressed = 0.8
-        static let accentTint = 0.14
-        static let accentTintPressed = 0.24
         /// A pressed row button (a project header).
         static let rowPressed = 0.7
         static let activityCellFloor = 0.10

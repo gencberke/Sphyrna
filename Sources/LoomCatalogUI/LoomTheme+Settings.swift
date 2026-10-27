@@ -40,10 +40,6 @@ extension LoomTheme {
         static let labelBottom: CGFloat = 8
         static let labelGap: CGFloat = 10
         static let linkHeight: CGFloat = 18
-        static let linkFont = InkStyle(size: 11.5, weight: .medium)
-        static let linkPaddingH: CGFloat = 6
-        static let linkRadius = InkRadius.control
-        static let linkDisabled = 0.45
 
         // MARK: A card and its rows
 
