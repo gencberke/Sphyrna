@@ -13,9 +13,9 @@ T3 Code for them, and the decisions that turn 1.8.0 into one release ([D-105](..
 
 ## Resume here
 
-- **State:** docs only. Nothing is built. `@user` sets up the implementers and starts them (D-105).
-- **Next:** `@user` answers or accepts the [open questions](#decisions-open); B0 (the reference in v4) runs first so the look is
-  approved on screen before any Swift slice of it; P0 and P1 (the harness spikes) can run beside it.
+- **State:** B0, A1 and C1 have run. B0 is approved and C1 is reviewed; A1 is finishing (plans/1.8.0, ACTIVE-PLAN).
+- **Next:** B0's look is approved (D-106). B1 brings it into the app, and B0b redraws the rest of the reference in v4. Q7–Q13
+  are still open; Q13 is needed before P0 and P1.
 
 ## Items
 
@@ -140,6 +140,9 @@ The verdicts are in [docs/FEATURES.md](../docs/FEATURES.md) under each feature. 
 ## Decisions (open)
 
 Each has a recommended default. `@user` answers in chat; a silent item takes its default when its slice starts.
+
+**Answered on 27 Oct ([D-106](../DECISIONS.md)):** Q1–Q6 take their defaults ("hepsi okey", on B0's reference). The model and the
+effort become two pickers. Q7–Q13 are still open.
 
 | Q | Question | Default |
 | --- | --- | --- |

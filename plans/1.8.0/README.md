@@ -45,13 +45,13 @@ What does not change: the contracts of SPEC §1–§5 and §12.
 
 ```
 Wave 0  B0 reference v4 ──(@user approves the look)──┐      P0 Codex spike      P1 opencode/agy/pi spike
-Wave 1  A1 project reorder        C1 harness catalogue │ B1 v4 tokens & controls
+Wave 1  A1 project reorder        C1 harness catalogue │ B1 v4 tokens & controls    B0b the rest of the reference in v4
 Wave 2  C2 catalogue consumers ──┬── B2 sidebar & card (after A1, B1)
                                   ├── C3 Connections & Home's connect cards (after B1, C1)
                                   └── B3 status bar (after B1, B2, C2)
-Wave 3  C4 harness-neutral draft (after C2) ── B4 model & effort panel (after B1, C4)
+Wave 3  C4 harness-neutral draft (after C2) ── B4 model & effort pickers (after B1, C4)
         D1 Codex sessions (after P0, C4) ── D2 Codex reader & deletion (after D1)
-        B5a Home/project/draft · B5b session window & inspector · B5c Settings/sheets/palette/menus (after B1)
+        B5a Home/project/draft · B5b session window & inspector · B5c Settings/sheets/palette/menus (after B1, B0b)
 Wave 4  E1 opencode · E2 agy · E3 pi (after P1, C4, D1)    F1 send (after D1)    F2 Changes → session (after F1)
         G1 Remora backends (after P0, P1, C2, B4)    H1 usage completion (after C2, D2)    I1 names & leftovers
 Wave 5  Z gate (planner): pool, real CLIs, energy, visual pass, optimizer, release
@@ -61,23 +61,24 @@ Wave 5  Z gate (planner): pool, real CLIs, energy, visual pass, optimizer, relea
 
 | ID | Slice | Items | Area (write set in the brief) | After | Can run beside |
 | --- | --- | --- | --- | --- | --- |
-| **B0** | The reference in Ink v4: tokens, controls, sidebar and card, status bar, model panel, Connections, drawn in `reference.html` for `@user`'s approval | FB7-1, FB7-2 | `design/reference-src/**`, the built pages | — | P0, P1, A1, C1 |
+| **B0** | The reference in Ink v4: tokens, controls, sidebar and card, status bar, model panel, Connections, drawn in `reference.html` for `@user`'s approval (approved 27 Oct, D-106) | FB7-1, FB7-2 | `design/reference-src/**`, the built pages | — | P0, P1, A1, C1 |
 | **P0** | Codex 0.164 spike: launch flags, the daemon and ownership, session-scoped hooks, the session id, resume, `delete`, `queue`, rollouts, title states, a no-tools one-shot | FB6-14, FB6-22 | evidence only | — | everything |
 | **P1** | opencode, agy and pi spike: the same questions per CLI | FB6-13, Q9 | evidence only | — | everything |
 | **A1** | The project reorder by a live drag gesture | FB7-3 | sidebar project list, `ProjectDrag`, `ProjectBlockDrop`, `DragActivity` | — | B0, C1, P0, P1 |
 | **C1** | The harness catalogue: `HarnessID`, descriptors for five harnesses, availability, On/Off/Not found, the widened guard | FB6-13, optimizer 6 and 11 | `LoomCore` harness files, preferences, guard tests | — | B0, A1, B1 |
 | **B1** | Ink v4 tokens and the control family | FB7-2 | `LoomTheme*.swift`, the shared control styles, DESIGN §3 and §6 | B0 approved | C1, P0, P1 |
+| **B0b** | The rest of the reference in v4: every other chapter redrawn with v4's parts; the v3 tokens, the v3/v4 switch and the Q bar removed; one design language in the reference and the landing page | D-106 | `design/reference-src/**`, the built pages | B0 integrated, the v4 rules in DESIGN.md | everything except B0 |
 | **C2** | Everything that lists harnesses reads the catalogue: models with their efforts, probes, usage and limits, menus, palette, Home | FB6-13, FB6-3, optimizer 2, 4 and 10 | `LoomCore` model and usage files, `CatalogModel` (the harness region), menus | C1 | B2 |
 | **C3** | Settings → Connections and Home's connect cards in v4, with Not found | FB6-13 | Connections and Home's connect card files | B1, C1 | C2, B2 |
 | **B2** | The sidebar and the session card in v4 | FB7-1, FB7-2 | sidebar files | A1, B1 | C2, C3 |
 | **B3** | The status bar | Q7, FB6-3 | a new status bar view, the window layout, the footer's removal | B1, B2, C2 | C4, D1 |
 | **C4** | The harness-neutral draft: `SessionDraft.harness`, `HarnessLaunchChoices`, modes per harness, presets and last-used migrated | FB6-7, FB6-8 | `LoomCore` draft and launch-choice files, `CatalogModel` (the draft region) | C2 | B3, B5a–c |
-| **B4** | The model and effort panel | FB6-7, FB6-8 | a new panel view, the chips that open it | B1, C4 | D1 |
+| **B4** | The model picker and the effort picker, two chips side by side (D-106) | FB6-7, FB6-8 | the two picker views, the chips that open them | B1, C4 | D1 |
 | **D1** | Codex sessions: start and resume from the draft, status, ownership, the production gate opened | FB6-14 | Codex launch profile, hooks, `HarnessRegistry`, run host wiring | P0, C4 | B4, B5 |
 | **D2** | Codex's rollout reader (last lines, search, context, edits, usage) and harness-owned deletion with `codex delete` | FB6-14, FB5-7 | `LoomCore` reader and deletion files | D1 | B5, E* |
-| **B5a** | Home, the project page and the draft page in v4 | FB7-2 | those views | B1 | C4, D1, D2 |
-| **B5b** | The session window in v4: header, tabs, inspector (Overview, Changes, Agents in the turn style), ended line, banners, the open request's card | FB7-2, FB6-18 | those views | B1 | C4, D1, D2 |
-| **B5c** | Settings (not Connections), sheets, the palette, menus and About in v4 | FB7-2 | those views | B1, C3 | C4, D1, D2 |
+| **B5a** | Home, the project page and the draft page in v4 | FB7-2 | those views | B1, B0b | C4, D1, D2 |
+| **B5b** | The session window in v4: header, tabs, inspector (Overview, Changes, Agents in the turn style), ended line, banners, the open request's card | FB7-2, FB6-18 | those views | B1, B0b | C4, D1, D2 |
+| **B5c** | Settings (not Connections), sheets, the palette, menus and About in v4 | FB7-2 | those views | B1, C3, B0b | C4, D1, D2 |
 | **E1** | opencode sessions (plain terminal) | Q9 | its descriptor, launch profile, status source | P1, C4, D1 | E2, E3 |
 | **E2** | agy sessions (plain terminal) | Q9 | as E1 | P1, C4, D1 | E1, E3 |
 | **E3** | pi sessions (plain terminal) | Q9 | as E1 | P1, C4, D1 | E1, E2 |

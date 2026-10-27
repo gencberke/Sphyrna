@@ -239,7 +239,7 @@ taken from the CLI's own list.
 - **Spec:** [SPEC §6.7](../SPEC.md) · **Status:** Live
 - **Orca:** An effort level is valid by its shape, not by a fixed list, so a level a newer CLI adds still round-trips (`src/shared/agent-effort-level.ts`). The composer's chip reads "Opus 5.5 High".
 - **T3 Code:** A model picker with a provider rail, Favorites, search and rows with disabled reasons (`chat/ModelPickerContent.tsx`, `ModelPickerSidebar.tsx`, `ModelListRow.tsx`); effort in a separate traits picker (`TraitsPicker.tsx`).
-- **Sphyrna takes:** T3's rail and search with the effort as a second step on the same panel (FB6-7/8 option B, B4); Orca's shape rule for effort tokens (C2).
+- **Sphyrna takes:** T3's model picker (rail and search) and its separate effort picker: two chips, the effort menu listing only the chosen model's levels (D-106, B4); Orca's shape rule for effort tokens (C2).
 
 ---
 

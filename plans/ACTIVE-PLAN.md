@@ -4,8 +4,8 @@
   first-class, the look moved to Ink v4 after Orca's design system, the known bugs closed, `send` between sessions and Remora on
   any harness.
 - **The plan:** [plans/1.8.0/README.md](1.8.0/README.md) (goal, order, slice table, release gate, where each open item went),
-  with [COMMON.md](1.8.0/COMMON.md) (the rules every brief shares), [DESIGN-V4.md](1.8.0/DESIGN-V4.md) (the look, a proposal
-  until `@user` approves B0) and one brief per slice in [briefs/](1.8.0/briefs/).
+  with [COMMON.md](1.8.0/COMMON.md) (the rules every brief shares), [DESIGN-V4.md](1.8.0/DESIGN-V4.md) (the look, approved by `@user`
+  on 27 Oct, D-106) and one brief per slice in [briefs/](1.8.0/briefs/).
 - **Why:** [FEEDBACK-7](FEEDBACK-7.md) (round 7: the card, the design language, the project drag, the reading of Orca and T3
   Code) and the 1.8.0 parts of [FEEDBACK-6](FEEDBACK-6.md).
 - **Integration branch:** `v2` in `~/Library/Caches/loom-v2/wt/v2` (local only, never pushed without `@user`). Slices run on
@@ -16,19 +16,21 @@
 
 ## Slice status
 
-The order and the dependencies are in [the plan §3](1.8.0/README.md#3-the-slices). Status values: queued, running,
-in review, integrated (with the `v2` SHA), cut.
+The order and the dependencies are in [the plan §3](1.8.0/README.md#3-the-slices). Status values: queued, ready,
+running, in review, integrated (with the `v2` SHA), cut. The run tooling: `~/Library/Caches/loom-v2/evidence/r9/tools/README.md`.
 
 | Wave | Slice | Status |
 | --- | --- | --- |
-| 0 | B0 the reference in Ink v4 | queued: first; needs `@user`'s approval at its end |
+| 0 | B0 the reference in Ink v4 | integrated `5ba94f1` (approved by `@user`, D-106, with the planner's fixes: Activity marks, the two pickers) |
 | 0 | P0 Codex spike | queued: needs `@user`'s word on Q13 and a signed-in isolated Codex home |
 | 0 | P1 opencode, agy, pi spike | queued: needs Q13 and isolated profiles |
-| 1 | A1 project reorder | queued: can start now |
-| 1 | C1 harness catalogue | queued: can start now |
-| 1 | B1 v4 tokens and controls | queued: after B0's approval |
-| 2 | C2 catalogue consumers · C3 Connections · B2 sidebar and card · B3 status bar | queued |
-| 3 | C4 neutral draft · B4 model panel · D1 Codex sessions · D2 Codex reader and deletion · B5a/b/c surfaces | queued |
+| 1 | A1 project reorder | in review: done, `--tests` passed at 20:08 |
+| 1 | C1 harness catalogue | integrated `59e300e` (with the planner's fix: opencode has no doctor until P1) |
+| 1 | B1 v4 tokens and controls | queued: after the v4 rules are in DESIGN.md |
+| 1 | B0b the rest of the reference in v4 | queued: after the v4 rules are in DESIGN.md (D-106) |
+| 2 | C2 catalogue consumers | can start: C1 is integrated |
+| 2 | C3 Connections · B2 sidebar and card · B3 status bar | queued |
+| 3 | C4 neutral draft · B4 model and effort pickers · D1 Codex sessions · D2 Codex reader and deletion · B5a/b/c surfaces | queued |
 | 4 | E1 opencode · E2 agy · E3 pi · F1 send · F2 Changes → session · G1 Remora backends · H1 usage · I1 names | queued |
 | 5 | Z the gate, the optimizer, the release | planner |
 

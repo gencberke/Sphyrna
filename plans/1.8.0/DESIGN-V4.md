@@ -1,9 +1,12 @@
 # Ink v4: the design proposal for 1.8.0
 
-**Status:** a proposal ([D-105](../../DECISIONS.md)). `@user` approves it on the rendered reference (slice B0), not on this
-page. On approval, B0 moves its rules into [design/DESIGN.md](../../design/DESIGN.md) and this file is archived. Until then
-DESIGN.md (Ink v3) is the contract. The open choices are FEEDBACK-7's [Q1–Q7](../FEEDBACK-7.md#decisions-open); this page
-writes each with its default.
+**Status:** approved by `@user` on B0's rendered reference on 27 Oct ([D-106](../../DECISIONS.md)):
+- FEEDBACK-7's [Q1–Q6](../FEEDBACK-7.md#decisions-open) take their defaults, as written on this page.
+- Two token values are corrected by B0's contrast table: Ink tertiary `#8F8F8F` and Paper faint `#9C9C9C` (§2).
+- The model and the effort are two pickers (§6), not one panel with an effort step.
+
+The planner moves these rules into [design/DESIGN.md](../../design/DESIGN.md) before B1 starts, and this file is then archived.
+Until then, this page and the reference's "Ink v4" chapter are the contract for 1.8.0's slices.
 
 **The aim.** The aim is Orca's design system (FEEDBACK-7 FB7-2) in a native macOS app, keeping what makes Sphyrna recognisable:
 - **What it takes from Orca:**
@@ -68,8 +71,8 @@ greys from v4's neutrals as they do today. Status, accent, project and mode colo
 | --- | --- | --- | --- | --- |
 | Primary | `#EDEDED` | `#0A0A0A` | Titles, body, values | 7:1 |
 | Secondary | `#A1A1A1` | `#525252` | Supporting text, inactive tabs, descriptions | 4.5:1 on every plane and fill |
-| Tertiary | `#8A8A8A` | `#6B6B6B` | Labels, meta, counts, key hints | 4.5:1 on the canvas, the sidebar, the card and the hover fill |
-| Faint | `#6B6B6B` | `#A3A3A3` | Placeholders, disabled items, decorative marks | 2.5:1 |
+| Tertiary | `#8F8F8F` (B0: `#8A8A8A` missed 4.5 on the hover fill) | `#6B6B6B` | Labels, meta, counts, key hints | 4.5:1 on the canvas, the sidebar, the card and the hover fill |
+| Faint | `#6B6B6B` | `#9C9C9C` (B0: `#A3A3A3` missed 2.5 on the sidebar) | Placeholders, disabled items, decorative marks | 2.5:1 |
 
 The test suites that hold the floors (`ThemeAppearanceTests`, `LoomThemeTests`, `HighlightTests`, `ProjectColorUITests`) run
 on the new values. A pair that misses its floor moves one step and the table is corrected; it is never waived.
@@ -209,25 +212,40 @@ One spinner (the braille spinner) for every in-flight state.
 - **Rules:** the bar never animates while the app is not in front, and it is redrawn only when a figure changes. It hides in
   full screen with the menu bar.
 
-### The model and effort panel (FB6-7, FB6-8, B4)
+### The model and the effort (FB6-7, FB6-8, B4)
 
-- **The panel:** 640 × 440, floating, over the palette's scrim, opened from the model chip (the draft's composer, the header's
-  chip, Remora's setting).
-- **The left rail (200):**
-  - Recent;
-  - each harness of the catalogue with its mark, name, model count and a state word when it is not ready ("Off", "Not found",
-    "Not signed in");
-  - a harness that is off or not found is dimmed, and its row offers "Connect…", which opens Settings → Connections.
-- **The right side:**
-  - a search field (focused when the panel opens; typing filters across harnesses);
-  - the list: a model row is 32, with the model's full name, its one-line description in secondary and its context size in mono
-    tertiary. The current model is marked with the accent.
-- **The effort step:**
-  - ↵ on a model with levels replaces the list with that model's own levels (a row each, the default marked, the current one
-    selected), under a back row with the model's name;
-  - ↵ confirms and closes; a model without levels closes at once;
-  - ⌫ or ← goes back, and Esc closes without a change.
-- **The chip** reads `[mark] Opus 5.5 · High`.
+Two pickers side by side, as reference chapter 06 draws them (D-106: "model-effort seçicileri ayırmak"). They replace the one
+panel with an effort step that this page proposed first.
+
+- **The chips:**
+  - two ghost buttons, 28 high, wherever a model is chosen: the draft's composer, the session header and Remora's setting;
+  - the model chip: the harness mark, the model's name and a chevron;
+  - the effort chip: the effort icon, the level and a chevron;
+  - a model with no levels shows the model chip alone;
+  - the open chip has the selected fill.
+- **The model panel:** a popover under the model chip, 412 wide, at elevation 3.
+  - **Search on top:** focused when the panel opens; typing filters across every harness that is on, and says which harnesses
+    it did not search.
+  - **The rail on the left (44):** marks only, in the list's order, with the name and state in the tooltip:
+    - Recent;
+    - the harnesses that are on;
+    - then, under a hairline, the ones that are off or not found, dimmed with a small dot.
+
+    The rail follows the list as it scrolls; a click jumps to that harness.
+  - **The list:** every model grouped by harness under its mark, label and count.
+    - A row is 32: the name, its one-line description in tertiary, and the context size in mono.
+    - The highlighted row has the selected fill; the current model carries the accent check.
+    - A search result also shows its harness's mark.
+    - A harness that is off or not found closes the list as one row with the action that fixes it ("Install…", "Turn On…"),
+      which opens Settings → Connections.
+  - **Keys:** ↑↓ moves through the models, ↵ chooses and closes, Esc closes without a change.
+- **The effort menu:** a popover under the effort chip, 300 wide, at elevation 3.
+  - A header carries the label "Effort" and the model's name in mono.
+  - One row per level the chosen model offers: the level, one line on what it is for, a "Default" tag on the model's default,
+    and the accent check on the current level.
+  - ↑↓ and ↵ choose; Esc closes.
+- **Changing the model** keeps the effort when the new model has that level; otherwise the effort becomes the new model's
+  default.
 
 ### Elsewhere (B5a–c)
 
