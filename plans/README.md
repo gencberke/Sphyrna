@@ -8,7 +8,9 @@ Current position and handoff queue live in [STATUS.md](../STATUS.md). Product an
 
 | File / Directory | Purpose |
 | --- | --- |
-| [ACTIVE-PLAN.md](ACTIVE-PLAN.md) | **Canonical active execution plan.** §0 holds round 5 (1.6.1, [D-93](../DECISIONS.md)). §0.1 holds 1.6.2 as built, what comes next, and the hand checks on the installed app. The rest is the 1.6.0 record ([D-68](../DECISIONS.md), [D-83](../DECISIONS.md)): founding goals, acceptance criteria, the closed Releases A–C, the slice tables, and the 11-step End Batch Runbook. |
+| [ACTIVE-PLAN.md](ACTIVE-PLAN.md) | **Canonical active plan: Sphyrna 1.8.0** ([D-105](../DECISIONS.md)): the target, the slice status table and the pointers below. The plan before it (rounds 5 and 6, the rescue, the 1.6.0 record and the End Batch Runbook) is [archive/ACTIVE-PLAN-1.6.0-to-1.7.2.md](archive/ACTIVE-PLAN-1.6.0-to-1.7.2.md). |
+| [1.8.0/](1.8.0/README.md) | **The 1.8.0 plan:** [README.md](1.8.0/README.md) (goal, order, slice table, release gate, where each open item went), [COMMON.md](1.8.0/COMMON.md) (the rules every brief shares), [DESIGN-V4.md](1.8.0/DESIGN-V4.md) (Ink v4 after Orca's design system, a proposal until `@user` approves B0) and [briefs/](1.8.0/briefs/) (one per slice, for the implementers `@user` starts). |
+| [FEEDBACK-7.md](FEEDBACK-7.md) | **Round 7 on 1.7.2** (27 Oct 2026): the session card, Orca's design system, the project drag, 1.8.0 as one release, the logic read of Orca and T3 Code for 1.8.0's features, the worktree cleanup, and the open questions Q1–Q13. |
 | [FEEDBACK-6.md](FEEDBACK-6.md) | **Round 6 on 1.7.0** (26 Oct 2026): `@user`'s notes after a day of real use, a health check of the logs, the sessions and the processes, what the code says, the proposals (the model and effort panel, the harness catalogue, the sidebar's fill and opacity), the decisions waiting for `@user`, and the plan for 1.7.1 and 1.8.0. |
 | [FEEDBACK-5.md](FEEDBACK-5.md) | **Round 5 on 1.6.0** (24 Oct 2026): `@user`'s notes, what the code says, the studies of other apps and of Chat's streaming cost, the decisions ([D-93](../DECISIONS.md) to [D-99](../DECISIONS.md)), and the plan for 1.6.1 and 1.6.2. Its slices move into [ACTIVE-PLAN.md](ACTIVE-PLAN.md) on `@user`'s go. |
 | [RELEASE-NOTES-1.6.1.md](RELEASE-NOTES-1.6.1.md) | **Release notes of Sphyrna 1.6.1** (draft, 24 Oct 2026): what the user gets, grouped as Fixes, Drag and drop, Flow, Look and Chat, with one line on going back to 1.6.0, which keeps one draft per project. Written for the GitHub release; the push waits for `@user`. |
@@ -28,6 +30,7 @@ All completed checkpoint plans, pre-1.6.0 stage logs, brainstorms, and pre-reorg
 
 | Archived Path | Era / Milestone | Notes |
 | --- | --- | --- |
+| [archive/ACTIVE-PLAN-1.6.0-to-1.7.2.md](archive/ACTIVE-PLAN-1.6.0-to-1.7.2.md), [archive/STATUS-to-1.7.2.md](archive/STATUS-to-1.7.2.md) | Sphyrna 1.6.0 to 1.7.2 | The active plan and the relay board as they stood before 1.8.0 (archived 27 Oct, D-105). |
 | [archive/V2-PLAN.md](archive/V2-PLAN.md), [archive/v2/CHAT-SPEC.md](archive/v2/CHAT-SPEC.md) | Loom v2 Releases A, B, C & 1.6.0 log | Distilled into [ACTIVE-PLAN.md](ACTIVE-PLAN.md) and [SPEC.md](../SPEC.md). |
 | [archive/v2-research/](archive/v2-research/) | v2 Concept, Remora brainstorm (`LOMBOT-BRAINSTORM.md`), product studies | Pre-v2 research and brainstorms ([D-57](../DECISIONS.md) to [D-67](../DECISIONS.md)). |
 | [archive/CHECKPOINT-1.md](archive/CHECKPOINT-1.md) | CP1 Process ownership & launch | Closed Sep 2026. |

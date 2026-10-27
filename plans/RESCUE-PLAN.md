@@ -4,7 +4,7 @@ Why this file exists: on 25 Oct `@user` reported that a short Chat session used 
 Energy Impact read 118 on the new-session page and up to 310 in a chat, and that the chat showed raw "Unrecognised
 record" rows. `@user` decided to freeze the chat and turn Sphyrna into a terminal-first session manager
 ([D-100](../DECISIONS.md)), and to run a lighter process ([D-101](../DECISIONS.md)). This plan replaces the 1.7.0 line
-of [ACTIVE-PLAN §0.1](ACTIVE-PLAN.md#01-roadmap-after-161-25-oct) until `@user` says otherwise.
+of [ACTIVE-PLAN §0.1](archive/ACTIVE-PLAN-1.6.0-to-1.7.2.md#01-roadmap-after-161-25-oct) until `@user` says otherwise.
 
 Facts are marked with their evidence. Proposals that still need `@user`'s word say so.
 

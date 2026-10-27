@@ -702,6 +702,10 @@ note it, skip that part and go on with the next slice.
 
 Parked by `@user` on 26 Oct after 1.7.2 ("1.8.0 planan işleri bekleyebilir"); it starts with P0, the real-Codex spike, when `@user` picks it up.
 
+**Superseded on 27 Oct ([D-105](../DECISIONS.md)):** 1.8.0 is one release with round 7's work; its plan and briefs are
+[plans/1.8.0/](1.8.0/README.md). The rows below map to its slices: P0 → P0, P1–P3 → C1–C3, P4 → C4 and B4, P5 → D1, P6 → D2,
+P7 → G1, P8 → F1.
+
 | # | Slice | Items |
 | --- | --- | --- |
 | P0 | Real-Codex spike | FB6-14 |

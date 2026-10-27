@@ -8,6 +8,8 @@
 
 **Orca and T3 Code ([D-104](../DECISIONS.md)).** They are Sphyrna's outside references for its look as well as its logic. A surface may follow their design case by case. Each such change is decided by `@user` and lands here as a rule, as every visual change does. The feature-by-feature map is [docs/FEATURES.md](../docs/FEATURES.md).
 
+**Ink v4 ([D-105](../DECISIONS.md)).** 1.8.0 moves the look toward Orca's design system while keeping Ink's identity. The proposal is [plans/1.8.0/DESIGN-V4.md](../plans/1.8.0/DESIGN-V4.md); `@user` approves it on the rendered reference (slice B0), and only then do its rules replace the v3 values below. Until then this file is v3.
+
 The Ink token system (`I1`) and surface migrations (`Batch B`, `I2c`, `I6`, `I4-0`, `Batch D`, `I4`, `I4b`, `I4c`, `L3b Settings`, `I6b`) are landed in code ([ACTIVE-PLAN.md](../plans/ACTIVE-PLAN.md)):
 - [docs/ARCHITECTURE.md §11](../docs/ARCHITECTURE.md#11-ui-surface-to-code--evidence-index) maps every surface, view, accessibility ID, keyboard shortcut, and evidence key in code (replacing the former `design/UI-MAP.md`);
 - [SPEC.md](../SPEC.md) is the canonical product and behavioral specification;
@@ -415,7 +417,7 @@ All visual design questions are settled ([DECISIONS.md §1.4](../DECISIONS.md#14
 - **The previews are settled** (D-74 to D-81) and gathered in [the reference](reference.html) (D-82, §1). Its documents carry the decisions that came after each preview: the app named Sphyrna, the harness marks, the app icon (Rising in 1.6.0, Top from 1.6.1), the remora with its disc, Animated art, the tones and Glass at 0.8, the sheets' one family and Title Case for commands.
 - **Settled by D-83:** the two readings the reference made in Settings, which §2 now holds as rules (Full access asks first; the cleanup's Delete), and the rename's open questions (O-14): the bundle id, the data folder and the repository keep Loom's names, and the wordmark is set in SF Pro (§6 Name and marks).
 - **The knot in code** is drawn (batch B): `ProviderIcon` draws the ChatGPT knot as a template image in the text colour, from `harness-codex-template.png`, which the app bundles; without it, the app falls back to `harness-codex.png`, the ChatGPT app icon.
-- **Remaining visual slices** ([ACTIVE-PLAN.md §3.1](../plans/ACTIVE-PLAN.md#31-track-sphyrna-ink--opencode-ui-slices)):
+- **Remaining visual slices** ([ACTIVE-PLAN.md §3.1](../plans/archive/ACTIVE-PLAN-1.6.0-to-1.7.2.md#31-track-sphyrna-ink--opencode-ui-slices)):
   - **The art in the app (`I5`, §17):** a native renderer within the budgets; a spike measures it before it is built.
   - **The README renders (`I7`):** Night Fleece sources were removed on 21 Oct; `assets/readme/` keeps 0.4.4's pictures until `I7` draws new sources (`design/readme/*.html`) in Ink from the reference's documents before 1.6.0's README.
 - **Settled by Ink:** the navbar's "more solid" layout (user feedback item 6, 5 Oct 2026). The header on the canvas, with its hairline, its two groups and one control family, is the answer; O-03 stays closed.
@@ -707,7 +709,7 @@ Sphyrna's own code draws them; the idea comes from stackedlol/ascii-sharks.
 
 ## 18. Retired Night Fleece patterns (do not re-introduce)
 
-The Ink token system (`LoomTheme*.swift`) and surface migrations are landed across the codebase ([ACTIVE-PLAN.md §3.1](../plans/ACTIVE-PLAN.md#31-track-sphyrna-ink--opencode-ui-slices), [docs/ARCHITECTURE.md §11](../docs/ARCHITECTURE.md#11-ui-surface-to-code--evidence-index)). Every new or modified surface must pass the contrast tests for its pairs in both appearances (`Ink` and `Paper`) and must **never** re-introduce retired Night Fleece patterns:
+The Ink token system (`LoomTheme*.swift`) and surface migrations are landed across the codebase ([ACTIVE-PLAN.md §3.1](../plans/archive/ACTIVE-PLAN-1.6.0-to-1.7.2.md#31-track-sphyrna-ink--opencode-ui-slices), [docs/ARCHITECTURE.md §11](../docs/ARCHITECTURE.md#11-ui-surface-to-code--evidence-index)). Every new or modified surface must pass the contrast tests for its pairs in both appearances (`Ink` and `Paper`) and must **never** re-introduce retired Night Fleece patterns:
 
 **Retired (never re-introduce):**
 - the navy sidebar (`#101216`) or terracotta accent (`#D97757`);

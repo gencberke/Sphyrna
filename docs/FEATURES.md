@@ -1,14 +1,15 @@
 # Sphyrna Features & Reference Map (`docs/FEATURES.md`)
 
-**Updated:** 27 October 2026 · **Decision:** [D-104](../DECISIONS.md)
+**Updated:** 27 October 2026 · **Decisions:** [D-104](../DECISIONS.md), [D-105](../DECISIONS.md)
 
 This file lists Sphyrna's main features, one heading each, and gives every feature a place to record how **Orca** and
 **T3 Code** build the same thing. Since D-104 these two apps are Sphyrna's final references: for how a feature works
 first, and case by case for how it looks.
 - What a feature must do stays in [SPEC.md](../SPEC.md), how it looks in [design/DESIGN.md](../design/DESIGN.md), and
   where it lives in code in [ARCHITECTURE.md](ARCHITECTURE.md). This file links to them; it does not repeat them.
-- The reference slots below are empty on purpose. The reference round fills them (see
-  [How the reference round works](#how-the-reference-round-works)).
+- The reference round fills the slots below (see [How the reference round works](#how-the-reference-round-works)). On 27 Oct
+  the planner read the features 1.8.0 touches (F1, F3, F5, F13–F17); their verdicts point to the slices of
+  [plans/1.8.0](../plans/1.8.0/README.md). The design system itself is read in [FEEDBACK-7](../plans/FEEDBACK-7.md) FB7-2.
 
 ---
 
@@ -95,9 +96,9 @@ with local patches). Session-only hooks, settings and the Sphyrna plugin come in
 `--plugin-dir`. The user's global Claude settings are never written, with one exception: the retention key in F18.
 Codex has its app-wide infrastructure (F13, F14), but its sessions cannot be started yet.
 - **Spec:** [SPEC §1.2, §3](../SPEC.md) · **Status:** Live (Claude)
-- **Orca:** _to study_
-- **T3 Code:** _to study_
-- **Sphyrna takes:** _open_
+- **Orca:** Each agent runs its own CLI in a terminal pane. Agent status comes from each vendor's hooks, with terminal (OSC) titles as the fallback (`src/shared/agent-hook-listener*.ts`, `agent-detection.ts`). For Codex it writes its hooks into the real `~/.codex/hooks.json` with trust entries in `config.toml` (`src/main/codex/codex-real-home-hook-install.ts`).
+- **T3 Code:** One package per provider (`packages/provider-*`), driven by a local server; Codex through its app server (`packages/effect-codex-app-server`).
+- **Sphyrna takes:** Orca's terminal-first stance (D-100). Not its writes into `~/.codex`: Sphyrna's additions stay session-scoped (FEEDBACK-7 Q10). P0 and P1 find each CLI's session-scoped route; D1 and E1–E3 build on them (plans/1.8.0).
 
 ### F2. Process ownership & verified stop
 Each run lives in its own `LoomRunHost` coalition. Stop, window close and Quit follow fixed rules. A stop counts only
@@ -113,9 +114,9 @@ Lifecycle (`active`, `idle`, `stale`, `deleted`) is kept apart from momentary wo
 from hooks and the CLI's registry in a fixed order: failure, unclear identity, waiting for the user, working,
 finished unread, ready. Other parts: a hook watchdog, and a count of background work left after a turn.
 - **Spec:** [SPEC §4](../SPEC.md) · **Status:** Live
-- **Orca:** _to study_
-- **T3 Code:** _to study_
-- **Sphyrna takes:** _open_
+- **Orca:** Status from hook events per agent (SessionStart, UserPromptSubmit, PreToolUse, PermissionRequest, PostToolUse, SubagentStop, Stop for Codex, `src/main/codex/codex-hook-definition.ts:23-30`), with title keywords as a fallback (`agent-title-status.ts`).
+- **T3 Code:** Thread shelves in the sidebar: Working, Snoozed, Settled (`apps/web/src/components/Sidebar.tsx:3119-3140`).
+- **Sphyrna takes:** The same hook-first rule for every harness, the title as fallback (D1, E1–E3). T3's status words at the card's trailing end (FB7-1, B2).
 
 ### F4. Stopped sessions: kept screen & record
 A stopped session runs no process. It shows its kept terminal screen (at most 400 rows or 1 MiB) or its record, and
@@ -137,9 +138,9 @@ The sidebar has two views:
 Each card shows its harness, model, branch and subagent tree, and Peek shows the last ask and answer on hover. The
 footer carries a usage line per harness.
 - **Spec:** [SPEC §6.2](../SPEC.md) · **Status:** Live
-- **Orca:** _to study_
-- **T3 Code:** _to study_
-- **Sphyrna takes:** _open_
+- **Orca:** A lifted sidebar plane (`--worktree-sidebar`), search and nav rows with counts, project groups of worktree cards with their agents (status, harness, title, last action, model, time). Tabs reorder with dnd-kit (`components/tab-bar/use-sortable-tab-rename.ts`).
+- **T3 Code:** Thread rows with the project mark and name, the status and elapsed time at the trailing end, the title, then the branch and harness mark (`sidebar/SidebarThreadRow.tsx`). Projects reorder with `@dnd-kit` sortable, vertical axis, inside the scroll view (`Sidebar.tsx:23-25, 2936`).
+- **Sphyrna takes:** Both: the card without a leading status column (FB7-1, B2), the lifted plane and nav rows (DESIGN-V4), and reordering by a pointer gesture with live displacement instead of the pasteboard (FB7-3, A1).
 
 ### F6. Tabs, header & session menu
 Session tabs are transient or pinned (at most 8). They can be dragged, and Reopen Closed Tab brings one back. The detail
@@ -218,9 +219,9 @@ One capability table says what each harness may do, and every gate asks it. Sett
 harness's health in six states, its version advice, the vendor's install and sign-in commands (the user runs them) and
 Deep Check. Sphyrna never handles a credential. Codex is read but not started.
 - **Spec:** [SPEC §6.7](../SPEC.md) · **Status:** Live (Codex read only) · **Already after T3 Code:** D-98
-- **Orca:** _to study_
-- **T3 Code:** _to study_
-- **Sphyrna takes:** _open_
+- **Orca:** One hook listener per agent; an installation-problem model (`src/shared/agent-cli-installation-problem.ts`).
+- **T3 Code:** One `status.ts` per provider package; a missing binary reads "… is not installed or not on PATH" (`packages/provider-grok/src/server/status.ts:443`); provider states ready, warning ("Limited"), error ("Unavailable"), disabled, unauthenticated (`apps/web/src/components/chat/ModelPickerSidebar.tsx:16-23`).
+- **Sphyrna takes:** A descriptor per harness in one catalogue, availability by PATH, On / Off / Not found (C1), every list from the catalogue (C2), Connections and Home with Not found (C3).
 
 ### F14. Usage & plan limits
 Limits appear in three places, each read with no model call and no credential:
@@ -228,17 +229,17 @@ Limits appear in three places, each read with no model call and no credential:
 - Settings → Usage (Limits and Tokens, filtered by harness);
 - Home's plan limits, with pace ticks.
 - **Spec:** [SPEC §6.2, §6.6, §6.7](../SPEC.md) · **Status:** Live · **Already after T3 Code:** D-99
-- **Orca:** _to study_
-- **T3 Code:** _to study_
-- **Sphyrna takes:** _open_
+- **Orca:** A 24 pt status bar along the window's bottom: one segment per provider (mark, 48 × 6 meter, windows' figures), a 360-wide popover with details and refresh, plus keep-awake, ports and resource segments (`components/status-bar/StatusBarSurface.tsx:116`, `StatusBarProviderSegment.tsx`, `InlineProviderUsage.tsx`).
+- **T3 Code:** Settings' usage page (already Sphyrna's model, D-99).
+- **Sphyrna takes:** Orca's status bar replaces the sidebar footer (FEEDBACK-7 Q7, B3); model-scoped windows and the reset notification (H1).
 
 ### F15. Models
 One model catalog feeds the draft's picker, the popover and the header. Models are shown by their full release names,
 taken from the CLI's own list.
 - **Spec:** [SPEC §6.7](../SPEC.md) · **Status:** Live
-- **Orca:** _to study_
-- **T3 Code:** _to study_
-- **Sphyrna takes:** _open_
+- **Orca:** An effort level is valid by its shape, not by a fixed list, so a level a newer CLI adds still round-trips (`src/shared/agent-effort-level.ts`). The composer's chip reads "Opus 5.5 High".
+- **T3 Code:** A model picker with a provider rail, Favorites, search and rows with disabled reasons (`chat/ModelPickerContent.tsx`, `ModelPickerSidebar.tsx`, `ModelListRow.tsx`); effort in a separate traits picker (`TraitsPicker.tsx`).
+- **Sphyrna takes:** T3's rail and search with the effort as a second step on the same panel (FB6-7/8 option B, B4); Orca's shape rule for effort tokens (C2).
 
 ---
 
@@ -252,9 +253,9 @@ Through the Sphyrna plugin and its control socket, an agent can do three things:
 
 No transcript content crosses the channel. Sending into an existing session waits for 1.8.0 (parked).
 - **Spec:** [SPEC §9](../SPEC.md) · **Status:** Live (no `send` yet)
-- **Orca:** _to study_ (its orchestration messages and task dispatch)
-- **T3 Code:** _to study_
-- **Sphyrna takes:** _open_
+- **Orca:** Durable mailboxes per run and dispatch. On arrival it types a one-line pointer ("You have 1 orchestration message. Run `orca orchestration check …`") into the target's terminal only when its last observed status is idle; otherwise it waits for the next idle edge, and an explicit check reads the mail (`src/main/runtime/orchestration/mailbox-pointer-delivery.ts:42-50, 190-210`, `mailbox-notification-coordinator.ts`).
+- **T3 Code:** _not studied_
+- **Sphyrna takes:** Orca's delivery with `@user`'s approval of every send: the mailbox, the pointer on Ready, `inbox` (FEEDBACK-7 Q8, F1); Changes' comments through it (F2). Codex 0.164's `codex queue --thread … --message …` is checked by P0 as a Codex route.
 
 ---
 
@@ -265,9 +266,9 @@ Deletion is a persisted seven-step state machine that resumes after a crash. It 
 Claude files (from an allowlist), the catalog (secure delete), and Remora's memory. "Deleted" is said only after
 verification.
 - **Spec:** [SPEC §5.1](../SPEC.md) · **Status:** Live
-- **Orca:** _to study_
-- **T3 Code:** _to study_
-- **Sphyrna takes:** _open_
+- **Orca:** _not studied_
+- **T3 Code:** _not studied_
+- **Sphyrna takes:** Codex 0.164 has `codex delete <session>`, a permanent delete; D2 runs it as the harness's step inside the verified state machine, after P0 lists what it removes.
 
 ### F18. Retention review & Storage
 The cleanup review proposes only stale sessions and always asks first. Storage lists each session's size on disk.
