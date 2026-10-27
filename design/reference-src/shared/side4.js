@@ -8,6 +8,7 @@
      data-i4sel="<session id>"      that session's card is selected
      data-i4open="<project name>"   that project's head is open
      data-i4hover="<index>"         that project's head is under the pointer
+     data-i4idle="<session id>"     that session is ready: no status, no subagents
      data-i4none                    no projects yet (an empty sidebar)
    The markup of each window is in its own document.
    ============================================================ */
@@ -52,14 +53,15 @@ function i4subs(list) {
 }
 
 function i4card(s, p, view, o = {}) {
+  const idle = o.idle === s.id;
   const third = view === 'activity'
     ? `<span class="i4scb"><span class="i4scr">${s.why}</span><span class="hm ${s.h}"></span></span>`
     : `<span class="i4scb"><span class="i4brn">${s.br}</span><span class="hm ${s.h}"></span></span>`;
   return `<div class="i4sc${o.sel === s.id ? ' sel' : ''}" style="--tone:${p.tone}" data-s="${s.id}">
-    <span class="i4sct"><span class="i4pmark">${p.letter}</span><span class="pn">${p.name}</span>${i4st(s.st, s.time)}</span>
+    <span class="i4sct"><span class="i4pmark">${p.letter}</span><span class="pn">${p.name}</span>${i4st(idle ? '' : s.st, s.time)}</span>
     <span class="i4scti">${s.t}</span>
     ${third}
-    ${s.subs ? i4subs(s.subs) : ''}
+    ${s.subs && !idle ? i4subs(s.subs) : ''}
   </div>`;
 }
 
@@ -86,7 +88,7 @@ function i4activity(o) {
 function i4sidebar(el) {
   const d = el.dataset, home = d.i4side === 'home', none = el.hasAttribute('data-i4none');
   const view = d.view || 'projects';
-  const o = { sel: d.i4sel, open: d.i4open, hover: d.i4hover };
+  const o = { sel: d.i4sel, open: d.i4open, hover: d.i4hover, idle: d.i4idle };
   el.dataset.view = view;
   el.innerHTML = `
     <div class="i4lights"><i></i><i></i><i></i></div>

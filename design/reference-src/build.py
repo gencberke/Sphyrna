@@ -87,9 +87,9 @@ DOCS = {
     },
     'review': {
         'title': 'Sphyrna · Ink · The review surfaces',
-        'css': ['shared/chat.css', 'shared/harness.css', 'shared/project.css', 'shared/sheets.css', 'docs/review/review.css'],
+        'css': ['shared/chat.css', 'shared/harness.css', 'shared/project.css', 'shared/sheets.css', 'shared/side4.css', 'docs/review/review.css'],
         'body': ['docs/review/body.html'],
-        'js': ['shared/base.js', 'docs/review/review.js'],
+        'js': ['shared/base.js', 'shared/side4.js', 'docs/review/review.js'],
         'js_rep': [('<!--ICON128-->', lambda: data_url('docs/review/icon-128.png'))],
     },
     'edges': {

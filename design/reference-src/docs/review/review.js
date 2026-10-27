@@ -11,45 +11,6 @@ const hmark = h => `<span class="hm ${h}" title="${HNAME[h]}"></span>`;
 const winC = $('#winC'), winG = $('#winG'), winS = $('#winS');
 const SIDEBAR_W = 260, PANE_MIN = 480;
 
-/* ---------- the sidebar, as the project page draws it, at two moments of the session ---------- */
-const LOOM = {
-  ready: () => [
-    { id: 'ink', t: 'Port the sidebar to Ink tokens', st: '', h: 'claude', meta: 'now' },
-    { id: 'gate', t: 'Review the gate failure', st: 'attn', h: 'claude', meta: 'now' },
-    { id: 'rc', t: 'Release C health check', st: 'unv', h: 'claude', meta: '12m' },
-    { id: 'lb', t: 'Remora spike S10', st: '', h: 'codex', meta: '2h' },
-    { id: 'p2', t: 'Draw the Ink reference', st: '', h: 'claude', meta: '4h' }
-  ],
-  work: () => {
-    const done = AG.list.filter(a => a.st === 'done').length;
-    const run = AG.list.filter(a => a.st !== 'done').map(a => ({ st: a.st === 'wait' ? 'attn' : 'work', type: a.type, d: a.d, e: '1m' }));
-    return [
-      { id: 'ink', t: 'Port the sidebar to Ink tokens', st: 'attn', h: 'claude', meta: 'now', subs: [...run, { st: 'done', type: `${done} finished` }] },
-      { id: 'gate', t: 'Review the gate failure', st: 'attn', h: 'claude', meta: 'now' },
-      { id: 'rc', t: 'Release C health check', st: 'unv', h: 'claude', meta: '12m' },
-      { id: 'lb', t: 'Remora spike S10', st: '', h: 'codex', meta: '2h' },
-      { id: 'p2', t: 'Draw the Ink reference', st: '', h: 'claude', meta: '4h' }
-    ];
-  },
-  working: () => LOOM.ready().map(s => s.id === 'ink' ? { ...s, st: 'work' } : s)
-};
-const OTHERS = [
-  [{ id: 'vm', t: 'Weekly vault maintenance', st: 'work', h: 'claude', meta: 'now' }, { id: 'th', t: 'Thesis outline', st: 'unv', h: 'codex', meta: '25m' }],
-  [{ id: 'jwt', t: 'Migrate auth to JWT', st: 'fail', h: 'codex', meta: '3h' }, { id: 'rl', t: 'Rate limiter tests', st: '', h: 'codex', meta: '2d' }]
-];
-const rowV = (s, sel) => `<div class="row srow${s.id === sel ? ' sel' : ''}" data-s="${s.id}"><span class="ind">${mark(s.st)}</span>${hmark(s.h)}<span class="t">${s.t}</span><span class="meta">${s.meta}</span></div>` + (s.subs ? subs(s.subs, 1, []) : '');
-const groupV = (p, list, sel) => `<div class="pgroup" style="--tone:${p.tone}">
-    <div class="proj-head"><span class="pmark">${initial(p.name)}</span><span class="pn">${p.name}</span>${p.dot ? `<i class="dot ${p.dot}" style="width:6px;height:6px"></i>` : ''}<span class="chev" data-i="chev-d"></span></div>
-    ${list.map(s => rowV(s, sel)).join('')}
-  </div>`;
-function drawSidebar(side) {
-  side.innerHTML = sidebar(side.dataset.sel);
-  $('.side-sec', side).innerHTML = '<span class="label">Projects</span><span class="view"><button class="on" title="Group by project · ⌘2">projects</button> · <button title="Recent activity · ⌘1">activity</button></span>';
-  const lists = [LOOM[side.dataset.v || 'ready'](), ...OTHERS];
-  $('.plist', side).innerHTML = PROJECTS.map((p, i) => groupV(p, lists[i], side.dataset.sel)).join('');
-  iconize(side);
-}
-
 /* ============================================================
    The changes. Each hunk is its @@ line (old start, new start),
    then its lines: " " context, "-" removed, "+" added. The counts,
@@ -355,7 +316,6 @@ const AGENTS0 = [
 const AG = { list: [], open: 'contrast', width: 556, voice: 'two', step: 0, timer: 0 };
 const resetAgents = () => { AG.list = AGENTS0.map(a => ({ ...a, items: [...a.items] })); AG.open = 'contrast'; AG.step = 0; clearInterval(AG.timer); AG.timer = 0; };
 resetAgents();
-$$('.side[data-sel]').forEach(drawSidebar);
 const agent = id => AG.list.find(a => a.id === id);
 function entry(it, fresh) {
   const f = fresh ? ' fresh' : '';
@@ -377,7 +337,7 @@ function agentsList() {
     + (fin.length ? `<div class="agsec"><div class="isech"><span class="label">Finished</span><span class="n">${fin.length}</span></div>${fin.map(agRow).join('')}</div>` : '');
 }
 function agentDetail(a) {
-  const notice = a.st === 'wait' ? '<div class="agnote"><i class="dot attn"></i><span>Waiting for you: answer it in the chat</span><button class="lk2 acc" data-act="showreq">Show the Request</button></div>' : '';
+  const notice = a.st === 'wait' ? '<div class="agnote"><i class="dot attn"></i><span>Waiting for you: answer it in the terminal</span><button class="lk2 acc" data-act="showreq">Show the Request</button></div>' : '';
   const tail = a.st === 'work' ? '<div class="te tail"><span class="g"><span class="spin">⠋</span></span><div class="x">Running…</div></div>'
     : a.st === 'wait' ? '<div class="te tail wait"><span class="g"><i class="dot attn"></i></span><div class="x">Waiting for you</div></div>' : '';
   return `<div class="agp"><div class="agh"><div class="agh-r"><button class="back" data-act="back" title="Back to the list of agents"><span data-i="chev-l"></span>Agents</button>${pill(a)}</div><h4>${a.type} · ${esc(a.d)}</h4>${notice}</div>
@@ -469,7 +429,7 @@ const setStateC = working => {
   stC.className = working ? 'state' : 'state idle';
   stC.innerHTML = working ? '<span class="spin">⠋</span>Working' : 'Ready';
   $('.tab.on .ind', winC).innerHTML = working ? mark('work') : '';
-  const side = $('.side', winC); side.dataset.v = working ? 'working' : 'ready'; drawSidebar(side);
+  const side = $('.i4side', winC); side.dataset.i4idle = working ? '' : 'ink'; i4sidebar(side);
 };
 function drawCard() {
   const ids = DATA_C.scopes.last, [a, r] = totals(ids);
@@ -526,7 +486,6 @@ function drawAgentCard() {
 function drawAgents() {
   inspG.agents(); inspG.width(); inspG.overview();
   drawAgentCard();
-  drawSidebar($('.side', winG));
   placeAll();
 }
 winG.addEventListener('click', e => {

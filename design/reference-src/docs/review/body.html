@@ -7,7 +7,7 @@
   <div class="rules">
     <div class="rule"><div class="n">01</div><h3>Review is wide</h3><p>Changes opens the inspector at 556, so a diff reads at its length, and a subagent's transcript opens there too. Overview and the Agents list keep 328, and Side keeps 392. The width follows your click and never animates.</p></div>
     <div class="rule"><div class="n">02</div><h3>A diff is content</h3><p>Old and new line numbers, a sign, and a band of the success or failure hue on each changed line. There is no syntax colour, so the bands are the diff's only colour, and the text holds 7:1 on them.</p></div>
-    <div class="rule"><div class="n">03</div><h3>Comments go back as one message</h3><p>The "+" in the gutter, or a click on a line, opens a comment under it. Send to Claude puts every comment of the scope in one plain message and sends it the way Return does.</p></div>
+    <div class="rule"><div class="n">03</div><h3>Comments go back as one message</h3><p>The "+" in the gutter, or a click on a line, opens a comment under it. Send to Claude puts every comment of the scope in one plain message and delivers it to the session's terminal once the session is ready.</p></div>
     <div class="rule"><div class="n">04</div><h3>A transcript in two voices</h3><p>What the agent says reads in the chat's type. Its tools and their results stay in mono, and quieter. Claude's own marks stay: ⏺ when it says or does something, ⎿ for the answer, ✻ while it thinks.</p></div>
     <div class="rule"><div class="n">05</div><h3>Filled means Return</h3><p>A sheet's filled button is its default, and only a sheet that saves has one. Delete, Remove, Discard and Rewind draw theirs tinted: Return does nothing there, Esc cancels, and the focus starts on Cancel.</p></div>
     <div class="rule"><div class="n">06</div><h3>One sheet shape</h3><p>420 wide, or 480 when it lists files. The question is the title, the session's name sits under it, then come the facts, and the buttons sit at the trailing edge with Cancel first. A way out, such as Remove from Sphyrna Only, sits at the leading edge.</p></div>
@@ -23,8 +23,8 @@
       <span class="grp"><span class="label">Window</span><span class="seg" id="chWidth"><button class="on" data-w="1440">1440</button><button data-w="1280">1280</button></span></span>
       <span class="hint">Try a comment, then Send to Claude. Branch reads git first.</span>
     </div>
-    <div class="stage"><div class="win" id="winC" data-w="1440" data-h="960">
-      <aside class="side" data-sel="ink" data-v="ready"></aside>
+    <div class="stage"><div class="win i4grid" id="winC" data-w="1440" data-h="960">
+      <aside class="i4side" data-i4sel="ink" data-i4idle="ink" data-view="projects"></aside>
       <main class="detail">
         <header class="dhead">
           <span class="hm claude md" title="Claude Code"></span><span class="dtitle">Port the sidebar to Ink tokens</span>
@@ -84,6 +84,7 @@
           <aside class="insp" data-insp="C" data-tab="ch"></aside>
         </div>
       </main>
+      <footer class="i4status" data-i4status></footer>
       <span class="pin" id="pinC1">C1</span><span class="pin" id="pinC2">C2</span><span class="pin" id="pinC3">C3</span><span class="pin" id="pinC4">C4</span>
       <span class="pin" id="pinC5">C5</span><span class="pin" id="pinC6">C6</span><span class="pin" id="pinC7">C7</span><span class="pin" id="pinC8">C8</span>
     </div></div>
@@ -95,7 +96,7 @@
       <li><b>C5</b>The "+" shows in the gutter of the line under the pointer. It, or a click anywhere on the line, opens the box. A comment on a removed line takes the old line's number.</li>
       <li><b>C6</b>Writing. The box says "Your comment · line 18" on the accent wash. Return adds the comment, Shift-Return makes a new line, and Esc cancels. Add Comment stays off while the box is empty.</li>
       <li><b>C7</b>A saved comment shows under its line, with Edit and Remove. The file's row counts it: "· 1 comment".</li>
-      <li><b>C8</b>The footer shows while the scope has comments: "N comments in M files", Discard, and Send to Claude. The comments clear once Claude takes the message, and a send that was refused keeps them.</li>
+      <li><b>C8</b>The footer shows while the scope has comments: "N comments in M files", Discard, and Send to Claude. The button is absent for a stopped session. After a send the comments stay until you discard them, and a refused send keeps them.</li>
       <li><b>Width</b>At 1280 with the sidebar open, the chat would keep 464 beside 556, which is under 480. So the inspector draws over the chat on the popover surface, no wider than the pane (DESIGN §13). Try the Window switch above.</li>
       <li><b>Reads</b>The tab reads only while it is open: when it opens, when a turn ends, and when the scope changes. It never reads on a timer. Comment drafts are kept per session and per scope until Sphyrna quits.</li>
     </ol>
@@ -151,10 +152,10 @@
       </div>
       <div class="spec w6"><span class="label">When Send cannot go</span>
         <div class="ipc"><div class="chfoot"><span class="fi" data-i="bubble"></span><span class="sum">2 comments in 1 file</span><span class="grow"></span><button class="btn sec sm">Discard</button><button class="btn pri sm" disabled>Send to Claude</button>
-          <p class="fn">Comments go to Claude in a Chat session</p></div></div>
+          <p class="fn">Sent · waiting for the session to be ready</p></div></div>
         <div class="ipc"><div class="chfoot"><span class="fi" data-i="bubble"></span><span class="sum">2 comments in 1 file</span><span class="grow"></span><button class="btn sec sm">Discard</button><button class="btn pri sm">Send to Claude</button>
           <p class="fn bad">The comments could not be sent: the session is stopping.</p></div></div>
-        <p class="note">A terminal-face session shows the diffs, but Send is off, and the line says why. A refused send keeps the comments and says why in the failure text. A stopped Chat session resumes to take them.</p>
+        <p class="note">Send to Claude sends the comments to the session in its terminal, once the session is ready (F2). A stopped session has no Send. A refused send keeps the comments and says why in the failure text.</p>
       </div>
     </div>
   </section>
@@ -168,8 +169,8 @@
       <span class="grp"><span class="label">Transcript</span><span class="seg" id="agWidth"><button class="on" data-aw="556">at 556</button><button data-aw="328">at 328, as built</button></span></span>
       <span class="grp"><span class="label">Voice</span><span class="seg" id="agVoice"><button class="on" data-voice="two">Two voices</button><button data-voice="mono">All mono, as built</button></span></span>
     </div>
-    <div class="stage"><div class="win" id="winG" data-w="1440" data-h="960">
-      <aside class="side" data-sel="ink" data-v="work"></aside>
+    <div class="stage"><div class="win i4grid" id="winG" data-w="1440" data-h="960">
+      <aside class="i4side" data-i4sel="ink" data-view="projects"></aside>
       <main class="detail">
         <header class="dhead">
           <span class="hm claude md" title="Claude Code"></span><span class="dtitle">Port the sidebar to Ink tokens</span>
@@ -225,6 +226,7 @@
           <aside class="insp" data-insp="G" data-tab="ag"></aside>
         </div>
       </main>
+      <footer class="i4status" data-i4status></footer>
       <span class="pin" id="pinA1">A1</span><span class="pin" id="pinA2">A2</span><span class="pin" id="pinA3">A3</span><span class="pin" id="pinA4">A4</span>
       <span class="pin" id="pinA5">A5</span><span class="pin" id="pinA6">A6</span><span class="pin" id="pinA7">A7</span><span class="pin" id="pinA8">A8</span>
     </div></div>
@@ -281,8 +283,8 @@
   <section class="sec" id="sheets">
     <div class="sechead"><span class="num">04</span><h2>The sheets</h2>
       <p>Every question Sphyrna asks before it changes something, drawn as one family. The window shows Delete over its scrim. Below it, each sheet is live: click into one and press Return, Esc or Tab, and the line under it says what the keys did. Filled means Return: only Rename, which saves, has a filled default. Delete, Remove, Discard and Rewind tint their button, and the focus starts on Cancel.</p></div>
-    <div class="stage"><div class="win" id="winS" data-w="1280" data-h="680">
-      <aside class="side" data-sel="ink" data-v="ready"></aside>
+    <div class="stage"><div class="win i4grid" id="winS" data-w="1280" data-h="680">
+      <aside class="i4side" data-i4sel="ink" data-i4idle="ink" data-view="projects"></aside>
       <main class="detail">
         <header class="dhead">
           <span class="hm claude md" title="Claude Code"></span><span class="dtitle">Port the sidebar to Ink tokens</span>
@@ -302,6 +304,7 @@
           </div></div></div>
         </div></div>
       </main>
+      <footer class="i4status" data-i4status></footer>
       <div class="scrim"></div>
       <div class="sheet at" data-sheet="delete-ready" data-place="win"></div>
       <span class="pin" id="pinS1">S1</span><span class="pin" id="pinS2">S2</span><span class="pin" id="pinS3">S3</span><span class="pin" id="pinS4">S4</span><span class="pin" id="pinS5">S5</span>
