@@ -1,7 +1,8 @@
 /* ============================================================
-   Ink: Sphyrna's design language. Tokens first (Ink = dark,
+   Ink v4 (D-106): Sphyrna's design language. Tokens first (Ink = dark,
    Paper = light) with the tones' casts, then the document, then
-   the app's parts. Every app part uses only the tokens.
+   the app's parts. Every app part uses only the tokens. There is one
+   token set: v3's is gone.
    ============================================================ */
 :root{
   --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Inter,system-ui,sans-serif;
@@ -9,93 +10,10 @@
   --mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;
   --ease:cubic-bezier(.2,.7,.2,1);
 }
+/* the greys, lines and text tiers are Ink v4's (DESIGN.md §0.1, D-106); the accent, the status, the project tones and the tree lines keep their values */
 :root,[data-theme=dark]{
   color-scheme:dark;
-  --page:#070708;
-  --canvas:#0C0C0E;
-  --raise-1:#121215;
-  --raise-2:#17171B;
-  --popover:#1C1C21;
-  --seg-on:#26262C;
-  --line:rgba(255,255,255,.075);
-  --line-2:rgba(255,255,255,.115);
-  --line-3:rgba(255,255,255,.2);
-  --hover:rgba(255,255,255,.05);
-  --selected:rgba(255,255,255,.08);
-  --pressed:rgba(255,255,255,.12);
-  --fg-1:#ECECEF;
-  --fg-2:#9E9EA8;
-  --fg-3:#868690;
-  --faint:#6B6B75;
-  --fg-4:#45454D;
-  --accent:#8791CF;--accent-hi:#A9B0E3;--accent-lo:#5E68A8;--accent-wash:rgba(135,145,207,.16);--on-accent:#0B0E16;
-  --attn:#FF9E0A;--attn-text:#FFB547;--attn-wash:rgba(255,158,10,.13);
-  --unv:#5C8CFF;--unv-text:#8FB0FF;--unv-wash:rgba(92,140,255,.13);
-  --fail:#F2615C;--fail-text:#FF8A85;--fail-wash:rgba(242,97,92,.13);
-  --ok:#4CC38A;--ok-text:#7BDBA8;
-  --add-band:rgba(76,195,138,.09);--del-band:rgba(242,97,92,.09);
-  --grid:rgba(255,255,255,.034);
-  --tree:#3B3B41;
-  --art:236,236,240;
-  --sh-card:inset 0 1px 0 rgba(255,255,255,.03),0 1px 2px rgba(0,0,0,.45);
-  --sh-pop:0 0 0 1px rgba(255,255,255,.08),0 24px 64px rgba(0,0,0,.62),0 2px 8px rgba(0,0,0,.4);
-  --sh-win:0 0 0 1px rgba(255,255,255,.085),0 50px 140px rgba(0,0,0,.72);
-  --sh-composer:0 0 0 1px rgba(255,255,255,.12),0 30px 90px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.045);
-  --rose:#E68EBA;--orchid:#D194E6;--aqua:#80D5DB;--mint:#83D8B0;--sage:#92C186;--lemon:#CCE07B;
-  /* v4's names, with v3's answers (B0). No v3 rule reads them. */
-  --sidebar:var(--canvas);--muted:var(--hover);--input-fill:transparent;--input-edge:var(--line-2);--scrim:rgba(0,0,0,.4);
-  --sh-lift:0 1px 2px rgba(0,0,0,.35);--pri-fill:var(--accent);--pri-fill-hover:var(--accent-hi);--pri-text:var(--on-accent);
-}
-[data-theme=light]{
-  color-scheme:light;
-  --page:#E9E8E4;
-  --canvas:#F7F6F3;
-  --raise-1:#FBFAF8;
-  --raise-2:#FEFDFC;
-  --popover:#FFFFFF;
-  --seg-on:#FFFFFF;
-  --line:rgba(30,28,26,.085);
-  --line-2:rgba(30,28,26,.13);
-  --line-3:rgba(30,28,26,.24);
-  --hover:rgba(30,28,26,.045);
-  --selected:rgba(30,28,26,.07);
-  --pressed:rgba(30,28,26,.1);
-  --fg-1:#19181B;--fg-2:#5F5D63;--fg-3:#67656B;--faint:#8E8B91;--fg-4:#BCB9BD;
-  --accent:#4B56A8;--accent-hi:#3A4491;--accent-lo:#A3ABDD;--accent-wash:rgba(75,86,168,.11);--on-accent:#FBF8F2;
-  --attn:#C46A00;--attn-text:#7A3A00;--attn-wash:rgba(196,106,0,.11);
-  --unv:#2557CC;--unv-text:#1B43A3;--unv-wash:rgba(37,87,204,.1);
-  --fail:#C8322C;--fail-text:#8E1D19;--fail-wash:rgba(200,50,44,.1);
-  --ok:#186E43;--ok-text:#125A36;
-  --add-band:rgba(24,110,67,.08);--del-band:rgba(200,50,44,.08);
-  --grid:rgba(30,28,26,.06);
-  --tree:#C4C2BE;
-  --art:22,21,24;
-  --sh-card:0 1px 2px rgba(30,28,26,.06);
-  --sh-pop:0 0 0 1px rgba(30,28,26,.1),0 24px 60px rgba(30,28,26,.16),0 2px 6px rgba(30,28,26,.06);
-  --sh-win:0 0 0 1px rgba(30,28,26,.13),0 50px 120px rgba(30,28,26,.22);
-  --sh-composer:0 0 0 1px rgba(30,28,26,.12),0 24px 70px rgba(30,28,26,.13);
-  --rose:#B03F78;--orchid:#8A42AC;--aqua:#10747E;--mint:#1A7A51;--sage:#557A28;--lemon:#6F7500;
-  /* v4's names, with v3's answers (B0). No v3 rule reads them. */
-  --sidebar:var(--canvas);--muted:var(--hover);--input-fill:transparent;--input-edge:var(--line-2);--scrim:rgba(42,38,34,.22);
-  --sh-lift:0 1px 2px rgba(30,28,26,.1);--pri-fill:var(--accent);--pri-fill-hover:var(--accent-hi);--pri-text:var(--on-accent);
-}
-
-/* ---------- base ---------- */
-*{box-sizing:border-box;margin:0;padding:0}
-/* ---------- the tones (D-63, D-81): Warm and Cool cast Ink's neutral levels, over every app surface ---------- */
-body[data-cast=warm] :is(.win,.pc2){--canvas:#0E0C0A;--raise-1:#15120F;--raise-2:#1A1714;--popover:#201C18;--seg-on:#2C2721;--tree:#433C34}
-body[data-cast=cool] :is(.win,.pc2){--canvas:#0A0C10;--raise-1:#0F1217;--raise-2:#14171D;--popover:#191D24;--seg-on:#232833;--tree:#363E4C}
-[data-theme=light] body[data-cast=warm] :is(.win,.pc2){--canvas:#F8F2E8;--raise-1:#FCF8F1;--raise-2:#FEFCF8;--popover:#FFFDF9;--seg-on:#FFFDF9;--tree:#CFC4B3}
-[data-theme=light] body[data-cast=cool] :is(.win,.pc2){--canvas:#F1F3F6;--raise-1:#F8F9FB;--raise-2:#FCFDFE;--popover:#FFFFFF;--seg-on:#FFFFFF;--tree:#BCC2CB}
-
-/* ============================================================
-   Ink v4 (B0, D-105): the same names, a second set. The reference
-   bar's v3/v4 switch sets [data-ink] on the page and every frame,
-   so the v3 chapters keep drawing v3 while the v4 chapter and the
-   palette under it can be compared. The values are DESIGN-V4 §2.
-   ============================================================ */
-[data-ink=v4]{
-  color-scheme:dark;
+  --page:#070707;
   --canvas:#0A0A0A;
   --sidebar:#161616;
   --raise-1:#171717;
@@ -113,16 +31,26 @@ body[data-cast=cool] :is(.win,.pc2){--canvas:#0A0C10;--raise-1:#0F1217;--raise-2
   --pressed:rgba(255,255,255,.12);
   --scrim:rgba(0,0,0,.5);
   --fg-1:#EDEDED;--fg-2:#A1A1A1;--fg-3:#8F8F8F;--faint:#6B6B6B;--fg-4:#454545;
+  --accent:#8791CF;--accent-hi:#A9B0E3;--accent-lo:#5E68A8;--accent-wash:rgba(135,145,207,.16);--on-accent:#0B0E16;
+  --attn:#FF9E0A;--attn-text:#FFB547;--attn-wash:rgba(255,158,10,.13);
+  --unv:#5C8CFF;--unv-text:#8FB0FF;--unv-wash:rgba(92,140,255,.13);
+  --fail:#F2615C;--fail-text:#FF8A85;--fail-wash:rgba(242,97,92,.13);
+  --ok:#4CC38A;--ok-text:#7BDBA8;
+  --add-band:rgba(76,195,138,.09);--del-band:rgba(242,97,92,.09);
+  --grid:rgba(255,255,255,.034);
+  --tree:#3B3B41;
   --sh-card:none;
   --sh-lift:0 1px 2px rgba(0,0,0,.2);
   --sh-pop:0 0 0 1px rgba(255,255,255,.08),0 10px 24px rgba(0,0,0,.35);
   --sh-win:0 0 0 1px rgba(255,255,255,.085),0 40px 120px rgba(0,0,0,.7);
   --sh-composer:0 0 0 1px rgba(255,255,255,.1),0 1px 2px rgba(0,0,0,.2);
-  /* the default action is a neutral fill; periwinkle stays the mark of focus (§2, Q1) */
+  --rose:#E68EBA;--orchid:#D194E6;--aqua:#80D5DB;--mint:#83D8B0;--sage:#92C186;--lemon:#CCE07B;
+  /* the default action is a neutral fill; periwinkle is the mark of focus and of what is current */
   --pri-fill:#EDEDED;--pri-fill-hover:#DEDEDE;--pri-text:#171717;
 }
-[data-theme=light][data-ink=v4]{
+[data-theme=light]{
   color-scheme:light;
+  --page:#EFEFEF;
   --canvas:#FFFFFF;
   --sidebar:#F7F7F7;
   --raise-1:#FFFFFF;
@@ -140,18 +68,31 @@ body[data-cast=cool] :is(.win,.pc2){--canvas:#0A0C10;--raise-1:#0F1217;--raise-2
   --pressed:rgba(30,28,26,.09);
   --scrim:rgba(42,38,34,.2);
   --fg-1:#0A0A0A;--fg-2:#525252;--fg-3:#6B6B6B;--faint:#9C9C9C;--fg-4:#C6C6C6;
+  --accent:#4B56A8;--accent-hi:#3A4491;--accent-lo:#A3ABDD;--accent-wash:rgba(75,86,168,.11);--on-accent:#FBF8F2;
+  --attn:#C46A00;--attn-text:#7A3A00;--attn-wash:rgba(196,106,0,.11);
+  --unv:#2557CC;--unv-text:#1B43A3;--unv-wash:rgba(37,87,204,.1);
+  --fail:#C8322C;--fail-text:#8E1D19;--fail-wash:rgba(200,50,44,.1);
+  --ok:#186E43;--ok-text:#125A36;
+  --add-band:rgba(24,110,67,.08);--del-band:rgba(200,50,44,.08);
+  --grid:rgba(30,28,26,.06);
+  --tree:#C4C2BE;
   --sh-card:none;
   --sh-lift:0 1px 2px rgba(30,28,26,.06);
   --sh-pop:0 0 0 1px rgba(30,28,26,.1),0 10px 24px rgba(30,28,26,.14);
   --sh-win:0 0 0 1px rgba(30,28,26,.13),0 40px 110px rgba(30,28,26,.2);
   --sh-composer:0 0 0 1px rgba(30,28,26,.1),0 1px 2px rgba(30,28,26,.06);
+  --rose:#B03F78;--orchid:#8A42AC;--aqua:#10747E;--mint:#1A7A51;--sage:#557A28;--lemon:#6F7500;
   --pri-fill:#171717;--pri-fill-hover:#2B2B2B;--pri-text:#FAFAFA;
 }
-/* v4's tone casts: Warm and Cool recompute the six greys from v4's neutrals, as v3's do (D-81) */
-[data-ink=v4] body[data-cast=warm] :is(.win,.pc2){--canvas:#0C0A08;--sidebar:#181512;--raise-1:#191613;--raise-2:#201A16;--popover:#1E1915;--muted:#2A231C;--seg-on:#0C0A08}
-[data-ink=v4] body[data-cast=cool] :is(.win,.pc2){--canvas:#080A0C;--sidebar:#121619;--raise-1:#131719;--raise-2:#191D24;--popover:#171B21;--muted:#20262E;--seg-on:#080A0C}
-[data-theme=light][data-ink=v4] body[data-cast=warm] :is(.win,.pc2){--canvas:#FFFDF9;--sidebar:#FAF5EF;--raise-1:#FFFFFF;--raise-2:#FDF8F2;--popover:#FFFFFF;--muted:#F7F1E9;--seg-on:#FFFFFF}
-[data-theme=light][data-ink=v4] body[data-cast=cool] :is(.win,.pc2){--canvas:#FFFFFF;--sidebar:#F3F5F8;--raise-1:#FFFFFF;--raise-2:#F8FAFC;--popover:#FFFFFF;--muted:#F0F3F6;--seg-on:#FFFFFF}
+
+/* ---------- the tones (D-63, D-81): Warm and Cool cast v4's neutrals, over every app surface ---------- */
+body[data-cast=warm] :is(.win,.pc2){--canvas:#0C0A08;--sidebar:#181512;--raise-1:#191613;--raise-2:#201A16;--popover:#1E1915;--muted:#2A231C;--seg-on:#0C0A08;--tree:#433C34}
+body[data-cast=cool] :is(.win,.pc2){--canvas:#080A0C;--sidebar:#121619;--raise-1:#131719;--raise-2:#191D24;--popover:#171B21;--muted:#20262E;--seg-on:#080A0C;--tree:#363E4C}
+[data-theme=light] body[data-cast=warm] :is(.win,.pc2){--canvas:#FFFDF9;--sidebar:#FAF5EF;--raise-1:#FFFFFF;--raise-2:#FDF8F2;--popover:#FFFFFF;--muted:#F7F1E9;--seg-on:#FFFFFF;--tree:#CFC4B3}
+[data-theme=light] body[data-cast=cool] :is(.win,.pc2){--canvas:#FFFFFF;--sidebar:#F3F5F8;--raise-1:#FFFFFF;--raise-2:#F8FAFC;--popover:#FFFFFF;--muted:#F0F3F6;--seg-on:#FFFFFF;--tree:#BCC2CB}
+
+/* ---------- base ---------- */
+*{box-sizing:border-box;margin:0;padding:0}
 
 html{background:var(--page)}
 body{font:13px/1.45 var(--ui);color:var(--fg-1);-webkit-font-smoothing:antialiased;background:var(--page);

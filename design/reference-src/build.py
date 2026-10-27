@@ -62,8 +62,6 @@ def build_doc(name):
 DOCS = {
     'v4': {
         'title': 'Sphyrna · Ink v4 · The proposal',
-        # the v4 chapter opens on v4's tokens and defaults; the bar switches back to v3
-        'html': ' data-ink="v4" data-q1="neutral" data-q2="lifted" data-q3="raised" data-q4="sans" data-q5="light" data-q6="row"',
         'css': ['shared/chat.css', 'shared/harness.css', 'shared/settings.css', 'docs/v4/v4.css'],
         'body': ['docs/v4/body.html'],
         'js': ['shared/base.js', 'shared/engine.js', 'docs/v4/v4.js'],
@@ -171,7 +169,7 @@ def page(docs, name):
         index[doc] = keys
     # the documents travel compressed, so the page stays small enough for every viewer (the app's browser pane opens up to 1 MB)
     payload = json.dumps({'blocks': blocks, 'docs': index}, ensure_ascii=False, separators=(',', ':'))
-    payload = base64.b64encode(gzip.compress(payload.encode('utf-8'), 9)).decode()
+    payload = base64.b64encode(gzip.compress(payload.encode('utf-8'), compresslevel=9, mtime=0)).decode()
     body = read(p['body'])
     assert '<!--ICON-->' in body
     body = body.replace('<!--ICON-->', data_url('docs/edges/icon-256.png'))
@@ -184,7 +182,7 @@ def page(docs, name):
 
 PAGES = {
     # every document, chapter by chapter, with its notes and parts
-    'reference.html': {'title': 'Sphyrna · Ink · Design reference', 'html': ' data-ink="v4"', 'css': ['shell/shell.css'], 'body': 'shell/body.html',
+    'reference.html': {'title': 'Sphyrna · Ink · Design reference', 'css': ['shell/shell.css'], 'body': 'shell/body.html',
                        'js': ['shell/frames.js', 'shell/shell.js'], 'docs': None},
     # one window for each thing Sphyrna does, from the same documents
     'landing.html': {'title': 'Sphyrna', 'css': ['landing/landing.css'], 'body': 'landing/body.html',

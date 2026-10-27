@@ -1,7 +1,7 @@
 /* ---------- the reference: its chapters, each a set of frames, and the state they share ---------- */
 // Each chapter shows sections of the documents, in frames; a section is numbered by its chapter, and a document's rules lead its part unnumbered.
 const CHAPTERS = [
-  { id: 'ink4', title: 'Ink v4', text: 'The 1.8.0 proposal, drawn so it can be approved before any Swift changes it: two planes, one control family at four heights, three elevations, a lifted sidebar with a card that carries its status, a window-wide status bar, a model and effort panel, and Connections. The open choices Q1–Q6 are switches above, and the v3/v4 switch in the bar changes the tokens under every chapter.',
+  { id: 'ink4', title: 'Ink v4', text: 'Approved (D-106): two planes, one control family at four heights, three elevations, a lifted sidebar with a card that carries its status, a window-wide status bar, a model and effort panel, and Connections. Approved on this reference (D-106); the v3 tokens and their switch are gone.',
     refs: ['DESIGN-V4', 'D-105', 'FB7-1', 'FB7-2'], frames: [['v4', ['rules', 'controls', 'tokens', 'sidebar', 'session', 'model', 'connections', 'pages']]] },
   { id: 'identity', title: 'Identity', text: 'The name, the app icon and the menu bar mark, and where they appear. From 1.6.0 the app is Sphyrna, the hammerhead\'s genus, and Home\'s assistant is Remora.',
     refs: ['DESIGN §6 Name and marks', 'D-77', 'D-83'], frames: [['identity', ['rules', 'icon', 'inplace', 'menubar']]] },
@@ -25,33 +25,6 @@ const CHAPTERS = [
     refs: ['DESIGN §19', 'D-79'], frames: [['edges', ['rules', 'ended', 'banners', 'outside']]] }
 ];
 const chaptersEl = $('#chapters'), nav = $('#refNav');
-
-/* ---------- the v4 chapter's open choices (Q1–Q6, FEEDBACK-7): a switch each, the default first ---------- */
-const CHOICES = [
-  { key: 'q1', q: 'Q1', label: 'Default button', a: ['neutral', 'Neutral fill'], b: ['accent', 'Periwinkle'], note: 'The one filled button is the one Return presses.' },
-  { key: 'q2', q: 'Q2', label: 'Sidebar', a: ['lifted', 'Lifted plane'], b: ['flat', 'One canvas'], note: 'The sidebar one step lighter than the content, or the same canvas.' },
-  { key: 'q3', q: 'Q3', label: 'Selected session', a: ['raised', 'Neutral raised'], b: ['tint', 'Project tint'], note: 'The project tone stays on its mark and its tabs.' },
-  { key: 'q4', q: 'Q4', label: 'Section labels', a: ['sans', 'SF Pro 11'], b: ['mono', 'SF Mono 10.5'], note: 'Capitals either way; the default keeps mono for machine text.' },
-  { key: 'q5', q: 'Q5', label: 'Display type', a: ['light', '34 light'], b: ['ultra', '46 ultralight'], note: "Home's sentence and the new-session question." },
-  { key: 'q6', q: 'Q6', label: 'Session tabs', a: ['row', 'In the tab row'], b: ['titlebar', 'In the title bar'], note: 'The row under the header, or the tabs in the title bar; flat either way.' }
-];
-const v4bar = $('#v4bar');
-v4bar.innerHTML = `<div class="v4h"><b>Ink v4 · the open choices</b><span>Each switch redraws the v4 chapter both ways, the default first. The v3/v4 switch in the bar changes the tokens under every chapter.</span><button class="btn gh sm" id="qReset">Defaults</button></div>`
-  + CHOICES.map(c => `<div class="q" data-q="${c.key}"><span class="qn">${c.q}</span><span class="ql">${c.label}</span><div class="qs"><button data-v="${c.a[0]}" class="on">${c.a[1]}</button><button data-v="${c.b[0]}">${c.b[1]}</button></div><span class="qx">${c.note}</span></div>`).join('');
-function paintChoices() {
-  $$('#v4bar .q').forEach(el => {
-    const v = STATE.q[el.dataset.q];
-    $$('button', el).forEach(b => b.classList.toggle('on', b.dataset.v === v));
-  });
-}
-$$('#v4bar .q button').forEach(b => b.addEventListener('click', () => {
-  STATE.q[b.closest('.q').dataset.q] = b.dataset.v;
-  paintTools(); postAll();
-}));
-$('#qReset').addEventListener('click', () => {
-  CHOICES.forEach(c => { STATE.q[c.key] = c.a[0]; });
-  paintTools(); postAll();
-});
 
 CHAPTERS.forEach((c, i) => {
   const n = String(i + 1).padStart(2, '0');
@@ -83,7 +56,6 @@ function paintNavFade() {
 refNavEl.addEventListener('scroll', paintNavFade, { passive: true });
 addEventListener('resize', paintNavFade);
 sea('ocean-intro', { cell: 11, alpha: .6, specs: [{ kind: 'hammerhead', L: 560, depth: .62, speed: 17 }, { kind: 'thresher', L: 320, depth: .9, speed: 22 }, { kind: 'whale', L: 860, depth: .26, speed: 8 }] });
-$$('#inkSeg button').forEach(b => b.addEventListener('click', paintNavFade));
 paintTools();
 paintNavFade();
 unpack().then(loadNext);

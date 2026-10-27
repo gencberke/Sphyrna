@@ -5,9 +5,6 @@
    (sidebar, status bar) is built here.
    ============================================================ */
 
-// The standalone document opens on v4, so its bar must say so (the reference page paints it through the bridge).
-$$('#inkSeg button').forEach(b => b.classList.toggle('on', b.dataset.inkSet === (document.documentElement.dataset.ink || 'v3')));
-
 const I4_WORD = { work:'Working', attn:'Needs you', unv:'Finished', fail:'Failed' };
 
 const I4_PROJECTS = [
@@ -197,12 +194,6 @@ function i4modelpanel(el) {
 $$('[data-i4model]').forEach(i4modelpanel);
 $$('[data-i4side]').forEach(i4sidebar);
 $$('[data-i4status]').forEach(i4statusbar);
-
-// Q6: the same session tabs, moved into the 52-high header. The row keeps its markup; the header gets a copy.
-$$('.i4hdtabs').forEach(nav => {
-  const row = nav.closest('.i4main') && nav.closest('.i4main').querySelector('.i4tabrow');
-  if (row) nav.innerHTML = $$('.i4tab', row).map(t => t.outerHTML).join('');
-});
 
 // The sidebar's two views switch in place, as the app's do.
 document.addEventListener('click', e => {

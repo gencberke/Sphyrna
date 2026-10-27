@@ -7,7 +7,7 @@
   <!-- ================= 01 RULES ================= -->
   <section class="sec ink4" id="rules">
     <div class="sechead"><span class="num">01</span><h2>The six rules, v4</h2>
-      <p>Ink v4 takes Orca's quiet system and keeps what makes Sphyrna recognisable. The switches above this chapter (Q1–Q6) redraw every window below both ways, the default first; the v3/v4 switch in the bar changes the tokens under every chapter. Nothing here is approved yet: this page is the proposal.</p></div>
+      <p>Ink v4 takes Orca's quiet system and keeps what makes Sphyrna recognisable. Approved on this reference (D-106): the six rules, the parts and every window below are the design language.</p></div>
     <div class="rules">
       <div class="rule"><div class="n">01</div><h3>Two planes</h3><p>The sidebar is a plane one step lighter than the content. The content is the canvas. Hairlines divide; nothing is boxed twice; only what you act on is lifted.</p></div>
       <div class="rule"><div class="n">02</div><h3>Two voices</h3><p>SF Pro for what you read, labels included. SF Mono only for what the machine says: branches, paths, model ids, times, tokens, counts, keys.</p></div>
@@ -15,14 +15,6 @@
       <div class="rule"><div class="n">04</div><h3>One control family</h3><p>Four heights (24, 28, 32, 36), one radius (8), one hover, one focus ring, six button roles. A control looks the same wherever it appears.</p></div>
       <div class="rule"><div class="n">05</div><h3>Three reading points</h3><p>The sidebar says how every session is doing. The header says how this one is doing and what you can do with it. The status bar says how the accounts are doing.</p></div>
       <div class="rule"><div class="n">06</div><h3>Quiet by default</h3><p>Feedback matches the duration, the way back is never coloured, a tooltip only names, and copy never claims more than the state proves.</p></div>
-    </div>
-    <div class="i4choices">
-      <div class="i4ch"><span class="i4cn">Q1</span><div><b>The default button</b><span>Neutral fill. Periwinkle stays focus, current and on.</span></div><span class="i4cd">neutral</span></div>
-      <div class="i4ch"><span class="i4cn">Q2</span><div><b>The sidebar</b><span>Lifted one step above the content.</span></div><span class="i4cd">lifted</span></div>
-      <div class="i4ch"><span class="i4cn">Q3</span><div><b>The selected session</b><span>Neutral raised card. The tone stays on mark and tab.</span></div><span class="i4cd">raised</span></div>
-      <div class="i4ch"><span class="i4cn">Q4</span><div><b>Section labels</b><span>SF Pro 11 semibold capitals. Mono for machine text only.</span></div><span class="i4cd">sans</span></div>
-      <div class="i4ch"><span class="i4cn">Q5</span><div><b>Display type</b><span>34 light on Home and the draft, not 46 ultralight.</span></div><span class="i4cd">light</span></div>
-      <div class="i4ch"><span class="i4cn">Q6</span><div><b>Session tabs</b><span>The 36 pt row stays; the tabs go flat.</span></div><span class="i4cd">row</span></div>
     </div>
   </section>
 
@@ -105,7 +97,7 @@
             <tr><th>Paper · faint <span>#9C9C9C</span></th><td>2.8</td><td>2.6</td><td>2.8</td><td>2.3*</td></tr>
           </tbody>
         </table>
-        <p class="note">*Hover is the sidebar's hover fill. Faint has no hover pair: placeholders sit in fields and disabled items do not hover. Floors: primary 7:1, secondary 4.5:1 on every plane and fill, tertiary 4.5:1 on the canvas, the sidebar, the card and the hover fill, faint 2.5:1 on the surfaces it is used on. Two values are drawn one step above DESIGN-V4: tertiary is <b>#8F8F8F</b> because #8A8A8A measures 4.38:1 on the hover fill over the lifted sidebar, and Paper's faint is <b>#9C9C9C</b> because #A3A3A3 measures 2.35:1 on the sidebar plane. Both values are proposed corrections, not silent changes. In Q3's tint the selected card's branch and times rise to secondary, where the tint holds 4.5.</p>
+        <p class="note">*Hover is the sidebar's hover fill. Faint has no hover pair: placeholders sit in fields and disabled items do not hover. Floors: primary 7:1, secondary 4.5:1 on every plane and fill, tertiary 4.5:1 on the canvas, the sidebar, the card and the hover fill, faint 2.5:1 on the surfaces it is used on. Two values are drawn one step above DESIGN-V4: tertiary is <b>#8F8F8F</b> because #8A8A8A measures 4.38:1 on the hover fill over the lifted sidebar, and Paper's faint is <b>#9C9C9C</b> because #A3A3A3 measures 2.35:1 on the sidebar plane. Both values are corrections made at approval (D-106).</p>
       </div>
       <div class="spec w6"><span class="label">Type</span>
         <div class="tyrow"><span class="k">display · 34 / 300</span><span class="i4ask" style="font-size:34px;display:block">What should we work on?</span></div>
@@ -116,7 +108,7 @@
         <div class="tyrow"><span class="k">caption · 11 / 400</span><span style="font-size:11px;color:var(--fg-2)">4% left · 3h 39m</span></div>
         <div class="tyrow"><span class="k">label · pro 11 / 600</span><span class="i4lab">Plan limits</span></div>
         <div class="tyrow"><span class="k">meta · mono 11</span><span class="mono" style="font-size:11px;color:var(--fg-2)">ui/ink-sidebar · 14:02 · 76.1K</span></div>
-        <p class="note">Weight carries hierarchy before size. The label is SF Pro 11 semibold capitals at 5 % tracking (Q4); the mono label is the alternate. No Dynamic Type, as before.</p>
+        <p class="note">Weight carries hierarchy before size. The label is SF Pro 11 semibold capitals at 5 % tracking. No Dynamic Type, as before.</p>
       </div>
       <div class="spec w6"><span class="label">Shape, heights and the three elevations</span>
         <div class="shape">
@@ -145,7 +137,7 @@
   <!-- ================= 04 SIDEBAR ================= -->
   <section class="sec ink4" id="sidebar">
     <div class="sechead"><span class="num">04</span><h2>The sidebar</h2>
-      <p>The same sidebar in its two views, on its own plane. The search field opens the palette; Home carries the count that needs you. A working session, one that needs you, one finished, one ready and one failed; the selected card; a card with two subagents; and a project head under the pointer. Q2 lifts the plane, Q3 chooses the selected card's look.</p></div>
+      <p>The same sidebar in its two views, on its own plane. The search field opens the palette; Home carries the count that needs you. A working session, one that needs you, one finished, one ready and one failed; the selected card; a card with two subagents; and a project head under the pointer. The plane is lifted one step above the content.</p></div>
     <div class="i4duo">
       <div>
         <div class="i4cap"><b>Projects</b><span>the card carries its status, its title and its branch</span></div>
@@ -162,7 +154,7 @@
       <li><b>3</b>The card has three lines: mark and project with the status, the title, the branch with the harness's mark. Ten by twelve of padding, radius 10, no fill at rest.</li>
       <li><b>4</b>Working is the spinner, the word and the elapsed time; Needs you, Finished and Failed are a dot, the word and the time; Ready is nothing, so the time since the last activity takes the top line's end.</li>
       <li><b>5</b>Subagents branch from the mark's column, the line leaving the mark's centre. Their rows are 24 with a still running mark.</li>
-      <li><b>6</b>Under the pointer the card takes the hover fill; selected it is raised with the strong hairline at elevation 2 (Q3). The tone stays on the project mark.</li>
+      <li><b>6</b>Under the pointer the card takes the hover fill; selected it is raised with the strong hairline at elevation 2. The tone stays on the project mark.</li>
       <li><b>7</b>The footer chip is gone: the status bar takes it. Settings and Help stay as ghost icon buttons at the sidebar's bottom edge.</li>
       <li><b>8</b>In Activity the reason line replaces the branch, and the days divide the list. Nothing else changes.</li>
     </ol>
@@ -171,7 +163,7 @@
   <!-- ================= 05 SESSION ================= -->
   <section class="sec ink4" id="session">
     <div class="sechead"><span class="num">05</span><h2>The session window</h2>
-      <p>The sidebar plane beside the canvas, the header (52), the tab row (36), the untouched terminal, the inspector's Overview and the status bar (26) under the whole window with its popover open. Q6 moves the tabs into the header; Q2 and Q3 change the plane and the selected card.</p></div>
+      <p>The sidebar plane beside the canvas, the header (52), the tab row (36), the untouched terminal, the inspector's Overview and the status bar (26) under the whole window with its popover open.</p></div>
     <div class="stage"><div class="win i4win" id="winS" data-w="1280" data-h="860">
       <div class="i4shell">
         <div class="i4body">
@@ -180,7 +172,7 @@
             <header class="i4h">
               <span class="hm claude md" title="Claude Code"></span><span class="i4htitle">Port the sidebar to Ink tokens</span>
               <span class="i4stt work"><span class="spin">⠋</span>Working <b>37s</b></span>
-              <nav class="i4hdtabs" aria-label="Session tabs"></nav>
+
               <div class="i4hend">
                 <span class="i4chip"><span class="i4pmark sm" style="--tone:var(--orchid)">L</span>loom<span class="i4sep"></span><span class="i4brn"><span data-i="branch"></span>ui/ink-sidebar</span></span>
                 <button class="i4ib model" title="Model"><span class="hm claude"></span>Opus 5.5<span data-i="chev-d" class="chv"></span></button><button class="i4ib model" title="Effort"><span data-i4i="effort"></span>High<span data-i="chev-d" class="chv"></span></button>
@@ -337,7 +329,7 @@
   <!-- ================= 08 PAGES ================= -->
   <section class="sec ink4" id="pages">
     <div class="sechead"><span class="num">08</span><h2>The draft and Home</h2>
-      <p>v4's type on the two pages that speak: the new-session question and Home's statement, 34 at weight 300 (Q5), with the display at 46 / 200 as the alternate. The composer is 680, radius 16, at elevation 2; the default action is the neutral fill (Q1).</p></div>
+      <p>v4's type on the two pages that speak: the new-session question and Home's statement, 34 at weight 300. The composer is 680, radius 16, at elevation 2; the default action is the neutral fill.</p></div>
     <div class="i4cap"><b>New session</b><span>the question, the folder, the composer and the one model chip</span></div>
     <div class="stage"><div class="win i4win" id="winD" data-w="1280" data-h="820">
       <div class="i4shell">
@@ -413,5 +405,5 @@
     </div></div>
   </section>
 
-  <footer>Ink v4 · a proposal for 1.8.0, drawn from DESIGN-V4.md · the windows are drawn at their real sizes · nothing here is approved</footer>
+  <footer>Ink v4 · for 1.8.0, as approved · the windows are drawn at their real sizes · approved on 27 October (D-106)</footer>
 </div>

@@ -19,9 +19,6 @@
   function apply(m) {
     applying = true;
     if (m.theme) { const b = q(`#themeSeg [data-theme-set="${m.theme}"]`); if (b && !b.classList.contains('on')) b.click(); }
-    // v3 or the v4 tokens, and the v4 chapter's open choices Q1–Q6 (B0)
-    if (m.ink) { const b = q(`#inkSeg [data-ink-set="${m.ink}"]`); if (b) { if (!b.classList.contains('on')) b.click(); } else document.documentElement.dataset.ink = m.ink; }
-    if (m.q) Object.entries(m.q).forEach(([k, v]) => { document.documentElement.dataset[k] = v; });
     if (m.cast) {
       const tile = q(`[data-set="cast"] [data-v="${m.cast}"]`);
       if (tile) { if (!tile.classList.contains('on')) tile.click(); } else document.body.dataset.cast = m.cast;
@@ -55,11 +52,10 @@
   const art = q('#swAmbient');
   const local = () => {
     if (applying) return;
-    const root = document.documentElement, qs = {};
-    ['q1', 'q2', 'q3', 'q4', 'q5', 'q6'].forEach(k => { if (root.dataset[k]) qs[k] = root.dataset[k]; });
-    parent.postMessage({ ref: 'local', theme: root.dataset.theme, ink: root.dataset.ink, q: qs, cast: document.body.dataset.cast, sharks: art ? art.classList.contains('on') : undefined }, '*');
+    const root = document.documentElement;
+    parent.postMessage({ ref: 'local', theme: root.dataset.theme, cast: document.body.dataset.cast, sharks: art ? art.classList.contains('on') : undefined }, '*');
   };
-  new MutationObserver(local).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-ink', 'data-q1', 'data-q2', 'data-q3', 'data-q4', 'data-q5', 'data-q6'] });
+  new MutationObserver(local).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   new MutationObserver(local).observe(document.body, { attributes: true, attributeFilter: ['data-cast'] });
   if (art) new MutationObserver(local).observe(art, { attributes: true, attributeFilter: ['class'] });
   addEventListener('message', e => { if (e.source === parent && e.data && e.data.ref === 'state') apply(e.data); });

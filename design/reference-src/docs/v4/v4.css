@@ -1,36 +1,23 @@
 /* ============================================================
-   Ink v4 (B0): the proposal's parts. Every rule is scoped to
-   .ink4, so the v3 chapters keep drawing v3; the tokens come
-   from head.css's [data-ink=v4] set, and every Q switch is a
-   [data-q*] attribute on <html>.
+   Ink v4: the approved parts (D-106). Every rule is scoped to
+   .ink4; the tokens come from head.css, the one token set.
    ============================================================ */
 
 /* ---------- labels and type ---------- */
 .ink4 .i4lab{display:inline-block;font:600 11px/1 var(--ui);letter-spacing:.05em;text-transform:uppercase;color:var(--fg-3);white-space:nowrap}
 .ink4 .label{font:600 11px/1 var(--ui);letter-spacing:.05em;text-transform:uppercase;color:var(--fg-3)}
-[data-q4=mono] .ink4 .i4lab,[data-q4=mono] .ink4 .label{font:500 10.5px/1 var(--mono);letter-spacing:.09em}
 .ink4 .i4ask{font:300 34px/1.15 var(--display);letter-spacing:-.022em;color:var(--fg-1)}
-[data-q5=ultra] .ink4 .i4ask{font:200 46px/1.12 var(--display);letter-spacing:-.032em}
 .ink4 .i4note{font-size:11px;line-height:1.45;color:var(--fg-3)}
 .ink4 .i4mono{font:11px var(--mono);color:var(--fg-3)}
 
 /* ---------- 01 rules and the open choices ---------- */
 .ink4 .rules{margin-top:30px}
-.ink4 .i4choices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:22px}
-.ink4 .i4ch{display:grid;grid-template-columns:auto 1fr auto;gap:3px 10px;align-items:start;padding:12px 14px;border-radius:12px;background:var(--canvas);box-shadow:inset 0 0 0 1px var(--line)}
-.ink4 .i4cn{font:11px var(--mono);color:var(--accent);padding-top:1px}
-.ink4 .i4ch > div{grid-column:2;display:flex;flex-direction:column;gap:2px;min-width:0}
-.ink4 .i4ch b{font:600 12.5px var(--ui);color:var(--fg-1)}
-.ink4 .i4ch > div span{font-size:11.5px;line-height:1.45;color:var(--fg-2)}
-.ink4 .i4cd{grid-column:3;justify-self:end;font:10px var(--mono);color:var(--fg-3);letter-spacing:.03em;padding-top:1px}
 
 /* ---------- 02 the control family ---------- */
 .ink4 .i4btn{height:32px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 12px;border-radius:8px;font:500 13px/1 var(--ui);color:var(--fg-1);white-space:nowrap;flex:none;transition:background .12s,box-shadow .12s,color .12s}
 .ink4 .i4btn svg{width:14px;height:14px}
 .ink4 .i4btn.pri{background:var(--pri-fill);color:var(--pri-text)}
 .ink4 .i4btn.pri:hover{background:var(--pri-fill-hover)}
-[data-q1=accent] .ink4 .i4btn.pri{background:var(--accent);color:var(--on-accent)}
-[data-q1=accent] .ink4 .i4btn.pri:hover{background:var(--accent-hi)}
 .ink4 .i4btn.sec{background:var(--muted);color:var(--fg-1)}
 .ink4 .i4btn.sec:hover{background:color-mix(in srgb,var(--muted) 88%,var(--fg-1))}
 .ink4 .i4btn.out{background:var(--input-fill);box-shadow:inset 0 0 0 1px var(--input-edge),var(--sh-lift)}
@@ -127,7 +114,6 @@
    ============================================================ */
 .ink4 .i4side{width:280px;flex:none;min-height:0;display:flex;flex-direction:column;background:var(--sidebar);border-right:1px solid var(--line);color:var(--fg-1);position:relative;overflow:hidden}
 .ink4 .i4cropwin .i4side{width:100%;height:100%;border-right:0}
-[data-q2=flat] .ink4 .i4side,[data-q2=flat] .ink4 .i4status{background:var(--canvas)}
 .ink4 .i4side *{min-width:0}
 .ink4 .i4lights{height:52px;flex:none;display:flex;align-items:center;gap:8px;padding:0 16px}
 .ink4 .i4lights i{width:12px;height:12px;border-radius:50%;background:#FF5F57;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.25)}
@@ -177,9 +163,6 @@
 .ink4 .i4sc + .i4sc{margin-top:1px}
 .ink4 .i4sc:hover{background:var(--hover)}
 .ink4 .i4sc.sel{background:var(--raise-2);box-shadow:inset 0 0 0 1px var(--line-2),var(--sh-lift)}
-[data-q3=tint] .ink4 .i4sc.sel{background:color-mix(in srgb,var(--tone) 14%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--tone) 34%,transparent)}
-/* the tint is lighter than the plane, so its quiet meta rises to secondary (4.5 held) */
-[data-q3=tint] .ink4 .i4sc.sel .i4brn,[data-q3=tint] .ink4 .i4sc.sel .i4time,[data-q3=tint] .ink4 .i4sc.sel .i4sub em{color:var(--fg-2)}
 .ink4 .i4sct{display:flex;align-items:center;gap:5px;height:18px;font-size:11px;color:var(--fg-3);white-space:nowrap}
 .ink4 .i4sct .pn{overflow:hidden;text-overflow:ellipsis;color:var(--fg-2)}
 .ink4 .i4sct .i4stt,.ink4 .i4sct .i4time{margin-left:auto;flex:none}
@@ -223,13 +206,9 @@
 .ink4 .i4htitle{font:600 13px var(--ui);color:var(--fg-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .ink4 .i4h > .i4stt{flex:none}
 .ink4 .i4hend{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
-.ink4 .i4chip{height:24px;display:inline-flex;align-items:center;gap:6px;padding:0 8px;border-radius:8px;box-shadow:inset 0 0 0 1px var(--line-2);font-size:11.5px;color:var(--fg-2);white-space:nowrap;flex:none}
-.ink4 .i4chip .i4pmark{width:13px;height:13px;border-radius:4px;font-size:8px}
-.ink4 .i4chip .hm{width:11px;height:11px}
 .ink4 .i4sep{width:1px;height:12px;background:var(--line-2);flex:none}
 .ink4 .i4brn{display:inline-flex;align-items:center;gap:4px;font:10.5px var(--mono);color:var(--fg-2);min-width:0}
 .ink4 .i4brn svg{width:11px;height:11px;color:var(--fg-3)}
-.ink4 .i4chip.inl{height:22px;font-size:11px;vertical-align:1px}
 .ink4 .i4cgroup{height:28px;display:inline-flex;border-radius:8px;box-shadow:inset 0 0 0 1px var(--input-edge);overflow:hidden;background:var(--input-fill);flex:none}
 .ink4 .i4cgroup button{height:28px;padding:0 10px;display:inline-flex;align-items:center;gap:7px;font:500 12.5px var(--ui);color:var(--fg-1)}
 .ink4 .i4cgroup button:hover{background:var(--hover)}
@@ -283,13 +262,6 @@
 .ink4 .i4arow em{font:normal 10.5px var(--mono);color:var(--fg-3);margin-left:auto;flex:none}
 .ink4 .i4arow .i4stt .spin{width:10px;height:10px;font-size:12px}
 
-/* Q6: the tabs in the 52-high header */
-.ink4 .i4hdtabs{display:none;align-items:center;gap:4px;min-width:0;overflow:hidden;margin-left:2px}
-[data-q6=titlebar] .ink4 .i4hdtabs{display:flex;flex:1;padding-right:8px}
-[data-q6=titlebar] .ink4 .i4h > .hm,[data-q6=titlebar] .ink4 .i4htitle,[data-q6=titlebar] .ink4 .i4h > .i4stt{display:none}
-[data-q6=titlebar] .ink4 .i4tabrow{display:none}
-[data-q6=titlebar] .ink4 .i4hdtabs .i4tab{height:28px;max-width:210px}
-[data-q6=titlebar] .ink4 .i4hend .i4chip{display:none}
 
 /* the status bar: sidebar plane, hairline, caption type */
 .ink4 .i4status{height:26px;flex:none;display:flex;align-items:center;gap:4px;padding:0 8px;background:var(--sidebar);border-top:1px solid var(--line);font:11px var(--ui);color:var(--fg-2);position:relative;z-index:5;white-space:nowrap}
@@ -438,7 +410,6 @@
    ============================================================ */
 .ink4 .i4draft{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;padding:104px 28px 0;overflow:hidden}
 .ink4 .i4ask{text-align:center;max-width:860px}
-[data-q5=ultra] .ink4 .i4draft{padding-top:84px}
 .ink4 .i4pick{font:inherit;letter-spacing:inherit;color:var(--fg-1);display:inline-flex;align-items:center;gap:4px;line-height:1;padding:0 1px 3px;background:linear-gradient(color-mix(in srgb,var(--tone) 85%,transparent),color-mix(in srgb,var(--tone) 85%,transparent)) left bottom/100% 2px no-repeat}
 .ink4 .i4pick svg{width:18px;height:18px;color:var(--fg-3);margin-top:5px}
 .ink4 .i4folder{margin-top:16px;display:flex;align-items:center;gap:9px;font:11.5px var(--mono);color:var(--fg-3)}
@@ -451,7 +422,6 @@
 .ink4 .i4cchip .i4eff{font-size:11px;font-weight:400}
 .ink4 .i4send{margin-left:auto;width:32px;height:32px;border-radius:8px;display:grid;place-items:center;background:var(--pri-fill);color:var(--pri-text);flex:none}
 .ink4 .i4send svg{width:16px;height:16px}
-[data-q1=accent] .ink4 .i4send{background:var(--accent);color:var(--on-accent)}
 .ink4 .i4keys{margin-top:12px;display:flex;justify-content:center;gap:16px;font:10.5px var(--mono);color:var(--fg-3)}
 .ink4 .i4keys b{font-weight:500;color:var(--fg-2)}
 .ink4 .i4presets{display:flex;justify-content:center;gap:8px;margin-top:16px}
@@ -464,7 +434,6 @@
 .ink4 .i4hero{max-width:900px;margin:0 auto;padding:62px 0 28px}
 .ink4 .i4eyebrow{font:10.5px var(--mono);color:var(--fg-3);letter-spacing:.02em}
 .ink4 .i4hero h1{font:300 34px/1.2 var(--display);letter-spacing:-.022em;margin:10px 0 10px;color:var(--fg-1)}
-[data-q5=ultra] .ink4 .i4hero h1{font:200 46px/1.12 var(--display);letter-spacing:-.032em}
 .ink4 .i4hero h1 em{font-style:normal;color:var(--attn-text)}
 .ink4 .i4hero p{font-size:12.5px;color:var(--fg-2)}
 .ink4 .i4hero p b{font-weight:500;color:var(--fg-1)}
@@ -492,5 +461,3 @@
 .ink4 .i4lfoot{margin-top:6px;font-size:10.5px;color:var(--fg-3)}
 .ink4 .i4today{font-size:11.5px;line-height:1.7;color:var(--fg-2)}
 .ink4 .i4today b{font-weight:500;color:var(--fg-1)}
-
-@media (max-width:1100px){.ink4 .i4duo,.ink4 .i4mwrap{grid-template-columns:1fr}.ink4 .i4mwrap{width:auto;margin-left:0}.ink4 .i4choices{grid-template-columns:repeat(2,1fr)}}
