@@ -8,7 +8,6 @@ const iconize = root => $$('[data-i]', root).forEach(el => { if (!el.querySelect
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const HNAME = { claude: 'Claude Code', codex: 'Codex' };
 const hmark = h => `<span class="hm ${h}" title="${HNAME[h]}"></span>`;
-const inPlace = (kind, L, cell) => ({ cell, fps: 12, alpha: .72, plankton: 0, wake: false, specs: [{ kind, L, depth: 1, speed: 0, fx: .5, fy: .5, angle: 0, center: true }] });
 const winC = $('#winC'), winG = $('#winG'), winS = $('#winS');
 const SIDEBAR_W = 260, PANE_MIN = 480;
 
@@ -203,13 +202,11 @@ function makeChanges(panel, data, hooks = {}) {
       <div class="chtop"><div class="seg" data-role="scope">${Object.entries(SCOPES).map(([k, v]) => `<button data-s="${k}">${v}</button>`).join('')}</div></div>
       <p class="chnote" data-role="note"></p>
       <div data-role="body"></div>
-      <div class="empty chwait" data-role="wait" hidden><canvas></canvas><h6>Reading the branch…</h6><p class="mono" style="font-size:11px">git diff --numstat -M 3f2a9c1 · <span data-role="clock">0</span> s</p></div>
-      <div class="empty chwait" data-role="none" hidden><canvas></canvas><h6 data-role="nonetext"></h6></div>
+      <div class="empty chwait" data-role="wait" hidden><h6>Reading the branch…</h6><p class="mono" style="font-size:11px">git diff --numstat -M 3f2a9c1 · <span data-role="clock">0</span> s</p></div>
+      <div class="empty chwait" data-role="none" hidden><h6 data-role="nonetext"></h6></div>
     </div>
     <div class="chfoot" data-role="foot" hidden></div>`;
   const R = n => $(`[data-role=${n}]`, panel);
-  new Ocean($('canvas', R('wait')), inPlace('hammerhead', 100, 6));
-  new Ocean($('canvas', R('none')), inPlace('thresher', 92, 6));
   const files = () => data.scopes[S.scope];
   const cur = () => S.sel[S.scope] || tree(files())[0].files[0];
   const count = scope => data.scopes[scope].length;
@@ -402,10 +399,9 @@ function makeInspector(el, opts) {
     <div class="ipanel" data-t="ov"></div>
     <div class="ipanel flush" data-t="ch"></div>
     <div class="ipanel flush" data-t="ag"></div>
-    <div class="ipanel" data-t="sd"><div class="empty" style="margin-top:56px"><canvas></canvas><p style="max-width:300px;margin:10px auto 0;font-size:12.5px;line-height:1.5;color:var(--fg-2)">Ask on the side. A side chat is a copy of this session: it sees the session up to now, and the main session never sees it.</p></div>
+    <div class="ipanel" data-t="sd"><div class="empty" style="margin-top:56px"><p style="max-width:300px;margin:10px auto 0;font-size:12.5px;line-height:1.5;color:var(--fg-2)">Ask on the side. A side chat is a copy of this session: it sees the session up to now, and the main session never sees it.</p></div>
       <div class="minic" style="margin-top:auto"><div class="ph">Ask on the side</div><div class="bar"><button class="btn gh sm">Close</button><span class="lbl">Opus 5.5</span><span class="sp"></span><span class="lbl">Allow edits<span class="sw"></span></span><button class="ib" data-i="more" style="width:24px;height:24px"></button><button class="send" data-i="up"></button></div></div></div>`;
   const P = t => $(`.ipanel[data-t=${t}]`, el);
-  new Ocean($('.ipanel[data-t=sd] canvas', el), inPlace('whale', 210, 6));
   const I = { tab: opts.tab };
   I.changes = makeChanges(P('ch'), opts.changes, { count: n => { $('[data-role=chn]', el).textContent = n || ''; }, send: opts.send, changed: () => placeAll() });
   function overview() {
@@ -727,9 +723,5 @@ $('#swPins').parentElement.addEventListener('click', () => requestAnimationFrame
 new ResizeObserver(() => requestAnimationFrame(placeAll)).observe(document.body);
 if (location.search.includes('pins')) { $('#swPins').classList.add('on'); document.body.classList.add('pins'); }
 
-/* ---------- the panes' small sharks ---------- */
-sea('st-wait', inPlace('hammerhead', 100, 6));
-sea('st-empty', inPlace('thresher', 92, 6));
-sea('st-agents', inPlace('hammerhead', 130, 6));
 let waitT = 1; setInterval(() => { if (document.hidden) return; waitT = waitT % 9 + 1; const c = $('[data-role=waitclock]'); if (c) c.textContent = waitT; }, 1000);
 requestAnimationFrame(placeAll);

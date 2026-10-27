@@ -21,7 +21,7 @@
     <div class="pbar">
       <button class="btn sec sm" id="chReset">Reset</button>
       <span class="grp"><span class="label">Window</span><span class="seg" id="chWidth"><button class="on" data-w="1440">1440</button><button data-w="1280">1280</button></span></span>
-      <span class="hint">Try a comment, then Send to Claude. Branch reads git first, with the small hammerhead.</span>
+      <span class="hint">Try a comment, then Send to Claude. Branch reads git first.</span>
     </div>
     <div class="stage"><div class="win" id="winC" data-w="1440" data-h="960">
       <aside class="side" data-sel="ink" data-v="ready"></aside>
@@ -107,17 +107,17 @@
       <p>What the tab says while it reads, when a scope is empty or off, when a diff cannot be drawn, and what happens to a comment or a send that cannot land. The words are the code's (V20), and DESIGN §13 carries them.</p></div>
     <div class="parts">
       <div class="spec w4"><span class="label">Reading the branch</span>
-        <div class="ipc"><div class="empty"><canvas id="st-wait"></canvas><h6>Reading the branch…</h6><p class="mono" style="font-size:11px">git diff --numstat -M 3f2a9c1 · <span data-role="waitclock">1</span> s</p></div></div>
-        <p class="note">While git reads, a small hammerhead swims in place over the words, with the command and its time in mono (DESIGN §13). The code shows a spinner and "Reading the changes". The turn scopes read Claude's transcript, usually in a blink, so they show the line alone.</p>
+        <div class="ipc"><div class="empty"><h6>Reading the branch…</h6><p class="mono" style="font-size:11px">git diff --numstat -M 3f2a9c1 · <span data-role="waitclock">1</span> s</p></div></div>
+        <p class="note">While git reads, the command and its time show in mono (DESIGN §13). The code shows a spinner and "Reading the changes". The turn scopes read Claude's transcript, usually in a blink, so they show the line alone.</p>
       </div>
       <div class="spec w4"><span class="label">An empty scope</span>
-        <div class="ipc"><p class="chnote">Claude's file edits. Shell commands and subagents show under Branch.</p><div class="empty"><canvas id="st-empty"></canvas><h6>Claude has not edited files in the last turn.</h6></div></div>
+        <div class="ipc"><p class="chnote">Claude's file edits. Shell commands and subagents show under Branch.</p><div class="empty"><h6>Claude has not edited files in the last turn.</h6></div></div>
         <p class="note">One sentence per scope, as the code says it: "…in this session." for Whole session, and for Branch "No changes against main.", or "No uncommitted changes." on main. The quiet line above says what was read. DESIGN §13 carries these four sentences.</p>
       </div>
       <div class="spec w4"><span class="label">A scope that is off</span>
         <div class="ipc"><div class="seg static"><button>Last turn</button><button>Whole session</button><button class="on">Branch</button></div><p class="offline">Not a Git repository</p></div>
         <div class="ipc"><div class="seg static"><button class="on">Last turn</button><button>Whole session</button><button>Branch</button></div><p class="offline">Claude's file edits are read from Claude sessions</p></div>
-        <p class="note">The reason, plainly, and no shark: nothing is empty and nothing is waiting. Branch also says "No base branch found". The second line is a Codex session's, whose edits Sphyrna cannot read yet.</p>
+        <p class="note">The reason, plainly: nothing is empty and nothing is waiting. Branch also says "No base branch found". The second line is a Codex session's, whose edits Sphyrna cannot read yet.</p>
       </div>
       <div class="spec w6"><span class="label">A diff that cannot be drawn</span>
         <div class="ipc">
@@ -240,7 +240,7 @@
     </ol>
     <div class="parts" style="margin-top:34px">
       <div class="spec w4"><span class="label">No subagents</span>
-        <div class="ipc"><div class="empty"><canvas id="st-agents"></canvas><h6>No subagents in this session.</h6></div></div>
+        <div class="ipc"><div class="empty"><h6>No subagents in this session.</h6></div></div>
         <p class="note">A stopped session's empty folder. While a session runs, it says "No subagents. They appear here while the session runs them." Where Sphyrna cannot read a past run, it says "Agents show while the session runs."</p>
       </div>
       <div class="spec w4"><span class="label">A stopped session's list</span>

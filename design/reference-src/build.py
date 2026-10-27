@@ -89,9 +89,7 @@ DOCS = {
         'title': 'Sphyrna · Ink · The review surfaces',
         'css': ['shared/chat.css', 'shared/harness.css', 'shared/project.css', 'shared/sheets.css', 'docs/review/review.css'],
         'body': ['docs/review/body.html'],
-        'js': ['shared/base.js', 'shared/engine.js',
-               "=sea('ocean-intro', { cell: 11, alpha: .6, specs: [{ kind: 'hammerhead', L: 520, depth: .66, speed: 16 }, { kind: 'thresher', L: 300, depth: .9, speed: 20 }, { kind: 'whale', L: 820, depth: .26, speed: 8 }] });\n" + LISTEN,
-               'docs/review/review.js'],
+        'js': ['shared/base.js', 'docs/review/review.js'],
         'js_rep': [('<!--ICON128-->', lambda: data_url('docs/review/icon-128.png'))],
     },
     'edges': {
