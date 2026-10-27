@@ -328,7 +328,7 @@
 .ink4 .i4sheets{display:flex;gap:18px;flex-wrap:wrap}
 .ink4 .i4sheet{width:420px;padding:20px;border-radius:12px;background:var(--popover);box-shadow:var(--sh-pop)}
 .ink4 .i4sheet h4{font:600 14px var(--ui);color:var(--fg-1)}
-.ink4 .i4sub{margin-top:6px;font:500 13px var(--ui);color:var(--fg-1)}
+.ink4 .i4shsub{margin-top:6px;font:500 13px var(--ui);color:var(--fg-1)}
 .ink4 .i4sheet p{margin-top:10px;font-size:12.5px;line-height:1.5;color:var(--fg-2)}
 .ink4 .i4sfbtn{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 .ink4 .i4scrim{padding:26px 0;display:flex;justify-content:center;background:var(--scrim);border-radius:12px}
