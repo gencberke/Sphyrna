@@ -103,10 +103,9 @@ DOCS = {
     },
     'remora': {
         'title': 'Sphyrna · Ink · Remora',
-        'css': ['shared/chat.css', 'shared/harness.css', 'shared/project.css', 'docs/remora/base.css', 'docs/remora/remora.css'],
+        'css': ['shared/chat.css', 'shared/harness.css', 'shared/project.css', 'docs/remora/base.css', 'docs/remora/remora.css', 'shared/side4.css'],
         'body': ['docs/remora/top.html', 'docs/remora/sections.html'],
-        'js': ['shared/base.js', 'shared/engine.js', "=document.addEventListener('visibilitychange', () => oceans.forEach(o => o.sync()));\n",
-               'shared/iconart.js', 'docs/remora/remora.js'],
+        'js': ['shared/base.js', 'shared/side4.js', 'docs/remora/remora.js'],
     },
     'identity': {
         'title': 'Sphyrna · Ink · Identity',

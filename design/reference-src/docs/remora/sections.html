@@ -1,7 +1,7 @@
   <!-- ================= 01 THE BRIEF ================= -->
   <section class="sec" id="brief">
     <div class="sechead"><span class="num">01</span><h2>The brief</h2>
-      <p>Home in the morning, where D-65 placed Remora and the identity page drew it: where you left off, Remora's sentence, a tile per project that moved, and the field. When Home opens with a new brief, the band's hammerhead brings the remora in on its flank, lets it go at the brief's start and swims on into its loop (D-79). Replay plays it again. The states show the call when it cannot answer, Home later in the day, with the brief set to When I ask, with Remora off, and before any session. Try Put in Draft, Save, Sources and ⋯.</p></div>
+      <p>Home in the morning, where D-65 placed Remora and the identity page drew it: where you left off, Remora's sentence, a tile per project that moved, and the field. When Home opens with a new brief, the face fades in at its place, and the sentence and the tiles come in after the reading (DESIGN §9). Replay plays it again. The states show the call when it cannot answer, Home later in the day, with the brief set to When I ask, with Remora off, and before any session. Try Put in Draft, Save, Sources and ⋯.</p></div>
     <div class="pbar">
       <button class="btn sec sm" id="replay">Replay</button>
       <span class="grp"><span class="hint">Home</span><span class="seg" id="homeSeg"><button class="on" data-h="morning">Morning</button><button data-h="later">Later</button><button data-h="ask">When I ask</button><button data-h="off">Remora off</button><button data-h="none">No sessions yet</button></span></span>
@@ -11,15 +11,12 @@
       <div class="tline" id="tline"></div>
       <span class="tclock" id="tclock">0.0 s</span>
     </div>
-    <div class="stage"><div class="win" id="winR" data-w="1280" data-h="800">
-      <aside class="side" data-side="home"></aside>
+    <div class="stage"><div class="win i4grid" id="winR" data-w="1280" data-h="800">
+      <aside class="i4side" data-i4side="home" data-view="projects"></aside>
       <main class="detail">
-        <div class="artbg" style="height:300px;-webkit-mask-image:linear-gradient(#000 30%,transparent);mask-image:linear-gradient(#000 30%,transparent)"></div>
-        <canvas class="ocean band" id="ocean-band" style="height:300px"></canvas>
-        <canvas class="ocean" id="ocean-arrive" style="height:320px"></canvas>
         <div class="home">
           <div class="brief" data-role="brief">
-            <div class="bhead"><h1 data-role="bh1">Where you left off</h1><span class="when" data-role="when">tuesday 20 october · since yesterday 23:10</span><button class="ib" data-i="more" data-open="bmenu" title="Catch Me Up, Memory…, Settings…"></button></div>
+            <div class="bhead"><svg class="rface" viewBox="0 0 20 20" aria-hidden="true" fill="currentColor"><path d="M8.75 7.2C9.25 5.4 9.65 3.9 10 2.7C10.35 3.9 10.75 5.4 11.25 7.2Z" fill-rule="evenodd"/><path d="M.95 8.85C.95 7.85 1.6 7.3 2.5 7.25C5.2 7.05 7.6 6.5 10 6.5C12.4 6.5 14.8 7.05 17.5 7.25C18.4 7.3 19.05 7.85 19.05 8.85C19.05 9.9 18.35 10.45 17.45 10.35C14.75 10.05 12.6 9.75 10 9.75C7.4 9.75 5.25 10.05 2.55 10.35C1.65 10.45 .95 9.9 .95 8.85ZM3.3 8.8C3.3 9.214225 2.964225 9.55 2.55 9.55C2.1357749999999998 9.55 1.7999999999999998 9.214225 1.7999999999999998 8.8C1.7999999999999998 8.385775 2.1357749999999998 8.05 2.55 8.05C2.964225 8.05 3.3 8.385775 3.3 8.8ZM18.2 8.8C18.2 9.214225 17.864224999999998 9.55 17.45 9.55C17.035775 9.55 16.7 9.214225 16.7 8.8C16.7 8.385775 17.035775 8.05 17.45 8.05C17.864224999999998 8.05 18.2 8.385775 18.2 8.8Z" fill-rule="evenodd"/><path d="M7.5 9.5C7.5 11.85 8.55 13.2 10 13.2C11.45 13.2 12.5 11.85 12.5 9.5Z" fill-rule="evenodd"/><path d="M8.7 11C7.25 11.8 5.65 12.75 4.1 14.05C5.8 13.95 7.45 13.4 8.95 12.6Z" fill-rule="evenodd"/><path d="M11.3 11C12.75 11.8 14.35 12.75 15.9 14.05C14.2 13.95 12.55 13.4 11.05 12.6Z" fill-rule="evenodd"/></svg><h1 data-role="bh1">Where you left off</h1><span class="when" data-role="when">tuesday 20 october · since yesterday 23:10</span><button class="ib" data-i="more" data-open="bmenu" title="Catch Me Up, Memory…, Settings…"></button></div>
             <div class="bline"><span class="rspot" aria-hidden="true"></span>
               <div class="btext"><p class="rline"><span class="spin">⠋</span><span>Reading 6 sessions and 3 project notes…</span></p>
                 <p class="bsent">Three projects moved since yesterday. The Ink sidebar is one step from done; the only failure is in backend-api, where three token tests fail.</p>
@@ -47,7 +44,7 @@
             <div class="bfoot wait" data-role="foot"><span data-role="footx">Remora read 6 sessions and 3 project notes · 4.6 s</span><u data-open="srcR">Sources</u><u data-act="memory">Memory…</u></div>
           </div>
           <div class="rfold" data-role="fold" hidden>
-            <div class="fh"><canvas id="mini-remora" aria-hidden="true"></canvas><span><b>Remora</b> · morning brief 09:12 · 2 of 3 picked up</span><u data-act="show">Show Brief</u></div>
+            <div class="fh"><svg class="rface" viewBox="0 0 20 20" aria-hidden="true" fill="currentColor"><path d="M8.75 7.2C9.25 5.4 9.65 3.9 10 2.7C10.35 3.9 10.75 5.4 11.25 7.2Z" fill-rule="evenodd"/><path d="M.95 8.85C.95 7.85 1.6 7.3 2.5 7.25C5.2 7.05 7.6 6.5 10 6.5C12.4 6.5 14.8 7.05 17.5 7.25C18.4 7.3 19.05 7.85 19.05 8.85C19.05 9.9 18.35 10.45 17.45 10.35C14.75 10.05 12.6 9.75 10 9.75C7.4 9.75 5.25 10.05 2.55 10.35C1.65 10.45 .95 9.9 .95 8.85ZM3.3 8.8C3.3 9.214225 2.964225 9.55 2.55 9.55C2.1357749999999998 9.55 1.7999999999999998 9.214225 1.7999999999999998 8.8C1.7999999999999998 8.385775 2.1357749999999998 8.05 2.55 8.05C2.964225 8.05 3.3 8.385775 3.3 8.8ZM18.2 8.8C18.2 9.214225 17.864224999999998 9.55 17.45 9.55C17.035775 9.55 16.7 9.214225 16.7 8.8C16.7 8.385775 17.035775 8.05 17.45 8.05C17.864224999999998 8.05 18.2 8.385775 18.2 8.8Z" fill-rule="evenodd"/><path d="M7.5 9.5C7.5 11.85 8.55 13.2 10 13.2C11.45 13.2 12.5 11.85 12.5 9.5Z" fill-rule="evenodd"/><path d="M8.7 11C7.25 11.8 5.65 12.75 4.1 14.05C5.8 13.95 7.45 13.4 8.95 12.6Z" fill-rule="evenodd"/><path d="M11.3 11C12.75 11.8 14.35 12.75 15.9 14.05C14.2 13.95 12.55 13.4 11.05 12.6Z" fill-rule="evenodd"/></svg><span><b>Remora</b> · morning brief 09:12 · 2 of 3 picked up</span><u data-act="show">Show Brief</u></div>
             <div class="flines">
               <div class="fl"><span class="tk" data-i="check"></span><span class="pj"><span class="pmark sm" style="--tone:var(--orchid)">L</span>loom</span><span class="what"><span class="t">Port the sidebar to Ink tokens</span><span class="s"><span class="spin">⠋</span>Working · step 6 of 6</span></span><span class="end">11:02</span></div>
               <div class="fl"><span class="tk" data-i="check"></span><span class="pj"><span class="pmark sm" style="--tone:var(--mint)">B</span>backend-api</span><span class="what"><span class="t">Migrate auth to JWT</span><span class="s"><i class="dot attn"></i>Waits for you: npm test</span></span><span class="end">10:40</span></div>
@@ -107,10 +104,10 @@
         </div>
         <div class="dpop" data-role="dpop"><b data-role="dwhere">Put in its composer, not sent</b><q data-role="dtext"></q><div class="k">The composer's own ↵ sends it. Sphyrna never does.</div></div>
       </main>
+      <footer class="i4status" data-i4status></footer>
       <span class="pin" id="pinR1">R1</span><span class="pin" id="pinR2">R2</span><span class="pin" id="pinR3">R3</span><span class="pin" id="pinR4">R4</span><span class="pin" id="pinR5">R5</span>
-      <span class="pin" id="pinR6">R6</span><span class="pin" id="pinR7">R7</span><span class="pin" id="pinR8">R8</span><span class="pin" id="pinR9">R9</span>
+      <span class="pin" id="pinR6">R6</span><span class="pin" id="pinR7">R7</span><span class="pin" id="pinR8">R8</span>
     </div></div>
-    <div class="board" id="board"></div>
     <ol class="legend">
       <li><b>R1</b>"Where you left off", the date and the span the brief covers. Once the brief folds, it goes. ⋯ holds Catch Me Up, which writes a new brief, Memory… and Settings….</li>
       <li><b>R2</b>The remora's place, then Remora's sentence: one or two sentences in first person, written word by word once it has read. The sentence keeps two lines' room, so nothing moves (D-77).</li>
@@ -120,20 +117,10 @@
       <li><b>R6</b>A fact Remora proposes to remember, with Save and Not Now. Save writes it to <span class="mono">Remora.md</span>, with Undo; Not Now drops it.</li>
       <li><b>R7</b>The field: "Ask Remora about your sessions" and its scope, All projects or one project. Return asks, Esc stops, and ↑ in the empty field brings back the last question (Asking, below).</li>
       <li><b>R8</b>What the brief read and what it took. Sources lists the sessions and the notes, each a link; Memory… opens the memory sheet (Memory, below).</li>
-      <li><b>R9</b>The band's one hammerhead brings the remora: in from the right on the arrival's lane, it lets go at the brief's start, leaves at the left, and comes back along the bottom of its loop a few seconds later. With Animated art off, the remora fades in at its place.</li>
       <li><b>Later</b>Once one entry is picked up (its session ran since the brief), the brief folds: the remora's line, one line per entry with a tick or a ring, and the field. Show Brief brings the tiles back.</li>
-      <li><b>When I ask</b>No call and no arrival: the heading, Sphyrna's line "Your latest sessions, newest first." with Catch Me Up, and catalog tiles with Open only. The remora rests at its place.</li>
-      <li><b>The call</b>When Remora cannot answer, its sentence says why in Sphyrna's voice, the tiles fall back to the catalog's, and the remora rests. Remora off, Home is the one above: the band's sentence, then Needs you.</li>
+      <li><b>When I ask</b>No call and no fade: the heading, Sphyrna's line "Your latest sessions, newest first." with Catch Me Up, and catalog tiles with Open only. The face rests at its place.</li>
+      <li><b>The call</b>When Remora cannot answer, its sentence says why in Sphyrna's voice, the tiles fall back to the catalog's, and the face rests. Remora off, Home is the one above: the band's sentence, then Needs you.</li>
     </ol>
-    <div class="pcgrid" style="margin-top:30px">
-      <div class="spec" style="grid-column:span 12"><span class="label">The remora at its three places</span>
-        <div class="discs">
-          <span class="dh">The folded brief's line</span><span class="dh">Beside the brief</span><span class="dh">On the hammerhead's flank</span>
-          <canvas data-disc="fold"></canvas><canvas data-disc="rest"></canvas><canvas data-disc="ride"></canvas>
-        </div>
-        <p class="note">A remora is the fish with a sucker on its head: a flat, oval disc of plates that it holds on with. The art draws the disc, a bar across the head for each plate, on a broader and flatter head, as it draws the whale shark by its spots; a large remora also shows the ridge between the plates. The folded line's remora is a little larger and lies level, in semibold glyphs, so its disc has room. Everything else about it is as D-77 drew it (D-80).</p>
-      </div>
-    </div>
   </section>
 
   <!-- ================= 02 ASKING ================= -->
@@ -144,14 +131,12 @@
       <span class="grp"><span class="hint">Question</span><span class="seg" id="qSeg"><button class="on" data-q="touch">Which session touched…</button><button data-q="yday">What finished yesterday…</button><button data-q="where">Where did we leave off…</button><button data-q="remember">Remember…</button></span></span>
       <button class="btn sec sm" id="askBtn">Ask</button>
     </div>
-    <div class="stage"><div class="win" id="winA" data-w="1280" data-h="800">
-      <aside class="side" data-side="home"></aside>
+    <div class="stage"><div class="win i4grid" id="winA" data-w="1280" data-h="800">
+      <aside class="i4side" data-i4side="home" data-view="projects"></aside>
       <main class="detail">
-        <div class="artbg" style="height:300px;-webkit-mask-image:linear-gradient(#000 30%,transparent);mask-image:linear-gradient(#000 30%,transparent)"></div>
-        <canvas class="ocean band" id="ocean-band2" style="height:300px"></canvas>
         <div class="home" style="overflow-y:auto">
           <div class="rfold">
-            <div class="fh"><canvas id="mini-remora2" aria-hidden="true"></canvas><span><b>Remora</b> · morning brief 09:12 · 2 of 3 picked up</span><u>Show Brief</u></div>
+            <div class="fh"><svg class="rface" viewBox="0 0 20 20" aria-hidden="true" fill="currentColor"><path d="M8.75 7.2C9.25 5.4 9.65 3.9 10 2.7C10.35 3.9 10.75 5.4 11.25 7.2Z" fill-rule="evenodd"/><path d="M.95 8.85C.95 7.85 1.6 7.3 2.5 7.25C5.2 7.05 7.6 6.5 10 6.5C12.4 6.5 14.8 7.05 17.5 7.25C18.4 7.3 19.05 7.85 19.05 8.85C19.05 9.9 18.35 10.45 17.45 10.35C14.75 10.05 12.6 9.75 10 9.75C7.4 9.75 5.25 10.05 2.55 10.35C1.65 10.45 .95 9.9 .95 8.85ZM3.3 8.8C3.3 9.214225 2.964225 9.55 2.55 9.55C2.1357749999999998 9.55 1.7999999999999998 9.214225 1.7999999999999998 8.8C1.7999999999999998 8.385775 2.1357749999999998 8.05 2.55 8.05C2.964225 8.05 3.3 8.385775 3.3 8.8ZM18.2 8.8C18.2 9.214225 17.864224999999998 9.55 17.45 9.55C17.035775 9.55 16.7 9.214225 16.7 8.8C16.7 8.385775 17.035775 8.05 17.45 8.05C17.864224999999998 8.05 18.2 8.385775 18.2 8.8Z" fill-rule="evenodd"/><path d="M7.5 9.5C7.5 11.85 8.55 13.2 10 13.2C11.45 13.2 12.5 11.85 12.5 9.5Z" fill-rule="evenodd"/><path d="M8.7 11C7.25 11.8 5.65 12.75 4.1 14.05C5.8 13.95 7.45 13.4 8.95 12.6Z" fill-rule="evenodd"/><path d="M11.3 11C12.75 11.8 14.35 12.75 15.9 14.05C14.2 13.95 12.55 13.4 11.05 12.6Z" fill-rule="evenodd"/></svg><span><b>Remora</b> · morning brief 09:12 · 2 of 3 picked up</span><u>Show Brief</u></div>
             <div class="flines">
               <div class="fl"><span class="tk" data-i="check"></span><span class="pj"><span class="pmark sm" style="--tone:var(--orchid)">L</span>loom</span><span class="what"><span class="t">Port the sidebar to Ink tokens</span><span class="s"><span class="spin">⠋</span>Working · step 6 of 6</span></span><span class="end">11:02</span></div>
               <div class="fl"><span class="tk" data-i="check"></span><span class="pj"><span class="pmark sm" style="--tone:var(--mint)">B</span>backend-api</span><span class="what"><span class="t">Migrate auth to JWT</span><span class="s"><i class="dot attn"></i>Waits for you: npm test</span></span><span class="end">10:40</span></div>
@@ -198,6 +183,7 @@
         </div>
         <div class="dpop" data-role="dpop"><b data-role="dwhere">Put in its composer, not sent</b><q data-role="dtext"></q><div class="k">The composer's own ↵ sends it. Sphyrna never does.</div></div>
       </main>
+      <footer class="i4status" data-i4status></footer>
       <span class="pin" id="pinA1">A1</span><span class="pin" id="pinA2">A2</span><span class="pin" id="pinA3">A3</span><span class="pin" id="pinA4">A4</span><span class="pin" id="pinA5">A5</span><span class="pin" id="pinA6">A6</span>
     </div></div>
     <ol class="legend">
@@ -214,12 +200,12 @@
   <section class="sec" id="memory">
     <div class="sechead"><span class="num">03</span><h2>Memory</h2>
       <p>What Remora keeps between answers, in one sheet from ⋯ → Memory…, the footer's Memory… or Settings. The journal and the project notes are its working memory, in Sphyrna's data folder; <span class="mono">Remora.md</span> in your vault is what lasts (D-64). Remove a line, edit a note, and switch the tabs.</p></div>
-    <div class="stage"><div class="win" id="winM" data-w="1280" data-h="760">
-      <aside class="side" data-side="home"></aside>
+    <div class="stage"><div class="win i4grid" id="winM" data-w="1280" data-h="760">
+      <aside class="i4side" data-i4side="home" data-view="projects"></aside>
       <main class="detail">
         <div class="home">
           <div class="rfold" style="padding-top:34px">
-            <div class="fh"><canvas id="mini-remora3" aria-hidden="true"></canvas><span><b>Remora</b> · morning brief 09:12 · 2 of 3 picked up</span><u>Show Brief</u></div>
+            <div class="fh"><svg class="rface" viewBox="0 0 20 20" aria-hidden="true" fill="currentColor"><path d="M8.75 7.2C9.25 5.4 9.65 3.9 10 2.7C10.35 3.9 10.75 5.4 11.25 7.2Z" fill-rule="evenodd"/><path d="M.95 8.85C.95 7.85 1.6 7.3 2.5 7.25C5.2 7.05 7.6 6.5 10 6.5C12.4 6.5 14.8 7.05 17.5 7.25C18.4 7.3 19.05 7.85 19.05 8.85C19.05 9.9 18.35 10.45 17.45 10.35C14.75 10.05 12.6 9.75 10 9.75C7.4 9.75 5.25 10.05 2.55 10.35C1.65 10.45 .95 9.9 .95 8.85ZM3.3 8.8C3.3 9.214225 2.964225 9.55 2.55 9.55C2.1357749999999998 9.55 1.7999999999999998 9.214225 1.7999999999999998 8.8C1.7999999999999998 8.385775 2.1357749999999998 8.05 2.55 8.05C2.964225 8.05 3.3 8.385775 3.3 8.8ZM18.2 8.8C18.2 9.214225 17.864224999999998 9.55 17.45 9.55C17.035775 9.55 16.7 9.214225 16.7 8.8C16.7 8.385775 17.035775 8.05 17.45 8.05C17.864224999999998 8.05 18.2 8.385775 18.2 8.8Z" fill-rule="evenodd"/><path d="M7.5 9.5C7.5 11.85 8.55 13.2 10 13.2C11.45 13.2 12.5 11.85 12.5 9.5Z" fill-rule="evenodd"/><path d="M8.7 11C7.25 11.8 5.65 12.75 4.1 14.05C5.8 13.95 7.45 13.4 8.95 12.6Z" fill-rule="evenodd"/><path d="M11.3 11C12.75 11.8 14.35 12.75 15.9 14.05C14.2 13.95 12.55 13.4 11.05 12.6Z" fill-rule="evenodd"/></svg><span><b>Remora</b> · morning brief 09:12 · 2 of 3 picked up</span><u>Show Brief</u></div>
           </div>
         </div>
         <div class="scrim shown"></div>
@@ -264,6 +250,7 @@ Open: the gate failure in SideChatFlowTests waits for an approval.</div>
           <div class="sbtn"><button class="btn sec" data-act="clearmem">Clear Working Memory…</button><span class="grow"></span><button class="btn sec" data-act="done">Done</button></div>
         </div>
       </main>
+      <footer class="i4status" data-i4status></footer>
       <span class="pin" id="pinM1">M1</span><span class="pin" id="pinM2">M2</span><span class="pin" id="pinM3">M3</span><span class="pin" id="pinM4">M4</span>
     </div></div>
     <ol class="legend">
@@ -284,8 +271,8 @@ Open: the gate failure in SideChatFlowTests waits for an approval.</div>
       <span class="grp"><span class="hint">The palette</span><span class="seg" id="kSeg"><button class="on" data-k="typing">Typing</button><button data-k="answer">The answer</button></span></span>
       <span class="grp"><span class="hint">Scope (⇥)</span><span class="seg" id="kScope"><button class="on" data-s="all">All projects</button><button data-s="proj">This project</button><button data-s="sess">This session</button></span></span>
     </div>
-    <div class="stage"><div class="win" id="winK" data-w="1280" data-h="760">
-      <aside class="side" data-side="sess"></aside>
+    <div class="stage"><div class="win i4grid" id="winK" data-w="1280" data-h="760">
+      <aside class="i4side" data-i4sel="ink" data-view="projects"></aside>
       <main class="detail">
         <header class="dhead">
           <span class="hm claude md" title="Claude Code"></span><span class="dtitle">Port the sidebar to Ink tokens</span>
@@ -332,6 +319,7 @@ Open: the gate failure in SideChatFlowTests waits for an approval.</div>
           <div class="pal-foot" data-role="kfoot"><span><b>↑↓</b> move</span><span><b>↵</b> ask</span><span><b>⇥</b> scope</span><span><b>esc</b> close</span></div>
         </div>
       </main>
+      <footer class="i4status" data-i4status></footer>
       <span class="pin" id="pinK1">K1</span><span class="pin" id="pinK2">K2</span><span class="pin" id="pinK3">K3</span><span class="pin" id="pinK4">K4</span>
     </div></div>
     <ol class="legend">
@@ -345,11 +333,9 @@ Open: the gate failure in SideChatFlowTests waits for an approval.</div>
     <div class="pbar">
       <span class="grp"><span class="hint">The page</span><span class="seg" id="nSeg"><button class="on" data-n="empty">Empty</button><button data-n="reading">Reading</button><button data-n="drafted">Drafted</button></span></span>
     </div>
-    <div class="stage"><div class="win" id="winN" data-w="1280" data-h="860">
-      <aside class="side" data-side="draft"></aside>
+    <div class="stage"><div class="win i4grid" id="winN" data-w="1280" data-h="860">
+      <aside class="i4side" data-view="projects"></aside>
       <main class="detail">
-        <div class="artbg"></div>
-        <canvas class="ocean calm" id="ocean-draft"></canvas>
         <header class="dhead bare"><span class="crumb"><b>loom</b> / new session</span>
           <div class="end"><button class="btn gh sm" title="Opens the project's page"><span data-i="clock"></span>9 sessions in loom</button></div></header>
         <div class="draftpage" style="--tone:var(--orchid)">
@@ -380,6 +366,7 @@ Open: the gate failure in SideChatFlowTests waits for an approval.</div>
           <div class="pfoot">3 sessions · 1 note · 19K tokens · 6.2 s</div>
         </div>
       </main>
+      <footer class="i4status" data-i4status></footer>
       <span class="pin" id="pinN1">N1</span><span class="pin" id="pinN2">N2</span><span class="pin" id="pinN3">N3</span><span class="pin" id="pinN4">N4</span>
     </div></div>
     <ol class="legend">
