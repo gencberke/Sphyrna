@@ -184,7 +184,7 @@ def page(docs, name):
 
 PAGES = {
     # every document, chapter by chapter, with its notes and parts
-    'reference.html': {'title': 'Sphyrna · Ink · Design reference', 'css': ['shell/shell.css'], 'body': 'shell/body.html',
+    'reference.html': {'title': 'Sphyrna · Ink · Design reference', 'html': ' data-ink="v4"', 'css': ['shell/shell.css'], 'body': 'shell/body.html',
                        'js': ['shell/frames.js', 'shell/shell.js'], 'docs': None},
     # one window for each thing Sphyrna does, from the same documents
     'landing.html': {'title': 'Sphyrna', 'css': ['landing/landing.css'], 'body': 'landing/body.html',

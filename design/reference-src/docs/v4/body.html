@@ -52,7 +52,7 @@
       <div class="spec w6"><span class="label">Badges, keys, a tooltip</span>
         <div class="ln"><span class="i4badge">Muted</span><span class="i4badge out">Outline</span><span class="i4badge attn"><span class="dot attn"></span>Needs you</span><span class="i4badge unv"><span class="dot unv"></span>Finished</span><span class="i4badge fail"><span class="dot fail"></span>Failed</span></div>
         <div class="ln" style="margin-top:16px"><span class="cap">key chips</span><kbd class="i4key">⌘K</kbd><kbd class="i4key">⌘N</kbd><kbd class="i4key">esc</kbd><kbd class="i4key">↵</kbd><span class="i4note">never on a back-out action</span></div>
-        <div class="ln" style="margin-top:20px"><span class="cap">tooltip</span><span class="i4tipwrap"><button class="i4ib" data-i="copy" title="Copy path"></button><span class="i4tip">Copy path</span></span><span class="i4note">names, never warns; after 400 ms</span></div>
+        <div class="ln" style="margin-top:38px"><span class="cap">tooltip</span><span class="i4tipwrap"><button class="i4ib" data-i="copy" title="Copy path"></button><span class="i4tip">Copy path</span></span><span class="i4note">names, never warns; after 400 ms</span></div>
         <div class="ln" style="margin-top:20px"><span class="cap">status words</span><span class="i4stt work"><span class="spin">⠋</span>Working <b>37s</b></span><span class="i4stt attn"><i class="dot attn"></i>Needs you</span><span class="i4stt unv"><i class="dot unv"></i>Finished</span><span class="i4stt fail"><i class="dot fail"></i>Failed</span><span class="i4stt">Ready</span></div>
         <p class="note">Working is the braille spinner and a word; Needs you, Finished and Failed are a dot and a word in the status's text colour. Ready is nothing at all, and its time sits in mono tertiary.</p>
       </div>
@@ -93,22 +93,22 @@
       </div>
       <div class="spec w6"><span class="label">Text and its floors</span>
         <table class="i4ctab">
-          <thead><tr><th></th><th>canvas</th><th>sidebar</th><th>card</th><th>hover</th></tr></thead>
+          <thead><tr><th></th><th>canvas</th><th>sidebar</th><th>card</th><th>hover*</th></tr></thead>
           <tbody>
-            <tr><th>Ink · primary <span>#EDEDED</span></th><td>16.9</td><td>15.5</td><td>15.3</td><td>15.0</td></tr>
-            <tr><th>Ink · secondary <span>#A1A1A1</span></th><td>7.7</td><td>7.0</td><td>6.9</td><td>6.4</td></tr>
+            <tr><th>Ink · primary <span>#EDEDED</span></th><td>16.9</td><td>15.5</td><td>15.3</td><td>12.9</td></tr>
+            <tr><th>Ink · secondary <span>#A1A1A1</span></th><td>7.7</td><td>7.0</td><td>6.9</td><td>5.9</td></tr>
             <tr><th>Ink · tertiary <span>#8F8F8F</span></th><td>6.1</td><td>5.6</td><td>5.5</td><td>4.7</td></tr>
-            <tr><th>Ink · faint <span>#6B6B6B</span></th><td>3.7</td><td>3.4</td><td>3.4</td><td>2.9</td></tr>
-            <tr><th>Paper · primary <span>#0A0A0A</span></th><td>19.8</td><td>18.5</td><td>19.8</td><td>18.7</td></tr>
-            <tr><th>Paper · secondary <span>#525252</span></th><td>7.8</td><td>7.3</td><td>7.8</td><td>7.2</td></tr>
-            <tr><th>Paper · tertiary <span>#6B6B6B</span></th><td>5.3</td><td>5.0</td><td>5.3</td><td>4.9</td></tr>
-            <tr><th>Paper · faint <span>#9E9E9E</span></th><td>2.7</td><td>2.5</td><td>2.7</td><td>2.4</td></tr>
+            <tr><th>Ink · faint <span>#6B6B6B</span></th><td>3.7</td><td>3.4</td><td>3.4</td><td>2.8</td></tr>
+            <tr><th>Paper · primary <span>#0A0A0A</span></th><td>19.8</td><td>18.5</td><td>19.8</td><td>16.8</td></tr>
+            <tr><th>Paper · secondary <span>#525252</span></th><td>7.8</td><td>7.3</td><td>7.8</td><td>6.6</td></tr>
+            <tr><th>Paper · tertiary <span>#6B6B6B</span></th><td>5.3</td><td>5.0</td><td>5.3</td><td>4.5</td></tr>
+            <tr><th>Paper · faint <span>#9C9C9C</span></th><td>2.8</td><td>2.6</td><td>2.8</td><td>2.3*</td></tr>
           </tbody>
         </table>
-        <p class="note">Floors: primary 7:1, secondary 4.5:1 on every plane and fill, tertiary 4.5:1 on the canvas, the sidebar, the card and the hover fill, faint 2.5:1. Two values are drawn one step above DESIGN-V4: tertiary is <b>#8F8F8F</b> because #8A8A8A measures 4.38:1 on the hover fill over the lifted sidebar, and Paper's faint is <b>#9E9E9E</b> because #A3A3A3 measures 2.35:1 on the sidebar plane. Both are proposed corrections, not silent changes.</p>
+        <p class="note">*Hover is the sidebar's hover fill. Faint has no hover pair: placeholders sit in fields and disabled items do not hover. Floors: primary 7:1, secondary 4.5:1 on every plane and fill, tertiary 4.5:1 on the canvas, the sidebar, the card and the hover fill, faint 2.5:1 on the surfaces it is used on. Two values are drawn one step above DESIGN-V4: tertiary is <b>#8F8F8F</b> because #8A8A8A measures 4.38:1 on the hover fill over the lifted sidebar, and Paper's faint is <b>#9C9C9C</b> because #A3A3A3 measures 2.35:1 on the sidebar plane. Both values are proposed corrections, not silent changes. In Q3's tint the selected card's branch and times rise to secondary, where the tint holds 4.5.</p>
       </div>
       <div class="spec w6"><span class="label">Type</span>
-        <div class="tyrow"><span class="k">display · 34 / 300</span><span class="i4ask" style="font-size:30px;display:block">What should we work on?</span></div>
+        <div class="tyrow"><span class="k">display · 34 / 300</span><span class="i4ask" style="font-size:34px;display:block">What should we work on?</span></div>
         <div class="tyrow"><span class="k">title · 20 / 600</span><span style="font:600 20px var(--ui)">Release C health check</span></div>
         <div class="tyrow"><span class="k">header · 13 / 600</span><span style="font:600 13px var(--ui)">Port the sidebar to Ink tokens</span></div>
         <div class="tyrow"><span class="k">body · 13 / 400</span><span style="font-size:13px">Claude's file edits since your last prompt.</span></div>
@@ -149,11 +149,11 @@
     <div class="i4duo">
       <div>
         <div class="i4cap"><b>Projects</b><span>the card carries its status, its title and its branch</span></div>
-        <div class="stage"><div class="win i4cropwin" data-w="300" data-h="820"><aside class="i4side" data-i4side="ink" data-view="projects"></aside></div></div>
+        <div class="stage"><div class="win i4cropwin" data-w="300" data-h="880"><aside class="i4side" data-i4side="ink" data-view="projects"></aside></div></div>
       </div>
       <div>
         <div class="i4cap"><b>Activity</b><span>the same sessions, newest first, with the reason Sphyrna holds</span></div>
-        <div class="stage"><div class="win i4cropwin" data-w="300" data-h="820"><aside class="i4side" data-i4side="ink" data-view="activity"></aside></div></div>
+        <div class="stage"><div class="win i4cropwin" data-w="300" data-h="880"><aside class="i4side" data-i4side="ink" data-view="activity"></aside></div></div>
       </div>
     </div>
     <ol class="legend">
@@ -305,7 +305,7 @@
             <div class="i4railr"><span class="i4blank"></span>pi<span class="n">3</span></div>
           </div>
           <div class="i4pool">
-            <div class="i4msearch"><span data-i="search"></span><span class="i4val">opus</span><span class="i4caret"></span><span class="i4mcount">4 models</span></div>
+            <div class="i4msearch"><span data-i="search"></span><span class="i4ph">Search models</span><span class="i4caret"></span><span class="i4mcount">6 models</span></div>
             <div class="i4mlist">
               <div class="i4mh i4lab">Claude Code</div>
               <div class="i4mrow cur"><span class="nm">Opus 5.5</span><span class="d">Long agentic coding</span><span class="ctx">200K</span></div>
@@ -360,13 +360,13 @@
           <nav class="stabs i4stabs"><button class="i4itab">General</button><button class="i4itab">Theme</button><button class="i4itab">Usage</button><button class="i4itab">Sessions</button><button class="i4itab">Remora</button><button class="i4itab on">Connections</button><button class="i4itab">About</button></nav>
         </div>
         <div class="sbody i4sbody">
-          <div class="i4ctop"><span class="i4lab">Harnesses</span><span class="i4csum">5 harnesses · 2 ready</span><button class="i4btn gh h28"><span data-i="refresh"></span>Recheck All</button></div>
+          <div class="i4ctop"><span class="i4lab">Harnesses</span><span class="i4csum">5 harnesses · 2 ready · 1 update</span><button class="i4btn gh h28"><span data-i="refresh"></span>Recheck All</button></div>
           <div class="scard i4scard">
-            <div class="srw i4srw"><span class="hm claude md"></span><div class="tx"><b>Claude Code</b><span class="hp">Claude Max · gencberke@… · v2.1.300 · read just now</span></div><span class="i4cstate">Ready</span><button class="i4btn out h28">Manage</button></div>
+            <div class="srw i4srw"><span class="hm claude md"></span><div class="tx"><b>Claude Code</b><span class="hp">Claude Max · ~/.claude · v2.1.300 · read just now</span></div><span class="i4cstate">Ready</span><button class="i4btn out h28">Manage</button></div>
             <div class="srw i4srw"><span class="hm codex md"></span><div class="tx"><b>Codex</b><span class="hp">Found at /opt/homebrew/bin/codex · not signed in</span></div><span class="i4cstate dim">Not signed in</span><button class="i4btn out h28">Sign In…</button></div>
             <div class="srw i4srw"><span class="i4blank lg"></span><div class="tx"><b>opencode</b><span class="hp">Not on this Mac. Sphyrna can use a path you choose.</span></div><span class="i4cstate dim">Not found</span><button class="i4btn out h28">Set Path…</button></div>
-            <div class="srw i4srw"><span class="i4blank lg"></span><div class="tx"><b>agy</b><span class="hp">Connected once, then turned off. Its sessions stay in the sidebar.</span></div><span class="i4cstate dim">Off</span><button class="i4btn out h28">Turn On</button></div>
-            <div class="srw i4srw"><span class="i4blank lg"></span><div class="tx"><b>pi</b><span class="hp">v0.9.2 · a newer CLI is installed. Sessions keep the old one until you update.</span><span class="nt">Update recommended: v0.9.6 reads plan limits.</span></div><span class="i4cstate">Ready</span><button class="i4btn out h28">Update…</button></div>
+            <div class="srw i4srw"><span class="i4blank lg"></span><div class="tx"><b>agy</b><span class="hp">Connected once, then off. Its sessions stay in the sidebar.</span></div><span class="i4cstate dim">Off</span><button class="i4btn out h28">Turn On</button></div>
+            <div class="srw i4srw"><span class="i4blank lg"></span><div class="tx"><b>pi</b><span class="hp">v0.9.2 · a newer CLI is installed; sessions keep this one.</span><span class="nt">Update recommended: v0.9.6 reads plan limits.</span></div><span class="i4cstate">Ready</span><button class="i4btn out h28">Update…</button></div>
           </div>
           <p class="i4snote">Sphyrna reads each CLI's own settings and login. It never writes one.</p>
         </div>

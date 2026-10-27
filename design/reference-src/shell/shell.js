@@ -31,9 +31,9 @@ const CHOICES = [
   { key: 'q1', q: 'Q1', label: 'Default button', a: ['neutral', 'Neutral fill'], b: ['accent', 'Periwinkle'], note: 'The one filled button is the one Return presses.' },
   { key: 'q2', q: 'Q2', label: 'Sidebar', a: ['lifted', 'Lifted plane'], b: ['flat', 'One canvas'], note: 'The sidebar one step lighter than the content, or the same canvas.' },
   { key: 'q3', q: 'Q3', label: 'Selected session', a: ['raised', 'Neutral raised'], b: ['tint', 'Project tint'], note: 'The project tone stays on its mark and its tabs.' },
-  { key: 'q4', q: 'Q4', label: 'Section labels', a: ['sans', 'SF Pro 11'], b: ['mono', 'SF Mono 10.5'], note: 'Capitals either way; mono only for machine text.' },
+  { key: 'q4', q: 'Q4', label: 'Section labels', a: ['sans', 'SF Pro 11'], b: ['mono', 'SF Mono 10.5'], note: 'Capitals either way; the default keeps mono for machine text.' },
   { key: 'q5', q: 'Q5', label: 'Display type', a: ['light', '34 light'], b: ['ultra', '46 ultralight'], note: "Home's sentence and the new-session question." },
-  { key: 'q6', q: 'Q6', label: 'Session tabs', a: ['row', 'In the tab row'], b: ['titlebar', 'In the title bar'], note: 'The row stays; the tabs take the flat style.' }
+  { key: 'q6', q: 'Q6', label: 'Session tabs', a: ['row', 'In the tab row'], b: ['titlebar', 'In the title bar'], note: 'The row under the header, or the tabs in the title bar; flat either way.' }
 ];
 const v4bar = $('#v4bar');
 v4bar.innerHTML = `<div class="v4h"><b>Ink v4 · the open choices</b><span>Each switch redraws the v4 chapter both ways, the default first. The v3/v4 switch in the bar changes the tokens under every chapter.</span><button class="btn gh sm" id="qReset">Defaults</button></div>`
@@ -60,7 +60,8 @@ CHAPTERS.forEach((c, i) => {
   sec.innerHTML = `<div class="wrap"><div class="chead"><span class="num">${n}</span><h2>${c.title}</h2><p>${c.text}</p><div class="refs">${c.refs.map(r => `<span>${r}</span>`).join('')}</div></div></div>`;
   let k = 0;
   c.frames.forEach(([doc, only]) => {
-    const nums = {}; only.filter(id => id !== 'rules').forEach(id => nums[id] = `${n}.${++k}`);
+    // 'rules' is a v3 preamble; in the v4 chapter it is the first real section.
+    const nums = {}; only.filter(id => id !== 'rules' || doc === 'v4').forEach(id => nums[id] = `${n}.${++k}`);
     addFrame(sec, doc, only, { title: `${c.title}: ${only.join(', ')}`, nums });
   });
   chaptersEl.appendChild(sec);
@@ -71,6 +72,18 @@ const seen = new IntersectionObserver(es => es.forEach(e => {
   if (e.isIntersecting) $$('#refNav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + e.target.id));
 }), { rootMargin: '-45% 0px -50% 0px' });
 $$('.chapter').forEach(c => seen.observe(c));
+// The chapter list scrolls sideways when it must; a fade says so, and disappears at its end.
+const refNavEl = $('#refNav');
+function paintNavFade() {
+  if (!refNavEl) return;
+  const end = refNavEl.scrollLeft + refNavEl.clientWidth >= refNavEl.scrollWidth - 1;
+  refNavEl.classList.toggle('fade', refNavEl.scrollWidth > refNavEl.clientWidth + 1 && !end);
+  refNavEl.classList.toggle('end', end);
+}
+refNavEl.addEventListener('scroll', paintNavFade, { passive: true });
+addEventListener('resize', paintNavFade);
 sea('ocean-intro', { cell: 11, alpha: .6, specs: [{ kind: 'hammerhead', L: 560, depth: .62, speed: 17 }, { kind: 'thresher', L: 320, depth: .9, speed: 22 }, { kind: 'whale', L: 860, depth: .26, speed: 8 }] });
+$$('#inkSeg button').forEach(b => b.addEventListener('click', paintNavFade));
 paintTools();
+paintNavFade();
 unpack().then(loadNext);
