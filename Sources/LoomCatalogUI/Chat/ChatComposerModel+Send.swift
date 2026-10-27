@@ -366,7 +366,8 @@ extension ChatComposerModel {
 
     /// What the one model chip and its popover show now.
     var modelPicker: ComposerModelPicker {
-        ComposerBarText.modelPicker(state, effortBaseline: effortBaseline, observedModel: environment.contextFallback()?.model)
+        ComposerBarText.modelPicker(state, effortBaseline: effortBaseline, observedModel: environment.contextFallback()?.model,
+                                    codex: environment.codexModels())
     }
 
     /// Resolves once the sends made so far have reached the driver (tests).

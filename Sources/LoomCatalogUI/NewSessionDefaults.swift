@@ -84,9 +84,9 @@ struct ResolvedStart: Equatable, Sendable {
     }
 
     /// The model as the bar names it: the chosen one by its full name ("Opus 5.5", once the probe said which release the alias
-    /// means), else "Default model" (the CLI decides which).
-    @MainActor var modelTitle: String {
-        model.value.map(ModelCatalog.shared.claudeTitle(of:)) ?? NewSessionDefaults.defaultModelTitle
+    /// means), else "Default model" (the CLI decides which). The names come from the model's catalogue (`CatalogModel.modelCatalog`).
+    @MainActor func modelTitle(in catalog: ModelCatalog) -> String {
+        model.value.map(catalog.claudeTitle(of:)) ?? NewSessionDefaults.defaultModelTitle
     }
 
     /// The effort as the bar names it, in the lighter word after the model; nil when none is chosen.

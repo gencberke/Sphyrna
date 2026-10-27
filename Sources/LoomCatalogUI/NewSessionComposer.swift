@@ -152,14 +152,16 @@ private struct ComposerBar: View {
 
     private func modelChip(_ resolved: ResolvedStart) -> some View {
         let draft = model.newSession.draft(for: projectID)
+        let catalog = model.modelCatalog
         let picker = ComposerModelPicker(
-            modelTitle: resolved.modelTitle, effortTitle: resolved.effortTitle,
-            rows: ModelCatalog.shared.claudeModels.map { ComposerBarText.ModelRow(value: $0.id, title: $0.title) },
+            modelTitle: resolved.modelTitle(in: catalog), effortTitle: resolved.effortTitle,
+            rows: catalog.claudeModels.map { ComposerBarText.ModelRow(value: $0.id, title: $0.title) },
             chosenModel: resolved.model.value, levels: NewSessionModels.effortLevels, chosenLevel: resolved.effort.value,
             canResetEffort: (draft?.effortPick ?? .inherit) != .inherit,
             resetHelp: "Back to the effort this project starts with",
             // A build that cannot start Codex shows its group off, with the build's own words (DESIGN §8).
-            codexNote: model.newSessionUnavailableReason(.codex) ?? ComposerModelNotes.inNewSession)
+            codexNote: model.newSessionUnavailableReason(.codex) ?? ComposerModelNotes.inNewSession,
+            codexModels: catalog.models(for: .codex))
         return ComposerModelChip(
             picker: picker, identifier: "draft-model", help: "Model and effort of the new session",
             onDraft: true, restoreFocus: restoreFocus, isOpen: openState.draftBinding(.model, projectID: projectID),

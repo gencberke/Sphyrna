@@ -17,8 +17,8 @@ struct RemoraSettingsView: View {
 
     private var controls: RemoraSettingsControls { RemoraSettingsControls(model: model) }
 
-    /// What Remora may run behind: every Claude model the catalog knows.
-    private var catalog: ModelCatalog { .shared }
+    /// What Remora may run behind: every Claude model the catalog knows (the model's own catalogue, C2B).
+    private var catalog: ModelCatalog { model.modelCatalog }
 
     var body: some View {
         let preferences = model.remora.preferences
@@ -197,15 +197,18 @@ struct RemoraSettingsView: View {
 @MainActor
 struct RemoraSettingsControls {
     let model: CatalogModel
-    /// The catalog the model list and each model's efforts come from; a test hands its own.
-    var catalog: ModelCatalog = .shared
+    /// The catalog the model list and each model's efforts come from; nil is the model's own (`CatalogModel.modelCatalog`), and a
+    /// test may hand its own.
+    var catalog: ModelCatalog?
+
+    private var models: ModelCatalog { catalog ?? model.modelCatalog }
 
     func setOn(_ on: Bool) { model.setRemoraOn(on) }
     func setModel(_ value: String) {
         model.setRemoraModel(value)
         // A model with fewer levels keeps the nearest one below the stored level; one with none keeps the stored level for
         // the next model that takes it (its row is hidden until then).
-        if let kept = RemoraChoices.keptEffort(model.remora.preferences.effort, for: value, from: catalog), kept != model.remora.preferences.effort {
+        if let kept = RemoraChoices.keptEffort(model.remora.preferences.effort, for: value, from: models), kept != model.remora.preferences.effort {
             model.setRemoraEffort(kept)
         }
     }

@@ -13,6 +13,8 @@ struct ComposerEnvironment {
     var historyTexts: () -> [String] = { [] }
     /// The context the usage index holds, when the driver has no figure yet.
     var contextFallback: () -> ContextUsage? = { nil }
+    /// Codex's rows of the model popover, from the app's model catalogue (empty when Codex is switched off).
+    var codexModels: () -> [ModelCatalogEntry] = { ModelCatalog.codexFallback }
     var sessionCandidates: () -> [ComposerSessionCandidate] = { [] }
     /// The text that mentions a session: its transcript and last answer. Nil for a session that is gone or has no transcript.
     var sessionMention: (UUID) -> String? = { _ in nil }

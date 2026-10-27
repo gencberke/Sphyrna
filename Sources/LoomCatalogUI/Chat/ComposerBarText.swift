@@ -141,13 +141,15 @@ enum ComposerBarText {
         effortBaseline.flatMap { ChatEffort.clamped($0, to: effortLevels(state, observed: observed)) }
     }
 
-    /// What the model chip and its popovers show for a session.
-    static func modelPicker(_ state: ChatComposerState, effortBaseline: String?, observedModel: String? = nil) -> ComposerModelPicker {
+    /// What the model chip and its popovers show for a session. `codex` is the Codex rows the catalogue gives the session's composer.
+    static func modelPicker(_ state: ChatComposerState, effortBaseline: String?, observedModel: String? = nil,
+                            codex: [ModelCatalogEntry] = ModelCatalog.codexFallback) -> ComposerModelPicker {
         let level = state.choices.effort ?? state.reportedEffort
         return ComposerModelPicker(
             modelTitle: modelTitle(state, observed: observedModel), effortTitle: effortTitle(state), rows: modelRows(state),
             chosenModel: state.choices.model, levels: effortLevels(state, observed: observedModel), chosenLevel: level,
-            canResetEffort: level != nil && level != resetTarget(state, effortBaseline: effortBaseline, observed: observedModel))
+            canResetEffort: level != nil && level != resetTarget(state, effortBaseline: effortBaseline, observed: observedModel),
+            codexModels: codex)
     }
 
     /// Whether the Default row is the chosen one: no choice, or the choice named `default`.

@@ -125,10 +125,10 @@ struct ProjectPageInkPureTests {
     @Test func aPresetsTooltipSaysItsModeAndModelThenItsMessage() {
         let own = NewSessionPreset(name: "Run tests", message: "Run the tests", permissionMode: "acceptEdits", model: "sonnet",
                                    projectID: UUID())
-        #expect(ProjectPresetText.tooltip(own) == "Accept edits \u{00B7} Sonnet\nRun the tests")
+        #expect(ProjectPresetText.tooltip(own, catalog: ModelCatalog()) == "Accept edits \u{00B7} Sonnet\nRun the tests")
         let shared = NewSessionPreset(name: "Explain", message: "Explain this folder", permissionMode: "ask", model: "haiku")
-        #expect(ProjectPresetText.summary(shared) == "All projects \u{00B7} Ask \u{00B7} Haiku")
-        #expect(ProjectPresetText.tooltip(NewSessionPreset(name: "x", message: "m", projectID: UUID())) == "m")
+        #expect(ProjectPresetText.summary(shared, catalog: ModelCatalog()) == "All projects \u{00B7} Ask \u{00B7} Haiku")
+        #expect(ProjectPresetText.tooltip(NewSessionPreset(name: "x", message: "m", projectID: UUID()), catalog: ModelCatalog()) == "m")
     }
 
     // MARK: The narrow layout and the empty project

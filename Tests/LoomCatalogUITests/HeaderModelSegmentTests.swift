@@ -19,35 +19,35 @@ struct HeaderModelSegmentTests {
 
     @Test func theTextAndTheTooltipFollowTheReading() {
         let known = ContextUsage(tokens: 84_200, window: 200_000, model: "claude-opus-5-5-20261001")
-        let content = HeaderModelContent(usage: known, launchModel: nil)
+        let content = HeaderModelContent(usage: known, launchModel: nil, catalog: ModelCatalog())
         #expect(content?.name == "Opus 5.5", "the composer bar's wording of the model id")
         #expect(content?.help == "Context \u{00B7} 84.2K of 200K (42%)\nclaude-opus-5-5-20261001")
         #expect(content?.accessibilityLabel.hasPrefix("Model Opus 5.5, Context, ") == true)
 
         // No window: the tokens only, never a share.
         let unknown = ContextUsage(tokens: 84_200, window: nil, model: "claude-sonnet-5")
-        let open = HeaderModelContent(usage: unknown, launchModel: nil)
+        let open = HeaderModelContent(usage: unknown, launchModel: nil, catalog: ModelCatalog())
         #expect(open?.name == "Sonnet 5")
         #expect(open?.help == "Context \u{00B7} 84.2K\nclaude-sonnet-5")
         #expect(open?.help.contains("%") == false && unknown.percent == nil)
 
         // A reading is the model that answered; the launch choice does not override it.
-        #expect(HeaderModelContent(usage: known, launchModel: "haiku")?.name == "Opus 5.5")
+        #expect(HeaderModelContent(usage: known, launchModel: "haiku", catalog: ModelCatalog())?.name == "Opus 5.5")
         // A reading that names no model still shows its ring, with the launch model if one was picked.
         let anonymous = ContextUsage(tokens: 1_000, window: 200_000, model: "")
-        #expect(HeaderModelContent(usage: anonymous, launchModel: nil)?.name == nil)
-        #expect(HeaderModelContent(usage: anonymous, launchModel: "sonnet")?.name == "Sonnet")
+        #expect(HeaderModelContent(usage: anonymous, launchModel: nil, catalog: ModelCatalog())?.name == nil)
+        #expect(HeaderModelContent(usage: anonymous, launchModel: "sonnet", catalog: ModelCatalog())?.name == "Sonnet")
     }
 
     @Test func beforeAReadingItIsTheLaunchModelOrNothing() {
-        let alias = HeaderModelContent(usage: nil, launchModel: "opus")
+        let alias = HeaderModelContent(usage: nil, launchModel: "opus", catalog: ModelCatalog())
         #expect(alias?.name == "Opus" && alias?.usage == nil)
         #expect(alias?.help == "Model \u{00B7} Opus (chosen at launch)")
-        #expect(HeaderModelContent(usage: nil, launchModel: "claude-sonnet-5")?.name == "Sonnet 5")
+        #expect(HeaderModelContent(usage: nil, launchModel: "claude-sonnet-5", catalog: ModelCatalog())?.name == "Sonnet 5")
         // Never a guessed model: no choice, an empty one and Default (the CLI picks) say nothing.
-        #expect(HeaderModelContent(usage: nil, launchModel: nil) == nil)
-        #expect(HeaderModelContent(usage: nil, launchModel: "") == nil)
-        #expect(HeaderModelContent(usage: nil, launchModel: "default") == nil)
+        #expect(HeaderModelContent(usage: nil, launchModel: nil, catalog: ModelCatalog()) == nil)
+        #expect(HeaderModelContent(usage: nil, launchModel: "", catalog: ModelCatalog()) == nil)
+        #expect(HeaderModelContent(usage: nil, launchModel: "default", catalog: ModelCatalog()) == nil)
     }
 
     // MARK: The width rules (pure)

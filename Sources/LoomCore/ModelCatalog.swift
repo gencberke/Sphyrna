@@ -50,13 +50,11 @@ public enum HarnessEffort {
 ///
 /// Claude's list is the aliases the CLI's `initialize` listed to the last probe, each titled by its full name ("Opus 5.5", from
 /// the release it resolves to); until a probe has answered, the three fixed aliases with their short names. Codex's is what `model/list` answered to the last probe (hidden models dropped), and until a probe has answered, or
-/// today's names. A harness that is switched off (`connections`) has no models to offer. The catalog is read on the main
-/// actor by views; whoever runs the probe hands each Codex reading to `apply(_:)`.
+/// today's names. A harness that is switched off (`connections`) has no models to offer. The app makes one catalog and hands it
+/// to `CatalogModel` (`modelCatalog`); views read it through their model, never a shared instance (C2B). Whoever runs the probe
+/// hands each Codex reading to `apply(_:)`.
 @MainActor @Observable
 public final class ModelCatalog {
-    /// The one catalog the composer's views read.
-    public static let shared = ModelCatalog()
-
     /// The last Codex model list a probe read; nil before one has answered (the fallback is shown then).
     public private(set) var probedCodex: [ModelCatalogEntry]?
     /// The last Claude model list a probe read (`initialize`'s aliases and their releases); nil before one has answered.

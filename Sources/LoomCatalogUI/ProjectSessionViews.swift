@@ -253,15 +253,15 @@ private struct ProjectCardText: View {
 /// every project shares.
 @MainActor
 enum ProjectPresetText {
-    static func summary(_ preset: NewSessionPreset) -> String {
+    static func summary(_ preset: NewSessionPreset, catalog: ModelCatalog) -> String {
         [preset.projectID == nil ? "All projects" : nil,
          preset.permissionMode.map(ClaudePermissionMode.title(forRaw:)),
-         preset.model.map(ModelCatalog.shared.claudeTitle(of:))]
+         preset.model.map(catalog.claudeTitle(of:))]
             .compactMap { $0 }.joined(separator: " \u{00B7} ")
     }
 
-    static func tooltip(_ preset: NewSessionPreset) -> String {
-        let summary = summary(preset)
+    static func tooltip(_ preset: NewSessionPreset, catalog: ModelCatalog) -> String {
+        let summary = summary(preset, catalog: catalog)
         return summary.isEmpty ? preset.message : summary + "\n" + preset.message
     }
 
@@ -322,7 +322,7 @@ private struct ProjectPresetRow: View {
                 if let alias = preset.model {
                     HStack(spacing: LoomTheme.ProjectPage.presetModelGap) {
                         ProviderIcon(provider: .newSessionDefault)
-                        Text(ModelCatalog.shared.claudeTitle(of: alias)).projectType(LoomTheme.ProjectPage.presetModel)
+                        Text(model.modelCatalog.claudeTitle(of: alias)).projectType(LoomTheme.ProjectPage.presetModel)
                             .foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
                     }
                     .fixedSize()
@@ -337,8 +337,9 @@ private struct ProjectPresetRow: View {
         // The pill reaches the card's padding, so the row's text keeps its place.
         .padding(.horizontal, -LoomTheme.ProjectPage.presetBleed)
         .contextMenu { Button("Remove Preset") { model.removePreset(preset) } }
-        .help(ProjectPresetText.tooltip(preset))
-        .accessibilityLabel(([preset.name] + [ProjectPresetText.summary(preset)].filter { !$0.isEmpty }).joined(separator: ", "))
+        .help(ProjectPresetText.tooltip(preset, catalog: model.modelCatalog))
+        .accessibilityLabel(([preset.name] + [ProjectPresetText.summary(preset, catalog: model.modelCatalog)].filter { !$0.isEmpty })
+            .joined(separator: ", "))
         .accessibilityHint("Opens a new session with this message in it")
         .accessibilityIdentifier("project-preset")
     }

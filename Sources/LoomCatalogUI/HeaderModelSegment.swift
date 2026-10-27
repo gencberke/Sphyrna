@@ -17,10 +17,10 @@ struct HeaderModelContent: Equatable {
     let help: String
     let accessibilityLabel: String
 
-    /// Nil when there is nothing to show: no reading and no model picked at launch.
-    @MainActor init?(usage: ContextUsage?, launchModel: String?) {
+    /// Nil when there is nothing to show: no reading and no model picked at launch. `catalog` names an alias (`CatalogModel.modelCatalog`).
+    @MainActor init?(usage: ContextUsage?, launchModel: String?, catalog: ModelCatalog) {
         let reported = usage.map(\.model).flatMap { $0.isEmpty ? nil : $0 }
-        let launched = Self.launchTitle(launchModel)
+        let launched = Self.launchTitle(launchModel, catalog: catalog)
         let title = reported.map(ComposerBarText.prettyModel) ?? launched
         guard usage != nil || title != nil else { return nil }
         name = title
@@ -39,9 +39,9 @@ struct HeaderModelContent: Equatable {
 
     /// The name of the model a session was launched with: nothing for "no choice" and for Default (the CLI then picks one
     /// the session has not reported yet), the composer's wording for an id, the alias's title for an alias.
-    @MainActor static func launchTitle(_ chosen: String?) -> String? {
+    @MainActor static func launchTitle(_ chosen: String?, catalog: ModelCatalog) -> String? {
         guard let chosen, !chosen.isEmpty, chosen != "default" else { return nil }
-        return chosen.hasPrefix("claude-") ? ComposerBarText.prettyModel(chosen) : ModelCatalog.shared.claudeTitle(of: chosen)
+        return chosen.hasPrefix("claude-") ? ComposerBarText.prettyModel(chosen) : catalog.claudeTitle(of: chosen)
     }
 }
 
@@ -87,7 +87,7 @@ extension CatalogModel {
     func modelContent(of record: CatalogSession) -> HeaderModelContent? {
         guard capabilities(of: record.session.provider).readsContext else { return nil }
         let reading = record.session.providerConversationID.flatMap { usage?.contexts[$0] }
-        return HeaderModelContent(usage: reading, launchModel: launchModels.model(of: record.session.id))
+        return HeaderModelContent(usage: reading, launchModel: launchModels.model(of: record.session.id), catalog: modelCatalog)
     }
 }
 

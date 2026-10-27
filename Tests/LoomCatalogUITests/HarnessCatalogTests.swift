@@ -76,7 +76,7 @@ struct HarnessCatalogTests {
 
     @Test func claudeIsTheCatalogsList() {
         #expect(ModelCatalog.claudeTitle(of: "sonnet") == "Sonnet" && ModelCatalog.claudeTitle(of: "fable") == "fable")
-        #expect(HeaderModelContent.launchTitle("haiku") == "Haiku")
+        #expect(HeaderModelContent.launchTitle("haiku", catalog: ModelCatalog()) == "Haiku")
         let claude = picker().groups()[0]
         #expect(claude.rows.map(\.id) == ["default"] + ModelCatalog.claude.map(\.id))
     }

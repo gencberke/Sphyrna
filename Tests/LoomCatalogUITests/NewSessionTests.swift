@@ -350,12 +350,12 @@ struct NewSessionTests {
         #expect(none.mode == ResolvedChoice(value: "default", source: .loomDefault))
         #expect(none.model == ResolvedChoice(value: nil, source: .cliDefault) && none.effort == ResolvedChoice(value: nil, source: .cliDefault))
         #expect(none.choices == ClaudeLaunchChoices(permissionMode: "default") && none.modeTitle == "Ask before edits")
-        #expect(none.modelTitle == "Default model" && none.effortTitle == nil)
+        #expect(none.modelTitle(in: ModelCatalog()) == "Default model" && none.effortTitle == nil)
         // 3: what was last used in the project, which is what "Last used in the project" in Settings means (no mode stored).
         let remembered = resolve(last: last, settings: NewSessionSettings(model: "haiku"))
         #expect(remembered.mode == ResolvedChoice(value: "acceptEdits", source: .lastUsed))
         #expect(remembered.model == ResolvedChoice(value: "sonnet", source: .lastUsed), "the model's last used beats its setting")
-        #expect(remembered.modeTitle == "Accept edits" && remembered.modelTitle == "Sonnet")
+        #expect(remembered.modeTitle == "Accept edits" && remembered.modelTitle(in: ModelCatalog()) == "Sonnet")
         #expect(resolve(settings: settings).model == ResolvedChoice(value: "haiku", source: .settings))
         // 2: the one mode the user fixed in Settings beats the project's last used mode (D-69).
         let fixed = resolve(last: last, settings: settings)
@@ -508,7 +508,7 @@ struct NewSessionTests {
         model.setDraftEffort(.value("xhigh"), projectID: rig.projectID)
         let picked = model.resolvedStart(for: rig.projectID)
         #expect(picked.model == ResolvedChoice(value: "sonnet", source: .pick) && picked.effort == ResolvedChoice(value: "xhigh", source: .pick))
-        #expect(picked.modelTitle == "Sonnet" && picked.effortTitle == "Extra high")
+        #expect(picked.modelTitle(in: ModelCatalog()) == "Sonnet" && picked.effortTitle == "Extra high")
         // An effort the CLI does not take never reaches a launch.
         model.setDraftEffort(.value("turbo"), projectID: rig.projectID)
         model.setDraftEffort(.value("--x"), projectID: rig.projectID)
@@ -526,7 +526,7 @@ struct NewSessionTests {
         #expect(model.resolvedStart(for: rig.projectID).effort == ResolvedChoice(value: "xhigh", source: .lastUsed))
         model.setDraftModel(.claudeDefault, projectID: rig.projectID)
         let reset = model.resolvedStart(for: rig.projectID)
-        #expect(reset.model == ResolvedChoice(value: nil, source: .pick) && reset.modelTitle == "Default model")
+        #expect(reset.model == ResolvedChoice(value: nil, source: .pick) && reset.modelTitle(in: ModelCatalog()) == "Default model")
     }
 
     @Test func aDraftFileFromBeforeTheEffortPickerStillReads() async throws {

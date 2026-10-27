@@ -11,7 +11,9 @@ extension AppDelegate {
         let connections = HarnessConnections(disconnected: preferences.current.disconnectedHarnesses) { provider, connected in
             Task { @MainActor in try? preferences.update { $0.setHarnessConnected(provider, connected) } }
         }
-        ModelCatalog.shared.connections = connections
+        // The composer's model lists: the app's one catalogue, read with the same switch, handed to the model (C2B).
+        let catalog = ModelCatalog(connections: connections)
+        model.modelCatalog = catalog
 
         var sources: [ManagedSession.Provider: any HarnessProbeSource] = [:]
         if let limits { sources[.claude] = ClaudeProbeSource(fetcher: limits) }
@@ -28,7 +30,7 @@ extension AppDelegate {
 
         // Codex's models reach the composer's lists through the catalog.
         model.harnessProbe = HarnessProbe(connections: connections, sources: sources, onReading: { reading in
-            Task { @MainActor in ModelCatalog.shared.apply(reading) }
+            Task { @MainActor in catalog.apply(reading) }
         })
         model.harnessConnections = connections
         installConnections(model: model, root: root)

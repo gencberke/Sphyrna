@@ -81,9 +81,9 @@ struct SidebarV2Tests {
         #expect(Models.source(stored: "opus", reported: "claude-sonnet-4-6") == "claude-sonnet-4-6")
         #expect(Models.source(stored: "opus", reported: nil) == "opus")
         #expect(Models.source(stored: "default", reported: nil) == nil && Models.source(stored: nil, reported: nil) == nil)
-        #expect(Models.fullName(of: "claude-opus-5-5") == "Opus 5.5")
-        #expect(Models.fullName(of: "claude-opus-5-5[1m]") == "Opus 5.5 1M")
-        #expect(Models.fullName(of: "gpt-6-luna") == "gpt-6-luna")
+        #expect(Models.fullName(of: "claude-opus-5-5", catalog: ModelCatalog()) == "Opus 5.5")
+        #expect(Models.fullName(of: "claude-opus-5-5[1m]", catalog: ModelCatalog()) == "Opus 5.5 1M")
+        #expect(Models.fullName(of: "gpt-6-luna", catalog: ModelCatalog()) == "gpt-6-luna")
     }
 
     // MARK: The row's own reason

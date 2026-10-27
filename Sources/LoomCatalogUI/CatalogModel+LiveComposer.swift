@@ -39,6 +39,8 @@ extension CatalogModel {
             else { return nil }
             return usage?.contexts[conversation]
         }
+        // The model popover's Codex rows: the app's catalogue, which follows the connect switch (C2B).
+        environment.codexModels = { [weak self] in self?.modelCatalog.models(for: .codex) ?? [] }
         environment.sessionCandidates = { [weak self, weak feed] in
             guard let self, let feed else { return [] }
             return paletteSessions().filter { capabilities(of: $0.provider).readsTranscript && $0.id != feed.card }.map {
