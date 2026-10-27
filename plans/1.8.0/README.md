@@ -47,6 +47,7 @@ What does not change: the contracts of SPEC §1–§5 and §12.
 Wave 0  B0 reference v4 ──(@user approves the look)──┐      P0 Codex spike      P1 opencode/agy/pi spike
 Wave 1  A1 project reorder        C1 harness catalogue │ B1 v4 tokens & controls    B0b the rest of the reference in v4
 Wave 2  C2 catalogue consumers ──┬── B2 sidebar & card (after A1, B1)
+                                  ├── C2b catalogue reaches every list (after C2)
                                   ├── C3 Connections & Home's connect cards (after B1, C1)
                                   └── B3 status bar (after B1, B2, C2)
 Wave 3  C4 harness-neutral draft (after C2) ── B4 model & effort pickers (after B1, C4)
@@ -69,6 +70,7 @@ Wave 5  Z gate (planner): pool, real CLIs, energy, visual pass, optimizer, relea
 | **B1** | Ink v4 tokens and the control family | FB7-2 | `LoomTheme*.swift`, the shared control styles, DESIGN §0 and §3 | B0 approved, §0 written | C1, P0, P1 |
 | **B0b** | The rest of the reference in v4: every other chapter redrawn with v4's parts; the v3 tokens, the v3/v4 switch and the Q bar removed; one design language in the reference and the landing page | D-106 | `design/reference-src/**`, the built pages | B0 integrated, the v4 rules in DESIGN.md | everything except B0 |
 | **C2** | Everything that lists harnesses reads the catalogue: models with their efforts, probes, usage and limits, menus, palette, Home | FB6-13, FB6-3, optimizer 2, 4 and 10 | `LoomCore` model and usage files, `CatalogModel` (the harness region), menus | C1 | B2 |
+| **C2b** | C2's rest: the catalogue on `CatalogModel` (no `ModelCatalog.shared`), availability wired, and every new-session list (File, Dock, Home, sidebar, menu bar) follows the catalogue, the switch and Not found | optimizer 10, C2's Done-when | `CatalogModel` (the catalogue and availability), the catalogue's readers (one line each), the list builders | C2 | B1 |
 | **C3** | Settings → Connections and Home's connect cards in v4, with Not found | FB6-13 | Connections and Home's connect card files | B1, C1 | C2, B2 |
 | **B2** | The sidebar and the session card in v4 | FB7-1, FB7-2 | sidebar files | A1, B1 | C2, C3 |
 | **B3** | The status bar | Q7, FB6-3 | a new status bar view, the window layout, the footer's removal | B1, B2, C2 | C4, D1 |
