@@ -154,7 +154,6 @@ new ResizeObserver(fit).observe(document.body);
 
 /* ---------- switches ---------- */
 const sw = (id, fn) => { const el = $(id); el.parentElement.addEventListener('click', () => { el.classList.toggle('on'); fn(el.classList.contains('on')); }); };
-sw('#swAmbient', on => { ambient = on; oceans.forEach(o => o.sync()); });
 sw('#swPins', on => document.body.classList.toggle('pins', on));
 sw('#swZoom', on => { zoom = on; fit(); });
 $$('#themeSeg button').forEach(b => b.addEventListener('click', () => {

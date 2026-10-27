@@ -23,7 +23,6 @@
       const tile = q(`[data-set="cast"] [data-v="${m.cast}"]`);
       if (tile) { if (!tile.classList.contains('on')) tile.click(); } else document.body.dataset.cast = m.cast;
     }
-    if ('sharks' in m) toggle('#swAmbient', m.sharks);
     if ('pins' in m) toggle('#swPins', m.pins);
     if ('zoom' in m) toggle('#swZoom', m.zoom);
     if (m.only) document.querySelectorAll('section.sec').forEach(s => { s.style.display = m.only.includes(s.id) ? '' : 'none'; });
@@ -47,17 +46,15 @@
       if (st) s.querySelectorAll('*').forEach(el => { if (!el.contains(st) && !st.contains(el)) el.style.display = 'none'; });
     });
   }
-  // A choice made here, such as Settings' appearance, tone or Animated art, goes back to the page, which passes it to every frame.
+  // A choice made here, such as Settings' appearance or tone, goes back to the page, which passes it to every frame.
   let applying = false;
-  const art = q('#swAmbient');
   const local = () => {
     if (applying) return;
     const root = document.documentElement;
-    parent.postMessage({ ref: 'local', theme: root.dataset.theme, cast: document.body.dataset.cast, sharks: art ? art.classList.contains('on') : undefined }, '*');
+    parent.postMessage({ ref: 'local', theme: root.dataset.theme, cast: document.body.dataset.cast }, '*');
   };
   new MutationObserver(local).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   new MutationObserver(local).observe(document.body, { attributes: true, attributeFilter: ['data-cast'] });
-  if (art) new MutationObserver(local).observe(art, { attributes: true, attributeFilter: ['class'] });
   addEventListener('message', e => { if (e.source === parent && e.data && e.data.ref === 'state') apply(e.data); });
   new ResizeObserver(() => requestAnimationFrame(report)).observe(document.body);
   addEventListener('load', report);

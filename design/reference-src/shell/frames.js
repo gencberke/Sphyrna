@@ -8,7 +8,7 @@ async function unpack() {
   REF = JSON.parse(text);
 }
 const docHtml = name => REF.docs[name].map(k => REF.blocks[k]).join('');
-const STATE = { theme: 'dark', cast: 'neutral', sharks: true, pins: false, zoom: false };
+const STATE = { theme: 'dark', cast: 'neutral', pins: false, zoom: false };
 const frames = [];
 // A frame shows the listed sections of one document: nums renumbers them, and bare shows each one's window alone.
 function addFrame(parent, doc, only, opts = {}) {
@@ -37,7 +37,6 @@ addEventListener('message', e => {
     // A choice made inside a frame, such as Settings' tone, becomes the page's.
     let changed = false;
     ['theme', 'cast'].forEach(key => { if (m[key] && m[key] !== STATE[key]) { STATE[key] = m[key]; changed = true; } });
-    if (typeof m.sharks === 'boolean' && m.sharks !== STATE.sharks) { STATE.sharks = m.sharks; changed = true; }
     if (changed) { paintTools(); postAll(); }
   }
 });
@@ -46,10 +45,9 @@ function paintTools() {
   $$('#themeSeg button').forEach(b => b.classList.toggle('on', b.dataset.themeSet === STATE.theme));
   if (document.documentElement.dataset.theme !== STATE.theme) { document.documentElement.dataset.theme = STATE.theme; oceans.forEach(o => { o.readInk(); o.draw(); }); }
   $$('#toneSeg button').forEach(b => b.classList.toggle('on', b.dataset.tone === STATE.cast));
-  if ($('#swAmbient').classList.contains('on') !== STATE.sharks) $('#swAmbient').parentElement.click();
 }
 $$('#themeSeg button').forEach(b => b.addEventListener('click', () => { STATE.theme = b.dataset.themeSet; postAll(); }));
 $$('#toneSeg button').forEach(b => b.addEventListener('click', () => { STATE.cast = b.dataset.tone; paintTools(); postAll(); }));
-[['#swAmbient', 'sharks'], ['#swPins', 'pins'], ['#swZoom', 'zoom']].forEach(([id, key]) =>
+[['#swPins', 'pins'], ['#swZoom', 'zoom']].forEach(([id, key]) =>
   $(id).parentElement.addEventListener('click', () => { STATE[key] = $(id).classList.contains('on'); postAll(); }));
 document.addEventListener('visibilitychange', () => oceans.forEach(o => o.sync()));

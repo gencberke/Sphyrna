@@ -86,8 +86,6 @@ function setState(key, v) {
   if (key === 'cast') document.body.dataset.cast = v;
   if (key === 'sidebar') document.body.dataset.side = v;
   if (key === 'pcolors') document.body.classList.toggle('nopc', !v);
-  // Animated art is the page's art switch, so the drawings here stop with it
-  if (key === 'art' && $('#swAmbient').classList.contains('on') !== v) $('#swAmbient').parentElement.click();
   if (key === 'remora') {
     $$('[data-dim]').forEach(r => r.classList.toggle('dim', !v));
     $$('[data-role=remnote]').forEach(n => n.textContent = v ? REMORA_ON : REMORA_OFF);
@@ -96,7 +94,6 @@ function setState(key, v) {
 }
 const REMORA_ON = $('[data-role=remnote]').textContent;
 const REMORA_OFF = 'Off: Home starts with its band and Needs you, ⌘K has no Ask row, and the new-session page has no brief row. The memory stays until you clear it.';
-$('#swAmbient').parentElement.addEventListener('click', () => { STATE.art = $('#swAmbient').classList.contains('on'); paint('art'); });
 // The top bar's switch is the same setting, said as Ink or Paper.
 $$('#themeSeg button').forEach(b => b.addEventListener('click', () => { if (!syncing) { STATE.appearance = b.dataset.themeSet === 'dark' ? 'ink' : 'paper'; paint('appearance'); } }));
 darkQuery.addEventListener('change', () => { if (STATE.appearance === 'system') applyAppearance(); });

@@ -686,12 +686,6 @@ winM.addEventListener('click', e => {
   if (a.dataset.act === 'unrm') { pn.innerHTML = pn.dataset.html; }
 });
 
-/* ---------- Animated art off mid-arrival: the remora takes its place at once ---------- */
-const sharksSw = $('#swAmbient');
-sharksSw.parentElement.addEventListener('click', () => {
-  if (!sharksSw.classList.contains('on') && R.home === 'morning' && !arr.done) { resetBrief(); restRemora(); showAll(); band && band.back(TH_BACK); }
-});
-
 /* ============================================================
    04 Beyond Home. ⌘K: Ask Remora heads the palette when what you
    type reads as a question. A new session: Remora drafts its brief.

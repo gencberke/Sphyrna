@@ -178,10 +178,6 @@ $$('#smallSeg button').forEach(b => b.addEventListener('click', () => {
   if (H.state !== 'first') H.state = 'first';
   drawHome();
 }));
-// The Animated art row is the top bar's Sharks switch.
-const artSw = $('[data-role=artsw]'), sharksSw = $('#swAmbient');
-artSw.addEventListener('click', () => sharksSw.parentElement.click());
-sharksSw.parentElement.addEventListener('click', () => artSw.classList.toggle('on', sharksSw.classList.contains('on')));
 // Check Again asks again; here it finds Claude, so Home becomes itself.
 winH.addEventListener('click', e => {
   const b = e.target.closest('[data-act=check]'); if (!b || H.checking) return;
