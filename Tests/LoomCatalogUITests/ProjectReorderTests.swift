@@ -126,7 +126,9 @@ struct ProjectReorderTests {
         #expect(releases.first?.0 == ids[0] && releases.first?.1 == 2)
         reorder.end { releases.append(($0, $1)) }
         #expect(releases.count == 1, "one release for one drag")
-        #expect(reorder.dragging == nil && reorder.gap == nil)
+        #expect(reorder.dragging == nil && reorder.gap == 2, "the released gap holds until the move lands")
+        reorder.settle(ids[0])
+        #expect(reorder.gap == nil)
     }
 
     @Test func aCancelledDragReleasesNothing() {
@@ -162,5 +164,36 @@ struct ProjectReorderTests {
         var released: Int??
         reorder.end { released = $1 }
         #expect((released ?? nil) == 1, "the release carries the gap; the model settles that it is its own place")
+    }
+
+    @Test func aReleasedMoveHoldsItsSlidesUntilTheOrderLands() {
+        let ids = [UUID(), UUID(), UUID()]
+        let reorder = model(ids)
+        reorder.begin(ids[0], pointer: CGPoint(x: 40, y: 10), order: ids)
+        reorder.move(pointer: CGPoint(x: 40, y: 130))
+        reorder.end { _, _ in }
+        // The catalog write and the reload take a moment: until the new order lands, the block the head passed keeps its slide
+        // and the head's own place stays empty, so the blocks do not slide back and jump to the new order.
+        #expect(reorder.offsetY(blockAt: 1) == -100)
+        #expect(reorder.isMoving(ids[0], order: ids) && !reorder.hasLanded(ids))
+        // The new order lands: the slides go with it, and the moved head shows in its new place.
+        let landed = [ids[1], ids[0], ids[2]]
+        #expect(reorder.hasLanded(landed) && !reorder.isMoving(ids[0], order: landed))
+        reorder.settle(ids[0])
+        #expect(reorder.dragging == nil && reorder.gap == nil && reorder.offsetY(blockAt: 1) == 0)
+    }
+
+    @Test func aMoveTheCatalogRefusesSlidesBackWhenItsEndSettles() {
+        let ids = [UUID(), UUID(), UUID()]
+        let reorder = model(ids)
+        reorder.begin(ids[0], pointer: CGPoint(x: 40, y: 10), order: ids)
+        reorder.move(pointer: CGPoint(x: 40, y: 130))
+        reorder.end { _, _ in }
+        // The order did not change: the move failed, so its end gives the blocks their places back.
+        #expect(!reorder.hasLanded(ids))
+        reorder.settle(ids[1])
+        #expect(reorder.offsetY(blockAt: 1) == -100, "a settle for another project changes nothing")
+        reorder.settle(ids[0])
+        #expect(reorder.offsetY(blockAt: 1) == 0 && !reorder.isMoving(ids[0], order: ids))
     }
 }

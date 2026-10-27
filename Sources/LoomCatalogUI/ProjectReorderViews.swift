@@ -55,28 +55,34 @@ struct ProjectReorderPartModifier: ViewModifier {
     let project: UUID
     let part: ProjectReorderPart
     let index: Int
+    /// The project order the list shows now: a released move holds its slides until this differs from the drag's order.
+    let order: [UUID]
     /// The list's gap above the head (read for the head only).
     let topGap: CGFloat
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    init(reorder: ProjectReorderModel, project: UUID, part: ProjectReorderPart, index: Int, topGap: CGFloat) {
+    init(reorder: ProjectReorderModel, project: UUID, part: ProjectReorderPart, index: Int, order: [UUID], topGap: CGFloat) {
         self.reorder = reorder
         self.project = project
         self.part = part
         self.index = index
+        self.order = order
         self.topGap = topGap
     }
 
     func body(content: Content) -> some View {
-        let slide = reorder.offsetY(blockAt: index)
+        // Once the released order has landed the blocks show it without slides, and without the slide's movement: the order
+        // changed in the same update, so an animated slide back would start from where the old order put the block.
+        let landed = reorder.hasLanded(order)
+        let slide = landed ? 0 : reorder.offsetY(blockAt: index)
         // Read here, on the main actor, and captured as a plain string: the geometry closure is Sendable.
         let space = ProjectReorderModel.contentSpace
         ZStack(alignment: .topLeading) {
             content
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .opacity(reorder.isDragging(project) ? 0 : 1)
+                .opacity(reorder.isMoving(project, order: order) ? 0 : 1)
                 .offset(y: slide)
-                .animation(reduceMotion ? nil : .easeOut(duration: LoomTheme.Sidebar.reorderSlide), value: slide)
+                .animation((reduceMotion || landed) ? nil : .easeOut(duration: LoomTheme.Sidebar.reorderSlide), value: slide)
         }
         .onGeometryChange(for: CGRect.self) { proxy in
             proxy.frame(in: .named(space))
@@ -94,8 +100,9 @@ struct ProjectReorderPartModifier: ViewModifier {
 extension View {
     /// Makes the view one part of a project's block for the live reorder (A1); see `ProjectReorderPartModifier`.
     func projectReorderPart(_ reorder: ProjectReorderModel, project: UUID, part: ProjectReorderPart, index: Int,
-                            topGap: CGFloat = 0) -> some View {
-        modifier(ProjectReorderPartModifier(reorder: reorder, project: project, part: part, index: index, topGap: topGap))
+                            order: [UUID], topGap: CGFloat = 0) -> some View {
+        modifier(ProjectReorderPartModifier(reorder: reorder, project: project, part: part, index: index, order: order,
+                                            topGap: topGap))
     }
 }
 

@@ -40,6 +40,9 @@ final class ProjectReorderModel {
     private(set) var pointer: CGPoint = .zero
     /// How far below the dragged head's top the pointer holds it, so the lifted head keeps that distance all the way.
     private(set) var grab: CGFloat = 0
+    /// The project whose released move has not landed yet (A1): the list still shows the order the drag began with, so its
+    /// slides and its hidden head hold until `hasLanded`, and `settle` ends them.
+    private(set) var landingID: UUID?
 
     // MARK: The list
 
@@ -109,6 +112,8 @@ final class ProjectReorderModel {
     @discardableResult
     func begin(_ id: UUID, pointer: CGPoint, order: [UUID]) -> Bool {
         guard dragging == nil, let block = blocks[id], let index = order.firstIndex(of: id) else { return false }
+        // A new drag ends the slides of a move that has not landed yet.
+        if landingID != nil { reset() }
         dragging = id
         from = index
         self.order = order
@@ -130,12 +135,20 @@ final class ProjectReorderModel {
     }
 
     /// Ends the drag: the project and the gap it is released in, or nil when the pointer is outside the list. `commit` is
-    /// called once for a drag and not at all for an end that follows one, so a release moves a project once.
+    /// called once for a drag and not at all for an end that follows one, so a release moves a project once. A release that
+    /// moves the project keeps its slides and its hidden head until the new order lands (`hasLanded`) and `settle` ends them,
+    /// so the blocks take the new order in one step instead of sliding back to the old one and jumping.
     func end(commit: (UUID, Int?) -> Void) {
         guard let id = dragging else { return }
         let inside = CGRect(origin: .zero, size: viewportSize).contains(pointer)
         let released = inside ? gap : nil
-        reset()
+        if let released, let from, ProjectReorder.position(forGap: released, from: from) != nil {
+            landingID = id
+            dragging = nil
+            stopEscapeWatch()
+        } else {
+            reset()
+        }
         commit(id, released)
     }
 
@@ -146,8 +159,22 @@ final class ProjectReorderModel {
         reset()
     }
 
-    /// Whether this project's block is the one being dragged: it goes quiet while its head follows the pointer.
-    func isDragging(_ id: UUID) -> Bool { dragging == id }
+    /// Whether a project's block stays out of its place: it is the one dragged (its head follows the pointer), or the one
+    /// released and not landed yet (its place is the gap the slides hold open).
+    func isMoving(_ id: UUID, order current: [UUID]) -> Bool {
+        dragging == id || (landingID == id && !hasLanded(current))
+    }
+
+    /// Whether the released move has landed: the list's order is no longer the order the drag began with. Until then the
+    /// slides hold; from then on the blocks show the new order without them.
+    func hasLanded(_ current: [UUID]) -> Bool { landingID != nil && current != order }
+
+    /// The released move has ended, whether its order landed or the catalog refused it. Only the move that started the
+    /// landing is ended, so a settle that comes late for an earlier move changes nothing.
+    func settle(_ id: UUID) {
+        guard landingID == id else { return }
+        reset()
+    }
 
     /// The slide of the block at `index` while another project's head is over its gap.
     func offsetY(blockAt index: Int) -> CGFloat {
@@ -196,10 +223,7 @@ final class ProjectReorderModel {
     }
 
     private func refreshGap() {
-        guard dragging != nil else {
-            if gap != nil { gap = nil }
-            return
-        }
+        guard dragging != nil else { return }
         let next = ProjectReorder.gap(pointerY: pointer.y + contentOffset, blocks: orderedBlocks, order: order)
         guard next != gap else { return }
         gap = next
@@ -209,6 +233,7 @@ final class ProjectReorderModel {
     private func reset() {
         stopEscapeWatch()
         dragging = nil
+        landingID = nil
         from = nil
         draggedHeight = 0
         order = []

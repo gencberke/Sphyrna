@@ -313,6 +313,7 @@ struct ProjectList: View {
     var body: some View {
         let _ = SidebarRenderProbe.projectList(of: model)
         let unassigned = model.list(for: .unassigned)
+        let order = model.projects.map(\.id)
         if model.projects.isEmpty && unassigned.rows.isEmpty {
             EmptyListHint(isLoaded: model.isReady)
         }
@@ -324,19 +325,19 @@ struct ProjectList: View {
             let topGap = ProjectHeader.topGap(isFirst: index == 0)
             ProjectHeader(model: model, project: project, reorder: reorder)
                 .padding(.top, topGap)
-                .projectReorderPart(reorder, project: project.id, part: .head, index: index, topGap: topGap)
+                .projectReorderPart(reorder, project: project.id, part: .head, index: index, order: order, topGap: topGap)
             if !project.collapsed {
                 DraftRows(model: model, scope: .project(project.id))
-                    .projectReorderPart(reorder, project: project.id, part: .drafts, index: index)
+                    .projectReorderPart(reorder, project: project.id, part: .drafts, index: index, order: order)
                 ForEach(list.rows) { row in
                     SessionListEntry(row: row, model: model)
-                        .projectReorderPart(reorder, project: project.id, part: .session(row.id), index: index)
+                        .projectReorderPart(reorder, project: project.id, part: .session(row.id), index: index, order: order)
                         .id(row.id)
                         .onAppear { if row.id == list.rows.last?.id { model.loadMore(.project(project.id)) } }
                 }
                 if list.rows.isEmpty && list.isLoaded {
                     NoSessionsNote(model: model, projectID: project.id)
-                        .projectReorderPart(reorder, project: project.id, part: .note, index: index)
+                        .projectReorderPart(reorder, project: project.id, part: .note, index: index, order: order)
                 }
             }
         }
@@ -510,7 +511,11 @@ struct ProjectHeader: View {
                 .onEnded { value in
                     reorder.move(pointer: value.location)
                     reorder.end { id, gap in
-                        Task { @MainActor in await model.endProjectReorder(id, gap: gap) }
+                        // The released slides hold until the move has run: its new order lands, or it fails (`settle`).
+                        Task { @MainActor in
+                            await model.endProjectReorder(id, gap: gap)
+                            reorder.settle(id)
+                        }
                     }
                 }
         )
