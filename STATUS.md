@@ -3,7 +3,7 @@
 - **Updated:** 2026-10-27, evening.
 - **State:** `in progress`. 1.8.0's first wave has run ([plans/1.8.0](plans/1.8.0/README.md)):
   - B0 (approved, [D-106](DECISIONS.md)) and C1 are integrated on `v2`;
-  - A1 is done and in review.
+  - A1 was sent back by review: it breaks the sidebar's lazy paging. Its resume prompt is ready.
 
   The v4 rules are in `design/DESIGN.md` (its six rules and §0). B1, B0b and C2 can start.
 - **Installed:** Sphyrna 1.7.2 (build 10702) in `/Applications/Loom.app`. The CLIs on this Mac: Claude Code 2.1.311,
@@ -24,8 +24,13 @@
   The planner's edits are committed as `5ba94f1`. B0 is integrated on `v2`.
 - **C1 integrated** (`adcff47`..`59e300e`): the catalogue and availability are sound, and `--tests` passes. The planner's
   fix: opencode has no doctor until P1, because `opencode debug config` prints the whole config, credentials included.
-- **A1 done:** a real gap bug was fixed with a test that fails first. Its full runs failed twice on load-timing flakes outside
-  its area (`HookWatchdogTests`, `ConversationControllerTests`); both pass alone, and the last full run passed.
+- **A1 sent back** after review:
+  - The drag model, the gap geometry and the single `moveProject` are sound.
+  - **The regression:** each project's rows are now one plain stack inside the lazy list, so an expanded project builds every
+    row and reads every page. With 350 sessions it reads 350 rows and 3 more pages, where `v2` reads 100 rows and no more
+    pages. The planner's `SidebarPagingTests` proves it, failing on A1 and passing on `v2`.
+  - **To fix as well:** the release jump. The blocks slide back before the saved order arrives.
+  - **Flaky tests:** A1's full runs met two load-timing flakes, `HookWatchdogTests` and `ConversationControllerTests`.
 - **loom-dev mirror:** `design/` was stale (22 Oct). It is synced from `v2`, and so are `SPEC.md` and `ARCHITECTURE.md`.
 - **The runs** went through `@user`'s own opencode TUI on the background service, with its `build` agent and without the tools'
   deny rules. A check found nothing outside the slice worktrees touched.
@@ -56,7 +61,7 @@
 | `~/Library/Caches/loom-v2/wt/core` | `core` | `e3941fb` | Kept: `build-c8.sh` adds measurement worktrees from it |
 | `~/Library/Caches/loom-v2/wt/r9-b0` | `slice/r9-b0` | `5ba94f1` | Integrated (fast-forward) |
 | `~/Library/Caches/loom-v2/wt/r9-c1` | `slice/r9-c1` | `ad4f128` | Integrated (cherry-picked as `adcff47`..`59e300e`) |
-| `~/Library/Caches/loom-v2/wt/r9-a1` | `slice/r9-a1` | `824f0c3` | Done; in review |
+| `~/Library/Caches/loom-v2/wt/r9-a1` | `slice/r9-a1` | `824f0c3` | Sent back: its resume prompt is `~/Desktop/sphyrna-1.8.0-prompts/A1-resume-1027-2047.md` |
 | Later 1.8.0 slices | `slice/r9-<id>` | — | Prepared when their turn comes, from the `v2` of that moment |
 
 Build scratch folders of removed worktrees remain in `~/Library/Caches/loom-v2/build/` (`r6-v2*`, `r7`, `r7cand2`, `r7check`).
@@ -70,14 +75,13 @@ Build scratch folders of removed worktrees remain in `~/Library/Caches/loom-v2/b
 ## 4. Next actions by role
 
 - **`@user`:**
-  1. Start B1, B0b and C2 once they are prepared. They can run side by side.
+  1. Start B1, B0b and C2 (prepared), and resume A1 with its new prompt. All four can run side by side.
   2. Answer FEEDBACK-7's [open questions](plans/FEEDBACK-7.md#decisions-open) Q7–Q13. Q13 is needed before P0 and P1, which
      also need the isolated profiles signed in.
   3. Still open from before: the push of `v1.6.0`–`v1.7.2` and the GitHub release. The Trash folders of 22, 25 and 26 Oct
      are `@user`'s to empty.
 - **`@planner`:**
-  1. Review A1 and integrate it.
-  2. Prepare B1, B0b and C2 for `@user` to start.
-  3. Keep the slice table in ACTIVE-PLAN current.
+  1. Review each slice as it comes back, and integrate it.
+  2. Keep the slice table in ACTIVE-PLAN current.
 - **Implementers:** none running. Each takes its assignment from its prompt file, its brief and COMMON.md.
 - **`@optimizer`:** at the 1.8.0 gate (plans/1.8.0/README.md §4).

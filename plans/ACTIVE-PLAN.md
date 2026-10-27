@@ -24,7 +24,7 @@ running, in review, integrated (with the `v2` SHA), cut. The run tooling: `~/Lib
 | 0 | B0 the reference in Ink v4 | integrated `5ba94f1` (approved by `@user`, D-106, with the planner's fixes: Activity marks, the two pickers) |
 | 0 | P0 Codex spike | queued: needs `@user`'s word on Q13 and a signed-in isolated Codex home |
 | 0 | P1 opencode, agy, pi spike | queued: needs Q13 and isolated profiles |
-| 1 | A1 project reorder | in review: done, `--tests` passed at 20:08 |
+| 1 | A1 project reorder | sent back by review: rows lost their laziness (an off-screen project reads all its pages); resume prompt ready |
 | 1 | C1 harness catalogue | integrated `59e300e` (with the planner's fix: opencode has no doctor until P1) |
 | 1 | B1 v4 tokens and controls | can start: the v4 rules are in DESIGN.md §0 |
 | 1 | B0b the rest of the reference in v4 | can start (D-106) |
