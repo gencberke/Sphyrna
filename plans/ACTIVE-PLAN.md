@@ -77,6 +77,13 @@ ran on `slice/r7-rescue` with one planner and one implementer ([D-101](../DECISI
 
 ### Next
 
+**First, the reference round ([D-104](../DECISIONS.md), 27 Oct).** Orca and T3 Code are Sphyrna's final references. The
+feature map in [docs/FEATURES.md](../docs/FEATURES.md) lists Sphyrna's 22 main features. The round reads each one in both
+apps' source trees and installed apps, logic first, and records what Sphyrna takes. A verdict that changes what the user
+sees or a contract goes to `@user` as its own decision before a slice is planned. On 27 Oct the round was recorded in
+the docs only; the reading has not started. The planner puts it before the rows below; `@user` can reorder. One gap is
+already known: Changes' `Send to Claude` cannot reach a terminal session since D-100 (FEATURES F11).
+
 | Release | What | Source |
 | --- | --- | --- |
 | **1.7.1** (released 26 Oct as `release/1.7.1`; installed as 1.7.2, its drag fix) | **Round 6:** the sidebar (divider, card edge, fill and opacity, drag and its feedback, a line per harness in the footer), Working ending at Stop, the terminal's energy (motion once per cell, the cursor, the scrollback region, still marks for subagents), the open-session skill with model, effort and mode, `whoami`, the open request as an Ink card, Sphyrna where the user sees it, the Agents view in Markdown, the Overview, Remora's brief, layout and notes | [FEEDBACK-6](FEEDBACK-6.md), D-103 |

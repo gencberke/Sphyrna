@@ -6,6 +6,8 @@
 
 **The reference.** [reference.html](reference.html) draws every surface as decided, live, in both appearances and every tone ([D-82](../DECISIONS.md), §1). Where the reference and this file differ, this file wins.
 
+**Orca and T3 Code ([D-104](../DECISIONS.md)).** They are Sphyrna's outside references for its look as well as its logic. A surface may follow their design case by case. Each such change is decided by `@user` and lands here as a rule, as every visual change does. The feature-by-feature map is [docs/FEATURES.md](../docs/FEATURES.md).
+
 The Ink token system (`I1`) and surface migrations (`Batch B`, `I2c`, `I6`, `I4-0`, `Batch D`, `I4`, `I4b`, `I4c`, `L3b Settings`, `I6b`) are landed in code ([ACTIVE-PLAN.md](../plans/ACTIVE-PLAN.md)):
 - [docs/ARCHITECTURE.md §11](../docs/ARCHITECTURE.md#11-ui-surface-to-code--evidence-index) maps every surface, view, accessibility ID, keyboard shortcut, and evidence key in code (replacing the former `design/UI-MAP.md`);
 - [SPEC.md](../SPEC.md) is the canonical product and behavioral specification;
