@@ -6,8 +6,8 @@
   <section class="sec" id="project">
     <div class="sechead"><span class="num">01</span><h2>Project page</h2>
       <p>A click on a project's name in the sidebar opens its page. Switch the tabs, hover the rows and the presets, open ⋯ and try a colour. New session takes you to the next frame.</p></div>
-    <div class="stage"><div class="win" id="winA" data-w="1280" data-h="800">
-      <aside class="side" data-sel="none" data-head="loom"></aside>
+    <div class="stage"><div class="win i4grid" id="winA" data-w="1280" data-h="800">
+      <aside class="i4side" data-i4open="loom" data-view="projects"></aside>
       <main class="detail">
         <div class="ppage" data-proj="loom" style="--tone:var(--orchid)">
           <div class="pcol">
@@ -61,6 +61,7 @@
           </div>
         </div>
       </main>
+      <footer class="i4status" data-i4status></footer>
       <div class="pop pmenu" data-pop="pmenu" data-place="below-right" id="projMenu">
         <span class="label mlabel">loom</span>
         <button class="mi"><span class="ic"><span class="hm claude md"></span></span>New Claude Session</button>
@@ -108,7 +109,7 @@
       <span class="pin" data-for=".ppanel:not([hidden]) .sr[data-s=gate]" data-dx="-30" data-dy="14">A4</span>
       <span class="pin" data-for=".ppanel:not([hidden]) .c-presets" data-at="r" data-dx="-34" data-dy="-9">A5</span>
       <span class="pin" data-for=".ppanel:not([hidden]) .c-week" data-at="r" data-dx="-34" data-dy="-9">A6</span>
-      <span class="pin" data-for=".side .proj-head.sel" data-at="r" data-dx="-44" data-dy="5">A7</span>
+      <span class="pin" data-for=".i4side .i4phead.open" data-at="r" data-dx="-44" data-dy="5">A7</span>
       <span class="pin" data-for=".phead [data-open=pmenu]" data-dx="-28" data-dy="4">A8</span>
     </div></div>
     <ol class="legend">
@@ -118,8 +119,8 @@
       <li><b>A4</b>A session row reads like the sidebar's: the status, the harness's mark, the title and its last line (the reason Sphyrna holds, else the end of the transcript), the branch and the time. A click shows the session.</li>
       <li><b>A5</b>Presets: a first message with its mode and model. The mode's icon in its tone, the name, and the model after its harness's mark; the message is in the tooltip. A click opens a new session with it and starts nothing.</li>
       <li><b>A6</b>The past seven days from the usage index: tokens, the sessions with usage, and the estimate.</li>
-      <li><b>A7</b>While its page is open, the project's head in the sidebar takes the neutral selected fill; the tint stays for a selected session.</li>
-      <li><b>A8</b>⋯ is the sidebar's project menu: new sessions with their harness's mark, the colour as seven swatches, the place in the list, and Remove Empty Project.</li>
+      <li><b>A7</b>While its page is open, the project's head in the sidebar takes the neutral selected fill; the selected session keeps its raised card.</li>
+      <li><b>A8</b>⋯ in the page header is the project menu: new sessions with their harness's mark, the colour as seven swatches, the place in the list, and Remove Empty Project.</li>
     </ol>
   </section>
 
@@ -130,8 +131,8 @@
     <div class="ln" style="margin:0 0 18px 56px">
       <div class="seg" id="cSeg"><button class="on" data-cproj="second-brain">second-brain</button><button data-cproj="dotfiles">An empty project</button></div>
     </div>
-    <div class="stage"><div class="win" id="winC" data-w="940" data-h="700">
-      <aside class="side" data-sel="none" data-head="second-brain" data-extra="dotfiles" data-collapse="loom"></aside>
+    <div class="stage"><div class="win i4grid" id="winC" data-w="940" data-h="700">
+      <aside class="i4side" data-i4open="second-brain" data-view="projects"></aside>
       <main class="detail narrow">
         <div class="ppage" data-cpage="second-brain" style="--tone:var(--aqua)">
           <div class="pcol">
@@ -190,7 +191,8 @@
           </div>
         </div>
       </main>
-      <div class="pop" data-pop="plus" style="left:10px;bottom:52px">
+      <footer class="i4status" data-i4status></footer>
+      <div class="pop" data-pop="plus" data-place="below-right">
         <span class="label mlabel">New</span>
         <button class="mi"><span class="ic"><span class="hm claude md"></span></span>New Claude Session<kbd>⌘N</kbd></button>
         <button class="mi" data-codex><span class="ic"><span class="hm codex md"></span></span>New Codex Session</button>
@@ -201,13 +203,11 @@
       <span class="pin" data-for=".ppage:not([hidden]) .ppanel:not([hidden]) .c-presets" data-at="r" data-dx="-34" data-dy="-9">C1</span>
       <span class="pin" data-for=".ppage[data-cpage=second-brain]:not([hidden]) .ppanel:not([hidden]) .sr[data-s=th]" data-at="r" data-dx="-34" data-dy="14">C2</span>
       <span class="pin" data-for=".ppage:not([hidden]) .ppanel:not([hidden]) .pempty canvas" data-dx="40" data-dy="40">C3</span>
-      <span class="pin" data-for=".side .nosess" data-at="r" data-dx="-60" data-dy="5">C4</span>
     </div></div>
     <ol class="legend">
       <li><b>C1</b>Under 760 of pane width, one column: Presets above the list and the past seven days under it, with a 20 pt inset. An empty card says how to fill it.</li>
       <li><b>C2</b>Outside a Git repository a row has no branch, and neither has the stats line; the time keeps its column. Under 460 a row drops its branch too.</li>
       <li><b>C3</b>An empty project says so in one plain line, with the action that starts a session. Nothing else is drawn in its place.</li>
-      <li><b>C4</b>In the sidebar an empty project says "No sessions", and a collapsed one keeps only its head and its dot.</li>
     </ol>
   </section>
 </div>

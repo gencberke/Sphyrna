@@ -3,7 +3,7 @@
    model chip. Listeners are delegated.
    ============================================================ */
 const iconize = root => $$('[data-i]', root).forEach(el => { if (!el.querySelector(':scope>svg')) el.insertAdjacentHTML('afterbegin', svg(el.dataset.i)); });
-const winB = $('#winB'), winC = $('#winC');
+const winC = $('#winC');
 const HNAME = { claude: 'Claude Code', codex: 'Codex' };
 const hmark = h => `<span class="hm ${h}" title="${HNAME[h]}"></span>`;
 const M = s => `<span class="mono">${s}</span>`;
@@ -45,49 +45,6 @@ const STATES = [
 ];
 const LISTS = { states: STATES, narrow: [STATES[1], STATES[6]] };
 
-/* ---------- the sidebar: the chat's rows, the head of an open page, and an empty project ---------- */
-const LIVE = ['work', 'attn', 'unv', 'fail'];
-const rowV = (s, sel) => `<div class="row srow${s.id === sel ? ' sel' : ''}${s.stale ? ' stale' : ''}" data-s="${s.id}"><span class="ind">${mark(s.st)}</span>${hmark(s.h)}<span class="t">${s.t}</span><span class="meta">${s.meta}</span></div>` + (s.subs ? subs(s.subs, 1, []) : '');
-const draftV = (s, p, withMark) => `<div class="row srow draft"${withMark ? ` style="--tone:${p.tone}"` : ''}><span class="ind"></span><span class="t">${s.t}</span>${withMark ? `<span class="pmark xs">${initial(p.name)}</span>` : ''}<span class="x" data-i="x"></span></div>`;
-function groupV(p, sel, head, shut) {
-  const body = shut ? '' : p.sessions.length ? p.sessions.map(s => s.draft ? draftV(s, p, false) : rowV(s, sel)).join('') : '<div class="nosess">No sessions</div>';
-  return `<div class="pgroup" style="--tone:${p.tone}">
-    <div class="proj-head${p.name === head ? ' sel' : ''}"><span class="pmark">${initial(p.name)}</span><span class="pn">${p.name}</span>${p.dot ? `<i class="dot ${p.dot}" style="width:6px;height:6px"></i>` : ''}<span class="chev" data-i="${shut ? 'chev-r' : 'chev-d'}"></span></div>
-    ${body}
-  </div>`;
-}
-const cardV = (s, p, sel, active) => `<div class="scard${s.id === sel ? ' sel' : ''}${s.subs ? ' tree' : ''}" data-s="${s.id}" style="--tone:${p.tone}">
-    <div class="c1"><span class="ind">${mark(s.st)}</span>${hmark(s.h)}<span class="t">${s.t}</span><span class="meta">${s.meta}</span></div>
-    ${active ? `<div class="why"${s.why ? '' : ' hidden'}>${s.why || ''}</div>` : ''}
-    <div class="c3">${s.br ? `<span class="bi" data-i="branch"></span><span class="bn">${s.br}</span>` : ''}<span class="pj"><span class="pmark xs">${initial(p.name)}</span>${p.name}</span></div>
-  </div>` + (s.subs ? subs(s.subs, 1, []) : '');
-function activityV(list, sel) {
-  const all = list.flatMap(p => p.sessions.map(s => ({ s, p })));
-  const drafts = all.filter(x => x.s.draft), rows = all.filter(x => !x.s.draft).sort((a, b) => a.s.ago - b.s.ago);
-  const isActive = x => LIVE.includes(x.s.st) || x.s.id === sel;
-  const active = rows.filter(isActive), days = [];
-  rows.filter(x => !isActive(x)).forEach(x => { const d = x.s.day || 'Today'; let g = days.find(g => g.d === d); if (!g) days.push(g = { d, list: [] }); g.list.push(x); });
-  const head = (t, n) => `<div class="ahead">${t}${n ? `<span class="n">${n}</span>` : ''}</div>`;
-  return (drafts.length ? head('Drafts', drafts.length) + drafts.map(({ s, p }) => draftV(s, p, true)).join('') : '')
-    + head('Active', active.length) + active.map(({ s, p }) => cardV(s, p, sel, true)).join('')
-    + days.map(g => head(g.d) + g.list.map(({ s, p }) => cardV(s, p, sel, false)).join('')).join('');
-}
-function drawSide(side) {
-  const sel = side.dataset.sel, head = side.dataset.head, shut = (side.dataset.collapse || '').split(' ');
-  const list = side.dataset.extra ? [...PROJECTS, DOTFILES] : PROJECTS;
-  side.innerHTML = sidebar(sel);
-  $('.side-sec', side).innerHTML = '<span class="label" data-role="vlabel">Projects</span><span class="view"><button class="on" data-view="projects" title="Group by project · ⌘2">projects</button> · <button data-view="activity" title="Recent activity · ⌘1">activity</button></span>';
-  $('.plist', side).innerHTML = list.map(p => groupV(p, sel, head, shut.includes(p.name))).join('');
-  $('.plist', side).insertAdjacentHTML('afterend', `<div class="alist">${activityV(list, sel)}</div>`);
-  iconize(side);
-  setView(side, side.dataset.view || 'projects');
-}
-function setView(side, v) {
-  side.dataset.view = v;
-  $$('.view button', side).forEach(b => b.classList.toggle('on', b.dataset.view === v));
-  $('[data-role=vlabel]', side).textContent = v === 'activity' ? 'Activity' : 'Projects';
-}
-$$('.side[data-sel]').forEach(drawSide);
 
 /* ---------- the page: session rows and branch rows from the same data ---------- */
 const srV = s => `<div class="sr${s.stale ? ' stale' : ''}${s.br ? '' : ' nobr'}" data-s="${s.id}" title="Opens the session"><div class="sr-in"><span class="ind">${mark(s.st)}</span>${hmark(s.h)}<span class="tt"><span class="t">${s.t}</span>${s.line ? `<span class="sl">${s.line}</span>` : ''}</span>${s.br ? `<span class="bc"><span data-i="branch"></span><span>${s.br}</span></span>` : ''}<span class="ts">${s.meta}</span></div></div>`;
@@ -141,25 +98,24 @@ document.addEventListener('click', e => { if (e.target.closest('[data-open]')) p
 const TONE = { rose: 'Rose', orchid: 'Orchid', aqua: 'Aqua', mint: 'Mint', sage: 'Sage', lemon: 'Lemon', none: 'None' };
 function setTone(sw) {
   const k = sw.dataset.tone, v = k === 'none' ? 'var(--fg-2)' : `var(--${k})`;
-  PROJECTS[0].tone = v;
+  PROJECTS[0].tone = v; I4_PROJECTS[0].tone = v;
   $$('.swt', sw.parentElement).forEach(x => x.classList.toggle('on', x === sw));
   $('[data-role=tonename]', sw.closest('.pop')).textContent = TONE[k];
   $$('.ppage[data-proj=loom]').forEach(el => el.style.setProperty('--tone', v));
-  $$('.side[data-sel]').forEach(drawSide);
+  $$('.i4side').forEach(i4sidebar);
 }
 
 /* ---------- frame C: second-brain, or a project with no sessions ---------- */
 $$('#cSeg button').forEach(b => b.addEventListener('click', () => {
   const name = b.dataset.cproj;
   $$('.ppage[data-cpage]', winC).forEach(p => p.hidden = p.dataset.cpage !== name);
-  const side = $('.side', winC); side.dataset.head = name; drawSide(side);
+  const side = $('.i4side', winC); side.dataset.i4open = name; i4sidebar(side);
 }));
 
 /* ---------- one delegated listener for clicks ---------- */
 document.addEventListener('click', e => {
   const t = e.target, win = t.closest('.win');
   if (t.closest('[data-open]')) return;
-  const vb = t.closest('.side .view button'); if (vb) return setView(vb.closest('.side'), vb.dataset.view);
   const jump = t.closest('[data-jump]'); if (jump) { $(jump.dataset.jump).scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
   const tab = t.closest('.ptabs .itab');
   if (tab) {
@@ -188,7 +144,7 @@ function placePins(win) {
     p.style.visibility = vis ? '' : 'hidden';
   });
 }
-const placeAllPins = () => [winA, winB, winC].forEach(placePins);
+const placeAllPins = () => [winA, winC].forEach(placePins);
 document.addEventListener('scroll', e => { const w = e.target instanceof Element && e.target.closest('.win'); if (w) placePins(w); }, true);
 // The page's own switches (the theme, the sharks, the pins, the size, the build) leave a frame's popover open.
 [$('header.top')].forEach(el => el.addEventListener('click', e => e.stopPropagation()));

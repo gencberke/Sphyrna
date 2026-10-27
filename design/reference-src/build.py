@@ -74,9 +74,9 @@ DOCS = {
     },
     'project': {
         'title': 'Sphyrna · Ink · The project page',
-        'css': ['shared/chat.css', 'shared/harness.css', 'shared/project.css'],
+        'css': ['shared/chat.css', 'shared/harness.css', 'shared/project.css', 'shared/side4.css'],
         'body': ['docs/project/body.html'],
-        'js': ['shared/base.js', 'shared/frame.js', 'docs/project/project.js'],
+        'js': ['shared/base.js', 'shared/side4.js', 'shared/frame.js', 'docs/project/project.js'],
     },
     'settings': {
         'title': 'Sphyrna · Ink · Settings and About',

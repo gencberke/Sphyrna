@@ -98,7 +98,7 @@ function i4sidebar(el) {
     <div class="i4sech">
       <span class="i4lab i4labp">Projects</span><span class="i4lab i4laba">Activity</span><span class="sp"></span>
       <button class="i4ib" data-i4view title="${view === 'activity' ? 'Show projects' : 'Show activity'}">${svg(view === 'activity' ? 'side-l' : 'list')}</button>
-      <button class="i4ib" title="New session">${svg('plus')}</button>
+      <button class="i4ib" data-open="plus" title="New session">${svg('plus')}</button>
     </div>
     <div class="i4plist">${none ? '<div class="i4none">No projects yet.</div>' : i4projects(o)}</div>
     <div class="i4alist">${none ? '<div class="i4none">No sessions yet.</div>' : i4activity(o)}</div>
@@ -120,8 +120,8 @@ function i4statusbar(el) {
     <button class="i4supd" title="pi has a newer CLI">${svg('down')}pi update</button>`;
 }
 
-$$('[data-i4side]').forEach(i4sidebar);
-$$('[data-i4status]').forEach(i4statusbar);
+$$('.i4side').forEach(i4sidebar);
+$$('.i4status').forEach(i4statusbar);
 
 // The sidebar's two views switch in place, as the app's do; the switches and the segments of the v4 parts toggle here too.
 document.addEventListener('click', e => {
