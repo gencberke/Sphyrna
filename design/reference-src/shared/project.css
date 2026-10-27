@@ -3,8 +3,6 @@
    one model chip. Phase 1's tokens and parts and Phase 2's marks,
    chips and pick lists; below are only the page's own parts.
    ============================================================ */
-.proj-head.sel{background:var(--selected);box-shadow:inset 0 0 0 1px var(--line)}
-.srow.stale .t{color:var(--fg-2)}
 
 /* the page: one column on the canvas, its head on the window's header line */
 .ppage{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:var(--line-3) transparent}
@@ -39,14 +37,12 @@
 .sr .hm{margin-top:3px}
 .sr .tt{min-width:0}
 .sr .t{display:block;font:500 13px/18px var(--ui);color:var(--fg-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sr.stale .t{color:var(--fg-2)}
 .sr .sl{display:block;margin-top:1px;font-size:12px;line-height:17px;color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sr .sl .mono{font:11.5px var(--mono);color:var(--fg-1)}
 .sr .bc{display:flex;align-items:center;gap:5px;min-width:0;font:11.5px/18px var(--mono);color:var(--fg-2)}
 .sr .bc svg{width:12px;height:12px;flex:none}
 .sr .bc span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sr .ts{font:11.5px/18px var(--mono);color:var(--fg-3);text-align:right;white-space:nowrap}
-.sr.nobr .sr-in{grid-template-columns:12px 12px minmax(0,1fr) 44px}
 @container (max-width:459px){.sr-in{grid-template-columns:12px 12px minmax(0,1fr) 44px}.sr .bc{display:none}}
 
 /* the side cards */
@@ -70,17 +66,6 @@
 
 /* Branches and Instructions read in a column of at most 700 */
 .p700{max-width:700px}
-.brw{height:34px;display:flex;align-items:center;gap:10px;padding:0 12px;border-top:1px solid var(--line)}
-.brw:first-child{border-top:0}
-.brw .g{display:grid;place-items:center;width:12px;flex:none;color:var(--fg-3)}
-.brw .g svg{width:12px;height:12px}
-.brw .bn2{font:12.5px var(--mono);color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:none;max-width:46%}
-.brw.cur .bn2{color:var(--fg-1)}
-.brw .cur2{font:500 11px var(--ui);color:var(--accent-hi);flex:none}
-.brw .wt{font-size:11.5px;color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.brw .wt b{font:11px var(--mono);font-weight:400}
-.brw .ns{margin-left:auto;font-size:11.5px;color:var(--fg-2);white-space:nowrap;flex:none}
-.brw .ts{width:44px;font:11.5px var(--mono);color:var(--fg-3);text-align:right;flex:none}
 .pnote{padding:10px 12px;font-size:12.5px;line-height:1.5;color:var(--fg-2)}
 .ihd{display:flex;align-items:center;gap:8px;height:30px;font-size:11.5px;color:var(--fg-3)}
 .ihd>[data-i] svg{width:14px;height:14px}
@@ -89,7 +74,6 @@
 .mdc{margin-top:6px;border-radius:12px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line),var(--sh-card);padding:18px 22px 20px}
 .mdc .prose{margin:0}
 .mdc h3{font:600 17px/1.3 var(--ui)}
-.cutnote{margin-top:10px;font-size:12px;color:var(--fg-3)}
 
 /* the project menu: the sidebar's, also at the page's trailing edge */
 .pmenu{width:276px}
@@ -106,14 +90,8 @@
 .draftpage .send{margin-left:4px}
 .win .pop[data-place^=below]{transform:translateY(-3px)}
 .win .pop[data-place^=below].open{transform:none}
-.mpick .hnote:empty{display:none}
-.hgrp.later .hhead b{color:var(--fg-2);font-weight:500}
-.mfoot{padding:6px 10px 2px;font-size:11.5px;color:var(--fg-3)}
 
 /* the sheet's small canvases */
 .pc2{background:var(--canvas);border-radius:10px;box-shadow:inset 0 0 0 1px var(--line);padding:14px 16px}
 .pc2+.pc2{margin-top:10px}
 .pc2 .card{box-shadow:inset 0 0 0 1px var(--line)}
-.stlab{font:11px var(--mono);color:var(--fg-3);margin:0 0 6px 12px}
-.chiprow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.chiprow .cchip{box-shadow:inset 0 0 0 1px var(--line)}

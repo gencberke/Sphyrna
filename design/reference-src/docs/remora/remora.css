@@ -14,7 +14,6 @@
 .rstate .lk2{margin-left:8px;vertical-align:baseline}
 .btext .rstate{position:absolute;left:0;top:0;right:0}
 #winR .btext .rstate[hidden]{display:none}
-.tile .tlast{margin-top:8px;font-size:12px;color:var(--fg-3)}
 .tile .placed{display:flex;align-items:center;gap:8px;margin-top:12px;height:22px;font-size:12px;color:var(--fg-2)}
 .tile .placed b{font-weight:500;color:var(--fg-1)}
 .tile .placed u{margin-left:auto;color:var(--fg-2);text-decoration-color:var(--line-3);text-underline-offset:3px;cursor:pointer}
@@ -182,7 +181,6 @@
 .outtab td.v{white-space:nowrap;font:11px var(--mono)}
 .outtab td.v.yes{color:var(--ok)}
 .outtab td.v.no{color:var(--fg-3)}
-.cmp{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 @media (max-width:980px){.cmp{grid-template-columns:1fr}}
 .subh{font:600 15px var(--ui);color:var(--fg-1);margin:34px 0 12px}
 .hero .rnone{margin-top:10px;font-size:13px;color:var(--fg-2)}

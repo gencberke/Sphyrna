@@ -179,8 +179,6 @@ body.nopc .win *{--tone:var(--fg-2)!important}
 .abox p{margin-top:6px;font-size:11.5px;line-height:1.45;color:var(--fg-2)}
 .abox .abtn{display:flex;gap:8px;margin-top:16px}
 .abox .abtn .btn{flex:1}
-.abox .btn.danfill{background:var(--fail);color:#fff}
-[data-theme=light] .abox .btn.danfill{color:#fff}
 
 /* ---------- the desktop: the app's window and Settings over a wallpaper ---------- */
 .win.desk{background:none;display:block;border-radius:14px}

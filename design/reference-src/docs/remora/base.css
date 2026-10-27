@@ -1,4 +1,4 @@
-/* ---------- the brief, the play bar and the storyboard: the identity page's (D-77) ---------- */
+/* ---------- the brief and its play bar: the identity page's (D-77) ---------- */
 .brief{position:relative;z-index:2;max-width:1000px;margin:0 auto;padding:58px 0 26px}
 .bhead{display:flex;align-items:baseline;gap:14px}
 .bhead h1{font:200 34px/1.15 var(--display);letter-spacing:-.025em}
@@ -44,8 +44,6 @@
 .tline{position:relative;flex:1;min-width:0;display:flex;height:26px;border-radius:7px;background:var(--hover);overflow:hidden}
 .tline span{display:flex;align-items:center;gap:7px;min-width:0;padding:0 9px;font:10.5px var(--mono);color:var(--fg-2);white-space:nowrap;overflow:hidden;box-shadow:inset -1px 0 0 var(--line-2)}
 .tline span b{font-weight:400;color:var(--fg-4)}
-.tline .head{position:absolute;top:0;bottom:0;left:0;width:2px;margin-left:-1px;background:var(--accent);opacity:0;transition:opacity .2s}
-.tline.on .head{opacity:1}
 .tclock{width:46px;text-align:right;font:11px var(--mono);color:var(--fg-3)}
 
 

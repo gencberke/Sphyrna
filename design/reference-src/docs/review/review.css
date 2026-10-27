@@ -7,7 +7,6 @@
 .pbar .grp{display:inline-flex;align-items:center;gap:8px}
 .pbar .hint{font-size:12px;color:var(--fg-3)}
 .seg.static{pointer-events:none}
-.aside{margin-top:22px;font-size:12px;color:var(--fg-3)}
 .ipc{background:var(--canvas);border-radius:10px;box-shadow:inset 0 0 0 1px var(--line);padding:14px 16px}
 .ipc+.ipc{margin-top:10px}
 .ipc .diff{margin-top:0}
@@ -55,7 +54,6 @@
 .dlist .dl.h{padding:6px 0 4px}
 .dlist .dl.h .tx{padding-left:82px}
 .dlist .dl.h+.dl{margin-top:0}
-.dlist .dl.gap{margin-top:6px}
 .dl .plus{position:absolute;left:6px;top:2px;width:16px;height:16px;border-radius:4px;background:var(--accent);color:var(--on-accent);display:none;place-items:center;font:600 13px/1 var(--ui);box-shadow:0 0 0 2px var(--raise-1)}
 .dlist .dl:not(.h):hover .plus,.dlist .dl.hov .plus{display:grid}
 .dlist .dl:not(.h):hover{box-shadow:inset 0 0 0 999px var(--hover)}
@@ -82,7 +80,6 @@
 .chfoot[hidden]{display:none}
 .chwait{padding:26px 0 8px}
 .wnow{display:flex;align-items:center;gap:8px;height:28px;margin:12px 0 4px;font:12.5px var(--ui);color:var(--fg-2)}
-.acard .nw.attn{color:var(--attn-text)}
 .pcard.flash{animation:reqFlash 1.1s ease-out}
 @keyframes reqFlash{0%{box-shadow:inset 0 0 0 1px var(--attn),0 0 0 4px var(--attn-wash),var(--sh-card2)}100%{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--attn) 34%,transparent),0 0 0 0 transparent,var(--sh-card2)}}
 
@@ -117,7 +114,6 @@
 .te .more{color:var(--fg-3);white-space:pre}
 .te .label{letter-spacing:.09em}
 .te.res .label{display:block;margin:1px 0 5px}
-.te.fresh{animation:teIn .22s ease-out}
 @keyframes teIn{from{opacity:0}to{opacity:1}}
 /* two voices: what the agent says in the chat's type, its tools in quieter mono */
 .tr.two .te{margin-top:2px}
