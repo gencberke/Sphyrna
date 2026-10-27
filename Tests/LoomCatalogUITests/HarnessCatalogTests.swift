@@ -44,6 +44,11 @@ struct HarnessCatalogTests {
         try store.update { $0.setHarnessConnected(HarnessID.opencode, true) }
         #expect(store.current.harnessConnections == ["opencode": true], "an explicit on is written for a harness off by default")
 
+        // 1.7.2 reads the key as a [String: Bool] and ignores a harness it does not know; the type is unchanged.
+        struct OlderPreferences: Decodable { let harnessConnections: [String: Bool]? }
+        let written = try JSONDecoder().decode(OlderPreferences.self, from: Data(contentsOf: url))
+        #expect(written.harnessConnections == ["opencode": true])
+
         let reread = UIPreferencesStore(url: url).current
         #expect(reread.isHarnessConnected(HarnessID.opencode))
         #expect(reread.harnessChoices == [.opencode: true])
