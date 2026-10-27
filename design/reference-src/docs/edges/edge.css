@@ -71,7 +71,6 @@
 .firstrun .acts{display:flex;gap:10px;margin-top:22px;align-items:flex-start}
 .firstrun .acts .acol{display:flex;flex-direction:column;align-items:center;gap:6px}
 .firstrun .acts small{font-size:11px;color:var(--fg-3)}
-.side .none{padding:2px 20px;font-size:12px;color:var(--fg-3)}
 
 /* ---------- the no-Claude notice: a card with an attention-coloured symbol ---------- */
 .notice{display:grid;grid-template-columns:20px 1fr;gap:4px 10px;padding:14px 16px;border-radius:12px;background:var(--raise-1);box-shadow:inset 0 0 0 1px var(--line)}
@@ -91,9 +90,6 @@
 
 /* ---------- 01: Home and its edges ---------- */
 .hbody{position:relative;z-index:2;flex:1;min-height:0;display:flex;flex-direction:column}
-.side .row.off{opacity:.38}
-.side .none{padding:4px 20px;font-size:12px;color:var(--fg-3)}
-.side .none.in{padding-left:38px}
 .firstrun .sym{width:44px;height:44px;display:grid;place-items:center;color:var(--attn)}
 .firstrun .sym svg{width:40px;height:40px;stroke-width:1.15}
 .firstrun .btn .spin{margin-right:6px;font-size:13px;color:inherit}
@@ -108,14 +104,6 @@
 .hrow .acts .btn.pri.sm{height:22px}
 .hmore{border-top:1px solid var(--line);padding:8px 16px 10px}
 .sidebits{display:flex;flex-direction:column;gap:14px;padding:12px 0 14px}
-.sbit{width:260px;margin:0 auto;padding:6px 0;border-radius:10px;box-shadow:inset 0 0 0 1px var(--line);background:var(--canvas)}
-.sbit .side-sec{padding:8px 16px 6px}
-.sbit .none{padding:4px 20px 8px;font-size:12px;color:var(--fg-3)}
-.sbit .none.in{padding-left:38px}
-.sbit .none.sub2{padding-top:0;font-size:11.5px}
-.sbit .search{margin:4px 12px 8px;width:auto}
-.sbit .search .q{color:var(--fg-1)}
-.sbit .pgroup{padding:2px 0}
 .sentences p{display:flex;flex-direction:column;gap:3px;padding:10px 0;border-top:1px solid var(--line)}
 .sentences p:first-child{border-top:0;padding-top:2px}
 .sentences b{font:300 19px/1.25 var(--display);letter-spacing:-.015em;color:var(--fg-1)}
@@ -241,7 +229,6 @@
 .abox .btn.dest{color:var(--fail-text)}
 .abox p+p{margin-top:8px}
 .salert.static{display:flex;justify-content:center;padding:6px 0}
-[data-art][hidden]{display:none!important}
 .hrow.cont .age{grid-column:3;grid-row:1;transition:opacity .12s}
 .hrow.cont .acts{grid-column:3;grid-row:1;justify-content:flex-end}
 .hrow.cont:hover .age,.hrow.cont.hov .age{opacity:0}
@@ -252,16 +239,4 @@
 .abtn.col{gap:8px}
 .abtn.col .btn{flex:none;width:100%}
 .pcard.cut .btn .spin{margin-right:6px;font-size:13px;color:inherit}
-.loopfig{padding:14px 16px 10px}
-.loopfig svg{display:block;width:100%;height:auto}
-.loopfig .band{fill:var(--canvas);stroke:var(--line-2)}
-.loopfig .sent{fill:var(--line-2)}
-.loopfig .path{fill:none;stroke:var(--fg-2);stroke-width:1.4;stroke-dasharray:5 4}
-.loopfig .path.out{stroke:var(--fg-4);stroke-width:1}
-.loopfig .arw{fill:none;stroke:var(--fg-1);stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
-.loopfig .lb{font:10.5px var(--mono);fill:var(--fg-3)}
-.loopfig .lb.mid{text-anchor:middle}
-.loopfig .lb.end{text-anchor:end}
 .pbar .grp{display:inline-flex;align-items:center;gap:8px}
-/* The first launch's message sits lower than 01's: the school fades wide around it and swims clear at the edges. */
-#ocean-first{-webkit-mask-image:radial-gradient(ellipse 42% 36% at 51% 47%,rgba(0,0,0,.14),rgba(0,0,0,.26) 70%,#000 100%);mask-image:radial-gradient(ellipse 42% 36% at 51% 47%,rgba(0,0,0,.14),rgba(0,0,0,.26) 70%,#000 100%)}

@@ -146,7 +146,7 @@ function placePins(win) {
 }
 const placeAllPins = () => [winA, winC].forEach(placePins);
 document.addEventListener('scroll', e => { const w = e.target instanceof Element && e.target.closest('.win'); if (w) placePins(w); }, true);
-// The page's own switches (the theme, the sharks, the pins, the size, the build) leave a frame's popover open.
+// The page's own switches (the theme, the pins, the size, the build) leave a frame's popover open.
 [$('header.top')].forEach(el => el.addEventListener('click', e => e.stopPropagation()));
 const relayout = () => requestAnimationFrame(() => { placeOpen(); placeAllPins(); });
 $('#swPins').parentElement.addEventListener('click', relayout);

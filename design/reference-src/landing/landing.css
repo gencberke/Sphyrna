@@ -2,8 +2,6 @@
 .brand{align-items:center}
 .brand .appicon{width:20px;height:20px;border-radius:5px;box-shadow:0 0 0 1px var(--line-2)}
 /* the band holds the art, so it never swims behind text */
-.lhero .band{position:relative;height:220px;overflow:hidden;background:var(--canvas);border-bottom:1px solid var(--line)}
-.lhero .band .artbg{-webkit-mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent);mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent)}
 .lcopy{padding-top:64px;padding-bottom:40px}
 .licon{display:block;width:88px;height:88px;border-radius:22.4%;box-shadow:0 12px 30px rgba(0,0,0,.42),0 0 0 1px var(--line-2)}
 .lcopy h1{font:200 96px/1 var(--display);letter-spacing:-.05em;margin:30px 0 22px}
