@@ -265,9 +265,20 @@ The Agents tab (B5b) reads a subagent's transcript the way Orca's chat reads a t
 
 ## 1. References
 
-**The Ink reference.** [reference.html](reference.html) is the visual reference ([D-82](../DECISIONS.md)). It gathers the accepted previews, each brought up to date with the decisions that came after it, in ten chapters: Identity, The language, The school, The session window, Home, Remora, Projects and new sessions, The review surfaces, Settings and About, and The edges. Every window is live: its menus open, its states switch and its keys work. The bar sets the appearance, the tone and the art for every window, and shows the pins that the notes under a window name, or a window at 100 %.
-- **Its sources** are in `design/reference-src/`. `docs/` holds one document per accepted preview: the foundations (D-74), the chat (D-75), the project page (D-76), the identity (D-77), the review surfaces (D-78), the edges (D-79), Remora (D-80), and Settings and About (D-81). `shared/` holds the tokens, the parts, the sheets and the art engine they share, and `shell/` and `landing/` the two pages' own parts.
-- **The build:** `python3 design/reference-src/build.py` writes `reference.html` and `landing.html`, each under 1 MB; `--docs DIR` also writes each document on its own, for checks. A change to a surface changes its document and this file, and the pages are built again, never edited by hand.
+**The Ink reference.** [reference.html](reference.html) is the visual reference ([D-82](../DECISIONS.md)), drawn in Ink v4
+only since D-106 (B0, B0b). Its eleven chapters follow the order a user meets the surfaces: Ink v4 (the rules, the control
+family, menus, sheets and the palette, tokens, type and depth), The sidebar, The session window (with the turn style the Agents
+tab reads in), The model and the effort, The draft and Home, Projects and new sessions, Settings and About (with Connections),
+The review surfaces, Remora, The edges, and Identity. Every window draws the one v4 sidebar and status bar, and no surface is
+drawn twice. Every window is live: its menus open, its states switch and its keys work. The bar sets the appearance and the
+tone for every window, and shows the pins that the notes under a window name, or a window at 100 %. No window draws the art
+(D-102): Remora's face is the still Front mark, the first launch shows the still app icon.
+- **Its sources** are in `design/reference-src/`. `docs/` holds one document per surface: the Ink v4 chapter (`v4`, D-106), the
+  turn style (`chat`), the project page, the identity, the review surfaces, the edges, Remora, and Settings and About. `shared/`
+  holds the tokens (`head.css`), the shared v4 sidebar, cards and status bar (`side4.css`, `side4.js`), the parts and the
+  sheets; `engine.js` and `iconart.js` stay only to draw the app icon (`identity/icon/layers.html` loads them). `shell/` and
+  `landing/` hold the two pages' own parts.
+- **The build:** `python3 design/reference-src/build.py` writes `reference.html` and `landing.html`, each under 1 MB, and two builds of the same sources give the same bytes (gzip's time is 0); `--docs DIR` also writes each document on its own, for checks. A change to a surface changes its document and this file, and the pages are built again, never edited by hand.
 - **The landing page,** [landing.html](landing.html), shows the same windows with plain copy around them, one for each thing the app does, in the app's voice (§6 Voice and copy).
 - **The identity's files** are in [identity/](identity/): the Front mark and, in [identity/icon/](identity/icon/), the app icon's sources, `layers.html`, `draw.sh` and `icon.json` (§6 Name and marks).
 
@@ -741,7 +752,7 @@ A project's new-session page (`DraftSessionView`, `Sources/LoomCatalogUI/`; N1, 
 
 ## 9. Home (V05)
 
-The launch view (`HomeView`, `Sources/LoomCatalogUI/`). `LoomTheme.Home` (`LoomTheme+Home.swift`) holds its sizes. It is a summary of what Sphyrna already knows, and it starts nothing by itself. In Ink it says the state in one sentence, then lists what wants you ([the reference](reference.html#home)). It has no start box: sessions start from the sidebar's "New session" row (§8).
+The launch view (`HomeView`, `Sources/LoomCatalogUI/`). `LoomTheme.Home` (`LoomTheme+Home.swift`) holds its sizes. It is a summary of what Sphyrna already knows, and it starts nothing by itself. In Ink it says the state in one sentence, then lists what wants you ([the reference](reference.html#pages)). It has no start box: sessions start from the sidebar's "New session" row (§8).
 
 The top band (`HomeBand`) holds the live summary and Remora's section (D-65, D-77). The band's summary header holds:
 - the date and time in mono tertiary;
@@ -749,7 +760,7 @@ The top band (`HomeBand`) holds the live summary and Remora's section (D-65, D-7
 - a line of counts in secondary;
 - one hammerhead behind it, at low contrast, circling the band on its fixed loop (§17, D-79); Remora's face (below) is no part of it.
 
-In the morning, Remora's brief takes the band: the heading, Remora's sentence and a tile per project (R1–R9 in [the reference](reference.html#home), D-77, D-80). Its parts, its states and asking are §20.
+In the morning, Remora's brief takes the band: the heading, Remora's sentence and a tile per project (R1–R9 in [the reference](reference.html#pages), D-77, D-80). Its parts, its states and asking are §20.
 - **Remora's place** (D-77, FB6-21). Remora's face sits in the heading row, before the title, 36 pt wide; the date and time follow the title. The sentence is the body, full width under the heading, up to its measure (980). It keeps two lines' room, so nothing moves while it is written.
 - **Remora's face** (FB5-4, D-80 as amended). It is Front, the menu bar's mark (§6 Name and marks), drawn from the same path data, still, in the art colour at about 0.8. It is 36 pt wide in the heading row, before the title. It is not an art place (§17): one drawing, no clock, no ticker. The band's hammerhead keeps its own loop (§17) and is the only thing on Home that moves.
 - **The arrival.** When a new brief starts being written (the first Home of the day, and after Catch Me Up), the face fades in at its place over 0.6 seconds, with an ease-out. Under Reduce Motion it is there at once; Animated art does not change it, since it is not art. Any other time it is already in its place. The crossing of the band's hammerhead carrying an ASCII remora, which D-80 drew in 1.6.0, is gone.
@@ -905,7 +916,7 @@ The inspector's fourth tab (`SideTab.swift`, `SideThread.swift`, `SideComposer.s
 
 > **Not drawn since 1.7.0 ([D-102](../DECISIONS.md)):** no surface draws the school, Home's band and the new-session page included; where the art had its own box (inspector empty states, Side, an empty project, Starting) the box and its gap are gone. The rules below describe unreferenced code.
 
-(D-74; [the reference](reference.html#school).)
+(D-74; the reference drew it until B0b removed the art, D-102.)
 
 The sharks are Sphyrna's identity, not decoration. The hammerhead is the main character, and a thresher and a whale shark swim with it. The remora is Remora's face in the school (D-77); on Home, Remora's face is Front, a still drawing and no art (§9).
 
