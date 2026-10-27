@@ -51,9 +51,67 @@
     </div>
   </section>
 
+  <!-- ================= 02b MENUS, SHEETS, PALETTE ================= -->
+  <section class="sec ink4" id="menus">
+    <div class="sechead"><span class="num">03</span><h2>Menus, sheets and the palette</h2>
+      <p>The three floating surfaces, at elevation 3 on the popover fill, radius 12 and opaque. A menu lists its commands in 28-high rows with their key chips; a sheet asks before something changes and backs out with Cancel; the palette (⌘K) floats over a scrim and answers the search.</p></div>
+    <div class="parts">
+      <div class="spec w6"><span class="label">A menu · 28 rows, key chips</span>
+        <div class="i4menu">
+          <div class="i4mhd"><span class="i4lab">Loom</span></div>
+          <button class="i4mrow"><span class="hm claude md"></span>New Claude Session<kbd class="i4key">⌘N</kbd></button>
+          <button class="i4mrow on"><span class="hm codex md"></span>New Codex Session</button>
+          <div class="i4msep"></div>
+          <button class="i4mrow"><span data-i="gear"></span>Settings…<kbd class="i4key">⌘,</kbd></button>
+          <button class="i4mrow dis"><span data-i="mvup"></span>Move Up</button>
+          <div class="i4msep"></div>
+          <button class="i4mrow dan"><span data-i="trash"></span>Remove Empty Project</button>
+        </div>
+        <p class="note">Rows are 28 high, radius 8, 6 inside the menu. The key chip sits at the trailing edge and never on a back-out row. The current row takes the selected fill; a disabled row is 38 % opacity.</p>
+      </div>
+      <div class="spec w6"><span class="label">Sheets · one family, the back-out rule</span>
+        <div class="i4sheets">
+          <div class="i4sheet">
+            <h4>Discard this draft?</h4>
+            <div class="i4sub">Port the sidebar to Ink tokens</div>
+            <p>The comments and the draft text are removed. This can't be undone.</p>
+            <div class="i4sfbtn"><button class="i4btn gh h32">Cancel</button><button class="i4btn dan h32">Discard</button></div>
+          </div>
+          <div class="i4sheet">
+            <h4>Rename session</h4>
+            <div class="i4sub">Remora spike S10</div>
+            <div class="i4fld" style="margin-top:12px"><span class="i4val">Remora spike S10 · round 2</span></div>
+            <div class="i4sfbtn"><button class="i4btn gh h32">Cancel</button><button class="i4btn pri h32">Save</button></div>
+          </div>
+        </div>
+        <p class="note">420 wide. Cancel is first and ghost; the one filled button is the default, and only a sheet that saves has one (Save). A sheet that removes is tinted, never filled, and Return does nothing there. Esc backs out in every sheet.</p>
+      </div>
+      <div class="spec w12"><span class="label">The palette · ⌘K, on its scrim</span>
+        <div class="i4scrim">
+          <div class="i4pal">
+            <div class="i4palin">
+              <span data-i="search"></span><span class="i4q">touched the auth</span><span class="i4caret"></span><kbd class="i4key">esc</kbd>
+            </div>
+            <div class="i4palist">
+              <div class="i4palh">Remora</div>
+              <div class="i4palr"><span data-i="bubble"></span>Ask Remora<span class="m">All projects · ↵</span></div>
+              <div class="i4palh">Sessions</div>
+              <div class="i4palr on"><span class="hm claude"></span>Migrate auth to JWT<span class="m">backend-api · failed</span></div>
+              <div class="i4palr"><span class="hm codex"></span>Rate limiter tests<span class="m">backend-api · 2d</span></div>
+              <div class="i4palh">Commands</div>
+              <div class="i4palr"><span data-i="plus"></span>New Claude Session<span class="m"><kbd class="i4key">⌘N</kbd></span></div>
+            </div>
+            <div class="i4palf"><span><kbd class="i4key">↑↓</kbd> move</span><span><kbd class="i4key">↵</kbd> open</span><span><kbd class="i4key">esc</kbd> close</span></div>
+          </div>
+        </div>
+        <p class="note">The palette is 560 wide at elevation 3, radius 12, on the scrim (black 50 % or ink 20 %). Its headings are small labels; its rows are 32 high; the highlighted row takes the selected fill. ↑↓ moves, ↵ opens, Esc closes without a change.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- ================= 03 TOKENS ================= -->
   <section class="sec ink4" id="tokens">
-    <div class="sechead"><span class="num">03</span><h2>Tokens, type and depth</h2>
+    <div class="sechead"><span class="num">04</span><h2>Tokens, type and depth</h2>
       <p>Every token keeps one name with an Ink and a Paper value. Tone casts (Warm, Cool) recompute the six greys from v4's neutrals, as they do today. The accent, the status colours and the project tones keep their v3 values.</p></div>
     <div class="tok">
       <div class="spec w6"><span class="label">Surfaces and lines</span>
@@ -136,7 +194,7 @@
 
   <!-- ================= 04 SIDEBAR ================= -->
   <section class="sec ink4" id="sidebar">
-    <div class="sechead"><span class="num">04</span><h2>The sidebar</h2>
+    <div class="sechead"><span class="num">05</span><h2>The sidebar</h2>
       <p>The same sidebar in its two views, on its own plane. The search field opens the palette; Home carries the count that needs you. A working session, one that needs you, one finished, one ready and one failed; the selected card; a card with two subagents; and a project head under the pointer. The plane is lifted one step above the content.</p></div>
     <div class="i4duo">
       <div>
@@ -162,7 +220,7 @@
 
   <!-- ================= 05 SESSION ================= -->
   <section class="sec ink4" id="session">
-    <div class="sechead"><span class="num">05</span><h2>The session window</h2>
+    <div class="sechead"><span class="num">06</span><h2>The session window</h2>
       <p>The sidebar plane beside the canvas, the header (52), the tab row (36), the untouched terminal, the inspector's Overview and the status bar (26) under the whole window with its popover open.</p></div>
     <div class="stage"><div class="win i4win" id="winS" data-w="1280" data-h="860">
       <div class="i4shell">
@@ -281,7 +339,7 @@
 
   <!-- ================= 06 MODEL ================= -->
   <section class="sec ink4" id="model">
-    <div class="sechead"><span class="num">06</span><h2>The model and the effort</h2>
+    <div class="sechead"><span class="num">07</span><h2>The model and the effort</h2>
       <p>Two chips side by side, each opening its own popover. The model chip opens the model panel: search, a rail of harness marks and every model grouped by harness. The effort chip opens a short menu with only the levels the chosen model offers; a model with none shows no effort chip.</p></div>
     <div class="i4mwrap">
       <div><div class="i4cap"><b>The model</b><span>from the model chip; the current model highlighted</span></div>
@@ -303,7 +361,7 @@
 
   <!-- ================= 07 CONNECTIONS ================= -->
   <section class="sec ink4" id="connections">
-    <div class="sechead"><span class="num">07</span><h2>Settings → Connections</h2>
+    <div class="sechead"><span class="num">08</span><h2>Settings → Connections</h2>
       <p>Five harnesses in five states: Ready, Not signed in, Not found, Off, and Update recommended. A row names the harness, says what it read and gives the one action that changes it. Sphyrna reads each CLI's own login and never writes one.</p></div>
     <div class="stage"><div class="win i4win" id="winC" data-w="680" data-h="520">
       <div class="swin i4swin">
@@ -328,7 +386,7 @@
 
   <!-- ================= 08 PAGES ================= -->
   <section class="sec ink4" id="pages">
-    <div class="sechead"><span class="num">08</span><h2>The draft and Home</h2>
+    <div class="sechead"><span class="num">09</span><h2>The draft and Home</h2>
       <p>v4's type on the two pages that speak: the new-session question and Home's statement, 34 at weight 300. The composer is 680, radius 16, at elevation 2; the default action is the neutral fill.</p></div>
     <div class="i4cap"><b>New session</b><span>the question, the folder, the composer and the one model chip</span></div>
     <div class="stage"><div class="win i4win" id="winD" data-w="1280" data-h="820">

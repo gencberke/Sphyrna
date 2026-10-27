@@ -1,8 +1,8 @@
 /* ---------- the reference: its chapters, each a set of frames, and the state they share ---------- */
 // Each chapter shows sections of the documents, in frames; a section is numbered by its chapter, and a document's rules lead its part unnumbered.
 const CHAPTERS = [
-  { id: 'ink4', title: 'Ink v4', text: 'The design language, approved on this reference (D-106): six rules, one control family at four heights, the tokens, the type and three elevations.',
-    refs: ['DESIGN §0', 'D-105', 'D-106'], frames: [['v4', ['rules', 'controls', 'tokens']]] },
+  { id: 'ink4', title: 'Ink v4', text: 'The design language, approved on this reference (D-106): six rules, one control family at four heights, the menus, sheets and the palette, the tokens, the type and three elevations.',
+    refs: ['DESIGN §0', 'D-105', 'D-106'], frames: [['v4', ['rules', 'controls', 'menus', 'tokens']]] },
   { id: 'sidebar', title: 'The sidebar', text: 'The sidebar in its two views, on a plane one step lighter than the content: the search, the nav rows, the project heads and the session card, which carries the session\'s status.',
     refs: ['DESIGN §0.5', 'FB7-1', 'D-106'], frames: [['v4', ['sidebar']]] },
   { id: 'session', title: 'The session window', text: 'The window around a session: the header, the tab row, the terminal left untouched, the inspector and the status bar with its popover.',

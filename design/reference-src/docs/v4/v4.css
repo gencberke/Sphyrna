@@ -313,3 +313,36 @@
 .ink4 .i4lfoot{margin-top:6px;font-size:10.5px;color:var(--fg-3)}
 .ink4 .i4today{font-size:11.5px;line-height:1.7;color:var(--fg-2)}
 .ink4 .i4today b{font-weight:500;color:var(--fg-1)}
+
+/* ---------- menus, sheets and the palette: the three floating surfaces, elevation 3, opaque ---------- */
+.ink4 .i4menu{width:280px;padding:6px;border-radius:12px;background:var(--popover);box-shadow:var(--sh-pop)}
+.ink4 .i4mhd{height:26px;display:flex;align-items:center;padding:0 8px}
+.ink4 .i4mrow{width:100%;height:28px;display:flex;align-items:center;gap:8px;padding:0 8px;border-radius:8px;font-size:13px;color:var(--fg-1);text-align:left;white-space:nowrap}
+.ink4 .i4mrow:hover,.ink4 .i4mrow.on{background:var(--selected)}
+.ink4 .i4mrow.dis{opacity:.38;pointer-events:none}
+.ink4 .i4mrow.dan{color:var(--fail-text)}
+.ink4 .i4mrow > [data-i],.ink4 .i4mrow > .hm{width:14px;height:14px;display:inline-grid;place-items:center;flex:none;color:var(--fg-2)}
+.ink4 .i4mrow > [data-i] svg{width:14px;height:14px}
+.ink4 .i4mrow .i4key{margin-left:auto}
+.ink4 .i4msep{height:1px;background:var(--line);margin:5px 4px}
+.ink4 .i4sheets{display:flex;gap:18px;flex-wrap:wrap}
+.ink4 .i4sheet{width:420px;padding:20px;border-radius:12px;background:var(--popover);box-shadow:var(--sh-pop)}
+.ink4 .i4sheet h4{font:600 14px var(--ui);color:var(--fg-1)}
+.ink4 .i4sub{margin-top:6px;font:500 13px var(--ui);color:var(--fg-1)}
+.ink4 .i4sheet p{margin-top:10px;font-size:12.5px;line-height:1.5;color:var(--fg-2)}
+.ink4 .i4sfbtn{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+.ink4 .i4scrim{padding:26px 0;display:flex;justify-content:center;background:var(--scrim);border-radius:12px}
+.ink4 .i4pal{width:560px;border-radius:12px;background:var(--popover);box-shadow:var(--sh-pop);overflow:hidden}
+.ink4 .i4palin{height:46px;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--line);font-size:14px;color:var(--fg-1)}
+.ink4 .i4palin > [data-i] svg{width:15px;height:15px;color:var(--fg-3)}
+.ink4 .i4palin .i4key{margin-left:auto}
+.ink4 .i4q{color:var(--fg-1)}
+.ink4 .i4palist{padding:6px 6px 8px}
+.ink4 .i4palh{height:26px;display:flex;align-items:center;padding:0 8px;font:600 11px var(--ui);letter-spacing:.05em;text-transform:uppercase;color:var(--fg-3)}
+.ink4 .i4palr{height:32px;display:flex;align-items:center;gap:9px;padding:0 8px;border-radius:8px;font-size:13px;color:var(--fg-1);white-space:nowrap}
+.ink4 .i4palr.on{background:var(--selected)}
+.ink4 .i4palr > [data-i] svg{width:14px;height:14px;color:var(--fg-2)}
+.ink4 .i4palr .hm{width:12px;height:12px}
+.ink4 .i4palr .m{margin-left:auto;font:10.5px var(--mono);color:var(--fg-3)}
+.ink4 .i4palf{height:34px;display:flex;align-items:center;gap:14px;padding:0 14px;border-top:1px solid var(--line);font-size:11px;color:var(--fg-3)}
+.ink4 .i4palf span{display:inline-flex;align-items:center;gap:5px}
