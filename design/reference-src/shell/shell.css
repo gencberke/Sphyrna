@@ -1,13 +1,15 @@
 /* ---------- the reference page: its bar, its chapters and their frames ---------- */
 .brand{align-items:center}
 .brand .appicon{width:20px;height:20px;border-radius:5px;box-shadow:0 0 0 1px var(--line-2)}
-.top nav{overflow-x:auto;scrollbar-width:none;min-width:0}
-.top nav a{flex:none;white-space:nowrap}
-.top nav.fade{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)}
-.top nav.fade.end{-webkit-mask-image:none;mask-image:none}
+/* the bar has two rows: the title and the tools, then every chapter, wrapped to the page's width */
+.top{height:auto;flex-wrap:wrap;row-gap:8px;padding-top:10px;padding-bottom:10px}
+.top nav{order:3;flex-basis:100%;flex-wrap:wrap;gap:2px 4px;min-width:0}
+.top nav a{flex:none;white-space:nowrap;height:24px;padding:0 8px;font-size:12px}
 .top nav a.on{color:var(--fg-1);background:var(--selected)}
 #chapters .chapter:first-child{padding-top:64px}
-.chapter{padding:110px 0 0;scroll-margin-top:48px}
+.intro{height:auto;padding-bottom:28px}
+.intro .copy{padding-top:64px}
+.chapter{padding:110px 0 0;scroll-margin-top:96px}
 .chead{display:grid;grid-template-columns:56px 1fr auto;align-items:baseline;border-top:1px solid var(--line);padding-top:26px}
 .chead .num{font:11px var(--mono);color:var(--fg-3)}
 .chead h2{font:200 56px/1.05 var(--display);letter-spacing:-.035em}
@@ -17,4 +19,3 @@
 .frame{display:block;width:100%;border:0;background:transparent;margin:0;color-scheme:normal}
 .frame.wait{background:repeating-linear-gradient(90deg,transparent 0 40px,var(--grid) 40px 41px)}
 footer.wrap{border-top:1px solid var(--line);margin-top:80px}
-@media (max-width:1180px){.top nav{display:none}}
