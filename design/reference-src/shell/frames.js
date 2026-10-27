@@ -40,14 +40,13 @@ addEventListener('message', e => {
     if (changed) { paintTools(); postAll(); }
   }
 });
-// The page's own switches: base.js already toggles them and runs the page's art; these pass the state to every frame.
+// The page's own switches: base.js already toggles them; these pass the state to every frame.
 function paintTools() {
   $$('#themeSeg button').forEach(b => b.classList.toggle('on', b.dataset.themeSet === STATE.theme));
-  if (document.documentElement.dataset.theme !== STATE.theme) { document.documentElement.dataset.theme = STATE.theme; oceans.forEach(o => { o.readInk(); o.draw(); }); }
+  if (document.documentElement.dataset.theme !== STATE.theme) { document.documentElement.dataset.theme = STATE.theme; }
   $$('#toneSeg button').forEach(b => b.classList.toggle('on', b.dataset.tone === STATE.cast));
 }
 $$('#themeSeg button').forEach(b => b.addEventListener('click', () => { STATE.theme = b.dataset.themeSet; postAll(); }));
 $$('#toneSeg button').forEach(b => b.addEventListener('click', () => { STATE.cast = b.dataset.tone; paintTools(); postAll(); }));
 [['#swPins', 'pins'], ['#swZoom', 'zoom']].forEach(([id, key]) =>
   $(id).parentElement.addEventListener('click', () => { STATE[key] = $(id).classList.contains('on'); postAll(); }));
-document.addEventListener('visibilitychange', () => oceans.forEach(o => o.sync()));

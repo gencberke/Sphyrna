@@ -74,7 +74,7 @@ const svg = n => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" str
 /* ---------- status marks ---------- */
 const mark = st => st === 'work' ? '<span class="spin" aria-hidden="true">⠋</span>' : st ? `<i class="dot ${st}"></i>` : '';
 
-/* ---------- the sidebar, the same in every frame ---------- */
+/* ---------- the projects the documents share (the sidebar itself is side4.js) ---------- */
 const PROJECTS = [
   { name:'loom', tone:'var(--orchid)', dot:'attn', sessions:[
     { id:'ink', t:'Port the sidebar to Ink tokens', st:'work', h:'claude', meta:'now', subs:[
@@ -93,46 +93,7 @@ const PROJECTS = [
     { id:'jwt', t:'Migrate auth to JWT', st:'fail', h:'codex', meta:'3h' },
     { id:'rl', t:'Rate limiter tests', st:'', h:'codex', meta:'2d' } ] }
 ];
-// A subagent row branches from its parent's status column: one branch per row, the last one curving, and a guide that runs on
-// for every ancestor that still has a sibling below.
-const STEP = 19;
-function subs(list, depth, cont) {
-  return list.map((a, k) => {
-    const last = k === list.length - 1, x = 22 + (depth - 1) * STEP;
-    const guides = cont.map((on, d) => on ? `<i class="g" style="left:${22 + d * STEP}px"></i>` : '').join('');
-    const ind = a.st === 'done' ? '<span class="ind ck" data-i="check"></span>' : `<span class="ind">${mark(a.st)}</span>`;
-    return `<div class="sub${a.st === 'done' ? ' done' : ''}" style="padding-left:${x + 13}px">${guides}<i class="br ${last ? 'last' : 'mid'}" style="left:${x}px"></i>${ind}<span class="ty">${a.type}</span><span class="de">${a.d || ''}</span><span class="el">${a.e || ''}</span></div>`
-      + (a.subs ? subs(a.subs, depth + 1, [...cont, !last]) : '');
-  }).join('');
-}
 const initial = name => name.replace(/[^a-z]/gi, '').charAt(0).toUpperCase();
-function projectGroup(p, sel) {
-  return `<div class="pgroup" style="--tone:${p.tone}">
-    <div class="proj-head"><span class="pmark">${initial(p.name)}</span><span class="pn">${p.name}</span>${p.dot ? `<i class="dot ${p.dot}" style="width:6px;height:6px"></i>` : ''}<span class="chev" data-i="chev-d"></span></div>
-    ${p.sessions.map(s => s.draft
-      ? `<div class="row srow draft"><span class="ind"></span><span class="t">${s.t}</span><span class="x" data-i="x"></span></div>`
-      : `<div class="row srow${s.id === sel ? ' sel' : ''}" data-s="${s.id}"><span class="ind">${mark(s.st)}</span>${s.h ? `<span class="hm ${s.h}"></span>` : ''}<span class="t">${s.t}</span><span class="meta">${s.meta}</span></div>` + (s.subs ? subs(s.subs, 1, []) : '')
-    ).join('')}
-  </div>`;
-}
-function sidebar(sel) {
-  return `
-    <div class="side-top"><div class="lights"><i></i><i></i><i></i></div><button class="ib" title="Hide the sidebar" data-i="side-l"></button></div>
-    <button class="search" data-open="palette"><span data-i="search"></span><span>Search</span><kbd>⌘K</kbd></button>
-    <div class="nav">
-      <div class="row${sel === 'home' ? ' sel' : ''}"><span class="ic" data-i="home"></span><span class="t">Home</span><span class="badge attn">1</span></div>
-      <div class="row act"><span class="ic" data-i="plus"></span><span class="t">New session</span><kbd>⌘N</kbd></div>
-    </div>
-    <div class="side-sec"><span class="label">Projects</span><span class="view"><b>projects</b> · activity</span></div>
-    <div class="plist">${PROJECTS.map(p => projectGroup(p, sel)).join('')}</div>
-    <div class="side-foot">
-      <button class="ib" data-open="plus" data-i="plus" title="New"></button>
-      <button class="usage" title="Plan limits: 5-hour 62% left, weekly 74% left"><span>5h</span><span class="meter"><i style="width:62%"></i></span><span class="v">62%</span><span>·</span><span>wk</span><span class="v">74%</span></button>
-      <button class="ib" data-i="gear" title="Settings" style="margin-left:auto"></button>
-    </div>`;
-}
-$$('.side[data-sel]').forEach(el => el.innerHTML = sidebar(el.dataset.sel));
-$$('[data-tree]').forEach(el => el.innerHTML = projectGroup(PROJECTS[0], el.dataset.tree));
 $$('[data-mark]').forEach(el => el.innerHTML = mark(el.dataset.mark));
 $$('[data-i]').forEach(el => el.insertAdjacentHTML('afterbegin', svg(el.dataset.i)));
 
@@ -159,7 +120,6 @@ sw('#swZoom', on => { zoom = on; fit(); });
 $$('#themeSeg button').forEach(b => b.addEventListener('click', () => {
   document.documentElement.dataset.theme = b.dataset.themeSet;
   $$('#themeSeg button').forEach(x => x.classList.toggle('on', x === b));
-  if (typeof oceans !== 'undefined') oceans.forEach(o => { o.readInk(); o.draw(); });
 }));
 $$('.seg').forEach(s => { if (s.id !== 'themeSeg') s.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $$('button', s).forEach(x => x.classList.toggle('on', x === b)); }); });
 $$('.spec .sw, .minic .sw').forEach(s => s.addEventListener('click', () => s.classList.toggle('on')));

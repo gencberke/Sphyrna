@@ -10,7 +10,6 @@ $$('.insp').forEach(insp => {
   $$('.itab', insp).forEach(t => t.addEventListener('click', () => showTab(insp, t.dataset.tab)));
   $$('[data-goto]', insp).forEach(b => b.addEventListener('click', () => showTab(insp, b.dataset.goto)));
 });
-$$('.srow', winA).forEach(r => r.addEventListener('click', () => { if (r.classList.contains('draft')) return; $$('.srow', winA).forEach(x => x.classList.toggle('sel', x === r)); }));
 $$('.tab', winA).forEach(t => t.addEventListener('click', e => { if (e.target.closest('.x')) return; $$('.tab', winA).forEach(x => x.classList.toggle('on', x === t)); }));
 $$('.frow', winA).forEach(r => r.addEventListener('click', () => $$('.frow', winA).forEach(x => x.classList.toggle('on', x === r))));
 $$('.agent', winA).forEach(r => r.addEventListener('click', () => $$('.agent', winA).forEach(x => x.classList.toggle('on', x === r))));

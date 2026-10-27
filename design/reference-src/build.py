@@ -1,7 +1,7 @@
 """Builds Sphyrna's Ink reference, design/reference.html, and its landing page, design/landing.html, from the parts in this folder.
 
 Each document under docs/ is one page of the reference, assembled as the Ink previews were: the shared tokens and
-parts, the document's own style and markup, then one script with the shared helpers, the art engine and the
+parts, the document's own style and markup, then one script with the shared helpers and the
 document's own behaviour. The reference page holds every document and shows each in a frame of its own, so their
 ids, styles and scripts never meet; the landing page shows one window from several of them, with plain copy around it.
 
@@ -33,13 +33,6 @@ HEAD = ('<!doctype html>\n<html lang="en" data-theme="dark"{html}>\n<head>\n<met
         '<script>window.__errs = []; addEventListener(\'error\', e => __errs.push(e.message + \' @\' + e.lineno + \':\' + e.colno));</script>\n'
         '<style>\n')
 
-# A shark swimming in place, as the previews draw empty panes.
-IN_PLACE = "const inPlace = (kind, L, cell) => ({ cell, fps: 12, alpha: .72, plankton: 0, wake: false, specs: [{ kind, L, depth: 1, speed: 0, fx: .5, fy: .5, angle: 0, center: true }] });\n"
-LISTEN = ("document.addEventListener('visibilitychange', () => oceans.forEach(o => o.sync()));\n"
-          "reduceMotion.addEventListener('change', () => oceans.forEach(o => o.sync()));\n")
-DRAFT_SEA = "sea('ocean-draft', { cell: 11, alpha: .5, specs: [{ kind: 'hammerhead', L: 420, depth: .6, speed: 15 }, { kind: 'hammerhead', L: 270, depth: .95, speed: 21 }, { kind: 'whale', L: 760, depth: .24, speed: 7 }] });\n"
-
-
 def build_doc(name):
     """One document of the reference, as a whole HTML page."""
     d = DOCS[name]
@@ -64,7 +57,7 @@ DOCS = {
         'title': 'Sphyrna · Ink v4 · The proposal',
         'css': ['shared/chat.css', 'shared/harness.css', 'shared/settings.css', 'shared/side4.css', 'docs/v4/v4.css'],
         'body': ['docs/v4/body.html'],
-        'js': ['shared/base.js', 'shared/engine.js', 'shared/side4.js', 'docs/v4/v4.js'],
+        'js': ['shared/base.js', 'shared/side4.js', 'docs/v4/v4.js'],
     },
     'chat': {
         'title': 'Sphyrna · Ink · The turn style',
@@ -141,7 +134,7 @@ def page(docs, name):
     assert '<!--ICON-->' in body
     body = body.replace('<!--ICON-->', data_url('docs/edges/icon-256.png'))
     css = ['shared/head.css'] + p['css'] + ['shared/media.css']
-    js = ['shared/base.js', 'shared/engine.js'] + p['js']
+    js = ['shared/base.js'] + p['js']
     return (HEAD.format(title=p['title'], html=p.get('html', '')) + '\n'.join(read(c) for c in css) + '\n</style>\n</head>\n' + body
             + '\n\n<script type="text/plain" id="ref-docs">' + payload + '</script>\n'
             + '<script>\n(() => {\n' + '\n'.join(read(j) for j in js) + '\n})();\n</script>\n</body>\n</html>\n')
@@ -153,7 +146,7 @@ PAGES = {
                        'js': ['shell/frames.js', 'shell/shell.js'], 'docs': None},
     # one window for each thing Sphyrna does, from the same documents
     'landing.html': {'title': 'Sphyrna', 'css': ['landing/landing.css'], 'body': 'landing/body.html',
-                     'js': ['shared/band.js', 'shell/frames.js', 'landing/landing.js'], 'docs': ['v4', 'chat', 'review', 'remora', 'project', 'settings', 'identity']},
+                     'js': ['shell/frames.js', 'landing/landing.js'], 'docs': ['v4', 'review', 'remora', 'project', 'settings', 'identity']},
 }
 
 
@@ -164,7 +157,7 @@ def store(blocks, text):
 
 
 SHARED_PIECES = ['shared/head.css', 'shared/chat.css', 'shared/harness.css', 'shared/project.css', 'shared/settings.css', 'shared/sheets.css',
-                 'shared/side4.css', 'shared/base.js', 'shared/frame.js', 'shared/engine.js', 'shared/iconart.js', 'shared/marks.js', 'shared/band.js',
+                 'shared/side4.css', 'shared/base.js', 'shared/frame.js', 'shared/engine.js', 'shared/iconart.js', 'shared/marks.js',
                  'shared/side4.js', 'shared/bridge.js']
 
 SHARED_IMAGES = ['docs/edges/icon-256.png', 'docs/review/icon-128.png']
