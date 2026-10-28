@@ -1,8 +1,9 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-28, 21:23 +03.
+- **Updated:** 2026-10-28, 21:27 +03.
 - **State:** `waiting for implementation`. @user resumed continuous iteration and declared the Mac idle for testing.
-  The same C4 agent resumes `wt/r9-c4` at `b3d9828`; the planner owns review/integration and the pooled idle gate.
+  The same C4 agent resumes `wt/r9-c4` at `b3d9828`; independent B5c runs from `4bebd8e`. The planner owns review,
+  integration and the pooled idle gate. Two slices at most; all builds stay serialized.
   Window, visual, energy and pooled checks are authorized while idle; real non-Claude CLI turns still follow Q13/isolation.
 - **Where we left off:** C4 checkpoint `b3d9828` on `slice/r9-c4` (WIP `ed11c72` plus restored functional wire code), clean.
   Last broad affected run: 116 Core + 1 Chat passed; 130 UI ran with one old-file fixture failure. That fixture was corrected
@@ -61,6 +62,7 @@ as every check used it (swift-png 4.5.2).
 | --- | --- | --- |
 | `~/Library/Caches/loom-v2/wt/v2` | `v2` | Code checkpoint `26acb6c`; B3 integrated; 185 affected tests pass |
 | `~/Library/Caches/loom-v2/wt/r9-c4` | `slice/r9-c4` | resumed at `b3d9828` from `2440fa1`; final wire/legacy checks in flight; NOT integrated |
+| `~/Library/Caches/loom-v2/wt/r9-b5c` | `slice/r9-b5c` | B5c from `4bebd8e`; scratch `build/r9-b5c`; Settings/sheets/palette/menu look only |
 | `~/Documents/github/loom-dev` | `swarm/1` | The docs mirror (its changes are `v2`'s docs copied over, by design); never build or commit here |
 | `~/Documents/github/loom` | `main` | The public release tree, a separate repository |
 
@@ -76,6 +78,9 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
   and their tests. No new engine,
   capability/startability, Chat behavior, probe cadence or visual-panel change. The exact write set is in
   `~/Library/Caches/loom-v2/evidence/r9/c4/BRIEF.md`. B3's locks are released.
+- **B5c (active writer):** Settings except Connections, sheets, palette and menu presentation, own Settings/Sheets/Palette/
+  RemoraSettings theme tokens and narrow UI tests. No shared-control, Core, draft/header/model-picker, OpenRequestView,
+  Connections, InkOpenState or runtime changes. Exact write set: `evidence/r9/b5c/BRIEF.md`.
 - **1.8.0:** each brief's write set. Shared by region: `CatalogModel.swift` (C4, D1, F1); `SidebarView.swift` (B2, B3);
   Settings files (C3, B5c, G1). `Package.swift` belongs to I1 alone.
 
@@ -99,5 +104,7 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
   3. Still open from before: the push of `v1.6.0`–`v1.7.2` and the GitHub release; the Trash folders of 22, 25, 26 and 28 Oct.
 - **`@implementer-core` C4:** resumed at `b3d9828`; finish PAUSED.md's v4 and corrected-fixture checks, then final
   REPORT.md/DIFF.patch. Narrow off-screen checks only; the planner handles the idle pool and integration.
-- **`@implementer-ink`:** B3 complete; B4 follows C4, and B5 carries the pending surface/control migrations.
+- **`@implementer-ink` B5c (warm `c3_ink` agent):** implement Settings/sheets/palette/menus from `evidence/r9/b5c/BRIEF.md`;
+  narrow off-screen checks/render probes, native screenshots and interaction go to the planner's pooled gate.
+- **B4:** starts after accepted C4; B5a/b retain their separate surface/control migrations.
 - **`@optimizer`:** at the 1.8.0 gate (plans/1.8.0/README.md §4).
