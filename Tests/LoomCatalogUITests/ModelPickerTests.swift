@@ -332,6 +332,68 @@ import LoomCore
         #expect(!window.isVisible)
     }
 
+    @Test func effortMenuMeasuresItsRowsAndRemainsUsableAfterTheHostResizes() async throws {
+        enableAccessibilityTree()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("loom-b4-measure-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = CatalogModel(catalog: nil, events: SessionEventHub(),
+                                 preferences: UIPreferencesStore(url: directory.appendingPathComponent("p.json")))
+        defer { model.stop(); InkOpenState.shared.draft = nil }
+        model.modelCatalog = catalog()
+        model.harnessAvailability = availability
+        model.showDraft(projectID: nil)
+        #expect(ModelPickerDraft.choose(ModelPickerKey(harness: .codex, id: "gpt-sol"), model: model, projectID: nil))
+        let host = InkHost()
+        let chips = NSHostingView(rootView: DraftModelPickers(model: model, projectID: nil, restoreFocus: {}).inkHost(host))
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 900, height: 600))
+        chips.frame = NSRect(x: 20, y: 400, width: 500, height: 40)
+        content.addSubview(chips)
+        host.view.frame = content.bounds
+        content.addSubview(host.view)
+        let window = NSWindow(contentRect: content.bounds, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = content
+        defer { host.state.dismiss(); window.close() }
+        func settle() async throws {
+            try await Task.sleep(for: .milliseconds(150))
+            content.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+        }
+        func openEffort() async throws {
+            let button = try #require(accessibilityElements(in: chips).first { InkAX.label($0).hasPrefix("Effort, ") })
+            #expect(button.accessibilityPerformPress?() == true)
+            try await settle()
+            #expect(host.state.active?.id == "draft-effort")
+        }
+
+        try await settle()
+        try await openEffort()
+        let singleLevel = host.state.contentSize
+        #expect(singleLevel.width == LoomTheme.ModelPicker.effortWidth && singleLevel.height > 0)
+        #expect(accessibilityElements(in: host.view).contains {
+            $0.accessibilityRole?() == .menu && InkAX.label($0) == "Effort for Sol"
+        })
+        host.state.dismiss()
+        #expect(ModelPickerDraft.choose(ModelPickerKey(harness: .codex, id: "same"), model: model, projectID: nil))
+        content.setFrameSize(NSSize(width: 650, height: 480))
+        host.view.frame = content.bounds
+        chips.frame.origin.y = 350
+        try await settle()
+        try await openEffort()
+        #expect(host.state.contentSize.width == singleLevel.width)
+        #expect(abs(host.state.contentSize.height - singleLevel.height - LoomTheme.ModelPicker.rowHeight) < 1,
+                "a second effort row increases the measured menu by one row")
+        let menu = try #require(accessibilityElements(in: host.view).first {
+            $0.accessibilityRole?() == .menu && InkAX.label($0) == "Effort for Same Codex"
+        })
+        #expect(InkAX.frame(menu).width > 0 && InkAX.frame(menu).height > 0)
+        let ultra = try #require(accessibilityElements(in: host.view).first { InkAX.identifier($0) == "draft-effort-choice-Ultra" })
+        #expect(ultra.accessibilityPerformPress?() == true)
+        try await settle()
+        #expect(host.state.active == nil && model.resolvedStart(for: nil).choices.effort == "ultra")
+        #expect(!window.isVisible)
+    }
+
     @Test func effortChipAndModeAreAbsentWhenTheirDescriptorOffersNone() async throws {
         enableAccessibilityTree()
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-b4-none-\(UUID())")

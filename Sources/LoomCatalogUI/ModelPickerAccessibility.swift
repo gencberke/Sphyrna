@@ -31,6 +31,8 @@ final class ModelPickerAccessibilityHost<Content: View>: NSHostingView<Content> 
         self.role = role
         roleLabel = label
         super.init(rootView: rootView)
+        // Keep the content's natural size without installing min/max constraints inside the enclosing SwiftUI host.
+        sizingOptions = [.intrinsicContentSize]
     }
 
     @MainActor @preconcurrency required init(rootView: Content) { fatalError("init(rootView:) is not used") }
