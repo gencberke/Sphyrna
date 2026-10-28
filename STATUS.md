@@ -1,11 +1,12 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-28, 14:06 +03.
-- **State:** `waiting for implementation`. C4 is in flight on `slice/r9-c4` from `2440fa1`; the planner owns review,
-  integration and canonical docs. Q7 took its documented Yes default at B3's start.
-- **Where we left off:** the v4 sidebar/cards, five-harness Connections/Home and full-window status bar are complete on `v2`.
-  C4 now builds per-harness draft/store/open choices, with legacy-file compatibility and unchanged Claude launch behavior.
-  The corrected off-screen pool's three failed tests were fixed; B3's combined affected check passes 185 tests (D-90).
+- **Updated:** 2026-10-28, 14:30 +03.
+- **State:** `waiting for implementation` — **paused by @user for PC shutdown**. No agent/check/process is running;
+  do not resume until @user returns. C4 is saved, unfinished and unintegrated; `v2` retains the accepted B3 code.
+- **Where we left off:** C4 checkpoint `b3d9828` on `slice/r9-c4` (WIP `ed11c72` plus restored functional wire code), clean.
+  Last broad affected run: 116 Core + 1 Chat passed; 130 UI ran with one old-file fixture failure. That fixture was corrected
+  but not rerun. V4 non-Claude wire routing was added later and is unverified. Never treat this checkpoint as PASS/integrated.
+  Resume details: `~/Library/Caches/loom-v2/evidence/r9/c4/PAUSED.md`; the original Brief and logs remain beside it.
 - **Installed:** Sphyrna 1.7.2 (build 10702) in `/Applications/Loom.app`. The CLIs on this Mac: Claude Code 2.1.311,
   Codex 0.164.0, opencode 2.1.4, agy 1.4.5, pi 0.85.1.
 - **Public:** `0.4.4` is still the latest GitHub release. The tags `v1.6.0` to `v1.7.2` are local in the loom tree; their push
@@ -58,7 +59,7 @@ as every check used it (swift-png 4.5.2).
 | Worktree | Branch | State |
 | --- | --- | --- |
 | `~/Library/Caches/loom-v2/wt/v2` | `v2` | Code checkpoint `26acb6c`; B3 integrated; 185 affected tests pass |
-| `~/Library/Caches/loom-v2/wt/r9-c4` | `slice/r9-c4` | C4 from `2440fa1`; scratch `build/r9-c4`; narrow off-screen checks only |
+| `~/Library/Caches/loom-v2/wt/r9-c4` | `slice/r9-c4` | paused, clean `b3d9828` from `2440fa1`; retain worktree/branch/scratch; NOT integrated |
 | `~/Documents/github/loom-dev` | `swarm/1` | The docs mirror (its changes are `v2`'s docs copied over, by design); never build or commit here |
 | `~/Documents/github/loom` | `main` | The public release tree, a separate repository |
 
@@ -69,8 +70,9 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
 ## 3. File locks
 
 - **`@planner`:** canonical records; no implementer edits docs.
-- **C4:** per-harness launch-choice/mode/descriptor types, draft/default/preset/store region, `CatalogModel` draft region,
-  `open` command/wire/coordinator and approval display; minimal Claude/runtime adapters and their tests. No new engine,
+- **C4 (reserved while paused, no active writer):** per-harness launch-choice/mode/descriptor types, draft/default/preset/store region, `CatalogModel` draft region,
+  `open` command/wire/coordinator and approval display; minimal Claude/runtime adapters, cached AppDelegate callbacks
+  and their tests. No new engine,
   capability/startability, Chat behavior, probe cadence or visual-panel change. The exact write set is in
   `~/Library/Caches/loom-v2/evidence/r9/c4/BRIEF.md`. B3's locks are released.
 - **1.8.0:** each brief's write set. Shared by region: `CatalogModel.swift` (C4, D1, F1); `SidebarView.swift` (B2, B3);
@@ -79,9 +81,11 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
 ## 4. Next actions by role
 
 - **`@planner`:**
-  1. Review C4's draft/store migration, mode/effort validation, optional wire field and unchanged Claude argument evidence;
-     integrate and run the affected combined check before B4 consumes those types. Two slices at most at once. Keep P0/P1
-     behind explicit real-CLI permission and isolated sign-ins.
+  1. Wait for @user to resume. Reuse the existing clean `wt/r9-c4` / `slice/r9-c4` at `b3d9828`; do not recreate it.
+     Read its PAUSED.md and BRIEF.md; resume the same `c4_core` agent when available. First obtain failing-first v4 wire
+     evidence, restore the functional code, rerun the corrected legacy fixture and affected combined suites including
+     v2/v3 control routing. Then review the diff/evidence before integration; B4 waits for accepted C4. No full-pool repeat.
+     P0/P1 still need explicit real-CLI permission and isolated sign-ins.
   2. Carry B1b's layout-bound control migrations to B5 (its report); do not reopen the shared family to change a surface layout.
   3. Carry native visual/keyboard/VoiceOver, inspector/working-indicator window, real-CLI and energy/package checks to the
      authorized idle gate. The corrected off-screen pool is done; do not repeat it merely because a scoped fix landed.
@@ -91,7 +95,7 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
   2. Optional: object to the small calls taken at review (B1 and C2b's "Decisions taken" in their reports), such as hiding,
      not disabling, the sidebar's New session row when Claude cannot start.
   3. Still open from before: the push of `v1.6.0`–`v1.7.2` and the GitHub release; the Trash folders of 22, 25, 26 and 28 Oct.
-- **`@implementer-core` C4:** implement from `evidence/r9/c4/BRIEF.md` in `wt/r9-c4`; per-harness draft/store/open/launch
-  checks and failing-first evidence, no whole-pool repeat. Report needed seams; the planner owns canonical docs.
+- **`@implementer-core` C4:** paused at `b3d9828`; no further work until @user returns and the planner resumes the assignment.
+  Follow PAUSED.md; v4 and the corrected fixture need checks, then final REPORT.md/DIFF.patch. Do not integrate this WIP.
 - **`@implementer-ink`:** B3 complete; B4 follows C4, and B5 carries the pending surface/control migrations.
 - **`@optimizer`:** at the 1.8.0 gate (plans/1.8.0/README.md §4).
