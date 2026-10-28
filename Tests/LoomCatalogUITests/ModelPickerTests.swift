@@ -1,9 +1,36 @@
 import Foundation
+import Observation
 import AppKit
 import SwiftUI
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+
+@MainActor @Observable private final class PickerRenderProbe {
+    var unrelated = 0
+    var title = "First"
+    @ObservationIgnored var childBodies = 0
+}
+
+private struct PickerRenderProbeParent: View {
+    let probe: PickerRenderProbe
+    var body: some View {
+        let _ = probe.unrelated
+        let title = probe.title
+        return ModelPickerAccessibility(role: .menu, label: "Render probe") {
+            PickerRenderProbeChild(probe: probe, title: title)
+        }.fixedSize()
+    }
+}
+
+private struct PickerRenderProbeChild: View {
+    let probe: PickerRenderProbe
+    let title: String
+    var body: some View {
+        let _ = { probe.childBodies += 1 }()
+        return Text(title).frame(width: 156, height: 48)
+    }
+}
 
 @MainActor @Suite(.serialized) struct ModelPickerTests {
     private func catalog() -> ModelCatalog {
@@ -329,6 +356,57 @@ import LoomCore
         try await settle()
         #expect(cursor.activeSection != .recent)
         host.state.dismiss()
+        #expect(!window.isVisible)
+    }
+
+    @Test func accessibilityContainerKeepsUnrelatedParentUpdatesQuiet() async throws {
+        enableAccessibilityTree()
+        let probe = PickerRenderProbe()
+        let hosting = NSHostingView(rootView: PickerRenderProbeParent(probe: probe))
+        hosting.frame = NSRect(x: 0, y: 0, width: 300, height: 100)
+        let window = NSWindow(contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = hosting
+        defer { window.close() }
+        func settle() async throws {
+            try await Task.sleep(for: .milliseconds(150))
+            hosting.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+        }
+        try await settle()
+        let before = probe.childBodies
+        #expect(before > 0)
+        probe.unrelated += 1
+        try await settle()
+        #expect(probe.childBodies == before, "an unchanged nested host should not redraw when its parent alone changes")
+        probe.title = "Second"
+        try await settle()
+        #expect(accessibilityElements(in: hosting).contains { (InkAX.value($0) ?? InkAX.label($0)) == "Second" },
+                "a real content change still reaches the nested view")
+    }
+
+    @Test func accessibilityContainerMeasuresContentWithoutPublishingAnAppKitIntrinsicSize() async throws {
+        enableAccessibilityTree()
+        let content = ModelPickerAccessibility(role: .menu, label: "Sizing test") {
+            Button("Choose") {}.frame(width: 156, height: 48)
+        }.fixedSize()
+        let hosting = NSHostingView(rootView: content)
+        hosting.frame = NSRect(x: 0, y: 0, width: 300, height: 100)
+        let window = NSWindow(contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = hosting
+        defer { window.close() }
+        try await Task.sleep(for: .milliseconds(150))
+        hosting.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        let menu = try #require(accessibilityElements(in: hosting).first {
+            $0.accessibilityRole?() == .menu && InkAX.label($0) == "Sizing test"
+        } as? NSView)
+        let frame = InkAX.frame(menu)
+        #expect(abs(frame.width - 156) < 1 && abs(frame.height - 48) < 1, "SwiftUI still measures the actual content")
+        #expect(menu.intrinsicContentSize.width == NSView.noIntrinsicMetric && menu.intrinsicContentSize.height == NSView.noIntrinsicMetric,
+                "the accessibility bridge must not publish automatic AppKit sizing into the enclosing host")
+        #expect(accessibilityElements(in: menu).contains { $0.accessibilityRole?() == .button && InkAX.label($0) == "Choose" })
         #expect(!window.isVisible)
     }
 

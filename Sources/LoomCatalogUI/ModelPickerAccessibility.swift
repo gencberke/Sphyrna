@@ -21,21 +21,35 @@ struct ModelPickerAccessibility<Content: View>: NSViewRepresentable {
         view.rootView = content
         view.roleLabel = label
     }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: ModelPickerAccessibilityHost<Content>, context: Context) -> CGSize? {
+        nsView.sizeThatFits(in: CGSize(width: proposal.width ?? 100_000, height: proposal.height ?? 100_000))
+    }
 }
 
-final class ModelPickerAccessibilityHost<Content: View>: NSHostingView<Content> {
+/// An accessibility container with explicit SwiftUI measurement; its nested host never sizes the enclosing AppKit window.
+final class ModelPickerAccessibilityHost<Content: View>: NSView {
+    private let hosting: NSHostingController<Content>
     let role: NSAccessibility.Role
     var roleLabel: String
-
-    @MainActor init(rootView: Content, role: NSAccessibility.Role, label: String) {
-        self.role = role
-        roleLabel = label
-        super.init(rootView: rootView)
-        // Keep the content's natural size without installing min/max constraints inside the enclosing SwiftUI host.
-        sizingOptions = [.intrinsicContentSize]
+    var rootView: Content {
+        get { hosting.rootView }
+        set { hosting.rootView = newValue }
     }
 
-    @MainActor @preconcurrency required init(rootView: Content) { fatalError("init(rootView:) is not used") }
+    @MainActor init(rootView: Content, role: NSAccessibility.Role, label: String) {
+        hosting = NSHostingController(rootView: rootView)
+        self.role = role
+        roleLabel = label
+        super.init(frame: .zero)
+        hosting.sizingOptions = []
+        hosting.view.frame = bounds
+        hosting.view.autoresizingMask = [.width, .height]
+        addSubview(hosting.view)
+    }
+
+    func sizeThatFits(in size: CGSize) -> CGSize { hosting.sizeThatFits(in: size) }
+
     @MainActor @preconcurrency required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
     override func isAccessibilityElement() -> Bool { true }
     override func accessibilityRole() -> NSAccessibility.Role? { role }
