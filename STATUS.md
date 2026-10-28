@@ -1,7 +1,7 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-28, 21:48 +03.
-- **State:** `waiting for implementation`. C4 and B5c are accepted on `v2`; B4 is next, with P0 now authorized (D-108).
+- **Updated:** 2026-10-28, 21:58 +03.
+- **State:** `waiting for implementation`. C4/B5c are accepted; B4 runs in its slice and the planner runs P0 evidence (D-108).
   @user requested continuous iteration and an idle test window; AC power is verified. No pause is active.
 - **Where we left off:** C4 `049a95c` passes the integrated-tree **329 tests** (193 Core + 1 Chat + 135 UI), including v1/v4,
   mode/default provenance, old-reader migration, per-harness ownership and the session-service seam. B5c `7f77000` passes
@@ -61,6 +61,7 @@ as every check used it (swift-png 4.5.2).
 | Worktree | Branch | State |
 | --- | --- | --- |
 | `~/Library/Caches/loom-v2/wt/v2` | `v2` | Code checkpoints `049a95c` + `7f77000`; C4/B5c accepted with affected checks |
+| `~/Library/Caches/loom-v2/wt/r9-b4` | `slice/r9-b4` | B4 from `d7f7444`; model/effort picker UI; scratch `build/r9-b4` |
 | `~/Documents/github/loom-dev` | `swarm/1` | The docs mirror (its changes are `v2`'s docs copied over, by design); never build or commit here |
 | `~/Documents/github/loom` | `main` | The public release tree, a separate repository |
 
@@ -71,15 +72,19 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
 ## 3. File locks
 
 - **`@planner`:** canonical records; no implementer edits docs.
-- **Active slice locks:** none until B4 starts. C4 and B5c regions are released; canonical docs remain planner-owned.
+- **B4 (active):** new model/effort picker views/state/theme, header/draft chip adapters, narrow InkOpenState seam and UI tests.
+  No Core/engine, Settings/palette, canonical-doc or probe changes. Header apply policy is awaiting @user's asynchronous
+  choice; draft work continues. Exact scope: `evidence/r9/b4/BRIEF.md`.
+- **P0 (@planner):** `evidence/r9/p0/` only; isolated Codex ≤15 short turns, shared budget ledger, no product edits.
+  Native test queue: `evidence/r9/idle-pool-20261028/QUEUE.md`.
 - **1.8.0:** each brief's write set. Shared by region: `CatalogModel.swift` (C4, D1, F1); `SidebarView.swift` (B2, B3);
   Settings files (C3, B5c, G1). `Package.swift` belongs to I1 alone.
 
 ## 4. Next actions by role
 
 - **`@planner`:**
-  1. Start B4 from current v2: two shared model/effort pickers, keyboard-only selection and availability-aware rows. In parallel
-     the planner can run P0 under D-108 once the active-slice count permits; verify its isolated login, count every real turn.
+  1. Review B4 as it proceeds: two shared model/effort pickers, keyboard-only selection and availability-aware rows. In parallel
+     run P0 under D-108; verify the isolated login without handling it, count every real turn. Never attach to/stop a pre-existing daemon.
      Review/integrate each slice and keep builds serialized; no repeated all-target pool for a scoped change.
   2. Carry B1b's layout-bound control migrations to B5 (its report); do not reopen the shared family to change a surface layout.
   3. Use the newly authorized idle window for the accumulated native visual/keyboard/VoiceOver, inspector/working-indicator
@@ -92,5 +97,6 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
      not disabling, the sidebar's New session row when Claude cannot start.
   3. Still open from before: the push of `v1.6.0`–`v1.7.2` and the GitHub release; the Trash folders of 22, 25, 26 and 28 Oct.
 - **`@implementer-core`:** C4 complete. D1 waits for P0's verified modes/hooks/ownership/launch evidence.
-- **`@implementer-ink`:** C4/B5c complete. Start B4 from its self-contained Brief; B5a/b retain their separate migrations.
+- **`@implementer-ink` B4 (warm `b3_ink`):** implement from `evidence/r9/b4/BRIEF.md` in `wt/r9-b4`; per-slice offscreen
+  checks only, planner owns the idle pool. Continue draft work while header policy awaits @user. B5a/b follow separately.
 - **`@optimizer`:** at the 1.8.0 gate (plans/1.8.0/README.md §4).

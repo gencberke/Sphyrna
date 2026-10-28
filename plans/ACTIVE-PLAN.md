@@ -24,7 +24,7 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | Wave | Slice | Status |
 | --- | --- | --- |
 | 0 | B0 the reference in Ink v4 | integrated `5ba94f1` (approved by `@user`, D-106, with the planner's fixes: Activity marks, the two pickers) |
-| 0 | P0 Codex spike | ready under D-108: ≤15 short isolated turns; existing auth file is present in `~/.loom-dev/codex-home`, login validity not yet verified |
+| 0 | P0 Codex spike | running, planner-owned `evidence/r9/p0/`; D-108 ≤15 isolated turns, auth-file presence confirmed, login validity/behavior pending |
 | 0 | P1 opencode, agy, pi spike | real-turn permission D-108 (≤5 each); prepare isolated profiles, user signs in when needed |
 | 1 | A1 project reorder | integrated `075cd7d` (after review: rows are direct list children again, `SidebarPagingTests`; the released gap holds until the order lands); a by-hand drag check waits for the gate |
 | 1 | C1 harness catalogue | integrated `59e300e` (with the planner's fix: opencode has no doctor until P1) |
@@ -37,7 +37,8 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 2 | C3 Connections and Home connect cards | integrated `365b2d2` + `175f0e2`, parent seams `425878a`, `c84572b`, `1d4326d`; 9 core + 76 UI scoped tests pass; pooled guard/expectation fixes closed by `8e6fbf7` (112 affected tests PASS) |
 | 2 | B3 status bar | integrated `26acb6c`; full-width 26 pt bar, cached limits/popover, bounded working menu, shared awake setting and sidebar utilities; 185 affected tests PASS; Q7's documented Yes default applied |
 | 3 | C4 neutral draft | integrated `049a95c`; 329 affected tests PASS on v2 (193 Core + 1 Chat + 135 UI); compatible choices/files and v1/v4, supported effort retained per DESIGN |
-| 3 | B4 model and effort pickers · D1 Codex sessions · D2 Codex reader and deletion · B5a/b surfaces | queued |
+| 3 | B4 model and effort pickers | running on `slice/r9-b4` from `d7f7444`; C4 adapters, approved two-picker UI, header mutation policy awaiting @user while draft work proceeds |
+| 3 | D1 Codex sessions · D2 Codex reader and deletion · B5a/b surfaces | queued |
 | 3 | B5c Settings, sheets, palette, menus and About | integrated `7f77000`; 97 affected tests PASS (one corpus measurement skipped), six controlled theme renders; native/window/energy remain pooled |
 | 4 | E1 opencode · E2 agy · E3 pi · F1 send · F2 Changes → session · G1 Remora backends · H1 usage · I1 names | queued |
 | 5 | Z the gate, the optimizer, the release | planner |
