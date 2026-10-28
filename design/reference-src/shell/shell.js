@@ -9,7 +9,7 @@ const CHAPTERS = [
     refs: ['DESIGN §0.5', 'D-75', 'D-100', 'D-106'], frames: [['v4', ['session']], ['chat', ['turn']]] },
   { id: 'model', title: 'The model and the effort', text: 'Two pickers side by side: the model panel with search, a rail of harness marks and every model grouped by harness; and the effort menu with only the chosen model\'s levels.',
     refs: ['DESIGN §0.5', 'FB6-7', 'FB6-8', 'D-106'], frames: [['v4', ['model']]] },
-  { id: 'pages', title: 'The draft and Home', text: 'The new-session question, its composer and its one model chip; then Home, with its first launch, its statement, its lists and the accounts in the status bar.',
+  { id: 'pages', title: 'The draft and Home', text: 'The new-session question, its composer and its separate model and effort chips; then Home, with its first launch, its statement, its lists and the accounts in the status bar.',
     refs: ['DESIGN §0.2, §0.5', 'D-65', 'D-106'], frames: [['v4', ['pages']], ['edges', ['first']], ['remora', ['brief']]] },
   { id: 'project', title: 'Projects and new sessions', text: 'The project page with its tabs, narrow and empty.',
     refs: ['DESIGN §0.5', 'D-76'], frames: [['project', ['project', 'narrow']]] },

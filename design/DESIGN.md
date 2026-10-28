@@ -269,16 +269,20 @@ The Agents tab (B5b) reads a subagent's transcript the way Orca's chat reads a t
 only since D-106 (B0, B0b). Its eleven chapters follow the order a user meets the surfaces: Ink v4 (the rules, the control
 family, menus, sheets and the palette, tokens, type and depth), The sidebar, The session window (with the turn style the Agents
 tab reads in), The model and the effort, The draft and Home, Projects and new sessions, Settings and About (with Connections),
-The review surfaces, Remora, The edges, and Identity. Every window draws the one v4 sidebar and status bar, and no surface is
-drawn twice. Every window is live: its menus open, its states switch and its keys work. The bar sets the appearance and the
-tone for every window, and shows the pins that the notes under a window name, or a window at 100 %. No window draws the art
+The review surfaces, Remora, The edges, and Identity. Repeated parts share one source: the session header and tabs, terminal,
+Overview, Connections and About. Full app examples are 860 high, with a 52 pt title row, the 280 pt sidebar and a 26 pt status
+bar under the whole window; session tabs are 36 high above the terminal and inspector. Settings is a separate 680×520 window
+with its own seven-tab title row and no app sidebar or status bar. Component crops name what is outside them; desktop examples
+show complete windows over macOS. The bar sets the appearance and tone for every example and shows the notes' pins or a window
+at 100 %. No window draws the art
 (D-102): Remora's face is the still Front mark, the first launch shows the still app icon.
 - **Its sources** are in `design/reference-src/`. `docs/` holds one document per surface: the Ink v4 chapter (`v4`, D-106), the
   turn style (`chat`), the project page, the identity, the review surfaces, the edges, Remora, and Settings and About. `shared/`
-  holds the tokens (`head.css`), the shared v4 sidebar, cards and status bar (`side4.css`, `side4.js`), the parts and the
+  holds the tokens (`head.css`), the shared v4 sidebar, cards and status bar (`side4.css`, `side4.js`), repeated markup in
+  `parts/` (expanded by the builder), window behavior and geometry (`window4.js`, `window4.css`), and the
   sheets; `engine.js` and `iconart.js` stay only to draw the app icon (`identity/icon/layers.html` loads them). `shell/` and
   `landing/` hold the two pages' own parts.
-- **The build:** `python3 design/reference-src/build.py` writes `reference.html` and `landing.html`, each under 1 MB, and two builds of the same sources give the same bytes (gzip's time is 0); `--docs DIR` also writes each document on its own, for checks. A change to a surface changes its document and this file, and the pages are built again, never edited by hand.
+- **The build:** `python3 design/reference-src/build.py` writes `reference.html` and `landing.html`, each under 1 MB, and two builds of the same sources give the same bytes (gzip's time is 0); `--docs DIR` also writes each document on its own, for checks. `python3 design/reference-src/check.py` checks the complete app frames, shared session chrome, Settings content and labelled crops. A change to a surface changes its document and this file, and the pages are built again, never edited by hand.
 - **The landing page,** [landing.html](landing.html), shows the same windows with plain copy around them, one for each thing the app does, in the app's voice (§6 Voice and copy).
 - **The identity's files** are in [identity/](identity/): the Front mark and, in [identity/icon/](identity/icon/), the app icon's sources, `layers.html`, `draw.sh` and `icon.json` (§6 Name and marks).
 

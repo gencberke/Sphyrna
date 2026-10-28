@@ -7,8 +7,9 @@ ids, styles and scripts never meet; the landing page shows one window from sever
 
     python3 design/reference-src/build.py            # writes design/reference.html and design/landing.html
     python3 design/reference-src/build.py --docs DIR # also writes each document on its own, for checks
+    python3 design/reference-src/check.py            # checks shared parts and the window/crop contract
 """
-import base64, gzip, hashlib, json, os, sys
+import base64, gzip, hashlib, json, os, re, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__)) + '/'
 DESIGN = os.path.dirname(HERE.rstrip('/')) + '/'
@@ -27,6 +28,12 @@ def data_url(rel):
     return 'data:image/png;base64,' + base64.b64encode(open(HERE + rel, 'rb').read()).decode()
 
 
+def expand_parts(source):
+    """Repeated app parts have one source, including when used inside a script's template literal."""
+    return re.sub(r'<!--PART:([a-z-]+)(?::([a-z-]+))?-->',
+                  lambda m: read('shared/parts/' + m[1] + '.html').replace('{{state}}', m[2] or ''), source)
+
+
 HEAD = ('<!doctype html>\n<html lang="en" data-theme="dark"{html}>\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>{title}</title>\n'
         # errors are kept for the reference page and for checks
@@ -36,18 +43,22 @@ HEAD = ('<!doctype html>\n<html lang="en" data-theme="dark"{html}>\n<head>\n<met
 def build_doc(name):
     """One document of the reference, as a whole HTML page."""
     d = DOCS[name]
-    css = ['shared/head.css'] + d['css'] + ['shared/media.css']
+    css = ['shared/head.css'] + d['css'] + ['shared/window4.css', 'shared/media.css']
     style = HEAD.format(title=d['title'], html=d.get('html', '')) + '\n'.join(read(c) for c in css) + '\n</style>\n</head>\n'
     body = '\n\n'.join(read(b) for b in d['body'])
-    body = rep(body, '<!--TOPBAR-->', read('shared/topbar.html'))
+    body = expand_parts(rep(body, '<!--TOPBAR-->', read('shared/topbar.html')))
     for old, new in d.get('body_rep', []):
         body = rep(body, old, new() if callable(new) else new)
+    body = body.replace('<!--ICON-->', data_url('docs/edges/icon-256.png'))
     parts = []
     for j in d['js']:
         parts.append(j[1:] if j.startswith('=') else read(j))
+        if j == 'shared/base.js':
+            parts.append(read('shared/window4.js'))
     js = '\n'.join(parts)
     for old, new in d.get('js_rep', []):
         js = rep(js, old, new() if callable(new) else new)
+    js = expand_parts(js)
     script = '<script>\n(() => {\n' + js + '\n})();\n</script>\n<script>\n' + read('shared/bridge.js') + '\n</script>\n</body>\n</html>\n'
     return style + body + '\n\n' + script
 
@@ -156,7 +167,7 @@ def store(blocks, text):
     return key
 
 
-SHARED_PIECES = ['shared/head.css', 'shared/chat.css', 'shared/harness.css', 'shared/project.css', 'shared/settings.css', 'shared/sheets.css',
+SHARED_PIECES = ['shared/head.css', 'shared/chat.css', 'shared/harness.css', 'shared/project.css', 'shared/settings.css', 'shared/sheets.css', 'shared/window4.css', 'shared/window4.js',
                  'shared/side4.css', 'shared/base.js', 'shared/frame.js', 'shared/engine.js', 'shared/iconart.js', 'shared/marks.js',
                  'shared/side4.js', 'shared/bridge.js']
 

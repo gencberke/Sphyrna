@@ -9,7 +9,7 @@ const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(
 const HNAME = { claude: 'Claude Code', codex: 'Codex' };
 const hmark = h => `<span class="hm ${h}" title="${HNAME[h]}"></span>`;
 const winC = $('#winC'), winG = $('#winG'), winS = $('#winS');
-const SIDEBAR_W = 260, PANE_MIN = 480;
+const PANE_MIN = 480;
 
 /* ============================================================
    The changes. Each hunk is its @@ line (old start, new start),
@@ -268,7 +268,7 @@ function makeChanges(panel, data, hooks = {}) {
     if (act === 'edit') { const b = t.closest('[data-role=saved]'); return begin(b.dataset.key); }
     if (act === 'remove') { const b = t.closest('[data-role=saved]'); S.comments[S.scope] = S.comments[S.scope].filter(c => !(c.file === b.dataset.file && c.key === b.dataset.key)); return draw(); }
     if (act === 'discard') { S.comments[S.scope] = []; if (S.compose && S.compose.scope === S.scope) S.compose = null; return draw(); }
-    if (act === 'send') { const text = message(); S.comments[S.scope] = []; draw(); return hooks.send && hooks.send(text); }
+    if (act === 'send') { const text = message(); draw(); return hooks.send && hooks.send(text); }
     const row = t.closest('.frow[data-file]'); if (row) { S.sel[S.scope] = row.dataset.file; S.hov = null; return draw(); }
     const line = t.closest('.dl[data-key]'); if (line) return begin(line.dataset.key);
   });
@@ -359,21 +359,17 @@ function makeInspector(el, opts) {
     <div class="ipanel" data-t="ov"></div>
     <div class="ipanel flush" data-t="ch"></div>
     <div class="ipanel flush" data-t="ag"></div>
-    <div class="ipanel" data-t="sd"><div class="empty" style="margin-top:56px"><p style="max-width:300px;margin:10px auto 0;font-size:12.5px;line-height:1.5;color:var(--fg-2)">Ask on the side. A side chat is a copy of this session: it sees the session up to now, and the main session never sees it.</p></div>
-      <div class="minic" style="margin-top:auto"><div class="ph">Ask on the side</div><div class="bar"><button class="btn gh sm">Close</button><span class="lbl">Opus 5.5</span><span class="sp"></span><span class="lbl">Allow edits<span class="sw"></span></span><button class="ib" data-i="more" style="width:24px;height:24px"></button><button class="send" data-i="up"></button></div></div></div>`;
+    <div class="ipanel" data-t="sd"><div class="empty"><p>Side Chat is frozen while sessions run in their real terminals (D-100).</p></div></div>`;
   const P = t => $(`.ipanel[data-t=${t}]`, el);
   const I = { tab: opts.tab };
   I.changes = makeChanges(P('ch'), opts.changes, { count: n => { $('[data-role=chn]', el).textContent = n || ''; }, send: opts.send, changed: () => placeAll() });
   function overview() {
-    const last = opts.changes.scopes.last;
-    P('ov').innerHTML = `<div class="isec"><div class="ihead"><span class="label">Session</span></div>
-        <dl class="facts"><dt>State</dt><dd>${opts.state()}</dd><dt>Started</dt><dd><span class="m">14:02 today</span></dd><dt>Claude</dt><dd><span data-i="claude"></span><span class="m">Claude Code 2.1.300</span></dd><dt>Model</dt><dd>Opus 5.5 <span class="m">· high</span></dd><dt>Mode</dt><dd style="color:var(--m-abe)"><span data-i="shield"></span>Ask before edits</dd></dl></div>
-      <div class="isec"><div class="ihead"><span class="label">Worktree</span></div>
-        <dl class="facts"><dt>Project</dt><dd><span class="chip proj" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom</span></dd><dt>Branch</dt><dd><span class="m">ui/ink-sidebar → main</span></dd><dt>Folder</dt><dd><span class="m">~/…/loom-v2/wt/ink</span></dd></dl></div>
-      <div class="isec"><div class="ihead"><span class="label">Changes · last turn</span><button class="lk" data-goto="ch">Open<span data-i="chev-r"></span></button></div>
-        ${last.length ? last.map(id => `<div class="mini"><span class="f">${fname(FILES[id].path)}</span>${pm(FILES[id].added, FILES[id].removed)}</div>`).join('') : '<div class="mini"><span class="f" style="color:var(--fg-3)">No file edits yet</span></div>'}</div>
-      <div class="isec"><div class="ihead"><span class="label">Agents · ${opts.agents ? AG.list.filter(a => a.st !== 'done').length + ' running' : 'none'}</span><button class="lk" data-goto="ag">Open<span data-i="chev-r"></span></button></div>
-        ${opts.agents ? AG.list.filter(a => a.st !== 'done').map(a => `<div class="arow"><span class="ind">${a.st === 'wait' ? '<i class="dot attn"></i>' : '<span class="spin">⠋</span>'}</span><span class="ty">${a.type}</span><span class="de">${esc(a.d)}</span><span class="el">${a.time}</span></div>`).join('') : ''}</div>`;
+    P('ov').classList.add('i4ipanel');
+    P('ov').innerHTML = `<!--PART:overview-->`;
+    $('.i4facts dd', P('ov')).innerHTML = opts.state();
+    const agents = $('.i4icard:last-child', P('ov'));
+    $('.i4labr', agents).textContent = opts.agents ? '2 running' : 'none';
+    if (!opts.agents) $$('.i4arow', agents).forEach(row => row.remove());
     iconize(P('ov'));
   }
   function agents() {
@@ -388,7 +384,7 @@ function makeInspector(el, opts) {
   function width() {
     const reading = I.tab === 'ag' && opts.agents && AG.open;
     const w = I.tab === 'ch' ? 556 : I.tab === 'sd' ? 392 : reading && AG.width === 556 ? 556 : 328;
-    const pane = +win.dataset.w - SIDEBAR_W;
+    const pane = +win.dataset.w - $('.i4side', win).offsetWidth;
     el.style.setProperty('--iw', Math.min(w, pane) + 'px');
     el.classList.toggle('over', pane - w < PANE_MIN);
   }
@@ -431,34 +427,23 @@ const setStateC = working => {
   $('.tab.on .ind', winC).innerHTML = working ? mark('work') : '';
   const side = $('.i4side', winC); side.dataset.i4idle = working ? '' : 'ink'; i4sidebar(side);
 };
-function drawCard() {
-  const ids = DATA_C.scopes.last, [a, r] = totals(ids);
-  const card = $('[data-role=ccard]', winC);
-  card.innerHTML = `<div class="ccard-h">${ids.length} files changed${pm(a, r)}<button class="lk2" data-act="changes">Open in Changes<span data-i="chev-r"></span></button></div>`
-    + tree(ids).map(g => `<div class="fdir"><span data-i="chev-d"></span>${g.dir}</div>` + g.files.map(id => `<div class="frow"><span class="st">${FILES[id].st}</span>${fname(FILES[id].path)}${pm(FILES[id].added, FILES[id].removed)}</div>`).join('')).join('');
-  iconize(card);
-}
-function wireChatC() {
-  drawCard();
-  iconize(chatC);
-}
 const inspC = makeInspector($('.insp', winC), {
   tab: 'ch', changes: DATA_C, agents: false, agentsEmpty: 'Agents show while the session runs.',
   state: () => stC.classList.contains('idle') ? 'Ready' : '<span class="spin">⠋</span>Working',
   send: text => {
-    chatC.insertAdjacentHTML('beforeend', `<div class="you sent"><div class="bubble">${esc(text)}</div><div class="you-foot"><span class="tm">14:12</span></div></div><div class="wnow"><span class="spin">⠋</span>Working</div>`);
+    chatC.insertAdjacentHTML('beforeend', `<span class="ref-sent u">&gt; ${esc(text)}</span><span class="ref-sent d">Comments delivered to this ready terminal session · 14:12</span>`);
     setStateC(true);
-    const sc = chatC.parentElement; sc.scrollTop = sc.scrollHeight;
+    chatC.scrollTop = chatC.scrollHeight;
   }
 });
-wireChatC();
+
 winC.addEventListener('click', e => {
   const act = e.target.closest('[data-act]')?.dataset.act;
   if (act === 'changes') { inspC.show('ch'); inspC.changes.setScope('last'); }
   if (act === 'rewind') openSheetOver(winC, 'rewind');
 });
 $('#chReset').addEventListener('click', () => {
-  chatC.innerHTML = chatC0; wireChatC(); setStateC(false); closeSheetOver(winC);
+  chatC.innerHTML = chatC0; setStateC(false); closeSheetOver(winC);
   inspC.changes.reset(); inspC.show('ch');
 });
 $$('#chWidth button').forEach(b => b.addEventListener('click', () => {
@@ -474,18 +459,8 @@ const inspG = makeInspector($('.insp', winG), {
   tab: 'ag', changes: DATA_G, agents: true,
   state: () => '<i class="dot attn"></i>Needs approval'
 });
-function drawAgentCard() {
-  const box = $('[data-role=agcard]', winG), run = AG.list.filter(a => a.st !== 'done').length;
-  const newest = a => { const t = [...a.items].reverse().find(i => i[0] === 't' || i[0] === 'res' || i[0] === 'c'); return t ? (t[0] === 'c' ? `${t[1]}(${t[2]})` : t[1]) : a.d; };
-  box.innerHTML = `<div class="agents-h"><span class="wi" data-i="agent"></span>${AG.list.length} agents · ${run} working · ${AG.list.length - run} done</div>`
-    + AG.list.map(a => `<div class="acard ${a.st === 'done' ? 'done' : 'work'}" data-open-ag="${a.id}"><span class="ind">${a.st === 'done' ? svg('check') : a.st === 'wait' ? '<i class="dot attn"></i>' : '<span class="spin">⠋</span>'}</span><span class="hd"><span class="ty">${a.type}</span><span class="de">${esc(a.d)}</span></span><span class="el">${a.time}</span>`
-      + `<span class="nw${a.st === 'wait' ? ' attn' : ''}">${a.st === 'wait' ? 'Waiting for you: Allow this edit?' : esc(newest(a))}</span>`
-      + (a.st !== 'done' ? `<span class="ft"><button class="lk2" data-open-ag="${a.id}">Open in Agents<span data-i="chev-r"></span></button></span>` : '') + '</div>').join('');
-  iconize(box);
-}
 function drawAgents() {
   inspG.agents(); inspG.width(); inspG.overview();
-  drawAgentCard();
   placeAll();
 }
 winG.addEventListener('click', e => {
@@ -493,8 +468,9 @@ winG.addEventListener('click', e => {
   AG.open = o.dataset.openAg; inspG.show('ag'); drawAgents();
 });
 function showRequest() {
-  const card = $('[data-role=pinned] .pcard', winG);
-  card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+  const term = $('.ref-terminal', winG);
+  term.insertAdjacentHTML('beforeend', '<span class="ref-sent u">Allow this edit? Answer the request in this terminal.</span>');
+  term.scrollTop = term.scrollHeight;
 }
 // The live explorer: one entry every 2.2 s while the window is on screen.
 function stepAgent() {
@@ -509,7 +485,7 @@ function stepAgent() {
     const atEnd = tr.scrollTop + tr.clientHeight >= tr.scrollHeight - 24;
     $('.te.tail', tr).insertAdjacentHTML('beforebegin', entry(it, true));
     if (atEnd) tr.scrollTop = tr.scrollHeight;
-    drawAgentCard(); placeAll();
+    placeAll();
   } else drawAgents();
 }
 function playAgents() { if (!AG.timer) AG.timer = setInterval(stepAgent, 2200); }
@@ -544,29 +520,29 @@ const SHEETS = {
       <p>Sphyrna removes it and its 2 side chats from Sphyrna, and deletes Claude's local files for them. This can't be undone.</p>
       <div class="sl"><span class="label">Removed</span><ul><li>The transcript and the subagent transcripts</li><li>File snapshots and session folders</li></ul><p class="m" style="margin:5px 0 0 13px">214 files · 18.2 MB · in ~/.claude</p></div>
       <div class="sl"><span class="label">Kept</span><ul><li>Your prompts in Claude's shared prompt history</li><li>Project files and worktrees</li><li>Anything already sent to Anthropic</li></ul></div>
-      <div class="sbtn"><span class="grow"></span><button class="btn sec focus" data-k="cancel">Cancel</button><button class="btn dtint" data-k="delete">Delete Permanently</button></div>` },
+      <div class="sbtn"><span class="grow"></span><button class="btn sec focus" data-k="cancel">Cancel</button><button class="btn dan" data-k="delete">Delete Permanently</button></div>` },
   'delete-check': { html: () => `<h4>Delete this session?</h4><div class="sn">Port the sidebar to Ink tokens</div>
       <div class="busy"><span class="spin">⠋</span>Checking what Claude has kept for this session…</div>
-      <div class="sbtn"><span class="grow"></span><button class="btn sec focus" data-k="cancel">Cancel</button><button class="btn dtint" disabled>Delete Permanently</button></div>` },
+      <div class="sbtn"><span class="grow"></span><button class="btn sec focus" data-k="cancel">Cancel</button><button class="btn dan" disabled>Delete Permanently</button></div>` },
   'delete-blocked': { html: () => `<h4>Delete this session?</h4><div class="sn">Rate limiter tests</div>
       <p>Sphyrna removes it from Sphyrna, and deletes Claude's local files for it. This can't be undone.</p>
       <div class="sl"><span class="label">Removed</span><ul><li>The transcript and the subagent transcripts</li><li>File snapshots and session folders</li></ul><p class="m" style="margin:5px 0 0 13px">38 files · 2.4 MB · in ~/.claude</p></div>
       <div class="sl"><span class="label">Kept</span><ul><li>Your prompts in Claude's shared prompt history</li><li>Project files and worktrees</li><li>Anything already sent to Anthropic</li></ul></div>
       <p class="bad">Deleting cannot finish: Sphyrna cannot look inside ~/claude-work (it is a link or on another disk), so it cannot tell whether Claude keeps files for this session there. Nothing was removed. You can remove the session from Sphyrna only; Claude's files stay where they are.</p>
-      <div class="sbtn"><button class="btn sec" data-k="only" title="Removes the session from Sphyrna. Claude's files are not touched.">Remove from Sphyrna Only</button><span class="grow"></span><button class="btn sec focus" data-k="cancel">Cancel</button><button class="btn dtint" disabled>Delete Permanently</button></div>` },
+      <div class="sbtn"><button class="btn sec" data-k="only" title="Removes the session from Sphyrna. Claude's files are not touched.">Remove from Sphyrna Only</button><span class="grow"></span><button class="btn sec focus" data-k="cancel">Cancel</button><button class="btn dan" disabled>Delete Permanently</button></div>` },
   remove: { alert: true, html: () => `<img class="ai" src="${ICON128}" alt="">
       <h4>Remove this session from Sphyrna?</h4>
       <p>Sphyrna forgets the session and its own data for it. Claude's files stay where they are, and Sphyrna can't bring the session back.</p>
-      <div class="sbtn"><button class="btn sec focus" data-k="cancel">Cancel</button><button class="btn dtint" data-k="remove">Remove</button></div>` },
+      <div class="sbtn"><button class="btn sec focus" data-k="cancel">Cancel</button><button class="btn dan" data-k="remove">Remove</button></div>` },
   discard: { html: () => `<h4>Discard this side chat?</h4><div class="sn">Will the project's mark still read in Paper?</div>
       <p>Sphyrna deletes its copy of the session. The main session is not touched.</p>
-      <div class="sbtn"><span class="grow"></span><button class="btn sec focus" data-k="cancel">Cancel</button><button class="btn dtint" data-k="discard">Discard</button></div>` },
+      <div class="sbtn"><span class="grow"></span><button class="btn sec focus" data-k="cancel">Cancel</button><button class="btn dan" data-k="discard">Discard</button></div>` },
   rewind: { w480: true, html: () => { const ids = DATA_C.scopes.last, [a, r] = totals(ids); return `<h4>Rewind files to before this message?</h4><div class="sn">${quote}</div>
       <div class="rtot"><span>${ids.length} files</span>${pm(a, r)}</div>
       <div class="rlist">${ids.map(id => FILES[id].path).sort().map(p => `<div class="rrow">${p}${p.endsWith('SidebarRow.swift') ? '<span class="mk">Changed since Claude\'s last edit</span>' : ''}</div>`).join('')}</div>
       <p class="hon">Restores the files Claude changed with its file tools to how they were before this message. Changes made by shell commands and subagents stay. Sphyrna keeps a copy of these files, so you can undo this.</p>
       <p class="warn">This turn's file changes can only come back through Undo.</p>
-      <div class="sbtn"><span class="grow"></span><button class="btn sec focus" data-k="cancel">Cancel</button><button class="btn atint" data-k="rewind">Rewind Files</button></div>`; } },
+      <div class="sbtn"><span class="grow"></span><button class="btn sec focus" data-k="cancel">Cancel</button><button class="btn out" data-k="rewind">Rewind Files</button></div>`; } },
   'rewind-cannot': { w480: true, html: () => `<h4>Rewind files to before this message?</h4><div class="sn">“Run the whole UI suite and list the three slowest tests.”</div>
       <p class="bad">No file checkpoint for this message</p>
       <div class="sbtn"><span class="grow"></span><button class="btn sec focus" data-k="cancel">Cancel</button></div>` },
@@ -574,7 +550,7 @@ const SHEETS = {
       <div class="rtot"><span>1 file</span>${pm(41022, 39870)}</div>
       <div class="rlist"><div class="rrow">Tests/Fixtures/transcript-large.jsonl</div></div>
       <p class="bad">These files are too large to keep a copy for Undo</p>
-      <div class="sbtn"><span class="grow"></span><button class="btn sec focus" data-k="cancel">Cancel</button><button class="btn atint" disabled>Rewind Files</button></div>` }
+      <div class="sbtn"><span class="grow"></span><button class="btn sec focus" data-k="cancel">Cancel</button><button class="btn out" disabled>Rewind Files</button></div>` }
 };
 const KEYNAME = { cancel: 'Cancel', save: 'Save', delete: 'Delete Permanently', only: 'Remove from Sphyrna Only', remove: 'Remove', discard: 'Discard', rewind: 'Rewind Files' };
 function drawSheet(el, kind, log, done) {
@@ -614,7 +590,7 @@ function openSheetOver(win, kind) {
   drawSheet(el, kind, null, k => {
     if (k === 'rewind') {
       chatC.insertAdjacentHTML('beforeend', '<div class="marker">Files rewound to before “Port the sidebar rows to the…” · 14:12 <button class="lk2" data-act="undo">Undo</button></div>');
-      const sc = chatC.parentElement; sc.scrollTop = sc.scrollHeight;
+      chatC.scrollTop = chatC.scrollHeight;
     }
     closeSheetOver(win);
   });

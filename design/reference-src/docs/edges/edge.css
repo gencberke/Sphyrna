@@ -101,7 +101,7 @@
 .hrow.blank:hover{background:none}
 .lc .lead{padding:0 16px 10px;margin-top:-6px;font-size:12px;color:var(--fg-2)}
 .hrow .t .hm{margin-right:-2px}
-.hrow .acts .btn.pri.sm{height:22px}
+.hrow .acts .btn.pri.sm{height:24px}
 .sidebits{display:flex;flex-direction:column;gap:14px;padding:12px 0 14px}
 .sentences p{display:flex;flex-direction:column;gap:3px;padding:10px 0;border-top:1px solid var(--line)}
 .sentences p:first-child{border-top:0;padding-top:2px}

@@ -195,7 +195,8 @@ const CHAT = `<div class="chat" data-view="normal">
 function drawEnded() {
   const f = E.face, live = E.phase === 'live';
   const st = f === 'record' ? MARK_OF[E.rec] : '';
-  if (f === 'term') ePane.dataset.theme = 'dark'; else delete ePane.dataset.theme;
+  // Only the CLI canvas stays dark; the shared header and tabs follow the window's appearance.
+  delete ePane.dataset.theme;
   drawSide(eSide, { sel: 'ink', groups: [[PJ.loom, [S('ink', 'Port the sidebar to Ink tokens', live ? '' : st, live ? 'now' : '1h'), S('gate', 'Review the gate failure', 'attn', 'now'), S('lb', 'Remora spike S10', '', '2h', 'codex')]], [PJ.sb, [S('vm', 'Weekly vault maintenance', '', '3h')]], [PJ.api, [S('rl', 'Rate limiter tests', '', '2d', 'codex')]]], badge: 1 });
   $('[data-role=pill]', winE).innerHTML = live ? PILL.ready : f === 'record' && PILL[E.rec] ? PILL[E.rec] : '';
   $('[data-role=tabmark]', winE).innerHTML = live ? '' : mk(st);
@@ -343,6 +344,7 @@ function placeAll() {
   if (!document.body.classList.contains('pins')) return;
   const h = H.state;
   pinTo(winH, 'pinH1', h === 'first' && $('.firstrun .aic', winH), 1, 0, 4, -6);
+  pinTo(winH, 'pinH2', h === 'first' && $('.firstrun .acts', winH), .5, 1, -11, 6);
   pinTo(winH, 'pinH3', $('[data-role=noproj]', winH), 1, .5, -110, -9);
   pinTo(winH, 'pinH4', $('.firstrun small', winH), 1, .5, 8, -9);
   pinTo(winH, 'pinH5', $('.firstrun .sym', winH), 1, 0, 4, -6);

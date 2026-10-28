@@ -114,8 +114,8 @@ function i4hgroup(p1, r1, p2, r2) {
 
 function i4statusbar(el) {
   el.innerHTML = `
-    <button class="i4sseg" title="Claude Code plan limits"><span class="hm claude"></span>${i4hgroup(4, '3h 39m', 38, '5d')}</button>
-    <button class="i4sseg" title="Codex plan limits"><span class="hm codex"></span>${i4hgroup(61, '2d', 24, '6d')}</button>
+    <button class="i4sseg" data-usage="claude" title="Claude Code plan limits"><span class="hm claude"></span>${i4hgroup(4, '3h 39m', 38, '5d')}</button>
+    <button class="i4sseg" data-usage="codex" title="Codex plan limits"><span class="hm codex"></span>${i4hgroup(61, '2d', 24, '6d')}</button>
     <span class="sp"></span>
     <span class="i4swork"><span class="spin">⠋</span>3 working</span>
     <button class="i4keep"><span class="i4sw on"></span>Keep Mac Awake</button>
@@ -124,6 +124,38 @@ function i4statusbar(el) {
 
 $$('.i4side').forEach(i4sidebar);
 $$('.i4status').forEach(i4statusbar);
+
+// One usage popover for every window, not just the first session example.
+function i4usage(bar, harness) {
+  const claude = harness === 'claude', name = claude ? 'Claude Code' : 'Codex';
+  const values = claude ? [[4, '21:05'], [38, 'Mon 10:00']] : [[61, 'Thu 10:00'], [24, 'Mon 10:00']];
+  let pop = $('.i4stpop', bar);
+  if (!pop) { pop = document.createElement('div'); pop.className = 'i4stpop'; bar.appendChild(pop); }
+  pop.dataset.harness = harness;
+  pop.innerHTML = `<div class="i4stph"><span class="hm ${harness}"></span><b>${name}</b><span class="i4stpr">Read 17:20</span><button class="i4ib" data-usage-close title="Close">${svg('x')}</button></div>`
+    + values.map(([left, reset], i) => `<div class="i4strow"><span class="k">${i ? 'Weekly' : '5-hour window'}</span><span class="i4meter${left < 20 ? ' low' : ''}"><i style="width:${left}%"></i></span><b class="${left < 20 ? 'low' : ''}">${left}% left</b><span class="rs">resets ${reset}</span></div>`).join('')
+    + `<div class="i4stpn">Read from ${name}'s own usage. No model call.</div><div class="i4stpf"><button class="btn out sm" data-usage-check>Check Again</button><button class="btn gh sm" data-usage-page>Open Usage</button><span class="sp"></span><span class="mono">17:20</span></div>`;
+}
+$$('.i4status[data-usage-open]').forEach(bar => i4usage(bar, bar.dataset.usageOpen));
+document.addEventListener('click', e => {
+  const segment = e.target.closest('[data-usage]');
+  if (segment) {
+    const bar = segment.closest('.i4status'), old = $('.i4stpop', bar), open = old?.dataset.harness === segment.dataset.usage;
+    $$('.i4stpop').forEach(p => p.remove());
+    if (!open) i4usage(bar, segment.dataset.usage);
+    return;
+  }
+  if (e.target.closest('[data-usage-close]')) e.target.closest('.i4stpop').remove();
+  if (e.target.closest('[data-usage-check]')) e.target.closest('.i4stpop').querySelector('.i4stpr').textContent = 'Read just now';
+  if (e.target.closest('[data-usage-page]')) {
+    const pane = $('.swin .spane[data-stab=usage]');
+    if (pane) $('.swin [data-stab=usage]').click();
+    else if (parent !== window) parent.postMessage({ref:'chapter', chapter:'settings'}, '*');
+  }
+  const keep = e.target.closest('.i4keep');
+  if (keep) $('.i4sw', keep).classList.toggle('on');
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $$('.i4stpop').forEach(p => p.remove()); });
 
 // The sidebar's two views switch in place, as the app's do; the switches and the segments of the v4 parts toggle here too.
 document.addEventListener('click', e => {

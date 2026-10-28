@@ -1,0 +1,76 @@
+/* Full app windows share a 52 pt title row, a 36 pt tab row and the 26 pt window-wide status bar.
+   Settings is a separate 680 × 520 window; a component crop always names what is outside it. */
+.frame-caption{font:11px/1.5 var(--ui);color:var(--fg-3);margin:12px 2px 0}
+:is(.win,.appwin)[data-frame=app] .dhead{padding:0 12px;gap:8px;min-width:0}
+:is(.win,.appwin)[data-frame=app] .dhead>.hm,:is(.win,.appwin)[data-frame=app] .dhead>[data-role=pill]{flex:none}
+:is(.win,.appwin)[data-frame=app] .dhead .end{gap:6px;flex:none}
+.dhead .chip.proj{max-width:210px;min-width:0}
+.dhead .chip.proj .br{overflow:hidden;text-overflow:ellipsis}
+.dhead .ref-choice{width:auto;display:inline-flex;align-items:center;gap:5px;padding:0 6px;font:12px var(--ui);color:var(--fg-2)}
+.dhead .ref-choice .hm,.dhead .ref-choice svg{width:12px;height:12px}
+.dhead .ref-choice svg:last-child{width:10px;height:10px;color:var(--fg-3)}
+.ref-home-note{font:11.5px var(--ui);color:var(--fg-3)}
+.ref-pagehead{flex:none}
+.term{background:#0A0A0A;color:#D4D4D8}
+.ref-terminal{overflow:auto;scrollbar-width:thin;scrollbar-color:#34343B transparent}
+.ref-terminal .ref-sent{display:block;white-space:pre-wrap;margin-top:14px}
+.i4main>.tabbar{flex:none}
+.i4main>.dhead{flex:none}
+.tabbar .tab{height:28px;max-width:240px;min-width:0;background:none;box-shadow:none}
+.tabbar .tab.on{background:var(--raise-2);box-shadow:inset 0 0 0 1px var(--line-2),var(--sh-lift)}
+.tabbar .tab:hover{background:var(--hover)}
+.tabbar .tab .tx{width:16px;height:16px;position:relative;display:grid;place-items:center;flex:none}
+.tabbar .tab .tx .hm{width:11px;height:11px}
+.tabbar .tab .tx .x{position:absolute;inset:0;opacity:0}
+.tabbar .tab:hover .tx .x{opacity:1}
+.tabbar .tab:hover .tx .hm{opacity:0}
+/* The Connections frame and the Connections pane in Settings use the same content and geometry. */
+.i4sbody{flex:1;min-height:0;overflow:auto;padding:20px 26px 12px}
+.i4ctop{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.i4csum{font-size:11.5px;color:var(--fg-3)}
+.i4ctop .btn{margin-left:auto}
+.i4scard{background:var(--raise-1);border-radius:12px;box-shadow:inset 0 0 0 1px var(--line)}
+.i4srw{min-height:55px;display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--line)}
+.i4srw:first-child{border-top:0}
+.i4srw>.hm{flex:none}
+.i4srw .tx{flex:1;min-width:0}
+.i4srw .tx b{display:block;font:500 13px/18px var(--ui);color:var(--fg-1)}
+.i4srw .tx .hp{display:block;margin-top:2px;font-size:11.5px;line-height:16px;color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.i4srw .tx .nt{display:block;margin-top:3px;font-size:11.5px;line-height:16px;color:var(--attn-text)}
+.i4cstate{width:80px;flex:none;text-align:right;font-size:11.5px;color:var(--fg-2);white-space:nowrap}
+.i4cstate.dim{color:var(--fg-3)}
+.i4snote{margin:12px 2px 0;font-size:11.5px;color:var(--fg-3)}
+.spane[data-stab=connections]{display:flex;flex-direction:column;min-height:0}
+.stabs{gap:16px}
+.stabs button:disabled{cursor:default;opacity:1}
+.i4stpop[hidden]{display:none}
+.i4stpop .btn{height:28px;padding:0 10px;font-size:12.5px}
+
+/* The same Overview cards in the session and review chapters. */
+.i4ipanel{flex:1;min-height:0;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.i4icard{background:var(--raise-1);border-radius:12px;box-shadow:inset 0 0 0 1px var(--line);padding:11px 13px 12px;flex:none}
+.i4ilab{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px}
+.i4labr{font:10.5px var(--mono);color:var(--fg-3)}
+.i4facts{display:grid;grid-template-columns:62px 1fr;gap:7px 10px;font-size:12px;align-items:center}
+.i4facts dt{color:var(--fg-3)}
+.i4facts dd{display:flex;align-items:center;gap:6px;min-width:0;color:var(--fg-1);white-space:nowrap;overflow:hidden}
+.i4facts dd.mono{font:11px var(--mono)}
+.i4facts dd .mono{font:10.5px var(--mono);color:var(--fg-2)}
+.i4facts dd.acc{color:var(--accent)}
+.i4facts dd.acc svg{width:12px;height:12px}
+.i4facts dd .i4pmark{margin-right:2px}
+.i4ctx{display:flex;align-items:center;gap:10px}
+.i4ctx svg{width:30px;height:30px;flex:none}
+.i4ctx b{display:block;font:500 12.5px var(--ui);color:var(--fg-1)}
+.i4ctx span{display:block;font:10.5px var(--mono);color:var(--fg-3);margin-top:2px}
+.i4arow{display:flex;align-items:center;gap:7px;height:22px;font-size:11.5px;white-space:nowrap}
+.i4arow + .i4arow{margin-top:2px}
+.i4arow b{font:500 11.5px var(--ui);color:var(--fg-1);flex:none}
+.i4arow span:not(.i4stt){min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--fg-2)}
+.i4arow em{font:normal 10.5px var(--mono);color:var(--fg-3);margin-left:auto;flex:none}
+.i4arow .i4stt .spin{width:10px;height:10px;font-size:12px}
+
+.i4key,kbd{font:11px/18px var(--mono);height:18px;padding:0 4px;border-radius:4px}
+
+.sheet .sbtn .btn.pri,.sheet .sbtn .btn.dan,.sheet .sbtn .btn.out{height:36px}
+.popup:focus-visible,.stepper button:focus-visible{outline:0;box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3px color-mix(in srgb,var(--accent) 45%,transparent)}

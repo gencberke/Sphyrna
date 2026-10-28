@@ -137,28 +137,7 @@
 .ink4 .i4itab.on{color:var(--fg-1)}
 .ink4 .i4itab.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1.5px;background:var(--accent);border-radius:1px}
 .ink4 .i4itab .n{font:10.5px var(--mono);color:var(--fg-3)}
-.ink4 .i4ipanel{flex:1;min-height:0;overflow:hidden;padding:14px;display:flex;flex-direction:column;gap:10px}
-.ink4 .i4icard{background:var(--raise-1);border-radius:12px;box-shadow:inset 0 0 0 1px var(--line);padding:11px 13px 12px;flex:none}
-.ink4 .i4ilab{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px}
-.ink4 .i4labr{font:10.5px var(--mono);color:var(--fg-3)}
-.ink4 .i4facts{display:grid;grid-template-columns:62px 1fr;gap:7px 10px;font-size:12px;align-items:center}
-.ink4 .i4facts dt{color:var(--fg-3)}
-.ink4 .i4facts dd{display:flex;align-items:center;gap:6px;min-width:0;color:var(--fg-1);white-space:nowrap;overflow:hidden}
-.ink4 .i4facts dd.mono{font:11px var(--mono)}
-.ink4 .i4facts dd .mono{font:10.5px var(--mono);color:var(--fg-2)}
-.ink4 .i4facts dd.acc{color:var(--accent)}
-.ink4 .i4facts dd.acc svg{width:12px;height:12px}
-.ink4 .i4facts dd .i4pmark{margin-right:2px}
-.ink4 .i4ctx{display:flex;align-items:center;gap:10px}
-.ink4 .i4ctx svg{width:30px;height:30px;flex:none}
-.ink4 .i4ctx b{display:block;font:500 12.5px var(--ui);color:var(--fg-1)}
-.ink4 .i4ctx span{display:block;font:10.5px var(--mono);color:var(--fg-3);margin-top:2px}
-.ink4 .i4arow{display:flex;align-items:center;gap:7px;height:22px;font-size:11.5px;white-space:nowrap}
-.ink4 .i4arow + .i4arow{margin-top:2px}
-.ink4 .i4arow b{font:500 11.5px var(--ui);color:var(--fg-1);flex:none}
-.ink4 .i4arow span:not(.i4stt){min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--fg-2)}
-.ink4 .i4arow em{font:normal 10.5px var(--mono);color:var(--fg-3);margin-left:auto;flex:none}
-.ink4 .i4arow .i4stt .spin{width:10px;height:10px;font-size:12px}
+
 
 
 
@@ -200,7 +179,7 @@
 .ink4 .i4mrl .sep{width:20px;height:1px;background:var(--line);margin:3px 0;flex:none}
 .ink4 .i4mtip{position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%);padding:5px 8px;border-radius:6px;background:var(--popover);box-shadow:var(--sh-pop);font:11px var(--ui);color:var(--fg-1);white-space:nowrap;z-index:5;pointer-events:none}
 .ink4 .i4mtip em{font-style:normal;color:var(--fg-3)}
-.ink4 .i4mlst{flex:1;min-width:0;overflow:hidden;padding:4px 6px 8px}
+.ink4 .i4mlst{flex:1;min-width:0;overflow:auto;padding:4px 6px 8px}
 .ink4 .i4mgh{height:30px;display:flex;align-items:center;gap:7px;padding:6px 8px 0}
 .ink4 .i4mgh .hm{width:12px;height:12px}
 .ink4 .i4mgh .n{margin-left:auto;font:10.5px var(--mono);color:var(--fg-3)}
@@ -234,28 +213,6 @@
 .ink4 .i4emr .ck{display:grid;place-items:center;color:var(--accent)}
 .ink4 .i4emr .ck svg{width:13px;height:13px}
 .ink4 .i4mn{margin-top:14px;font-size:12px;color:var(--fg-3);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-
-/* ============================================================
-   Settings -> Connections: the five states, the seven tabs.
-   ============================================================ */
-.ink4 .i4swin{position:relative;width:100%;height:100%;display:flex;flex-direction:column;background:var(--canvas);color:var(--fg-1);overflow:hidden}
-.ink4 .i4stabs{gap:16px}
-.ink4 .i4stabs .i4itab{font-size:12.5px}
-.ink4 .i4sbody{flex:1;min-height:0;overflow:hidden;padding:20px 26px 12px}
-.ink4 .i4ctop{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.ink4 .i4csum{font-size:11.5px;color:var(--fg-3)}
-.ink4 .i4ctop .i4btn{margin-left:auto}
-.ink4 .i4scard{background:var(--raise-1);border-radius:12px;box-shadow:inset 0 0 0 1px var(--line)}
-.ink4 .i4srw{min-height:55px;display:flex;align-items:center;gap:13px;padding:10px 16px;border-top:1px solid var(--line)}
-.ink4 .i4srw:first-child{border-top:0}
-.ink4 .i4srw .tx{flex:1;min-width:0}
-.ink4 .i4srw .tx b{display:block;font:500 13px/18px var(--ui);color:var(--fg-1)}
-.ink4 .i4srw .tx .hp{display:block;margin-top:2px;font-size:11.5px;line-height:16px;color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ink4 .i4srw .tx .nt{display:block;margin-top:3px;font-size:11.5px;line-height:16px;color:var(--attn-text)}
-.ink4 .i4cstate{width:104px;flex:none;text-align:right;font-size:11.5px;color:var(--fg-2);white-space:nowrap}
-.ink4 .i4cstate.dim{color:var(--fg-3)}
-.ink4 .i4snote{margin:12px 2px 0;font-size:11.5px;color:var(--fg-3)}
-.ink4 .i4sfoot{padding-left:26px;background:var(--canvas)}
 
 /* ============================================================
    The draft and Home: 34 / 300, cards, the neutral composer.

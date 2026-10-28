@@ -33,6 +33,7 @@ addEventListener('message', e => {
   if (!f || !m || !m.ref) return;
   if (m.ref === 'ready') { post(f); clearTimeout(f.timer); setTimeout(loadNext, 30); }
   if (m.ref === 'h') { f.el.style.height = m.h + 'px'; f.el.classList.remove('wait'); if (m.errs.length) console.warn(`[${f.doc}]`, m.errs.join(' | ')); }
+  if (m.ref === 'chapter' && m.chapter === 'settings') document.getElementById('settings')?.scrollIntoView({ behavior: 'smooth' });
   if (m.ref === 'local') {
     // A choice made inside a frame, such as Settings' tone, becomes the page's.
     let changed = false;

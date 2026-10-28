@@ -66,7 +66,7 @@
   <section class="sec" id="inplace">
     <div class="sechead"><span class="num">02</span><h2>In place</h2>
       <p>Where the icon and the name show: the menu bar and the Dock, a banner, About and the alerts. Every sentence that names the app says Sphyrna. The desktop follows Ink and Paper, and its menu bar carries the Front mark, drawn below.</p></div>
-    <div class="stage"><div class="win desk" id="winD" data-w="1280" data-h="560">
+    <div class="stage"><div class="win desk" id="winD" data-w="1440" data-h="1020" data-frame="desktop">
       <div class="wall"></div>
       <div class="mbar">
         <span class="mbt app open pinhost">Sphyrna</span><span class="mbt">File</span><span class="mbt">Edit</span><span class="mbt">View</span><span class="mbt">Window</span><span class="mbt">Help</span>
@@ -104,21 +104,12 @@
 
     <div class="pair2">
       <div>
-        <div class="stage"><div class="win" id="winB" data-w="680" data-h="520">
-          <div class="swin">
+        <div class="stage"><div class="win" id="winB" data-w="680" data-h="520" data-frame="settings">
+          <div class="swin" data-settings-start="about" data-settings-example>
             <div class="stitle"><div class="lights"><i></i><i></i><i></i></div>
-              <nav class="stabs"><button class="itab">General</button><button class="itab">Theme</button><button class="itab">Usage</button><button class="itab">Sessions</button><button class="itab pinhost">Remora<span class="pin" style="left:46px;top:-6px">B2</span></button><button class="itab on">About</button></nav>
+              <!--PART:settings-tabs-->
             </div>
-            <div class="spane">
-              <div class="about">
-                <div class="ahead"><span class="icon sq pinhost"><img class="appicon" alt=""></span><h2>Sphyrna</h2><span class="ver">Version 1.6.0 (build 214, 371aaf6)</span></div>
-                <div class="scard">
-                  <div class="srw"><div class="tx"><b>Data folder</b><span class="hp">Catalog, usage index and logs.</span></div><div class="ctl pinhost"><span class="path" title="~/Library/Application Support/Loom">~/Library/Application Support/Loom</span><button class="btn sec sm">Reveal</button><span class="pin" style="left:-22px;top:-12px">B3</span></div></div>
-                  <div class="srw"><div class="tx"><b>Claude profile</b><span class="hp">Where usage is read from. Read only.</span></div><div class="ctl"><span class="path">~/.claude</span></div></div>
-                  <div class="srw"><div class="tx"><b>Diagnostics</b><span class="hp">A folder with versions, counts and Sphyrna's log. No session content.</span></div><div class="ctl"><button class="btn sec sm">Collect Diagnostics…</button></div></div>
-                </div>
-              </div>
-            </div>
+            <!--PART:about-->
           </div>
           <span class="pin" style="left:378px;top:108px">B1</span>
         </div></div>

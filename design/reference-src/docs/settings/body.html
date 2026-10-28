@@ -5,9 +5,9 @@
 <div class="wrap">
   <section class="sec principles" id="rules">
   <div class="rules">
-    <div class="rule"><div class="n">01</div><h3>One window, six tabs</h3><p>Settings is a 680×520 window that follows the appearance and the tone. Its sections are view tabs in the title band, where the window's title would be: General, Theme, Usage, Sessions, Remora and About.</p></div>
+    <div class="rule"><div class="n">01</div><h3>One window, seven tabs</h3><p>Settings is a 680×520 window that follows the appearance and the tone. Its sections are view tabs in the title band, where the window's title would be: General, Connections, Theme, Usage, Sessions, Remora and About.</p></div>
     <div class="rule"><div class="n">02</div><h3>Groups are cards</h3><p>A group is a card on raised 1 under a section label. A row holds its label, one line of help and its control at the trailing edge, and rows divide by hairlines.</p></div>
-    <div class="rule"><div class="n">03</div><h3>One control family</h3><p>Switches, segments, menu pickers, steppers and buttons are the main window's: 26 high, the same radii, hover and focus ring. A risky choice asks first.</p></div>
+    <div class="rule"><div class="n">03</div><h3>One control family</h3><p>Switches, segments, menu pickers, steppers and buttons are the main window's: four heights, 24, 28, 32 and 36, the same radii, hover and focus ring. A risky choice asks first.</p></div>
     <div class="rule"><div class="n">04</div><h3>A tone is a cast</h3><p>Neutral, Warm and Cool shift every grey level of the window a few degrees, the sidebar and Settings included. Status, accent, project and mode colours stay as they are.</p></div>
     <div class="rule"><div class="n">05</div><h3>Glass is the sidebar's</h3><p>Glass draws the sidebar's canvas at 0.8 over the desktop's material. Solid is the default; nothing else is glass, and Reduce Transparency draws Solid.</p></div>
     <div class="rule"><div class="n">06</div><h3>About is quiet</h3><p>The app icon, the name and the version, then the facts in mono. The app icon sits above the facts, and nothing else is drawn on this page.</p></div>
@@ -18,10 +18,10 @@
   <section class="sec" id="settings">
     <div class="sechead"><span class="num">01</span><h2>Settings</h2>
       <p>The window at its real size. Switch the tabs and try the controls: the mode menu asks before Full access, the steppers and the checkboxes work, Remora's switch dims what depends on it, and About shows the facts beside the icon.</p></div>
-    <div class="stage"><div class="win" id="winB" data-w="680" data-h="520">
+    <div class="stage"><div class="win" id="winB" data-w="680" data-h="520" data-frame="settings">
       <div class="swin">
         <div class="stitle"><div class="lights"><i></i><i></i><i></i></div>
-          <nav class="stabs"><button class="itab on" data-stab="general">General</button><button class="itab" data-stab="connections">Connections</button><button class="itab" data-stab="theme">Theme</button><button class="itab" data-stab="usage">Usage</button><button class="itab" data-stab="sessions">Sessions</button><button class="itab" data-stab="remora">Remora</button><button class="itab" data-stab="about">About</button></nav>
+          <!--PART:settings-tabs-->
         </div>
 
         <!-- General -->
@@ -45,13 +45,7 @@
         </div>
 
         <!-- Connections -->
-        <div class="spane" data-stab="connections" hidden>
-          <div class="sbody">
-            <div class="scard">
-              <div class="srw"><div class="tx"><b>Connections</b><span class="hp">Each harness with its state, its switch and its setup. It is drawn on its own in this chapter's Connections frame (Ink v4), so it is not drawn twice here.</span></div></div>
-            </div>
-          </div>
-        </div>
+        <div class="spane" data-stab="connections" hidden><!--PART:connections--></div>
         <!-- Theme -->
         <div class="spane" data-stab="theme" hidden>
           <div class="sbody">
@@ -159,16 +153,7 @@
         </div>
 
         <!-- About -->
-        <div class="spane" data-stab="about" hidden>
-          <div class="about">
-            <div class="ahead"><span class="icon"><img src="<!--ICON-->" alt=""></span><h2>Sphyrna</h2><span class="ver">Version 1.6.0 (build 214, 371aaf6)</span></div>
-            <div class="scard">
-              <div class="srw"><div class="tx"><b>Data folder</b><span class="hp">Catalog, usage index and logs.</span></div><div class="ctl"><span class="path" title="~/Library/Application Support/Loom">~/Library/Application Support/Loom</span><button class="btn sec sm">Reveal</button></div></div>
-              <div class="srw"><div class="tx"><b>Claude profile</b><span class="hp">Where usage is read from. Read only.</span></div><div class="ctl"><span class="path">~/.claude</span></div></div>
-              <div class="srw"><div class="tx"><b>Diagnostics</b><span class="hp">A folder with versions, counts and Sphyrna's log. No session content.</span></div><div class="ctl"><button class="btn sec sm" data-act="diag">Collect Diagnostics…</button></div></div>
-            </div>
-          </div>
-        </div>
+        <!--PART:about-->
 
         <!-- the menus and the sheets of this window -->
         <div class="pop smenu" data-pop="modeMenu" data-place="below-right">
@@ -183,8 +168,8 @@
         <div class="pop smenu" data-pop="fontMenu" data-place="below-right" style="width:130px">
           <button class="mi" data-font="11">11 pt<span class="ck2"></span></button><button class="mi" data-font="12">12 pt<span class="ck2"></span></button><button class="mi" data-font="13">13 pt<span class="ck2"></span></button><button class="mi" data-font="14">14 pt<span class="ck2"></span></button><button class="mi" data-font="15">15 pt<span class="ck2"></span></button><button class="mi" data-font="16">16 pt<span class="ck2"></span></button><button class="mi" data-font="17">17 pt<span class="ck2"></span></button><button class="mi" data-font="18">18 pt<span class="ck2"></span></button><button class="mi" data-font="19">19 pt<span class="ck2"></span></button><button class="mi" data-font="20">20 pt<span class="ck2"></span></button>
         </div>
-        <div class="salert" data-alert="full"><div class="sheet"><h4>Start new sessions in Full access?</h4><p>Claude runs every tool without asking. Every new session starts in it until you change this. You can still pick another mode in a draft.</p><div class="sbtn"><span class="grow"></span><button class="btn sec focus" data-act="acancel">Cancel</button><button class="btn mtint" style="--mt:var(--m-full)" data-act="fconfirm">Use Full Access</button></div></div></div>
-        <div class="salert" data-alert="delete"><div class="sheet"><h4 data-role="dtitle">Delete 2 sessions?</h4><div class="sn" data-role="dnames">Try the old sidebar spacing, Rename the usage chip</div><p data-role="dlead">Sphyrna removes them from Sphyrna, and deletes Claude's local files for them. This can't be undone.</p><div class="sl"><span class="label">Removed</span><ul><li>The transcripts and the subagent transcripts</li><li>File snapshots and session folders</li></ul><p class="m" style="margin:5px 0 0 13px" data-role="dsize">203 files · 17.2 MB · in ~/.claude</p></div><div class="sl"><span class="label">Kept</span><ul><li>Your prompts in Claude's shared prompt history</li><li>Project files and worktrees</li><li>Anything already sent to Anthropic</li></ul></div><div class="sbtn"><span class="grow"></span><button class="btn sec focus" data-act="acancel">Cancel</button><button class="btn dtint" data-act="dconfirm">Delete Permanently</button></div></div></div>
+        <div class="salert" data-alert="full"><div class="sheet"><h4>Start new sessions in Full access?</h4><p>Claude runs every tool without asking. Every new session starts in it until you change this. You can still pick another mode in a draft.</p><div class="sbtn"><span class="grow"></span><button class="btn sec focus" data-act="acancel">Cancel</button><button class="btn out" style="--mt:var(--m-full)" data-act="fconfirm">Use Full Access</button></div></div></div>
+        <div class="salert" data-alert="delete"><div class="sheet"><h4 data-role="dtitle">Delete 2 sessions?</h4><div class="sn" data-role="dnames">Try the old sidebar spacing, Rename the usage chip</div><p data-role="dlead">Sphyrna removes them from Sphyrna, and deletes Claude's local files for them. This can't be undone.</p><div class="sl"><span class="label">Removed</span><ul><li>The transcripts and the subagent transcripts</li><li>File snapshots and session folders</li></ul><p class="m" style="margin:5px 0 0 13px" data-role="dsize">203 files · 17.2 MB · in ~/.claude</p></div><div class="sl"><span class="label">Kept</span><ul><li>Your prompts in Claude's shared prompt history</li><li>Project files and worktrees</li><li>Anything already sent to Anthropic</li></ul></div><div class="sbtn"><span class="grow"></span><button class="btn sec focus" data-act="acancel">Cancel</button><button class="btn dan" data-act="dconfirm">Delete Permanently</button></div></div></div>
       </div>
       <span class="pin" data-for=".stitle .lights" data-dx="22" data-dy="-15">A1</span>
       <span class="pin" data-for=".stabs .itab.on" data-at="r" data-dx="2" data-dy="-6">A2</span>
@@ -199,7 +184,7 @@
     </div></div>
     <ol class="legend">
       <li><b>A1</b>The window is 680×520 on the canvas, and it follows the appearance and the tone. Only the close button shows; ⌘, opens it on the section last shown, the usage chip on Usage.</li>
-      <li><b>A2</b>The sections are view tabs, underlined, in the 52 pt title band where the window's title would be: General, Theme, Usage, Sessions, Remora and About.</li>
+      <li><b>A2</b>The sections are view tabs, underlined, in the 52 pt title band where the window's title would be: General, Connections, Theme, Usage, Sessions, Remora and About.</li>
       <li><b>A3</b>A group is a card on raised 1 under a section label, 20 apart; the content has a 32 inset and scrolls under the band.</li>
       <li><b>A4</b>A row: the label in 13, one line of help in 12 secondary, and the control at the trailing edge, at least 48 high. A notice from macOS adds an attention line and its button.</li>
       <li><b>A5</b>A menu picker is a secondary button with the value and two chevrons. Its menu is the popover, with each mode's icon in its tone; Full access asks first.</li>
@@ -218,11 +203,11 @@
     <div class="ln" style="margin:0 0 18px 56px;display:flex;gap:10px;flex-wrap:wrap">
       <div class="seg" id="wallSeg"><button class="on" data-wall="bright">Bright wallpaper</button><button data-wall="dark">Dark wallpaper</button></div>
     </div>
-    <div class="stage"><div class="win desk" id="winA" data-w="1412" data-h="1020" data-wall="bright">
+    <div class="stage"><div class="win desk" id="winA" data-w="1440" data-h="1020" data-wall="bright" data-frame="desktop">
       <div class="wall"></div>
-      <div class="appwin i4grid" style="left:32px;top:36px;width:1080px;height:760px">
+      <div class="appwin i4grid" data-frame="app" data-w="1280" data-h="860" style="left:32px;top:36px;width:1280px;height:860px">
         <aside class="i4side" data-i4sel="ink" data-view="projects"></aside>
-        <main class="detail"><div class="tonepane"><p>The content keeps the canvas; Glass lets the desktop through the sidebar only.</p></div></main>
+        <main class="detail"><!--PART:session-header:work--><!--PART:session-tabs:work--><div class="dbody"><div class="main"><!--PART:terminal:work--></div></div></main>
         <footer class="i4status" data-i4status></footer>
       </div>
       <div class="setwin" style="left:700px;top:470px;width:680px;height:520px" data-settings-clone></div>
@@ -256,7 +241,7 @@
           <span>Buttons</span><div><button class="btn pri">Try Again</button><button class="btn sec">Reveal</button><button class="btn gh sm">Dismiss</button><button class="btn dan sm">Delete 2 Sessions</button><button class="btn sec" disabled>Collecting…</button><button class="lk2">Reset to Defaults</button></div>
         </div></div>
         <div class="pc2" style="display:flex;gap:28px;align-items:flex-start"><div data-clone="#winB [data-pop=modeMenu]"></div><p class="note" style="margin:0;max-width:420px">The menu picker's menu is the popover (§6 Menus): rows 28 with the pill, each mode with its icon in its tone, the chosen one checked. "Last used in the project" has no icon and sits above a separator. Full access asks first (below).</p></div>
-        <p class="note">Every control is the main window's (DESIGN §6 Controls): switches 28×16 in the accent when on; segments 26 with the chosen one raised; menu pickers and steppers with a strong hairline; buttons 26, radius 6, 12.5 medium; disabled at 38 %. A row's control sits at its trailing edge, centred on the row.</p>
+        <p class="note">Every control is the main window's (DESIGN §6 Controls): switches 32×18 in the accent when on; segments 32 with the chosen one raised; menu pickers and steppers 32 with the input edge; buttons 24/28/32/36, radius 8; disabled at 38 %. A row's control sits at its trailing edge, centred on the row.</p>
       </div>
       <div class="spec w6"><span class="label">A row with a notice</span>
         <div class="pc2"><div class="scard">
@@ -266,7 +251,7 @@
         <p class="note">Only where macOS says something is wrong: one line in the attention text under the help, and the button that opens the right place, before the switch.</p>
       </div>
       <div class="spec w6"><span class="label">Asking first</span>
-        <div class="sbox"><div class="sheet"><h4>Start new sessions in Full access?</h4><p>Claude runs every tool without asking. Every new session starts in it until you change this. You can still pick another mode in a draft.</p><div class="sbtn"><span class="grow"></span><button class="btn sec focus">Cancel</button><button class="btn mtint" style="--mt:var(--m-full)">Use Full Access</button></div></div></div>
+        <div class="sbox"><div class="sheet"><h4>Start new sessions in Full access?</h4><p>Claude runs every tool without asking. Every new session starts in it until you change this. You can still pick another mode in a draft.</p><div class="sbtn"><span class="grow"></span><button class="btn sec focus">Cancel</button><button class="btn out" style="--mt:var(--m-full)">Use Full Access</button></div></div></div>
         <p class="note">A risky choice asks in a sheet of §6's family: the question, what it means, then Cancel, which has the focus, and Use Full Access in the mode's own tone. Nothing is filled, so Return does nothing and Esc cancels. Picking Full access again while it is the default asks nothing.</p>
       </div>
       <div class="spec w6"><span class="label">The tones</span>
@@ -308,7 +293,7 @@
         <p class="note">Each row says what happened to it, and the heading becomes "Deletion results (3)". A row that failed stays, in the failure text.</p>
       </div>
       <div class="spec w6"><span class="label">Deleting</span>
-        <div class="sbox"><div class="sheet"><h4>Delete 2 sessions?</h4><div class="sn">Try the old sidebar spacing, Rename the usage chip</div><p>Sphyrna removes them from Sphyrna, and deletes Claude's local files for them. This can't be undone.</p><div class="sl"><span class="label">Removed</span><ul><li>The transcripts and the subagent transcripts</li><li>File snapshots and session folders</li></ul><p class="m" style="margin:5px 0 0 13px">203 files · 17.2 MB · in ~/.claude</p></div><div class="sl"><span class="label">Kept</span><ul><li>Your prompts in Claude's shared prompt history</li><li>Project files and worktrees</li><li>Anything already sent to Anthropic</li></ul></div><div class="sbtn"><span class="grow"></span><button class="btn sec focus">Cancel</button><button class="btn dtint">Delete Permanently</button></div></div></div>
+        <div class="sbox"><div class="sheet"><h4>Delete 2 sessions?</h4><div class="sn">Try the old sidebar spacing, Rename the usage chip</div><p>Sphyrna removes them from Sphyrna, and deletes Claude's local files for them. This can't be undone.</p><div class="sl"><span class="label">Removed</span><ul><li>The transcripts and the subagent transcripts</li><li>File snapshots and session folders</li></ul><p class="m" style="margin:5px 0 0 13px">203 files · 17.2 MB · in ~/.claude</p></div><div class="sl"><span class="label">Kept</span><ul><li>Your prompts in Claude's shared prompt history</li><li>Project files and worktrees</li><li>Anything already sent to Anthropic</li></ul></div><div class="sbtn"><span class="grow"></span><button class="btn sec focus">Cancel</button><button class="btn dan">Delete Permanently</button></div></div></div>
         <p class="note">Delete N Sessions is the destructive button in the footer, off until a row is checked. It asks with §6's Delete, for every checked session at once. Only Claude sessions are offered, and only rows that are still eligible are deleted, one by one.</p>
       </div>
     </div>

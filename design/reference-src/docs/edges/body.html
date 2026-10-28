@@ -22,9 +22,10 @@
       <div class="seg" id="homeSeg"><button class="on" data-h="first">First launch</button><button data-h="noclaude">No Claude</button><button data-h="quiet">Nothing needs you</button><button data-h="noclaude2">No Claude, with sessions</button><button data-h="quit">After a quit</button></div>
       <button class="btn sec sm" id="homeReplay">Replay</button>
     </div>
-    <div class="stage"><div class="win i4grid" id="winH" data-w="1280" data-h="760">
+    <div class="stage"><div class="win i4grid" id="winH" data-w="1280" data-h="860" data-frame="app">
       <aside class="i4side" data-role="side" data-view="projects"></aside>
       <main class="detail">
+        <!--PART:home-header-->
         <div class="hbody" data-role="home"></div>
       </main>
       <footer class="i4status" data-i4status></footer>
@@ -32,8 +33,8 @@
       <span class="pin" id="pinH5">H5</span><span class="pin" id="pinH6">H6</span><span class="pin" id="pinH7">H7</span><span class="pin" id="pinH8">H8</span><span class="pin" id="pinH9">H9</span><span class="pin" id="pinH10">H10</span>
     </div></div>
     <ol class="legend">
-      <li><b>H1</b>First launch: the app icon at 84 heads the message (D-77, DESIGN §9). The words are the app's as built; the code still draws the menu bar mark there.</li>
-      <li><b>H2</b>The first launch: the app icon, still, at 84 heads the message, and nothing is drawn behind it.</li>
+      <li><b>H1</b>First launch: the app icon at 84 heads the message, still, with no art behind it (D-102, DESIGN §9).</li>
+      <li><b>H2</b>The first-launch actions sit under the explanation: Add Project… is the main action; a new session opens a draft.</li>
       <li><b>H3</b>The sidebar says only "No projects yet.": Home holds the explanation and the button. Today it says "No sessions yet. Add a project folder to begin." in both views, also when projects exist.</li>
       <li><b>H4</b>New Codex Session is off, with "Codex comes in a later version" under it (D-69).</li>
       <li><b>H5</b>Without Claude, the attention triangle takes the icon's place, the title says what is missing, and Check Again takes New Claude Session's place. Add Project… stays the main action.</li>
@@ -76,26 +77,13 @@
       <div class="seg" id="recSeg" hidden><button class="on" data-r="ended">Not running</button><button data-r="away">Finished while away</button><button data-r="failed">Failed</button><button data-r="stopunv">Stop not verified</button><button data-r="problem">Problem</button><button data-r="unclear">Identity unclear</button><button data-r="unknown">State unknown</button></div>
       <button class="btn sec sm" id="endReset">Reset</button>
     </div>
-    <div class="stage"><div class="win i4grid" id="winE" data-w="1280" data-h="800">
+    <div class="stage"><div class="win i4grid" id="winE" data-w="1280" data-h="860" data-frame="app">
       <aside class="i4side" data-role="side" data-i4sel="ink" data-view="projects"></aside>
       <main class="detail" data-role="pane">
-        <header class="dhead">
-          <span class="hm claude md" title="Claude Code"></span><span class="dtitle">Port the sidebar to Ink tokens</span>
-          <span data-role="pill"></span>
-          <div class="end">
-            <span class="chip proj" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom<span class="sep"></span><span class="br"><span data-i="branch"></span>ui/ink-sidebar</span></span>
-            <span class="vline"></span>
-            <button class="ib" title="Inspector" data-i="side-r"></button>
-            <div class="cgroup" data-role="cgroup"></div>
-          </div>
-        </header>
+        <!--PART:session-header:ended-->
+        <!--PART:session-tabs:ended-->
         <div class="dbody"><div class="main">
-          <div class="tabbar">
-            <div class="tab on" style="--tone:var(--orchid)"><span class="pmark sm">L</span><span class="ind" data-role="tabmark"></span><span class="t">Port the sidebar to Ink tokens</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
-            <div class="tab" style="--tone:var(--orchid)"><span class="pmark sm">L</span><span class="ind" data-mark="attn"></span><span class="t">Review the gate failure</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
-            <div class="tab" style="--tone:var(--aqua)"><span class="pmark sm">S</span><span class="ind"></span><span class="t">Weekly vault maintenance</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
-            <button class="ib" data-i="plus" title="New tab"></button>
-          </div>
+
           <div class="ebody" data-role="body"></div>
         </div></div>
       </main>
@@ -138,24 +126,13 @@
       <button class="btn sec sm" id="banReset">Reset</button>
       <span class="hint">Click "+2" to open the stack. × closes a banner at once, and the next comes in over 200 ms.</span>
     </div>
-    <div class="stage"><div class="win i4grid" id="winB" data-w="1280" data-h="620">
+    <div class="stage"><div class="win i4grid" id="winB" data-w="1280" data-h="860" data-frame="app">
       <aside class="i4side" data-role="side" data-i4sel="ink" data-view="projects"></aside>
       <main class="detail" data-theme="dark">
-        <header class="dhead">
-          <span class="hm claude md" title="Claude Code"></span><span class="dtitle">Port the sidebar to Ink tokens</span>
-          <div class="end">
-            <span class="chip proj" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom<span class="sep"></span><span class="br"><span data-i="branch"></span>ui/ink-sidebar</span></span>
-            <span class="vline"></span>
-            <button class="ib" title="Inspector" data-i="side-r"></button>
-            <div class="cgroup"><button class="more" data-i="more" title="More"></button></div>
-          </div>
-        </header>
+        <!--PART:session-header:ended-->
+        <!--PART:session-tabs:ended-->
         <div class="dbody"><div class="main">
-          <div class="tabbar">
-            <div class="tab on" style="--tone:var(--orchid)"><span class="pmark sm">L</span><span class="ind"></span><span class="t">Port the sidebar to Ink tokens</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
-            <div class="tab" style="--tone:var(--orchid)"><span class="pmark sm">L</span><span class="ind" data-mark="attn"></span><span class="t">Review the gate failure</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
-            <button class="ib" data-i="plus" title="New tab"></button>
-          </div>
+
           <div class="tstack" data-role="stack"></div>
           <div class="endnote"><span class="tx">This session is not running.</span><span class="grow"></span><button class="btn sec">Show Details</button><button class="btn pri">Resume</button></div>
           <div class="term kept" data-role="kept"></div>
@@ -224,7 +201,7 @@
       <button class="btn sec sm" id="mbBanner">Show the Banner Again</button>
       <span class="hint mono" data-role="ax"></span>
     </div>
-    <div class="stage"><div class="win desk" id="winD" data-w="1280" data-h="600">
+    <div class="stage"><div class="win desk" id="winD" data-w="1440" data-h="1020" data-frame="desktop">
       <div class="wall"></div>
       <div class="mbar">
         <span class="mbt app">Finder</span><span class="mbt">File</span><span class="mbt">Edit</span><span class="mbt">View</span><span class="mbt">Go</span><span class="mbt">Window</span><span class="mbt">Help</span>

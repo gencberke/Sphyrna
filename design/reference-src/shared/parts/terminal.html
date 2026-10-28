@@ -1,0 +1,30 @@
+<div class="term ref-terminal" data-role="col" data-terminal-state="{{state}}"><span class="o"> ▐▛███▜▌</span>   <span class="b">Claude Code</span> <span class="d">v2.1.311</span>
+<span class="o">▝▜█████▛▘</span>  <span class="d">Opus 5.5 · Claude Max</span>
+<span class="o">  ▘▘ ▝▝</span>    <span class="d">~/Library/Caches/loom-v2/wt/ink</span>
+
+<span class="u">&gt; Port the sidebar rows to the Ink tokens: one status column,
+  the project's mark, the status as a word. Keep the branch.</span>
+
+<span class="w">⏺</span> I'll start with the card's three lines, then the five statuses.
+
+<span class="g">⏺</span> <span class="b">Read</span>(Sources/LoomCatalogUI/SidebarCard.swift)
+  <span class="d">⎿  Read 168 lines</span>
+
+<span class="g">⏺</span> <span class="b">Search</span>(pattern: "cardRowHeight", path: "Sources/LoomCatalogUI")
+  <span class="d">⎿  Found 3 files</span>
+
+<span class="g">⏺</span> <span class="b">Update</span>(Sources/LoomCatalogUI/SidebarCard.swift)
+  <span class="d">⎿  Updated SidebarCard.swift with 61 additions and 24 removals</span>
+      <span class="d">24</span> <span class="rm">-    static let stripeWidth: CGFloat = 3</span>
+      <span class="d">24</span> <span class="ad">+    static let cardRadius: CGFloat = 10</span>
+      <span class="d">25</span> <span class="ad">+    static let statusWord: Bool = true</span>
+
+<span class="g">⏺</span> <span class="b">Update</span>(Tests/LoomCatalogUITests/SidebarCardTests.swift)
+  <span class="d">⎿  Updated SidebarCardTests.swift with 46 additions and 2 removals</span>
+
+<span class="g">⏺</span> <span class="b">Bash</span>(scripts/check.sh --suite SidebarCardTests)
+  <span class="d" data-terminal-result>⎿  Running…</span>
+
+<span data-terminal-live><span class="o">✻</span> <span class="b">Threading…</span> <span class="d">(1m 12s · ↓ 3.4k tokens · esc to interrupt)</span></span>
+<span class="trule"></span><span class="u">&gt; </span><span class="cur"></span>
+<span class="trule"></span>  <span class="d">? for shortcuts</span>                                       <span class="d">Opus 5.5 · ui/ink-sidebar</span></div>

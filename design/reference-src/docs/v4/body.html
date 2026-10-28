@@ -75,13 +75,13 @@
             <h4>Discard this draft?</h4>
             <div class="i4shsub">Port the sidebar to Ink tokens</div>
             <p>The comments and the draft text are removed. This can't be undone.</p>
-            <div class="i4sfbtn"><button class="i4btn gh h32">Cancel</button><button class="i4btn dan h32">Discard</button></div>
+            <div class="i4sfbtn"><button class="i4btn gh h32">Cancel</button><button class="i4btn dan h36">Discard</button></div>
           </div>
           <div class="i4sheet">
             <h4>Rename session</h4>
             <div class="i4shsub">Remora spike S10</div>
             <div class="i4fld" style="margin-top:12px"><span class="i4val">Remora spike S10 · round 2</span></div>
-            <div class="i4sfbtn"><button class="i4btn gh h32">Cancel</button><button class="i4btn pri h32">Save</button></div>
+            <div class="i4sfbtn"><button class="i4btn gh h32">Cancel</button><button class="i4btn pri h36">Save</button></div>
           </div>
         </div>
         <p class="note">420 wide. Cancel is first and ghost; the one neutral fill is the default, and only a sheet that saves has one (Save). A sheet that removes has no default: its button is Destructive (the red fill), the focus starts on Cancel, and Return does nothing there. Esc backs out in every sheet.</p>
@@ -199,11 +199,11 @@
     <div class="i4duo">
       <div>
         <div class="i4cap"><b>Projects</b><span>the card carries its status, its title and its branch</span></div>
-        <div class="stage"><div class="win i4cropwin" data-w="300" data-h="880"><aside class="i4side" data-i4side="ink" data-i4sel="ink" data-i4hover="1" data-view="projects"></aside></div></div>
+        <div class="stage"><div class="win i4cropwin" data-w="280" data-h="834" data-crop="Sidebar only; the content pane and window-wide status bar are outside this crop" data-frame="crop"><aside class="i4side" data-i4side="ink" data-i4sel="ink" data-i4hover="1" data-view="projects"></aside></div></div>
       </div>
       <div>
         <div class="i4cap"><b>Activity</b><span>the same sessions, newest first, with the reason Sphyrna holds</span></div>
-        <div class="stage"><div class="win i4cropwin" data-w="300" data-h="880"><aside class="i4side" data-i4side="ink" data-i4sel="ink" data-view="activity"></aside></div></div>
+        <div class="stage"><div class="win i4cropwin" data-w="280" data-h="834" data-crop="Sidebar only; the content pane and window-wide status bar are outside this crop" data-frame="crop"><aside class="i4side" data-i4side="ink" data-i4sel="ink" data-view="activity"></aside></div></div>
       </div>
     </div>
     <ol class="legend">
@@ -222,60 +222,16 @@
   <section class="sec ink4" id="session">
     <div class="sechead"><span class="num">06</span><h2>The session window</h2>
       <p>The sidebar plane beside the canvas, the header (52), the tab row (36), the untouched terminal, the inspector's Overview and the status bar (26) under the whole window with its popover open.</p></div>
-    <div class="stage"><div class="win i4win" id="winS" data-w="1280" data-h="860">
+    <div class="stage"><div class="win i4win" id="winS" data-w="1280" data-h="860" data-frame="app">
       <div class="i4shell">
         <div class="i4body">
           <aside class="i4side" data-i4side="ink" data-i4sel="ink" data-view="projects"></aside>
           <main class="i4main">
-            <header class="i4h">
-              <span class="hm claude md" title="Claude Code"></span><span class="i4htitle">Port the sidebar to Ink tokens</span>
-              <span class="i4stt work"><span class="spin">⠋</span>Working <b>37s</b></span>
+            <!--PART:session-header:work-->
 
-              <div class="i4hend">
-                <span class="i4chip"><span class="i4pmark sm" style="--tone:var(--orchid)">L</span>loom<span class="i4sep"></span><span class="i4brn"><span data-i="branch"></span>ui/ink-sidebar</span></span>
-                <button class="i4ib model" title="Model"><span class="hm claude"></span>Opus 5.5<span data-i="chev-d" class="chv"></span></button><button class="i4ib model" title="Effort"><span data-i4i="effort"></span>High<span data-i="chev-d" class="chv"></span></button>
-                <span class="vline"></span>
-                <button class="i4ib on" data-i="side-r" title="Inspector"></button>
-                <div class="i4cgroup"><button><span class="stopsq"></span>Stop</button><span class="div"></span><button data-i="more" title="More"></button></div>
-              </div>
-            </header>
-            <div class="i4tabrow">
-              <div class="i4tab on" style="--tone:var(--orchid)"><span class="i4pmark sm">L</span><span class="i4tind"><span class="spin">⠋</span></span><span class="i4tt">Port the sidebar to Ink tokens</span><span class="i4tx"><span class="hm claude"></span><span class="i4x" data-i="x"></span></span></div>
-              <div class="i4tab" style="--tone:var(--orchid)"><span class="i4pmark sm">L</span><span class="i4tind"><i class="dot attn"></i></span><span class="i4tt">Review the gate failure</span><span class="i4tx"><span class="hm claude"></span><span class="i4x" data-i="x"></span></span></div>
-              <div class="i4tab" style="--tone:var(--aqua)"><span class="i4pmark sm">S</span><span class="i4tind"><i class="dot unv"></i></span><span class="i4tt">Thesis outline</span><span class="i4tx"><span class="hm codex"></span><span class="i4x" data-i="x"></span></span></div>
-              <button class="i4ib add" data-i="plus" title="New tab"></button>
-            </div>
+            <!--PART:session-tabs:work-->
             <div class="i4pane">
-              <div class="term i4term"><span class="o"> ▐▛███▜▌</span>   <span class="b">Claude Code</span> <span class="d">v2.1.300</span>
-<span class="o">▝▜█████▛▘</span>  <span class="d">Opus 5.5 · Claude Max</span>
-<span class="o">  ▘▘ ▝▝</span>    <span class="d">~/Library/Caches/loom-v2/wt/ink</span>
-
-<span class="u">&gt; Port the sidebar rows to the Ink tokens: one status column,
-  the project's mark, the status as a word. Keep the branch.</span>
-
-<span class="w">⏺</span> I'll start with the card's three lines, then the five statuses.
-
-<span class="g">⏺</span> <span class="b">Read</span>(Sources/LoomCatalogUI/SidebarCard.swift)
-  <span class="d">⎿  Read 168 lines</span>
-
-<span class="g">⏺</span> <span class="b">Search</span>(pattern: "cardRowHeight", path: "Sources/LoomCatalogUI")
-  <span class="d">⎿  Found 3 files</span>
-
-<span class="g">⏺</span> <span class="b">Update</span>(Sources/LoomCatalogUI/SidebarCard.swift)
-  <span class="d">⎿  Updated SidebarCard.swift with 61 additions and 24 removals</span>
-      <span class="d">24</span> <span class="rm">-    static let stripeWidth: CGFloat = 3</span>
-      <span class="d">24</span> <span class="ad">+    static let cardRadius: CGFloat = 10</span>
-      <span class="d">25</span> <span class="ad">+    static let statusWord: Bool = true</span>
-
-<span class="g">⏺</span> <span class="b">Update</span>(Tests/LoomCatalogUITests/SidebarCardTests.swift)
-  <span class="d">⎿  Updated SidebarCardTests.swift with 46 additions and 2 removals</span>
-
-<span class="g">⏺</span> <span class="b">Bash</span>(scripts/check.sh --suite SidebarCardTests)
-  <span class="d">⎿  Running…</span>
-
-<span class="o">✻</span> <span class="b">Threading…</span> <span class="d">(1m 12s · ↓ 3.4k tokens · esc to interrupt)</span>
-<span class="trule"></span><span class="u">&gt; </span><span class="cur"></span>
-<span class="trule"></span>  <span class="d">? for shortcuts</span>                                       <span class="d">Opus 5.5 · ui/ink-sidebar</span></div>
+              <!--PART:terminal-->
               <aside class="i4insp">
                 <div class="i4itabs">
                   <button class="i4itab on">Overview</button>
@@ -283,49 +239,14 @@
                   <button class="i4itab">Agents <span class="n">2</span></button>
                   <button class="i4itab">Side</button>
                 </div>
-                <div class="i4ipanel">
-                  <div class="i4icard">
-                    <div class="i4ilab"><span class="i4lab">Session</span></div>
-                    <dl class="i4facts">
-                      <dt>State</dt><dd><span class="i4stt work"><span class="spin">⠋</span>Working</span></dd>
-                      <dt>Started</dt><dd class="mono">14:02 today</dd>
-                      <dt>Harness</dt><dd>Claude Code <span class="mono">2.1.300</span></dd>
-                      <dt>Model</dt><dd>Opus 5.5 <span class="mono">· high</span></dd>
-                      <dt>Mode</dt><dd class="acc"><span data-i="shield"></span>Ask before edits</dd>
-                    </dl>
-                  </div>
-                  <div class="i4icard">
-                    <div class="i4ilab"><span class="i4lab">Context</span><span class="i4labr mono">38%</span></div>
-                    <div class="i4ctx"><svg viewBox="0 0 30 30" width="30" height="30"><circle cx="15" cy="15" r="12" fill="none" stroke="var(--line-2)" stroke-width="2.4"/><circle cx="15" cy="15" r="12" fill="none" stroke="var(--fg-2)" stroke-width="2.4" stroke-dasharray="28.7 75.4" transform="rotate(-90 15 15)" stroke-linecap="round"/></svg>
-                      <div><b>76.1K of 200K</b><span>tokens of the window</span></div></div>
-                  </div>
-                  <div class="i4icard">
-                    <div class="i4ilab"><span class="i4lab">Worktree</span></div>
-                    <dl class="i4facts">
-                      <dt>Project</dt><dd><span class="i4pmark sm" style="--tone:var(--orchid)">L</span>loom</dd>
-                      <dt>Branch</dt><dd class="mono">ui/ink-sidebar → main</dd>
-                      <dt>Folder</dt><dd class="mono ell">~/…/loom-v2/wt/ink</dd>
-                    </dl>
-                  </div>
-                  <div class="i4icard">
-                    <div class="i4ilab"><span class="i4lab">Agents</span><span class="i4labr mono">2 running</span></div>
-                    <div class="i4arow"><span class="i4stt work"><span class="spin">⠋</span></span><b>explorer</b><span>Map every sidebar token</span><em>2m</em></div>
-                    <div class="i4arow"><span class="i4stt work"><span class="spin">⠋</span></span><b>implementer</b><span>Port SidebarCard</span><em>now</em></div>
-                  </div>
-                </div>
+                <div class="i4ipanel"><!--PART:overview--></div>
               </aside>
             </div>
           </main>
         </div>
-        <footer class="i4status" data-i4status></footer>
+        <footer class="i4status" data-i4status data-usage-open="claude"></footer>
       </div>
-      <div class="i4stpop">
-        <div class="i4stph"><span class="hm claude"></span><b>Claude Code</b><span class="i4stpr">Read 17:20</span><button class="i4ib" data-i="x" title="Close"></button></div>
-        <div class="i4strow"><span class="k">5-hour window</span><span class="i4meter low"><i style="width:4%"></i></span><b class="low">4% left</b><span class="rs">resets 21:05</span></div>
-        <div class="i4strow"><span class="k">Weekly</span><span class="i4meter"><i style="width:38%"></i></span><b>38% left</b><span class="rs">resets Mon 10:00</span></div>
-        <div class="i4stpn">Claude Max · read from Claude Code's own usage, nothing asked of the model.</div>
-        <div class="i4stpf"><button class="i4btn out h28">Check Again</button><button class="i4btn gh h28">Open Usage</button><span class="sp"></span><span class="mono">17:20</span></div>
-      </div>
+
     </div></div>
     <ol class="legend">
       <li><b>1</b>The header says what this is and how it is doing (title, state) and what you can do with it at the trailing edge: the project chip, the model and effort, the inspector toggle and Stop | ⋯.</li>
@@ -343,13 +264,13 @@
       <p>Two chips side by side, each opening its own popover. The model chip opens the model panel: search, a rail of harness marks and every model grouped by harness. The effort chip opens a short menu with only the levels the chosen model offers; a model with none shows no effort chip.</p></div>
     <div class="i4mwrap">
       <div><div class="i4cap"><b>The model</b><span>from the model chip; the current model highlighted</span></div>
-        <div class="stage"><div class="win i4mstage" data-w="440" data-h="410" data-i4model="model"></div></div></div>
+        <div class="stage"><div class="win i4mstage" data-w="440" data-h="410" data-i4model="model" data-crop="Picker only; the surrounding app window is outside this crop" data-frame="crop"></div></div></div>
       <div><div class="i4cap"><b>Searching</b><span>across every harness that is on</span></div>
-        <div class="stage"><div class="win i4mstage" data-w="440" data-h="410" data-i4model="search"></div></div></div>
+        <div class="stage"><div class="win i4mstage" data-w="440" data-h="410" data-i4model="search" data-crop="Picker only; the surrounding app window is outside this crop" data-frame="crop"></div></div></div>
       <div><div class="i4cap"><b>The effort</b><span>from the effort chip: Opus 5.5's five levels</span></div>
-        <div class="stage"><div class="win i4mstage" data-w="470" data-h="264" data-i4model="effort"></div></div></div>
+        <div class="stage"><div class="win i4mstage" data-w="470" data-h="264" data-i4model="effort" data-crop="Picker only; the surrounding app window is outside this crop" data-frame="crop"></div></div></div>
       <div><div class="i4cap"><b>The effort follows the model</b><span>GPT-6.1 Sol offers three</span></div>
-        <div class="stage"><div class="win i4mstage" data-w="470" data-h="264" data-i4model="effort2"></div></div></div>
+        <div class="stage"><div class="win i4mstage" data-w="470" data-h="264" data-i4model="effort2" data-crop="Picker only; the surrounding app window is outside this crop" data-frame="crop"></div></div></div>
     </div>
     <ol class="legend">
       <li><b>1</b>The model panel is 412 wide at elevation 3. The rail is 44, marks only, in the list's order: Recent, the harnesses that are on, then the ones that are off or not found, dimmed under a hairline. It follows the list as it scrolls; the name and state are in the tooltip.</li>
@@ -363,22 +284,12 @@
   <section class="sec ink4" id="connections">
     <div class="sechead"><span class="num">08</span><h2>Settings → Connections</h2>
       <p>Five harnesses in five states: Ready, Not signed in, Not found, Off, and Update recommended. A row names the harness, says what it read and gives the one action that changes it. Sphyrna reads each CLI's own login and never writes one.</p></div>
-    <div class="stage"><div class="win i4win" id="winC" data-w="680" data-h="520">
-      <div class="swin i4swin">
+    <div class="stage"><div class="win i4win" id="winC" data-w="680" data-h="520" data-frame="settings">
+      <div class="swin" data-settings-start="connections" data-settings-example>
         <div class="stitle"><div class="lights"><i></i><i></i><i></i></div>
-          <nav class="stabs i4stabs"><button class="i4itab">General</button><button class="i4itab">Theme</button><button class="i4itab">Usage</button><button class="i4itab">Sessions</button><button class="i4itab">Remora</button><button class="i4itab on">Connections</button><button class="i4itab">About</button></nav>
+          <!--PART:settings-tabs-->
         </div>
-        <div class="sbody i4sbody">
-          <div class="i4ctop"><span class="i4lab">Harnesses</span><span class="i4csum">5 harnesses · 2 ready · 1 update</span><button class="i4btn gh h28"><span data-i="refresh"></span>Recheck All</button></div>
-          <div class="scard i4scard">
-            <div class="srw i4srw"><span class="hm claude md"></span><div class="tx"><b>Claude Code</b><span class="hp">Claude Max · ~/.claude · v2.1.300 · read just now</span></div><span class="i4cstate">Ready</span><button class="i4btn out h28">Manage</button></div>
-            <div class="srw i4srw"><span class="hm codex md"></span><div class="tx"><b>Codex</b><span class="hp">Found at /opt/homebrew/bin/codex · not signed in</span></div><span class="i4cstate dim">Not signed in</span><button class="i4btn out h28">Sign In…</button></div>
-            <div class="srw i4srw"><span class="i4blank lg"></span><div class="tx"><b>opencode</b><span class="hp">Not on this Mac. Sphyrna can use a path you choose.</span></div><span class="i4cstate dim">Not found</span><button class="i4btn out h28">Set Path…</button></div>
-            <div class="srw i4srw"><span class="i4blank lg"></span><div class="tx"><b>agy</b><span class="hp">Connected once, then off. Its sessions stay in the sidebar.</span></div><span class="i4cstate dim">Off</span><button class="i4btn out h28">Turn On</button></div>
-            <div class="srw i4srw"><span class="i4blank lg"></span><div class="tx"><b>pi</b><span class="hp">v0.9.2 · a newer CLI is installed; sessions keep this one.</span><span class="nt">Update recommended: v0.9.6 reads plan limits.</span></div><span class="i4cstate">Ready</span><button class="i4btn out h28">Update…</button></div>
-          </div>
-          <p class="i4snote">Sphyrna reads each CLI's own settings and login. It never writes one.</p>
-        </div>
+        <!--PART:connections-->
         <div class="sfoot i4sfoot"><span>Connections are read at launch and when you press Recheck All.</span><span class="sp"></span><span class="mono">17:20</span></div>
       </div>
     </div></div>
@@ -388,13 +299,13 @@
   <section class="sec ink4" id="pages">
     <div class="sechead"><span class="num">09</span><h2>The draft and Home</h2>
       <p>v4's type on the two pages that speak: the new-session question and Home's statement, 34 at weight 300. The composer is 680, radius 16, at elevation 2; the default action is the neutral fill.</p></div>
-    <div class="i4cap"><b>New session</b><span>the question, the folder, the composer and the one model chip</span></div>
-    <div class="stage"><div class="win i4win" id="winD" data-w="1280" data-h="820">
+    <div class="i4cap"><b>New session</b><span>the question, the folder, the composer and the model and effort chips</span></div>
+    <div class="stage"><div class="win i4win" id="winD" data-w="1280" data-h="860" data-frame="app">
       <div class="i4shell">
         <div class="i4body">
           <aside class="i4side" data-i4side="home" data-view="projects"></aside>
           <main class="i4main">
-            <header class="i4h bare"><span class="i4crumb"><b>loom</b> / new session</span><div class="i4hend"><button class="i4btn gh h28"><span data-i="clock"></span>9 sessions in loom</button></div></header>
+            <header class="dhead bare"><span class="i4crumb"><b>loom</b> / new session</span><div class="i4hend"><button class="i4btn gh h28"><span data-i="clock"></span>9 sessions in loom</button></div></header>
             <div class="i4draft" style="--tone:var(--orchid)">
               <h1 class="i4ask">What should we work on in <button class="i4pick">loom<span data-i="chev-d"></span></button>?</h1>
               <div class="i4folder"><span>~/Documents/github/loom</span><span>·</span><span>swarm/1</span><span>·</span><span>clean</span></div>
@@ -402,7 +313,7 @@
                 <textarea spellcheck="false">Port the sidebar to Ink v4: the card's three lines, the five status words, and the lifted plane.</textarea>
                 <div class="i4cbar">
                   <button class="i4cchip mode"><span data-i="shield"></span>Ask before edits</button>
-                  <button class="i4cchip"><span class="hm claude"></span>Opus 5.5<span data-i="chev-d" class="chv"></span></button><button class="i4cchip"><span data-i4i="effort"></span>High<span data-i="chev-d" class="chv"></span></button>
+                  <button class="i4cchip"><span class="hm claude"></span>Opus 5.5<span data-i="chev-d" class="chv"></span></button><button class="i4cchip"><span data-i="effort"></span>High<span data-i="chev-d" class="chv"></span></button>
                   <span class="sp"></span>
                   <span class="i4send"><span data-i="up"></span></span>
                 </div>
@@ -416,11 +327,12 @@
       </div>
     </div></div>
     <div class="i4cap" style="margin-top:34px"><b>Home</b><span>the statement at 34 / 300, the lists as cards, and the accounts in the bar</span></div>
-    <div class="stage"><div class="win i4win" id="winH" data-w="1280" data-h="840">
+    <div class="stage"><div class="win i4win" id="winH" data-w="1280" data-h="860" data-frame="app">
       <div class="i4shell">
         <div class="i4body">
           <aside class="i4side" data-i4side="home" data-view="projects"></aside>
           <main class="i4main">
+            <!--PART:home-header-->
             <div class="i4home">
               <div class="i4hero"><div class="i4eyebrow">tuesday 27 october · 09:12</div><h1>Three sessions are working. <em>One needs you.</em></h1><p><b>3</b> working · <b>1</b> needs you · <b>6</b> sessions today</p></div>
               <div class="i4hcols">

@@ -5,8 +5,6 @@
    ============================================================ */
 
 // The model and the effort (06): two chips, the model panel and the effort menu, drawn four ways from one list.
-ICON.effort = '<path d="M8 3.6v9"/><path d="M8 3.6C7.6 2.7 6.6 2.3 5.7 2.6c-.8.2-1.3.9-1.4 1.6-.9.2-1.6 1-1.6 2 0 .4.1.8.3 1.1-.6.4-.9 1-.9 1.7 0 .9.6 1.7 1.4 2 0 1 .8 1.8 1.8 1.9.9.1 1.7-.3 2.1-1.1"/><path d="M8 3.6c.4-.9 1.4-1.3 2.3-1 .8.2 1.3.9 1.4 1.6.9.2 1.6 1 1.6 2 0 .4-.1.8-.3 1.1.6.4.9 1 .9 1.7 0 .9-.6 1.7-1.4 2 0 1-.8 1.8-1.8 1.9-.9.1-1.7-.3-2.1-1.1"/><path d="M5.6 6.3c.8 0 1.5.5 1.6 1.3M10.4 6.3c-.8 0-1.5.5-1.6 1.3"/>';
-$$('[data-i4i]').forEach(el => el.innerHTML = svg(el.dataset.i4i));
 const I4_LEVEL_NOTE = { Low:'Quick edits, least thinking', Medium:'Everyday work', High:'Harder problems', 'Extra high':'Long agentic runs', Max:'Thinks as long as it needs' };
 const I4_LEVELS = ['Low', 'Medium', 'High', 'Extra high', 'Max'];
 const I4_MODELS = [

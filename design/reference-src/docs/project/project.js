@@ -93,7 +93,6 @@ const placeOpen = () => $$('.win .pop.open[data-place^=below]').forEach(pop => {
 // The shared listener opens a popover; this one puts it under the control that opened it.
 document.addEventListener('click', e => { if (e.target.closest('[data-open]')) placeOpen(); });
 
-/* ---------- the one model chip: models by harness, the effort under them ---------- */
 /* ---------- the project's colour, from the menu ---------- */
 const TONE = { rose: 'Rose', orchid: 'Orchid', aqua: 'Aqua', mint: 'Mint', sage: 'Sage', lemon: 'Lemon', none: 'None' };
 function setTone(sw) {

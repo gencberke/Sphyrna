@@ -17,69 +17,21 @@
   <!-- ================= 01 THE CHANGES TAB ================= -->
   <section class="sec" id="changes">
     <div class="sechead"><span class="num">01</span><h2>The Changes tab</h2>
-      <p>The session's own terms come first: what Claude edited in the last turn or in the whole session. Then comes the branch against main, which git reads. Switch the scope, open a file, and comment: hover a line for the "+", or click the line. Send to Claude sends the comments as your next message, and the chat shows it. The window is 1440 wide, so the chat keeps 624 beside the inspector. At 1280, the inspector draws over the chat.</p></div>
+      <p>The session's own terms come first: what Claude edited in the last turn or in the whole session. Then comes the branch against main, which git reads. Switch the scope, open a file, and comment: hover a line for the "+", or click the line. Send to Claude sends the comments as your next message, and the terminal shows it. The window is 1440 wide, so the terminal keeps 604 beside the inspector. At 1280, the inspector draws over the terminal.</p></div>
     <div class="pbar">
       <button class="btn sec sm" id="chReset">Reset</button>
       <span class="grp"><span class="label">Window</span><span class="seg" id="chWidth"><button class="on" data-w="1440">1440</button><button data-w="1280">1280</button></span></span>
       <span class="hint">Try a comment, then Send to Claude. Branch reads git first.</span>
     </div>
-    <div class="stage"><div class="win i4grid" id="winC" data-w="1440" data-h="960">
+    <div class="stage"><div class="win i4grid" id="winC" data-w="1440" data-h="860" data-frame="app">
       <aside class="i4side" data-i4sel="ink" data-i4idle="ink" data-view="projects"></aside>
       <main class="detail">
-        <header class="dhead">
-          <span class="hm claude md" title="Claude Code"></span><span class="dtitle">Port the sidebar to Ink tokens</span>
-          <span class="state idle" data-role="state">Ready</span>
-          <div class="end">
-            <span class="chip proj" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom<span class="sep"></span><span class="br"><span data-i="branch"></span>ui/ink-sidebar</span></span>
-            <span class="vline"></span>
-            <button class="ib on" title="Inspector" data-i="side-r"></button>
-            <div class="cgroup"><button><span class="stopsq"></span>Stop</button><span class="div"></span><button class="more" data-i="more" title="More"></button></div>
-          </div>
-        </header>
+        <!--PART:session-header:ready-->
+        <!--PART:session-tabs:ready-->
         <div class="dbody">
           <div class="main">
-            <div class="tabbar">
-              <div class="tab on" style="--tone:var(--orchid)"><span class="pmark sm">L</span><span class="ind"></span><span class="t">Port the sidebar to Ink tokens</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
-              <div class="tab" style="--tone:var(--orchid)"><span class="pmark sm">L</span><span class="ind" data-mark="attn"></span><span class="t">Review the gate failure</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
-              <button class="ib" data-i="plus" title="New tab"></button>
-            </div>
-            <div class="chat" data-view="normal">
-              <div class="scroller"><div class="col" data-role="col">
-                <div class="marker">Session started · Opus 5.5 · high · Ask before edits · ui/ink-sidebar</div>
-                <div class="you">
-                  <div class="bubble">Port the sidebar rows to the Ink tokens: one status column, 28 pt rows, the project as its mark. Keep the pill. Run the sidebar tests after.</div>
-                  <div class="you-foot"><span class="tm">14:02</span><button class="ib sm" title="Copy" data-i="copy"></button><button class="lk2" data-act="rewind" data-i="rewind">Rewind Files to Before This Message</button></div>
-                </div>
-                <div class="tfold">
-                  <div class="foldrow" role="button"><span class="cv" data-i="chev-r"></span>Worked for <span class="mono">4m 12s</span> · changed 4 files and ran 2 commands</div>
-                </div>
-                <div class="reply">
-                  <div class="prose">
-                    <p>The sidebar now reads the Ink tokens. Every row is 28 pt with one status column, the project shows as its mark, and the selected session takes its project's tint instead of grey.</p>
-                    <ul>
-                      <li><code>LoomTheme+Sidebar.swift</code> holds the new sizes. The two-row card's sizes and its 3 pt stripe are gone.</li>
-                      <li><code>SidebarRow</code> draws the status column, the mark and the tint.</li>
-                      <li><code>SidebarInkTests</code> covers the row height and the tint. Both pass.</li>
-                    </ul>
-                    <p>The subagent rows still draw the old guide. That's the next step, if you want it.</p>
-                  </div>
-                  <div class="reply-foot"><button class="lk2" data-i="copy">Copy</button><button class="lk2" data-i="term">Open in Terminal</button></div>
-                </div>
-                <div class="ccard" data-role="ccard"></div>
-              </div></div>
-              <div class="dock"><div class="dock-in">
-                <div class="composer">
-                  <textarea placeholder="Message Claude" aria-label="Message"></textarea>
-                  <div class="cbar">
-                    <button class="cchip" title="Attach, mention or run a command" data-i="plus"></button>
-                    <button class="cchip mode" style="--mt:var(--m-abe)"><span data-i="shield"></span><span>Ask before edits</span></button>
-                    <span class="grow"></span>
-                    <button class="cchip mdl" title="Model and effort"><span class="hm claude"></span><span>Opus 5.5</span><span class="eff">High</span><span class="cv" data-i="chev-d"></span></button>
-                    <button class="send" title="Send · return"><span data-i="up"></span></button>
-                  </div>
-                </div>
-              </div></div>
-            </div>
+
+            <!--PART:terminal:ready-->
           </div>
           <aside class="insp" data-insp="C" data-tab="ch"></aside>
         </div>
@@ -97,7 +49,7 @@
       <li><b>C6</b>Writing. The box says "Your comment · line 18" on the accent wash. Return adds the comment, Shift-Return makes a new line, and Esc cancels. Add Comment stays off while the box is empty.</li>
       <li><b>C7</b>A saved comment shows under its line, with Edit and Remove. The file's row counts it: "· 1 comment".</li>
       <li><b>C8</b>The footer shows while the scope has comments: "N comments in M files", Discard, and Send to Claude. The button is absent for a stopped session. After a send the comments stay until you discard them, and a refused send keeps them.</li>
-      <li><b>Width</b>At 1280 with the sidebar open, the chat would keep 464 beside 556, which is under 480. So the inspector draws over the chat on the popover surface, no wider than the pane (DESIGN §13). Try the Window switch above.</li>
+      <li><b>Width</b>At 1280 with the sidebar open, the terminal would keep 444 beside 556, which is under 480. So the inspector draws over the terminal on the popover surface, no wider than the pane (DESIGN §13). Try the Window switch above.</li>
       <li><b>Reads</b>The tab reads only while it is open: when it opens, when a turn ends, and when the scope changes. It never reads on a timer. Comment drafts are kept per session and per scope until Sphyrna quits.</li>
     </ol>
   </section>
@@ -169,59 +121,15 @@
       <span class="grp"><span class="label">Transcript</span><span class="seg" id="agWidth"><button class="on" data-aw="556">at 556</button><button data-aw="328">at 328, as built</button></span></span>
       <span class="grp"><span class="label">Voice</span><span class="seg" id="agVoice"><button class="on" data-voice="two">Two voices</button><button data-voice="mono">All mono, as built</button></span></span>
     </div>
-    <div class="stage"><div class="win i4grid" id="winG" data-w="1440" data-h="960">
+    <div class="stage"><div class="win i4grid" id="winG" data-w="1440" data-h="860" data-frame="app">
       <aside class="i4side" data-i4sel="ink" data-view="projects"></aside>
       <main class="detail">
-        <header class="dhead">
-          <span class="hm claude md" title="Claude Code"></span><span class="dtitle">Port the sidebar to Ink tokens</span>
-          <span class="state attn"><i class="dot attn"></i>Needs approval</span>
-          <div class="end">
-            <span class="chip proj" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom<span class="sep"></span><span class="br"><span data-i="branch"></span>ui/ink-sidebar</span></span>
-            <span class="vline"></span>
-            <button class="ib on" title="Inspector" data-i="side-r"></button>
-            <div class="cgroup"><button><span class="stopsq"></span>Stop</button><span class="div"></span><button class="more" data-i="more" title="More"></button></div>
-          </div>
-        </header>
+        <!--PART:session-header:work-->
+        <!--PART:session-tabs:work-->
         <div class="dbody">
           <div class="main">
-            <div class="tabbar">
-              <div class="tab on" style="--tone:var(--orchid)"><span class="pmark sm">L</span><span class="ind" data-mark="attn"></span><span class="t">Port the sidebar to Ink tokens</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
-              <div class="tab" style="--tone:var(--orchid)"><span class="pmark sm">L</span><span class="ind" data-mark="attn"></span><span class="t">Review the gate failure</span><span class="tx"><span class="hm claude"></span><span class="x" data-i="x"></span></span></div>
-              <button class="ib" data-i="plus" title="New tab"></button>
-            </div>
-            <div class="chat" data-view="normal">
-              <div class="scroller"><div class="col">
-                <div class="you">
-                  <div class="bubble">Now the subagent rows: one branch per row, and the last one curves. A subagent's own subagents branch one step further.</div>
-                  <div class="you-foot"><span class="tm">14:31</span><button class="ib sm" title="Copy" data-i="copy"></button></div>
-                </div>
-                <div class="witem think open"><div class="wrow"><span class="wi"><span class="ast">✻</span></span>Thought for <span class="ar">6s</span><span class="tm">14:31</span><span class="cv" data-i="chev-r"></span></div>
-                  <div class="wbody tb">The guide has to run on for every ancestor that still has a sibling below, so it belongs to each row and not to the list.</div></div>
-                <div class="prose"><p>I'll have one explorer check the tree colour's contrast while an implementer draws the branch shape. Two smaller ones map the offsets and the tests first.</p></div>
-                <div class="agents" data-role="agcard"></div>
-              </div></div>
-              <div class="dock"><div class="dock-in">
-                <div class="pinned" data-role="pinned">
-                  <div class="pcard" data-card="approval">
-                    <div class="pc-h"><span class="dot attn"></span>Allow this edit?<span class="pc-kind">implementer · Edit</span></div>
-                    <div class="pc-cmd">Sources/LoomCatalogUI/SubagentRow.swift  <span class="add">+24</span> <span class="del">−9</span></div>
-                    <div class="pc-says"><b>implementer:</b> Draw each branch inside its row, so it scrolls with it</div>
-                    <div class="pc-why">Edits ask first in Ask before edits</div>
-                    <div class="pc-acts"><span class="grow"></span><button class="btn sec">Deny</button><button class="btn sec">Allow Once</button><button class="btn sec">Allow for This Session</button></div>
-                  </div>
-                </div>
-                <div class="composer">
-                  <textarea placeholder="Message Claude; it reads it after the current step" aria-label="Message"></textarea>
-                  <div class="cbar">
-                    <button class="cchip" title="Attach, mention or run a command" data-i="plus"></button>
-                    <button class="cchip mode" style="--mt:var(--m-abe)"><span data-i="shield"></span><span>Ask before edits</span></button>
-                    <span class="grow"></span>
-                    <button class="cchip mdl" title="Model and effort"><span class="hm claude"></span><span>Opus 5.5</span><span class="eff">High</span><span class="cv" data-i="chev-d"></span></button>
-                    <button class="send stop" title="Interrupt · esc"><span class="sq"></span></button>
-                  </div>
-                </div>
-              </div></div>
-            </div>
+
+            <!--PART:terminal-->
           </div>
           <aside class="insp" data-insp="G" data-tab="ag"></aside>
         </div>
@@ -283,25 +191,13 @@
   <section class="sec" id="sheets">
     <div class="sechead"><span class="num">04</span><h2>The sheets</h2>
       <p>Every question Sphyrna asks before it changes something, drawn as one family. The window shows Delete over its scrim. Below it, each sheet is live: click into one and press Return, Esc or Tab, and the line under it says what the keys did. Filled means Return: only Rename, which saves, has a filled default. Delete, Remove, Discard and Rewind tint their button, and the focus starts on Cancel.</p></div>
-    <div class="stage"><div class="win i4grid" id="winS" data-w="1280" data-h="680">
+    <div class="stage"><div class="win i4grid" id="winS" data-w="1280" data-h="860" data-frame="app">
       <aside class="i4side" data-i4sel="ink" data-i4idle="ink" data-view="projects"></aside>
       <main class="detail">
-        <header class="dhead">
-          <span class="hm claude md" title="Claude Code"></span><span class="dtitle">Port the sidebar to Ink tokens</span>
-          <span class="state idle">Ready</span>
-          <div class="end">
-            <span class="chip proj" style="--tone:var(--orchid)"><span class="pmark sm">L</span>loom<span class="sep"></span><span class="br"><span data-i="branch"></span>ui/ink-sidebar</span></span>
-            <span class="vline"></span>
-            <button class="ib" title="Inspector" data-i="side-r"></button>
-            <div class="cgroup"><button><span class="stopsq"></span>Stop</button><span class="div"></span><button class="more" data-i="more" title="More"></button></div>
-          </div>
-        </header>
+        <!--PART:session-header:ready-->
+        <!--PART:session-tabs:ready-->
         <div class="dbody"><div class="main">
-          <div class="chat"><div class="scroller"><div class="col">
-            <div class="you"><div class="bubble">Port the sidebar rows to the Ink tokens: one status column, 28 pt rows, the project as its mark. Keep the pill. Run the sidebar tests after.</div></div>
-            <div class="tfold"><div class="foldrow"><span class="cv" data-i="chev-r"></span>Worked for <span class="mono">4m 12s</span> · changed 4 files and ran 2 commands</div></div>
-            <div class="reply"><div class="prose"><p>The sidebar now reads the Ink tokens. Every row is 28 pt with one status column, the project shows as its mark, and the selected session takes its project's tint instead of grey.</p></div></div>
-          </div></div></div>
+          <!--PART:terminal:ready-->
         </div></div>
       </main>
       <footer class="i4status" data-i4status></footer>
@@ -313,8 +209,8 @@
       <li><b>S1</b>A sheet comes down under the window's header, centred and 420 wide, on the popover surface, with its ring and shadow. Behind it, the window takes the scrim: black at 40 % in Ink, ink at 22 % in Paper.</li>
       <li><b>S2</b>The question is the title, in 14 semibold. The session's name sits under it in 13 medium, cut at two lines. Rewind puts the message there, in quotes.</li>
       <li><b>S3</b>Delete's facts in two short lists: what goes, under "Removed", and what stays, under "Kept". Today they are one paragraph that ends "This can't be undone.", then "Not removed: …". The words stay; only the shape changes.</li>
-      <li><b>S4</b>The focus starts on Cancel, so a stray Space does not delete either. Esc cancels, and Return does nothing.</li>
-      <li><b>S5</b>Delete Permanently is tinted in the failure tone, not filled: no filled button, no Return. The code still fills it red.</li>
+      <li><b>S4</b>The focus starts on Cancel, so a stray Space does not delete. Esc cancels; Return does nothing in a destructive or rewind confirmation.</li>
+      <li><b>S5</b>Delete Permanently uses the family's destructive fill, without a Return binding. Cancel stays neutral; only the neutral default role means Return.</li>
     </ol>
     <div class="parts" style="margin-top:34px">
       <div class="spec w6"><span class="label">Rename · a sheet that saves</span><div class="sbox"><div class="sheet" data-sheet="rename"></div></div><p class="keylog" data-log="rename">Return saves. Esc cancels.</p></div>
