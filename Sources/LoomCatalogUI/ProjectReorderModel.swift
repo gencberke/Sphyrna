@@ -66,7 +66,7 @@ final class ProjectReorderModel {
         refreshBlock(id)
     }
 
-    /// Another part of a project (its drafts, a card or the note) reported its frame; a part with no height is not in the list.
+    /// Another part of a project (a draft, a card or the note) reported its frame; a part with no height is not in the list.
     func measurePart(_ id: UUID, _ part: ProjectReorderPart, frame: CGRect) {
         guard frame.height > 0, frame.width > 0 else {
             forgetPart(id, part)

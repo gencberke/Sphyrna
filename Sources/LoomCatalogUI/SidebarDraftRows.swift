@@ -79,8 +79,16 @@ struct DraftRows: View {
         case project(UUID?)
     }
 
+    struct ReorderContext {
+        let model: ProjectReorderModel
+        let projectID: UUID
+        let index: Int
+        let order: [UUID]
+    }
+
     let model: CatalogModel
     var scope = Scope.all
+    var reorder: ReorderContext?
 
     /// The drafts a scope lists, newest first.
     static func drafts(in scope: Scope, of model: CatalogModel) -> [SessionDraft] {
@@ -96,8 +104,14 @@ struct DraftRows: View {
             if scope == .all { ActivityHeading(model: model, title: "Drafts", count: drafts.count, position: .first) }
             ForEach(drafts) { draft in
                 // The same draft is drawn by the activity view and by its project; each place is its own row.
-                DraftRow(model: model, draft: draft, showsProject: scope == .all)
-                    .id("\(scope == .all ? "all" : "project"):\(draft.id)")
+                let row = DraftRow(model: model, draft: draft, showsProject: scope == .all)
+                if let reorder {
+                    row.projectReorderPart(reorder.model, project: reorder.projectID, part: .draft(draft.id),
+                                           index: reorder.index, order: reorder.order)
+                        .id("project:\(draft.id)")
+                } else {
+                    row.id("\(scope == .all ? "all" : "project"):\(draft.id)")
+                }
             }
         }
     }

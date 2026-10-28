@@ -45,7 +45,7 @@ struct ProjectReorderLiftedOverlay: View {
     }
 }
 
-/// One part of a project's block in the project list (A1): a head, the drafts, a card or the note. It is a direct child of the
+/// One part of a project's block in the project list (A1): a head, a draft, a card or the note. It is a direct child of the
 /// list, so the list still builds its rows lazily. The part slides with its project's place (`index`) by one 150 ms movement
 /// (none under Reduce Motion), is hidden while its project is the one moved, and reports its frame for the gap. The frame is
 /// read outside the slide, so a slide never moves what is measured.

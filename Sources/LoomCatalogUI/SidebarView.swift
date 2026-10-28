@@ -170,7 +170,12 @@ struct HomeCountBadge: View {
 struct SidebarList: View {
     let model: CatalogModel
     /// The project view's live reorder (A1): one model for the drag, its measured blocks and the list's own scroll.
-    @State private var reorder = ProjectReorderModel()
+    @State private var reorder: ProjectReorderModel
+
+    init(model: CatalogModel, reorder: ProjectReorderModel? = nil) {
+        self.model = model
+        _reorder = State(initialValue: reorder ?? ProjectReorderModel())
+    }
 
     // The scroll content is at least as tall as the list, so the empty area below short content
     // belongs to the content and its context menu (a menu on the ScrollView itself is not hit there).
@@ -334,8 +339,8 @@ struct ProjectList: View {
                 .padding(.top, topGap)
                 .projectReorderPart(reorder, project: project.id, part: .head, index: index, order: order, topGap: topGap)
             if !project.collapsed {
-                DraftRows(model: model, scope: .project(project.id))
-                    .projectReorderPart(reorder, project: project.id, part: .drafts, index: index, order: order)
+                DraftRows(model: model, scope: .project(project.id),
+                          reorder: .init(model: reorder, projectID: project.id, index: index, order: order))
                 ForEach(list.rows) { row in
                     SessionListEntry(row: row, model: model)
                         .projectReorderPart(reorder, project: project.id, part: .session(row.id), index: index, order: order)
