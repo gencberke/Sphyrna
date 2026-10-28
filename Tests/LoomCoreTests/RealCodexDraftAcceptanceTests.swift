@@ -139,6 +139,8 @@ private struct RealAcceptanceEvidence: Encodable {
     var reservationTime: Date? = nil
     var identityTime: Date? = nil
     var approvalTime: Date? = nil
+    var approvalParameterKeys: [String] = []
+    var approvalNonNullExtraKeys: [String] = []
     var inputObservedTime: Date? = nil
     var sessionID: String? = nil
     var serverPID: Int32? = nil
@@ -280,11 +282,6 @@ struct RealCodexDraftAcceptanceTests {
             result.observedProcesses = firstWitness.identities.sorted { $0.pid < $1.pid }
             result.firstSocket = firstWitness.requested
             result.firstHashedSocket = firstWitness.hashed
-            result.phase = "effective-settings"
-            let settings = try await client.request(method: "thread/resume",
-                params: .object(["threadId": .string(threadID), "excludeTurns": .bool(true)]), timeout: 12)
-            try Self.requireSafeSettings(settings, threadID: threadID, cwd: value.work.path)
-            result.settingsResult = "verified-after-identity"
             try requireAcceptance(lstat(marker.path, &markerInfo) != 0 && errno == ENOENT, "write-before-approval")
             result.phase = "approval"
             let deadline = ProcessInfo.processInfo.systemUptime + 60
@@ -297,6 +294,10 @@ struct RealCodexDraftAcceptanceTests {
                 try await Task.sleep(for: .milliseconds(100))
             } while ProcessInfo.processInfo.systemUptime < deadline
             guard let pending else { throw RealAcceptanceFailure("approval-not-observed") }
+            let allowed: Set<String> = ["threadId", "turnId", "itemId", "command", "cwd", "availableDecisions", "reason"]
+            let parameters = pending.request.params.object ?? [:]
+            result.approvalParameterKeys = parameters.keys.sorted()
+            result.approvalNonNullExtraKeys = parameters.filter { !allowed.contains($0.key) && $0.value != .null }.keys.sorted()
             try Self.requireExactApproval(pending, launch: launch, threadID: threadID, cwd: value.work.path, script: script)
             result.turnID = pending.request.params.object?["turnId"]?.string
             let published = await Self.waitUntil(5) {
@@ -325,6 +326,14 @@ struct RealCodexDraftAcceptanceTests {
             try requireAcceptance(latest.threadID == threadID && latest.lastTurnID == result.turnID &&
                                   latest.lastTurnOutcome == .completed &&
                                   latest.lastAssistantMessage == Self.completionMarker, "completion-message")
+            // A new TUI thread may have no rollout until this turn persists.
+            // The exact owned approval is safe independently of a pre-turn
+            // metadata read; verify the actual settings once persistence exists.
+            result.phase = "effective-settings"
+            let settings = try await client.request(method: "thread/resume",
+                params: .object(["threadId": .string(threadID), "excludeTurns": .bool(true)]), timeout: 12)
+            try Self.requireSafeSettings(settings, threadID: threadID, cwd: value.work.path)
+            result.settingsResult = "verified-after-first-prompt"
             let history = try await client.request(method: "thread/read", params: .object([
                 "threadId": .string(threadID), "includeTurns": .bool(true),
             ]), timeout: 12)
@@ -388,7 +397,9 @@ struct RealCodexDraftAcceptanceTests {
             }
             if let supervisor, (try? await supervisor.ownedProcesses().isEmpty) != true { result.cleanup = "failed-or-unknown" }
         }
-        if let bundleRoot { RunScopeLauncher.removeOwnedBundle(in: bundleRoot) }
+        if let bundleRoot, result.quitResult == "verified", result.cleanup != "failed-or-unknown" {
+            RunScopeLauncher.removeOwnedBundle(in: bundleRoot)
+        }
         if reservationConsumed, let inputs {
             do { try Self.writeEvidence(result, to: inputs.reservation.path + ".result.json") }
             catch { Issue.record("Real acceptance evidence could not be written") }
