@@ -1,11 +1,10 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-28, 11:53 +03.
-- **State:** `waiting for review`. B2 (`497a962`, `6601d5c`) and C3 (`365b2d2`, `175f0e2`) are integrated. Their slice
-  worktrees/branches and 3.5 GB scratch are removed after clean/patch-equivalence checks. No implementer is running.
-- **Where we left off:** B1b closes the shared v4 controls and focus-ring migration; the reference now reuses complete window
-  parts. The corrected off-screen pool is running (`check-20261028T114138-69249.log`). Its core source guard caught raw
-  harness comparisons in C3's icons/onboarding; after the batch, move those policies to descriptors and recheck their scope.
+- **Updated:** 2026-10-28, 12:13 +03.
+- **State:** `waiting for planning`. B2 and C3 are integrated and their pooled fixes are closed by `8e6fbf7`;
+  the final affected check passes 112 tests. No implementer or check is running.
+- **Where we left off:** v4 sidebar/cards and five-harness Connections/Home are complete. Next is B3, the status bar.
+  The corrected off-screen pool completed; its three failed tests were fixed and rechecked only in scope (D-90).
 - **Installed:** Sphyrna 1.7.2 (build 10702) in `/Applications/Loom.app`. The CLIs on this Mac: Claude Code 2.1.311,
   Codex 0.164.0, opencode 2.1.4, agy 1.4.5, pi 0.85.1.
 - **Public:** `0.4.4` is still the latest GitHub release. The tags `v1.6.0` to `v1.7.2` are local in the loom tree; their push
@@ -26,18 +25,21 @@
 | B2 | integrated (`497a962`, `6601d5c`) | v4 cards/search/headings, neutral selection, mark-aligned subagents, viewport-gated working time; scoped off-screen checks pass |
 | C3 | integrated (`365b2d2`, `175f0e2`) | five Connections rows, Home actions, all-id preferences/assets, fresh PATH and serialized health recheck, pending guard and blocked reasons; scoped checks pass |
 
-The table with the rest of 1.8.0 is in [plans/ACTIVE-PLAN.md](plans/ACTIVE-PLAN.md). Before B1b, `--tests` passed with C2b
-(365 + 1912). After integration, the planner's 7 affected suites pass **63 tests**:
-`~/Library/Caches/loom-check-logs/check-20261028T094326-36149.log`.
+The rest is in [plans/ACTIVE-PLAN.md](plans/ACTIVE-PLAN.md). The corrected off-screen `--tests` pool completed **3560 tests**
+(`check-20261028T114138-69249.log`), with three failed tests: raw catalogue comparisons, the old Home setup-block expectation,
+and a fixed-duration timer-test assumption under load. `8e6fbf7` moves mark/onboarding policies into descriptors, exercises the
+new Home copy action, and measures the timer's real observation interval. The final affected **112 tests pass** (25 core + 87 UI):
+`~/Library/Caches/loom-check-logs/check-20261028T120853-77355.log`. The full pool's original verdict stays FAIL; it was not repeated
+after scoped fixes (D-90). No remaining failure from that pool is open.
 
-B1b's full attempt (`check-20261028T090651-12245.log`) was stopped after discovering that the checker skipped individual
-window tests but not the serialized `WindowEventTests` namespace. Its harness-availability timeout passes in the scoped
-retry; its inspector failure led to a confirmed, fixed off-screen halo regression. The full run is **incomplete**.
-`bb8889b` fixes the window gate, with a failing-before/passing-after recording-Swift routing test. The full corrected run and
-the shown-window inspector check stay in the pool; no shown-window test runs without idle authorization.
+B1b's earlier full attempt (`check-20261028T090651-12245.log`) remains recorded as interrupted, not passed. The corrected pool
+above closes its pending off-screen run; the shown-window inspector/visual/VoiceOver/energy gates still need an idle Mac.
+No real CLI/model turn, package, install or shown-window check ran in this round.
 
-Reports: `~/Library/Caches/loom-v2/evidence/r9/b1b/REPORT.md` and `r9/reference-consistency/REPORT.md`. The reference's
-29 declared frames, 34 app appearances and both generated pages pass their checks; 36 frame screenshots are recorded.
+Reports: `~/Library/Caches/loom-v2/evidence/r9/b2/REPORT.md`, `c3/REPORT.md`, and `b2-c3/REPORT.md` (integration, pooled fixes,
+asset-stage proof and cleanup). Reference frames/marks remain shared; project-head type now matches the 13 pt native token
+(`fd700db`, 29-frame source guard PASS). The two slice worktrees/branches and 3.5 GB scratch were removed after clean/patch-equivalence
+checks; evidence remains.
 
 **The 28 Oct cleanup (D-107):** 83 branches whose work is in `v2` deleted (C2b's included), 8 worktrees and 17 GB of build scratch removed,
 the opencode setup and the prompt files moved to the Trash; the branch tips and 8 superseded branches' patches are in
@@ -48,7 +50,7 @@ as every check used it (swift-png 4.5.2).
 
 | Worktree | Branch | State |
 | --- | --- | --- |
-| `~/Library/Caches/loom-v2/wt/v2` | `v2` | Code checkpoint `175f0e2`; corrected off-screen pool running; source-guard fix pending |
+| `~/Library/Caches/loom-v2/wt/v2` | `v2` | Code checkpoint `8e6fbf7`; pooled fixes closed; 112 affected tests pass |
 | `~/Documents/github/loom-dev` | `swarm/1` | The docs mirror (its changes are `v2`'s docs copied over, by design); never build or commit here |
 | `~/Documents/github/loom` | `main` | The public release tree, a separate repository |
 
@@ -58,22 +60,22 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
 
 ## 3. File locks
 
-- **`@planner`:** canonical records and the pending descriptor-routing fix (HarnessDescriptor/Catalogue, ProviderIcon,
-  HomeConnect, affected tests). B2/C3 implementation locks are released; no implementer owns files. SidebarFooter stays for B3.
+- **`@planner`:** canonical records. B2/C3 and pooled-fix implementation locks are released; no active source locks.
+  SidebarFooter stays for B3.
 - **1.8.0:** each brief's write set. Shared by region: `CatalogModel.swift` (C4, D1, F1); `SidebarView.swift` (B2, B3);
   Settings files (C3, B5c, G1). `Package.swift` belongs to I1 alone.
 
 ## 4. Next actions by role
 
 - **`@planner`:**
-  1. Finish the corrected off-screen pool, fix C3's raw-comparison guard through descriptor metadata, and rerun only its
-     affected scope. Then B3, followed by C4; two slices at most at once.
+  1. Start B3 from its brief; FEEDBACK-7 Q7 takes its documented default when the slice starts if the user has not objected.
+     C4 follows; two slices at most at once. Keep P0/P1 behind explicit real-CLI permission and isolated sign-ins.
   2. Carry B1b's layout-bound control migrations to B5 (its report); do not reopen the shared family to change a surface layout.
-  3. At the pooled gate, use the corrected checker; rerun the full off-screen set and, in the authorized idle window, the
-     inspector handle test and the native visual/keyboard/VoiceOver checks. Do not call B1b's interrupted full run a pass.
+  3. Carry native visual/keyboard/VoiceOver, inspector/working-indicator window, real-CLI and energy/package checks to the
+     authorized idle gate. The corrected off-screen pool is done; do not repeat it merely because a scoped fix landed.
 - **`@user`:**
-  1. Q7–Q13 of [FEEDBACK-7](plans/FEEDBACK-7.md#decisions-open). Q7 (the status bar) is needed before B3; Q13 and the
-     isolated sign-ins before P0 and P1.
+  1. Optional answers/objections to Q7–Q12 of [FEEDBACK-7](plans/FEEDBACK-7.md#decisions-open); silent items take their
+     documented defaults at slice start. Q13 needs actual real-CLI permission and isolated sign-ins before P0/P1.
   2. Optional: object to the small calls taken at review (B1 and C2b's "Decisions taken" in their reports), such as hiding,
      not disabling, the sidebar's New session row when Claude cannot start.
   3. Still open from before: the push of `v1.6.0`–`v1.7.2` and the GitHub release; the Trash folders of 22, 25, 26 and 28 Oct.

@@ -34,8 +34,8 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 2 | C2 catalogue consumers | integrated `608266d` (one probe outcome, limits from the probe, efforts on the entries, no Peek singleton) |
 | 2 | C2b the catalogue reaches every list | integrated `175f653` (no `ModelCatalog.shared`; availability on `CatalogModel`; one startable rule; File, Dock, Home, sidebar and menu bar follow the switch and the CLI); its follow-ups are in C3's brief |
 | 2 | B2 sidebar and card | integrated `497a962` + `6601d5c`; off-screen layout/selection, viewport clock, rest render and accessibility checks pass |
-| 2 | C3 Connections and Home connect cards | integrated `365b2d2` + `175f0e2`, parent seams `425878a`, `c84572b`, `1d4326d`; 9 core + 76 UI scoped tests pass; pooled source-guard fix pending |
-| 2 | B3 status bar | queued after B2 and C3 |
+| 2 | C3 Connections and Home connect cards | integrated `365b2d2` + `175f0e2`, parent seams `425878a`, `c84572b`, `1d4326d`; 9 core + 76 UI scoped tests pass; pooled guard/expectation fixes closed by `8e6fbf7` (112 affected tests PASS) |
+| 2 | B3 status bar | next; B2/C3 integrated; Q7 takes its documented default at slice start if unchanged |
 | 3 | C4 neutral draft · B4 model and effort pickers · D1 Codex sessions · D2 Codex reader and deletion · B5a/b/c surfaces | queued |
 | 4 | E1 opencode · E2 agy · E3 pi · F1 send · F2 Changes → session · G1 Remora backends · H1 usage · I1 names | queued |
 | 5 | Z the gate, the optimizer, the release | planner |
@@ -45,13 +45,13 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 - **Reference consistency is closed** (28 Oct): shared session chrome and harness marks, terminal, Overview, Connections, Settings tabs and
   About; one complete-app frame rule and labelled crops (DESIGN §1). Source guard, Ink/Paper geometry and browser flows pass;
   evidence is in `~/Library/Caches/loom-v2/evidence/r9/reference-consistency/REPORT.md`.
-- **B1b's validation pool:** its full `--tests` attempt was interrupted after the window skip-list gap was found. The checker
-  now excludes the whole `WindowEventTests` namespace (`bb8889b`). The harness timeout passes in a scoped retry; the confirmed
-  invisible-halo/inspector regression is fixed and checked off screen. Rerun the corrected full off-screen set at the pool and
-  the actual inspector resize/window test in the authorized idle window; keep the partial log marked incomplete.
-- **B2/C3 pool (28 Oct):** the corrected off-screen `--tests` run is in progress at
-  `~/Library/Caches/loom-check-logs/check-20261028T114138-69249.log`. Core's catalogue guard caught C3's raw icon/onboarding
-  comparisons; move those presentation policies into descriptors after the batch, then recheck only that scope (D-90).
+- **Corrected off-screen pool (28 Oct):** completed at `175f0e2` in
+  `~/Library/Caches/loom-check-logs/check-20261028T114138-69249.log`: 3560 tests, three failed tests (raw catalogue comparisons,
+  old Home setup-block expectation, fixed-duration elapsed-test bound). `8e6fbf7` closes them; the affected check passes
+  **112 tests** at `check-20261028T120853-77355.log`. The original full verdict remains FAIL; only scope was rerun (D-90).
+  B1b's earlier interrupted full run is historical, never a pass. Native window/visual/VoiceOver/energy gates remain pending.
+- **C3's later seams:** agy's verified install command waits for P1; starting opencode/agy/pi waits for E1–E3. Connections
+  records availability/preferences now, and deliberately makes no unsupported-engine or sign-in claim.
 - **The by-hand checks waiting for the gate:** A1's drag in the dev app (lift, slide, landing, Escape); the v4 look in
   evidence-mode screenshots after B1b (Home, a session with the inspector, Settings, a sheet; Ink and Paper).
 
