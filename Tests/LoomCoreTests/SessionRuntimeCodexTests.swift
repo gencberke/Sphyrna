@@ -79,6 +79,67 @@ struct SessionRuntimeCodexTests {
             .split(separator: "\n").map(String.init)
     }
 
+    @Test func bootstrapJoinExcludesTurnsInsteadOfLoadingTheHistory() async throws {
+        let context = try await SessionRuntimeTests.makeContext()
+        defer { context.cleanup() }
+        let (launch, _) = try await Self.launchCodex(context)
+        #expect(await SessionRuntimeTests.waitUntil { joinLog(context).contains { $0.hasPrefix("joined ") } })
+        let joins = joinLog(context).filter { $0.hasPrefix("join ") }
+        #expect(joins.count == 1 && joins[0].hasSuffix(" excludeTurns,threadId"))
+        #expect(try await context.runtime.stopConversation(sessionID: launch.sessionID).succeeded)
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test func stopAndQuitDoNotRemoveAReplacedSocketPath() async throws {
+        let context = try await SessionRuntimeTests.makeContext()
+        defer { context.cleanup() }
+        let (launch, _) = try await Self.launchCodex(context)
+        let entries = try FileManager.default.contentsOfDirectory(at: context.socketDirectory,
+            includingPropertiesForKeys: nil).filter { $0.lastPathComponent.hasPrefix("c-") }
+        let path = try #require(entries.first)
+        try FileManager.default.removeItem(at: path)
+        try "foreign replacement".write(to: path, atomically: true, encoding: .utf8)
+        let stop = try await context.runtime.stopConversation(sessionID: launch.sessionID)
+        #expect(!stop.succeeded)
+        #expect((try? String(contentsOf: path, encoding: .utf8)) == "foreign replacement")
+        let quit = await context.runtime.shutdown()
+        #expect(!quit.succeeded)
+        #expect((try? String(contentsOf: path, encoding: .utf8)) == "foreign replacement")
+    }
+
+    @Test func anAbnormalServerExitRemovesOnlyItsVerifiedUnboundSocket() async throws {
+        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: ["LOOM_FAKE_CODEX_LEAVE_SOCKET": "1"])
+        defer { context.cleanup() }
+        let (launch, _) = try await Self.launchCodex(context)
+        let entries = try FileManager.default.contentsOfDirectory(at: context.socketDirectory,
+            includingPropertiesForKeys: nil).filter { $0.lastPathComponent.hasPrefix("c-") }
+        let path = try #require(entries.first)
+        #expect(FileManager.default.fileExists(atPath: path.path))
+        #expect(try await context.runtime.stopConversation(sessionID: launch.sessionID).succeeded)
+        #expect(!FileManager.default.fileExists(atPath: path.path))
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test(arguments: [false, true])
+    func quitCleansAnAbnormalServerSocketAfterTheTUIStops(active: Bool) async throws {
+        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: ["LOOM_FAKE_CODEX_LEAVE_SOCKET": "1"])
+        defer { context.cleanup() }
+        let (launch, screen) = try await Self.launchCodex(context)
+        try await screen.send(active ? "work 10000" : "work 5")
+        if active {
+            #expect(await SessionRuntimeTests.waitUntil { await context.events.snapshot().sessions[launch.sessionID]?.status?.activity == .working })
+        } else {
+            #expect(await screen.contains("CODEX-TURN-DONE completed echo work 5"))
+        }
+        let path = try #require(try FileManager.default.contentsOfDirectory(at: context.socketDirectory,
+            includingPropertiesForKeys: nil).first { $0.lastPathComponent.hasPrefix("c-") })
+        let result = await context.runtime.shutdown()
+        if !result.succeeded { print("Abnormal socket Quit errors: \(result.errors)") }
+        #expect(result.succeeded)
+        #expect(!FileManager.default.fileExists(atPath: path.path))
+        #expect(await context.supervisor.runContext(runID: launch.runID) == nil)
+    }
+
     @Test(arguments: ["wrong", "missing", "error"])
     func failedJoinIsVisibleOnlyOnItsOwnCard(mode: String) async throws {
         let context = try await SessionRuntimeTests.makeContext(extraEnvironment: ["LOOM_FAKE_CODEX_JOIN": mode])
@@ -93,7 +154,7 @@ struct SessionRuntimeCodexTests {
             await context.events.snapshot().sessions[sibling.sessionID]?.issue?.contains("subscription failed") == true
         })
         #expect(await context.events.snapshot().sessions[first.sessionID]?.issue == firstIssue)
-        #expect(joinLog(context).filter { $0.hasPrefix("join ") }.allSatisfy { $0.hasSuffix(" threadId") })
+        #expect(joinLog(context).filter { $0.hasPrefix("join ") }.allSatisfy { $0.hasSuffix(" excludeTurns,threadId") })
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
@@ -158,6 +219,19 @@ struct SessionRuntimeCodexTests {
             #expect(await context.runtime.codexCoordinator?.pendingRequestIDs().isEmpty == true)
         }
         #expect(joinLog(context).filter { $0.hasPrefix("join ") }.count <= 3)
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test func noRolloutDuringActiveTurnRetriesAfterPersistenceAtIdle() async throws {
+        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: ["LOOM_FAKE_CODEX_JOIN": "blank-until-idle"])
+        defer { context.cleanup() }
+        let (launch, screen) = try await Self.launchCodex(context)
+        #expect(await SessionRuntimeTests.waitUntil { joinLog(context).filter { $0.hasPrefix("join ") }.count == 1 })
+        try await screen.send("work 250")
+        #expect(await screen.contains("CODEX-TURN-DONE completed echo work 250"))
+        #expect(await SessionRuntimeTests.waitUntil { joinLog(context).contains { $0.hasPrefix("joined ") } })
+        #expect(joinLog(context).filter { $0.hasPrefix("join ") }.count <= 3)
+        #expect(try await context.runtime.stopConversation(sessionID: launch.sessionID).succeeded)
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
@@ -239,7 +313,7 @@ struct SessionRuntimeCodexTests {
         let (launch, _) = try await Self.launchCodex(context)
         #expect(try await SessionRuntimeTests.waitUntil { try await threadID(context, launch.sessionID) != nil })
         let thread = try #require(try await threadID(context, launch.sessionID))
-        #expect(await SessionRuntimeTests.waitUntil { joinLog(context).contains("join \(thread) threadId") })
+        #expect(await SessionRuntimeTests.waitUntil { joinLog(context).contains("join \(thread) excludeTurns,threadId") })
         #expect(try await context.runtime.stopConversation(sessionID: launch.sessionID).succeeded)
         #expect(await context.events.snapshot().sessions[launch.sessionID]?.issue == nil)
         #expect(await context.events.snapshot().sessions[sibling.sessionID]?.issue == siblingIssue)
@@ -326,7 +400,7 @@ struct SessionRuntimeCodexTests {
         let (launch, _) = try await Self.launchCodex(context)
         #expect(try await SessionRuntimeTests.waitUntil { try await threadID(context, launch.sessionID) != nil })
         let thread = try #require(try await threadID(context, launch.sessionID))
-        #expect(await SessionRuntimeTests.waitUntil { joinLog(context).contains("join \(thread) threadId") })
+        #expect(await SessionRuntimeTests.waitUntil { joinLog(context).contains("join \(thread) excludeTurns,threadId") })
         let (sibling, _) = try await Self.launchCodex(context)
         #expect(try await SessionRuntimeTests.waitUntil { try await threadID(context, sibling.sessionID) != nil })
         let report = try await context.runtime.stopConversation(sessionID: launch.sessionID)
@@ -916,8 +990,14 @@ struct SessionRuntimeCodexTests {
         )
         try await context.supervisor.createSession(session)
         let screen = Screen()
-        let launch = try await context.runtime.resumeConversation(sessionID: session.id, outputSink: screen)
-        screen.attach(launch.terminal)
+        do {
+            _ = try await context.runtime.resumeConversation(sessionID: session.id, outputSink: screen)
+            Issue.record("A missing provider thread must not start another TUI")
+        } catch let error as LoomError {
+            if case .providerHistoryUnavailable(provider: .codex, conversationID: "missing-thread") = error {} else {
+                Issue.record("Expected the typed unavailable-history error; got \(error)")
+            }
+        }
         let sawIssue = try await SessionRuntimeTests.waitUntil {
             await context.events.snapshot().sessions[session.id]?.issue?.contains("Provider history unavailable") == true
         }
@@ -928,6 +1008,7 @@ struct SessionRuntimeCodexTests {
             print("DEBUG screen=[\(screen.snapshot)] issue=\(String(describing: issue)) live=\(live) run=\(String(describing: run))")
         }
         #expect(sawIssue)
+        #expect(!FileManager.default.fileExists(atPath: context.state.appendingPathComponent("codex-tui-arguments.log").path))
         #expect(try await context.catalog.sessions().count == 1)
         #expect(try await threadID(context, session.id) == "missing-thread")
         #expect(try await SessionRuntimeTests.waitUntil { await context.runtime.codexServerState().servers == 0 })
@@ -1479,7 +1560,12 @@ struct SessionRuntimeCodexTests {
         #expect(!screen.snapshot.contains("CODEX-TURN-DONE"))
         try ProcessTable.signal(tui, SIGCONT)
         tuiSuspended = false
-        #expect((await context.runtime.shutdown()).succeeded)
+        let shutdown = await context.runtime.shutdown()
+        if !shutdown.succeeded {
+            let stopFailure = await context.events.snapshot().sessions[launch.sessionID]?.stopFailure
+            print("Server-death Quit errors: \(shutdown.errors); concurrent stop: \(String(describing: stopFailure))")
+        }
+        #expect(shutdown.succeeded)
     }
 
     @Test func aNewThreadInASharedFolderBelongsToTheTUIWhoseServerSawIt() async throws {

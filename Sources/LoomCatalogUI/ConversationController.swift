@@ -244,13 +244,20 @@ public final class ConversationController: NewSessionIntents, HandoverIntents, T
             return
         }
         // Settings → "Sessions run in" (V19, D-69) decides the face; the service starts the session in it.
+        let completesOnIdentity = launch.choices.claudeChoices == nil
+        var startedID: UUID?
         service.startSession(
             projectID: projectID, launch: launch,
             cardCreated: { [weak model] id in
-                outcome(.started(id))
+                startedID = id
+                if !completesOnIdentity { outcome(.started(id)) }
                 if focus == .session { model?.showStarted(id) }
             },
-            notStarted: { outcome(.failed) }
+            notStarted: { if !completesOnIdentity { outcome(.failed) } },
+            startResolved: { started in
+                guard completesOnIdentity else { return }
+                if started, let id = startedID { outcome(.started(id)) } else { outcome(.failed) }
+            }
         )
     }
 
@@ -314,8 +321,15 @@ public final class ConversationController: NewSessionIntents, HandoverIntents, T
 
     /// "Open Session" on an agent's request (D-40). The selection does not move.
     public func approveOpen(requestID: UUID) {
-        guard let model, model.actionsAvailable else { return }
-        service.approveOpen(requestID: requestID)
+        guard let model, model.actionsAvailable,
+              let request = model.openRequests.first(where: { $0.id == requestID }),
+              let provider = request.choices.harness.provider else { return }
+        guard model.capabilities(of: provider).startable else {
+            report(LoomError.message(model.blockedHarnessReason(provider) ?? "The harness cannot be started"),
+                   "The session could not be started")
+            return
+        }
+        service.approveOpen(requestID: requestID, provider: provider)
     }
 
     public func denyOpen(requestID: UUID) { service.denyOpen(requestID: requestID) }

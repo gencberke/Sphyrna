@@ -28,5 +28,5 @@ public struct BuildIdentity: Equatable, Sendable {
     /// Provider raw values a user may start. Codex is compiled and paused
     /// (D-14, D-28): absent from the production app, present in development.
     /// Raw strings keep this target free of dependencies.
-    public var startableProviders: [String] { isProduction ? ["claude"] : ["claude", "codex"] }
+    public var startableProviders: [String] { ["claude", "codex"] }
 }

@@ -16,6 +16,7 @@ extension SessionRuntime {
         var runID: UUID?
         var client: CodexAppServerClient?
         var coordinator: CodexSessionCoordinator?
+        var resumeSettings: CodexResumeSettings?
         var setup: (id: UUID, task: Task<CodexSessionCoordinator, any Error>)?
         var requestTask: Task<Void, Never>?
         var requests: [String: CodexPendingRequest] = [:]
@@ -38,6 +39,11 @@ extension SessionRuntime {
     }
     func codexCoordinator(forSession key: UUID) async -> CodexSessionCoordinator? {
         await codexServer(forCard: key)?.coordinator
+    }
+
+    /// The provider's settings when this run resumed, not a second saved default.
+    public func codexResumeSettings(forSession key: UUID) async -> CodexResumeSettings? {
+        await codexServer(forCard: key)?.resumeSettings
     }
 
     public func codexRoutingDiagnostics() async -> CodexRoutingDiagnostics.Snapshot {
@@ -115,7 +121,8 @@ extension SessionRuntime {
     }
 
     func codexNewProfile(
-        toolchain: ProviderToolchain, sessionID: UUID, directory: String, server: CodexServer
+        toolchain: ProviderToolchain, sessionID: UUID, directory: String, server: CodexServer,
+        choices: HarnessLaunchChoices? = nil, firstMessage: String? = nil
     ) throws -> ProviderLaunchProfile {
         try ProviderLaunchProfile.codex(
             route: .remote(socket: server.socket, threadID: nil, workingDirectory: directory),
@@ -123,7 +130,7 @@ extension SessionRuntime {
             environment: LaunchEnvironment.make(
                 base: toolchain.environment, runID: supervisor.ownershipRunID,
                 sessionID: sessionID
-            )
+            ), choices: choices, firstMessage: firstMessage
         )
     }
 
@@ -147,18 +154,18 @@ extension SessionRuntime {
             guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
             launch = try await supervisor.launch(
                 sessionID: sessionID, executable: toolchain.executable,
-                arguments: profile.arguments + toolchain.extraArguments,
+                arguments: profile.launchArguments(extra: toolchain.extraArguments),
                 environment: profile.environment, rows: rows,
                 columns: columns, outputSink: outputSink, managedRunID: runID,
                 scope: server.scope
             )
         } catch {
             await coordinator.cancelNewLaunch(reservation)
-            _ = await tearDown(server, card: sessionID)
+            let failure = await startFailure(error, cleaning: server)
             await supervisor.events.publish(
                 sessionID: sessionID, change: .issue("Codex could not be started: \(error)")
             )
-            throw error
+            throw failure
         }
         let registered = await register(launch, runID: runID, provider: .codex, server: server, tee: nil)
         await onTerminalReady?(registered)
@@ -194,6 +201,8 @@ extension SessionRuntime {
         let runID = UUID()
         let launch: ManagedSessionLaunch
         do {
+            guard let client = server.client else { throw CodexAppServerError.closed }
+            server.resumeSettings = try await client.resumeThread(conversationID, workingDirectory: session.workingDirectory)
             let environment = LaunchEnvironment.make(
                 base: toolchain.environment, runID: supervisor.ownershipRunID, sessionID: session.id
             )
@@ -203,17 +212,21 @@ extension SessionRuntime {
             )
             launch = try await supervisor.launch(
                 sessionID: session.id, executable: toolchain.executable,
-                arguments: profile.arguments + toolchain.extraArguments,
+                arguments: profile.launchArguments(extra: toolchain.extraArguments),
                 environment: profile.environment, rows: rows,
                 columns: columns, outputSink: tee, managedRunID: runID,
                 scope: server.scope
             )
         } catch {
-            _ = await tearDown(server, card: session.id)
+            let reason: any Error
+            if let rpc = error as? CodexAppServerError, rpc.isThreadNotFound {
+                reason = LoomError.providerHistoryUnavailable(provider: .codex, conversationID: conversationID)
+            } else { reason = error }
+            let failure = await startFailure(reason, cleaning: server)
             await supervisor.events.publish(
-                sessionID: session.id, change: .issue("Codex could not be resumed: \(error)")
+                sessionID: session.id, change: .issue("Codex could not be resumed: \(reason)")
             )
-            throw error
+            throw failure
         }
         await reactivateAfterResume(session.id)
         let registered = await register(launch, runID: runID, provider: .codex, server: server, tee: tee)
@@ -242,7 +255,7 @@ extension SessionRuntime {
     /// `card`. Nothing is shared with any other run; a server a live run still
     /// references is never touched. On any failure what started is stopped again.
     func ensureCodex(
-        card: UUID, toolchain: ProviderToolchain
+        card: UUID, toolchain: ProviderToolchain, choices: HarnessLaunchChoices? = nil
     ) async throws -> (CodexServer, CodexSessionCoordinator) {
         try Task.checkCancellation()
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
@@ -257,7 +270,7 @@ extension SessionRuntime {
                 )
             }
         }
-        let server = try await makeCodexServer(card: card, toolchain: toolchain)
+        let server = try await makeCodexServer(card: card, toolchain: toolchain, choices: choices)
         codexServers.append(server)
         do {
             let client = try await server.manager.start()
@@ -290,7 +303,7 @@ extension SessionRuntime {
         )
     }
 
-    private func makeCodexServer(card: UUID, toolchain: ProviderToolchain) async throws -> CodexServer {
+    private func makeCodexServer(card: UUID, toolchain: ProviderToolchain, choices: HarnessLaunchChoices?) async throws -> CodexServer {
         try FileManager.default.createDirectory(
             at: configuration.socketDirectory, withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
@@ -313,7 +326,7 @@ extension SessionRuntime {
                 home: codexHome(toolchain),
                 baseEnvironment: toolchain.environment,
                 workingDirectory: configuration.homeDirectory, socketPath: socket,
-                clientVersion: configuration.clientVersion,
+                clientVersion: configuration.clientVersion, launchChoices: choices,
                 startupTimeout: configuration.codexServerStartupTimeout,
                 scope: scope
             )
@@ -430,7 +443,7 @@ extension SessionRuntime {
             // server that never started. Never success unless shown empty.
             errors += await supervisor.releaseScope(scope)
         }
-        if errors.isEmpty { unlink(server.socket) }
+        if errors.isEmpty { errors += await server.manager.cleanupSocket() }
         return errors
     }
 

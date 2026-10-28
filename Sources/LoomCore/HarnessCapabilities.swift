@@ -5,7 +5,7 @@ import Foundation
 public struct HarnessCapabilities: Equatable, Sendable {
     /// A real harness stands behind the session (not a test fixture): the UI names it and says why it cannot start.
     public let hasHarness: Bool
-    /// The build can start and resume this harness's sessions (D-28, D-69 (5): Codex is shown, not startable, in production).
+    /// The build can start and resume this harness's sessions.
     public let startable: Bool
     /// The harness has a structured (Chat) face: a stopped session can show its live chat, send a message into it, and move
     /// from Chat to the terminal.

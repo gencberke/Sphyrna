@@ -2,11 +2,12 @@ import Foundation
 import Testing
 @testable import LoomCore
 
-/// R3: what each harness may do per build identity. The production identity starts Claude only (D-28, D-69 (5)); the
-/// development one starts Claude and Codex. Nothing here starts a run. D-94: the table is the one gate (the guard at the end).
+/// R3: what each harness may do per build identity. Both current identities can start Claude and Codex.
+/// Nothing here starts a run. D-94: the table is the one gate (the guard at the end).
 struct HarnessCapabilitiesTests {
-    private static let production: Set<ManagedSession.Provider> = [.claude]
+    private static let production: Set<ManagedSession.Provider> = [.claude, .codex]
     private static let development: Set<ManagedSession.Provider> = [.claude, .codex]
+    private static let claudeOnly: Set<ManagedSession.Provider> = [.claude]
 
     /// Claude's row, with `startable` as the build says.
     private static func claude(startable: Bool) -> HarnessCapabilities {
@@ -32,8 +33,9 @@ struct HarnessCapabilitiesTests {
     }
 
     @Test func codexIsStartableOnlyWhereTheBuildSaysSoAndReadsRecordedData() {
-        #expect(HarnessCapabilities.of(.codex, startable: Self.production) == Self.codex(startable: false))
+        #expect(HarnessCapabilities.of(.codex, startable: Self.production) == Self.codex(startable: true))
         #expect(HarnessCapabilities.of(.codex, startable: Self.development) == Self.codex(startable: true))
+        #expect(HarnessCapabilities.of(.codex, startable: Self.claudeOnly) == Self.codex(startable: false))
     }
 
     @Test func aSyntheticSessionHasNothingInAnyBuild() {

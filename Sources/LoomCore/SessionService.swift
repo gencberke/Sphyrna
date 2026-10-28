@@ -100,35 +100,42 @@ public final class SessionService {
 
     // MARK: Start
 
-    /// A new Claude session from a draft's first send, in the face the policy names. `cardCreated` is told once the session's
+    /// A new session from a draft's first send, in the face the policy names. `cardCreated` is told once the session's
     /// card exists (in the Chat face: once Claude answered `initialize`, normally well under a second, and before the first
     /// message goes out); `notStarted` once instead when nothing was started. A start that fails before the card exists is
     /// `notStarted`; a first message that fails after it goes to the session's own draft. The two exclude each other.
     @discardableResult
     public func startSession(projectID: UUID?, launch: NewSessionLaunch,
                              cardCreated: @escaping @MainActor (UUID) -> Void,
-                             notStarted: @escaping @MainActor () -> Void) -> Task<Void, Never>? {
-        // Other harnesses have no first-message draft path in this build yet.
-        guard launch.choices.claudeChoices != nil else { notStarted(); return nil }
-        if facePolicy.faceOfStart(capabilities(of: .claude)) == .chat, let host = structuredHost {
-            return startInStructuredFace(host: host, projectID: projectID, launch: launch,
-                                         cardCreated: cardCreated, notStarted: notStarted)
+                             notStarted: @escaping @MainActor () -> Void,
+                             startResolved: (@MainActor (Bool) -> Void)? = nil) -> Task<Void, Never>? {
+        guard let provider = launch.choices.harness.provider, capabilities(of: provider).startable else {
+            notStarted(); startResolved?(false); return nil
         }
-        return start(provider: .claude, projectID: projectID, draft: launch, cardCreated: cardCreated, notStarted: notStarted)
+        if launch.choices.claudeChoices != nil, facePolicy.faceOfStart(capabilities(of: provider)) == .chat,
+           let host = structuredHost {
+            return startInStructuredFace(host: host, projectID: projectID, launch: launch,
+                                         cardCreated: cardCreated, notStarted: notStarted, startResolved: startResolved)
+        }
+        return start(provider: provider, projectID: projectID, draft: launch, cardCreated: cardCreated,
+                     notStarted: notStarted, startResolved: startResolved)
     }
 
     private func startInStructuredFace(host: any StructuredFaceHost, projectID: UUID?, launch: NewSessionLaunch,
                                        cardCreated: @escaping @MainActor (UUID) -> Void,
-                                       notStarted: @escaping @MainActor () -> Void) -> Task<Void, Never>? {
+                                       notStarted: @escaping @MainActor () -> Void,
+                                       startResolved: (@MainActor (Bool) -> Void)?) -> Task<Void, Never>? {
         guard capabilities(of: .claude).startable else {
             LoomLog.notice(.session, "Start refused (chat): Claude cannot be started")
             notStarted()
+            startResolved?(false)
             return nil
         }
         let key = StartKey(provider: .claude, projectID: projectID)
         guard transitions.beginStart(key) else {
             LoomLog.debug(.session, "Start refused (chat): the project's start is under way")
             notStarted()
+            startResolved?(false)
             return nil
         }
         let sessionID = UUID()
@@ -147,6 +154,7 @@ public final class SessionService {
                 try await host.beginNewSession(projectID: projectID, sessionID: sessionID, draft: launch,
                                                onReady: { await MainActor.run { ready.fire() } })
                 ready.fire()
+                startResolved?(true)
                 LoomLog.notice(.session, "Start \(LoomLog.ref(sessionID)) (chat): started")
             } catch {
                 // Cancelled by a Stop while starting: not a failure to report.
@@ -157,6 +165,7 @@ public final class SessionService {
                 if !ready.fired, !stopped { host.forget(sessionID: sessionID) }
                 if !stopped { failureHandler(SessionFailure(.startFailed(.claude), error)) }
                 if !ready.fired { notStarted() }
+                startResolved?(false)
             }
         }
     }
@@ -166,22 +175,26 @@ public final class SessionService {
     @discardableResult
     public func start(provider: ManagedSession.Provider, projectID: UUID?, draft: NewSessionLaunch? = nil,
                       cardCreated: @escaping @MainActor (UUID) -> Void = { _ in },
-                      notStarted: @escaping @MainActor () -> Void = {}) -> Task<Void, Never>? {
+                      notStarted: @escaping @MainActor () -> Void = {},
+                      startResolved: (@MainActor (Bool) -> Void)? = nil) -> Task<Void, Never>? {
         guard capabilities(of: provider).startable else {
             LoomLog.notice(.session, "Start refused (terminal): \(provider.rawValue) cannot be started")
             notStarted()
+            startResolved?(false)
             return nil
         }
         let key = StartKey(provider: provider, projectID: projectID)
         guard transitions.beginStart(key) else {
             LoomLog.debug(.session, "Start refused (terminal): the project's start is under way")
             notStarted()
+            startResolved?(false)
             return nil
         }
         guard let sink = terminal?.newRunSink() else {
             LoomLog.notice(.session, "Start refused (terminal): no terminal to run in")
             transitions.endStart(key)
             notStarted()
+            startResolved?(false)
             return nil
         }
         let transitions = transitions
@@ -216,12 +229,14 @@ public final class SessionService {
                     cardReady(launch)
                 }
                 LoomLog.notice(.session, "Start \(LoomLog.ref(launch.sessionID)) (terminal, \(provider.rawValue)): started")
+                startResolved?(true)
             } catch {
                 Self.logStartEnd(pendingSessionID, face: .terminal, stopped: false, afterCard: reported, error: error)
                 terminal?.runFailedToStart(sink)
                 await terminal?.reconcile()
                 failureHandler(SessionFailure(.startFailed(provider), error))
                 if !reported { notStarted() }
+                startResolved?(false)
             }
         }
     }
@@ -471,12 +486,16 @@ public final class SessionService {
     /// normal start path; a terminal run is adopted exactly as a start adopts it. A failed start is shown in the request's
     /// box (the runtime keeps it as failed) and never retried. Refused while the request's approval is in flight.
     @discardableResult
-    public func approveOpen(requestID: UUID) -> Task<Void, Never>? {
+    public func approveOpen(requestID: UUID, provider: ManagedSession.Provider = .claude) -> Task<Void, Never>? {
+        guard capabilities(of: provider).startable else {
+            failureHandler(SessionFailure(.startFailed(provider), LoomError.message("The harness cannot be started")))
+            return nil
+        }
         guard approving.insert(requestID).inserted else {
             LoomLog.debug(.session, "Open request \(Self.requestRef(requestID)): approval already under way")
             return nil
         }
-        if facePolicy.faceOfApprovedOpening(capabilities(of: .claude)) == .chat, let host = structuredHost {
+        if facePolicy.faceOfApprovedOpening(capabilities(of: provider)) == .chat, let host = structuredHost {
             return approveOpenInStructuredFace(requestID: requestID, host: host)
         }
         guard let sink = terminal?.newRunSink() else {
@@ -485,17 +504,25 @@ public final class SessionService {
         }
         return Task {
             defer { approving.remove(requestID) }
+            var adopted = false
             do {
                 let launch = try await runtime.approveOpenRequest(
-                    requestID, rows: sink.rows, columns: sink.columns, outputSink: sink.output
+                    requestID, rows: sink.rows, columns: sink.columns, outputSink: sink.output,
+                    expectedProvider: provider,
+                    onTerminalReady: { [self] launch in
+                        terminal?.adopt(launch, into: sink)
+                        adopted = true
+                    }
                 )
-                terminal?.adopt(launch, into: sink)
+                if !adopted { terminal?.adopt(launch, into: sink) }
                 LoomLog.notice(.session, "Open request \(Self.requestRef(requestID)) approved: \(LoomLog.ref(launch.sessionID)) started (terminal)")
             } catch {
                 LoomLog.error(.session, "Open request \(Self.requestRef(requestID)) approved, start failed (terminal; \(LoomLog.category(of: error)))")
                 terminal?.runFailedToStart(sink)
                 // A start that failed is on the request's box; only an answer that could not be given is a banner.
-                if error is OpenSessionError { failureHandler(SessionFailure(.openRequestNotAnswered, error)) }
+                if error is OpenSessionError || (error as? SessionRuntimeError) == .openRequestHarnessMismatch {
+                    failureHandler(SessionFailure(.openRequestNotAnswered, error))
+                }
             }
         }
     }

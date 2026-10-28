@@ -319,7 +319,7 @@ struct OpenSessionCommandTests {
                                         "--effort", "high", "--message", "-"],
                                        environment: env, stdin: Data("go".utf8)) }
         let request = try #require(await rig.waitForEntries(1).first)
-        #expect(request.choices == HarnessLaunchChoices(harness: .codex, model: "codex-test", effort: "high"))
+        #expect(request.choices == HarnessLaunchChoices(harness: .codex, model: "codex-test", effort: "high", mode: .askBeforeEdits))
         try await rig.coordinator.deny(request.id)
         #expect(await command.value.code == 1)
     }
@@ -656,10 +656,8 @@ struct OpenSessionRuntimeTests {
         #expect(try await context.catalog.lastUsedLaunchChoices()[project.id.uuidString] == nil)
     }
 
-    @Test func approvedNonClaudeOpenIsRefusedWithoutCreatingASession() async throws {
-        let (script, directory) = try stub()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let context = try await SessionRuntimeTests.makeContext(executableOverride: script)
+    @Test func approvedCodexOpenUsesItsOwnHarnessAndDoesNotChangeProjectMemory() async throws {
+        let context = try await SessionRuntimeTests.makeContext()
         defer { context.cleanup() }
         let folder = context.root.appendingPathComponent("project", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -672,14 +670,18 @@ struct OpenSessionRuntimeTests {
         let reply = Task.detached { try OpenSessionClient.exchange(request, socketPath: socket) }
         #expect(await SessionRuntimeTests.waitUntil { await context.runtime.openRequestSnapshot().count == 1 })
         let pending = try #require(await context.runtime.openRequestSnapshot().first)
-        #expect(pending.choices.harness == .codex)
-        let before = try await context.catalog.sessions().map(\.session.id)
-        do {
-            _ = try await context.runtime.approveOpenRequest(pending.id)
-            Issue.record("A Codex opening must be refused until its draft launch path exists")
-        } catch {}
-        #expect(try await reply.value.status == .failed)
-        #expect(try await context.catalog.sessions().map(\.session.id) == before)
+        #expect(pending.choices.harness == .codex && pending.choices.mode == .askBeforeEdits)
+        let before = try await context.catalog.lastUsedHarnessChoices()
+        let screen = SessionRuntimeTests.Screen()
+        let opened = try await context.runtime.approveOpenRequest(pending.id, outputSink: screen)
+        screen.attach(opened.terminal)
+        #expect(await screen.contains("CODEX-TURN-DONE completed echo go"))
+        #expect(try await reply.value.status == .started)
+        let record = try #require(try await context.catalog.session(id: opened.sessionID))
+        #expect(record.session.provider == .codex && record.openedBy == requester.sessionID)
+        #expect(record.title == "Codex request" && record.projectID == project.id)
+        #expect(try await context.catalog.lastUsedHarnessChoices() == before)
+        #expect((await context.runtime.shutdown()).succeeded)
     }
 
     @Test func approvingARequestStartsANormalSessionWithTheNameTheMessageAndItsOrigin() async throws {

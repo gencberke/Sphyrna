@@ -35,6 +35,50 @@ struct HarnessProbeTests {
 
     // MARK: Codex
 
+    @Test func probeCleanupPreservesAPathItNeverOwned() async throws {
+        let context = try await SessionRuntimeTests.makeContext()
+        defer { context.cleanup() }
+        try FileManager.default.createDirectory(at: context.socketDirectory, withIntermediateDirectories: true)
+        let socket = context.socketDirectory.appendingPathComponent("occupied.sock")
+        try "foreign sentinel".write(to: socket, atomically: true, encoding: .utf8)
+        let manager = CodexAppServerManager(supervisor: context.supervisor, configuration: .init(
+            executable: RuntimeFixture.binaries.appendingPathComponent("loom-fake-provider").path,
+            capabilities: .init(version: "fake", help: "--remote <ADDR>", serverHelp: "--listen <URL>"),
+            home: context.profile, baseEnvironment: ["PATH": "/usr/bin:/bin", "HOME": context.home.path],
+            workingDirectory: context.home.path, socketPath: socket.path, clientVersion: "test"))
+        let run = ProbeRun()
+        await run.keep(manager: manager)
+        await #expect(throws: (any Error).self) { _ = try await manager.start() }
+        await run.close(using: context.supervisor)
+        #expect(try String(contentsOf: socket, encoding: .utf8) == "foreign sentinel")
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test func probeReportsWhenItsSocketWasReplacedBeforeCleanup() async throws {
+        let context = try await SessionRuntimeTests.makeContext()
+        defer { context.cleanup() }
+        try FileManager.default.createDirectory(at: context.socketDirectory, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        let socket = context.socketDirectory.appendingPathComponent("probe.sock")
+        let manager = CodexAppServerManager(supervisor: context.supervisor, configuration: .init(
+            executable: RuntimeFixture.binaries.appendingPathComponent("loom-fake-provider").path,
+            capabilities: .init(version: "fake", help: "--remote <ADDR>", serverHelp: "--listen <URL>"),
+            home: context.profile, baseEnvironment: ["PATH": "/usr/bin:/bin", "HOME": context.home.path],
+            workingDirectory: context.home.path, socketPath: socket.path, clientVersion: "test"))
+        _ = try await manager.start()
+        try FileManager.default.removeItem(at: socket)
+        try "foreign replacement".write(to: socket, atomically: true, encoding: .utf8)
+        let run = ProbeRun()
+        await run.keep(manager: manager)
+        let since = Date()
+        await run.close(using: context.supervisor)
+        let lines = try await LogReadBack.lines(category: .usage, since: since,
+            containing: "The Codex probe's server could not be fully stopped", seconds: 3)
+        #expect(!lines.isEmpty)
+        #expect(try String(contentsOf: socket, encoding: .utf8) == "foreign replacement")
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
     @Test func allFiveAnswersAreReadAndTheServerAskedOnlyToRead() async throws {
         let context = try await SessionRuntimeTests.makeContext()
         defer { context.cleanup() }

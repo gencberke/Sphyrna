@@ -187,7 +187,7 @@ struct OpenSessionTests {
         invalid.effort = "high"
         let pending = rig.sendInBackground(invalid)
         let entry = try #require(await rig.waitForEntries(1).first)
-        #expect(entry.choices == HarnessLaunchChoices(harness: .codex, model: model.id, effort: "high"))
+        #expect(entry.choices == HarnessLaunchChoices(harness: .codex, model: model.id, effort: "high", mode: .askBeforeEdits))
         let recorder = StartRecorder()
         _ = try await rig.coordinator.approve(entry.id, start: recorder.start)
         #expect(try await pending.value.status == .started)

@@ -70,7 +70,6 @@ public struct CodexProbeSource: HarnessProbeSource {
                 at: socketDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             // Unique per ask and short: Unix socket paths are limited to ~100 bytes.
             let socket = socketDirectory.appendingPathComponent("p-\(UUID().uuidString.prefix(8)).sock").path
-            await run.keep(socket: socket)
             var scope: RunScope?
             if supervisor.runScopesEnabled {
                 scope = try await supervisor.openScope()
@@ -201,7 +200,6 @@ public struct CodexProbeSource: HarnessProbeSource {
 actor ProbeRun {
     private var manager: CodexAppServerManager?
     private var scope: RunScope?
-    private var socket: String?
     private var closing: Task<Void, Never>?
     /// Why the ask failed: the first reason recorded (a timeout, a missing toolchain, a start that failed); nil when none.
     private(set) var category: PlanLimitsFailure.Category?
@@ -212,13 +210,11 @@ actor ProbeRun {
 
     func keep(manager: CodexAppServerManager) { self.manager = manager }
     func keep(scope: RunScope?) { self.scope = scope }
-    func keep(socket: String) { self.socket = socket }
 
     func close(using supervisor: ProcessSupervisor) async {
-        let manager = self.manager, scope = self.scope, socket = self.socket
+        let manager = self.manager, scope = self.scope
         self.manager = nil
         self.scope = nil
-        self.socket = nil
         let previous = closing
         let task = Task {
             await previous?.value
@@ -227,8 +223,10 @@ actor ProbeRun {
             // Normally released by the server run's stop; this covers a server that never started. Never released while a
             // stop could not be verified.
             if errors.isEmpty, let scope { errors += await supervisor.releaseScope(scope) }
-            if errors.isEmpty { if let socket { unlink(socket) } }
-            else { LoomLog.error(.usage, key: "codex-probe-reap", "The Codex probe's server could not be fully stopped") }
+            if errors.isEmpty, let manager { errors += await manager.cleanupSocket() }
+            if !errors.isEmpty {
+                LoomLog.error(.usage, key: "codex-probe-reap", "The Codex probe's server could not be fully stopped")
+            }
         }
         closing = task
         await task.value

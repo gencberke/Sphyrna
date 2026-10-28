@@ -1099,6 +1099,38 @@ struct NewSessionTests {
         #expect(!model.canSendDraft(projectID: rig.projectID))
     }
 
+    @Test func codexDraftUsesItsOwnAvailabilityAndKeepsItsSelectedChoices() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rig = try await rig(root: root)
+        let model = rig.model
+        defer { model.stop() }
+        let connections = HarnessConnections()
+        model.harnessConnections = connections
+        model.modelCatalog.connections = connections
+        let codex = ModelCatalogEntry(harness: .codex, id: "fake-codex-alpha", title: "Fake Codex",
+                                      efforts: ["low", "high"], defaultEffort: "low", isDefault: true)
+        model.modelCatalog.apply(HarnessReading(provider: .codex, models: [HarnessModel(
+            id: codex.id, displayName: codex.title, isDefault: true, efforts: codex.efforts,
+            defaultEffort: codex.defaultEffort)], readAt: Date()))
+        model.showDraft(projectID: rig.projectID)
+        model.setDraftText("carry these choices", projectID: rig.projectID)
+        model.setDraftModel(codex, projectID: rig.projectID)
+        model.setDraftEffort(.value("high"), projectID: rig.projectID)
+        model.setDraftMode(.value("acceptEdits"), projectID: rig.projectID)
+        connections.setOn(.codex, false)
+        #expect(!model.canSendDraft(projectID: rig.projectID))
+        connections.setOn(.codex, true)
+        #expect(model.canSendDraft(projectID: rig.projectID))
+        model.sendDraft(projectID: rig.projectID)
+        let sent = try #require(rig.intents.sends.first)
+        #expect(sent.launch.firstMessage == "carry these choices")
+        #expect(sent.launch.choices == HarnessLaunchChoices(harness: .codex, model: codex.id,
+                                                           effort: "high", mode: .acceptEdits))
+        sent.outcome(.failed)
+        #expect(model.newSession.draft(for: rig.projectID)?.text == "carry these choices")
+    }
+
     // MARK: Presets
 
     @Test func presetsAreSavedPerProjectApplyWithoutStartingAndSurviveARelaunch() async throws {

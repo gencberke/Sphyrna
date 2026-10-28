@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 @testable import LoomCore
@@ -7,9 +8,12 @@ private actor StartupCleanupProbe {
     func observe(_ report: SessionStopReport?) { failed = report }
 }
 
-@Suite(.serialized, .timeLimit(.minutes(2)))
+@Suite(.serialized, .processHeavy, .timeLimit(.minutes(2)))
 struct CodexAppServerManagerTests {
     func manager(_ context: RuntimeContext, body: String, timeout: Double = 3) throws -> CodexAppServerManager {
+        try FileManager.default.createDirectory(at: context.socketDirectory, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: context.socketDirectory.path)
         let script = context.root.appendingPathComponent("server")
         try ("#!/bin/sh\n" + body + "\n").write(to: script, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
@@ -81,6 +85,84 @@ struct CodexAppServerManagerTests {
         #expect(await server.internalSessionID() != nil)
         #expect(await server.stop()?.succeeded == true)
         #expect(await context.supervisor.runningSessionIDs().isEmpty)
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test func aPreexistingSocketPathIsNeverReplacedOrConnected() async throws {
+        let context = try await SessionRuntimeTests.makeContext()
+        defer { context.cleanup() }
+        try FileManager.default.createDirectory(at: context.socketDirectory, withIntermediateDirectories: true)
+        let path = context.socketDirectory.appendingPathComponent("server.sock")
+        try "foreign sentinel".write(to: path, atomically: true, encoding: .utf8)
+        let executable = RuntimeFixture.binaries.appendingPathComponent("loom-fake-provider").path
+        let server = try manager(context, body: "exec '\(executable)' \"$@\"")
+        do {
+            _ = try await server.start()
+            Issue.record("A pre-existing path must prevent startup")
+            _ = await server.stop()
+        } catch {}
+        #expect((try? String(contentsOf: path, encoding: .utf8)) == "foreign sentinel")
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test func aHashedSocketIsClaimedFromTheListenerAndOnlyItsNodesAreRemoved() async throws {
+        let context = try await SessionRuntimeTests.makeContext()
+        defer { context.cleanup() }
+        try FileManager.default.createDirectory(at: context.socketDirectory, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        let hashes = context.socketDirectory.appendingPathComponent("h", isDirectory: true)
+        try FileManager.default.createDirectory(at: hashes, withIntermediateDirectories: false,
+                                                attributes: [.posixPermissions: 0o700])
+        let requested = context.socketDirectory.appendingPathComponent("owned.sock").path
+        var ownership = try CodexSocketOwnership(requested: requested, hashedDirectory: hashes.path)
+        let unrelated = hashes.appendingPathComponent("unrelated")
+        try "keep".write(to: unrelated, atomically: true, encoding: .utf8)
+        var listener = socket(AF_UNIX, SOCK_STREAM, 0)
+        try #require(listener >= 0)
+        defer { if listener >= 0 { Darwin.close(listener) } }
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+        let bytes = Array(ownership.hashed.utf8) + [0]
+        try #require(bytes.count <= MemoryLayout.size(ofValue: address.sun_path))
+        withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: bytes) }
+        let bound = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(listener, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        try #require(bound == 0 && listen(listener, 4) == 0 && chmod(ownership.hashed, 0o600) == 0)
+        try #require(symlink(ownership.hashed, requested) == 0)
+        let leader = try #require(ProcessTable.record(pid: getpid())?.identity)
+        #expect(try ownership.claimIfReady(leader: leader))
+        #expect(try ownership.remainingSocket() == ownership.hashed)
+        Darwin.close(listener)
+        listener = -1
+        try ownership.removeRemaining()
+        var link = stat()
+        #expect(lstat(requested, &link) == -1 && errno == ENOENT)
+        #expect(!FileManager.default.fileExists(atPath: ownership.hashed))
+        #expect(try String(contentsOf: unrelated, encoding: .utf8) == "keep")
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test func anUnexpectedSocketLinkIsNeverFollowed() async throws {
+        let context = try await SessionRuntimeTests.makeContext()
+        defer { context.cleanup() }
+        try FileManager.default.createDirectory(at: context.socketDirectory, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        let hashes = context.socketDirectory.appendingPathComponent("h", isDirectory: true)
+        try FileManager.default.createDirectory(at: hashes, withIntermediateDirectories: false,
+                                                attributes: [.posixPermissions: 0o700])
+        let requested = context.socketDirectory.appendingPathComponent("link.sock").path
+        var ownership = try CodexSocketOwnership(requested: requested, hashedDirectory: hashes.path)
+        let foreign = context.socketDirectory.appendingPathComponent("foreign")
+        try "keep".write(to: foreign, atomically: true, encoding: .utf8)
+        #expect(symlink(foreign.path, requested) == 0)
+        let leader = try #require(ProcessTable.record(pid: getpid())?.identity)
+        #expect(throws: (any Error).self) { try ownership.claimIfReady(leader: leader) }
+        #expect(throws: (any Error).self) { try ownership.removeRemaining() }
+        #expect(try String(contentsOf: foreign, encoding: .utf8) == "keep")
         #expect((await context.runtime.shutdown()).succeeded)
     }
 

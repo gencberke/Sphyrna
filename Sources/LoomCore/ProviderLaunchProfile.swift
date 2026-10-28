@@ -101,7 +101,7 @@ public struct ProviderCapabilities: Codable, Sendable {
 public struct ProviderLaunchProfile: Sendable {
     public let arguments: [String]
     public let environment: [String: String]
-    /// Goes after every option, including the toolchain's extra ones: Claude's first prompt.
+    /// Goes after the toolchain's extra options: final provider settings and any first prompt.
     public let trailingArguments: [String]
     /// The choices said Ask and this terminal profile runs Ask before edits instead (`SessionRuntime.terminalAskRule`). Building
     /// the profile records nothing; the spawn that uses it (`launchClaude`) records what runs and says so.
@@ -165,26 +165,39 @@ public struct ProviderLaunchProfile: Sendable {
     }
 
     public static func codex(route: CodexRoute, capabilities: ProviderCapabilities,
-                             home: URL, environment: [String: String]) throws -> Self {
+                             home: URL, environment: [String: String],
+                             choices: HarnessLaunchChoices? = nil, firstMessage: String? = nil) throws -> Self {
+        let settings = try choices.map(CodexLaunchSettings.init)
         var arguments: [String]
+        var trailing: [String] = []
         switch route {
-        case .baseline: arguments = []
+        case .baseline:
+            guard settings == nil, firstMessage == nil else { throw LoomError.message("Codex launch needs a remote session") }
+            arguments = []
         case .direct:
+            guard settings == nil, firstMessage == nil else { throw LoomError.message("Codex launch needs a remote session") }
             guard capabilities.supportsNoDaemon else { throw LoomError.message("Codex lacks --no-daemon") }
             arguments = ["--no-daemon"]
         case .disableAutoStart:
+            guard settings == nil, firstMessage == nil else { throw LoomError.message("Codex launch needs a remote session") }
             guard capabilities.supportsDisableDaemonAutoStart else { throw LoomError.message("Codex lacks daemon_auto_start feature") }
             arguments = ["--disable", "daemon_auto_start"]
         case let .server(socket):
+            guard firstMessage == nil else { throw LoomError.message("Codex app-server cannot take a first message") }
             guard capabilities.supportsListen else { throw LoomError.message("Codex app-server lacks --listen") }
-            arguments = ["app-server", "--listen", "unix://\(socket)"]
+            arguments = ["app-server", "--listen", "unix://\(socket)"] + (settings?.serverArguments ?? [])
         case let .remote(socket, threadID, workingDirectory):
             guard capabilities.supportsRemote else { throw LoomError.message("Codex lacks --remote") }
+            guard threadID == nil || (settings == nil && firstMessage == nil) else {
+                throw LoomError.message("Codex remote resume retains the provider's settings")
+            }
             arguments = threadID.map { ["resume", $0] } ?? []
             arguments += ["--remote", "unix://\(socket)", "--cd", workingDirectory]
+            trailing = settings?.terminalArguments ?? []
         }
         var env = environment; env["CODEX_HOME"] = home.path
-        return Self(arguments: arguments, environment: env)
+        trailing += firstMessage.map { ["--", $0] } ?? []
+        return Self(arguments: arguments, environment: env, trailingArguments: trailing)
     }
 
     public static func claude(capabilities: ProviderCapabilities, config: URL, sessionID: UUID,
@@ -366,6 +379,68 @@ public struct ProviderLaunchProfile: Sendable {
             throw LoomError.message("Could not encode Claude session settings")
         }
         return value
+    }
+}
+
+/// The two Codex permission mappings established by P0. Nil model and effort use the CLI's default;
+/// a new-session caller supplies the safe mode when the requested mode is nil.
+struct CodexLaunchSettings: Equatable, Sendable {
+    let model: String?
+    let effort: String?
+    let mode: HarnessMode?
+
+    init(_ choices: HarnessLaunchChoices) throws {
+        guard choices.harness == HarnessID.codex else { throw LoomError.message("Codex cannot use another harness's choices") }
+        if let model = choices.model, !ClaudeLaunchChoices.isSafeToken(model) {
+            throw LoomError.message("The Codex model is not a safe model name")
+        }
+        if let effort = choices.effort, !HarnessEffort.isToken(effort) {
+            throw LoomError.message("The Codex effort is not a safe effort level")
+        }
+        if let mode = choices.mode, mode != .askBeforeEdits && mode != .acceptEdits {
+            throw LoomError.message("The mode is not supported by Codex")
+        }
+        model = choices.model
+        effort = choices.effort
+        mode = choices.mode
+    }
+
+    var sandbox: String? {
+        switch mode {
+        case .askBeforeEdits: "read-only"
+        case .acceptEdits: "workspace-write"
+        default: nil
+        }
+    }
+
+    /// D1 config-zero: these per-invocation keys prevent broader native
+    /// reviewer, network and additional-root defaults in the observed server.
+    private static let safePermissionArguments = [
+        "-c", "approvals_reviewer=\"user\"",
+        "-c", "sandbox_workspace_write.network_access=false",
+        "-c", "sandbox_workspace_write.writable_roots=[]",
+    ]
+
+    var serverArguments: [String] {
+        var result: [String] = []
+        if let model { result += ["-c", "model=\"\(model)\""] }
+        if let effort { result += ["-c", "model_reasoning_effort=\"\(effort)\""] }
+        if let sandbox {
+            result += ["-c", "sandbox_mode=\"\(sandbox)\"", "-c", "approval_policy=\"on-request\""]
+            result += Self.safePermissionArguments
+        }
+        return result
+    }
+
+    var terminalArguments: [String] {
+        var result: [String] = []
+        if let model { result += ["-m", model] }
+        if let effort { result += ["-c", "model_reasoning_effort=\"\(effort)\""] }
+        if let sandbox {
+            result += ["-s", sandbox, "-a", "on-request"]
+            result += Self.safePermissionArguments
+        }
+        return result
     }
 }
 

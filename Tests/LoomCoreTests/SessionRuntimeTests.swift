@@ -134,7 +134,8 @@ struct SessionRuntimeTests {
         claudeVersion: String = "fake 1",
         extraClaudeHelp: String = "",
         runsRecovered: (@Sendable () async -> Void)? = nil,
-        defaultOpenedMode: (@Sendable (UUID?) async -> String?)? = nil
+        defaultOpenedMode: (@Sendable (UUID?) async -> String?)? = nil,
+        openedModels: (@Sendable (HarnessID) async -> [ModelCatalogEntry])? = nil
     ) async throws -> RuntimeContext {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("loom-runtime-\(UUID())", isDirectory: true)
@@ -196,7 +197,7 @@ struct SessionRuntimeTests {
                 idlePolicy: idlePolicy, codexIdentityTimeout: 3,
                 claudePluginDirectory: claudePlugin ? root.appendingPathComponent("claude-plugin", isDirectory: true) : nil,
                 hookSilenceGrace: hookSilenceGrace, catalogBackupDelay: catalogBackupDelay,
-                runsRecovered: runsRecovered, defaultOpenedMode: defaultOpenedMode
+                runsRecovered: runsRecovered, defaultOpenedMode: defaultOpenedMode, openedModels: openedModels
             )
         )
         if startRuntime { try await runtime.start() }

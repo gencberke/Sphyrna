@@ -115,7 +115,7 @@ struct HarnessDraftMigrationTests {
             defaultEffort: entry.defaultEffort)], readAt: Date()))
         model.setDraftModel(entry, projectID: nil)
         let draft = try #require(model.newSession.draft(for: nil))
-        #expect(draft.choices == HarnessLaunchChoices(harness: .codex, model: entry.id, effort: "high"))
+        #expect(draft.choices == HarnessLaunchChoices(harness: .codex, model: entry.id, effort: "high", mode: .askBeforeEdits))
         #expect(model.resolvedStart(for: nil).choices == draft.choices)
         #expect(!model.canSendDraft(projectID: nil))
 

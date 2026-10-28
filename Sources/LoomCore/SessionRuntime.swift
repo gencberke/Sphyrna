@@ -122,6 +122,7 @@ public enum SessionRuntimeError: Error, CustomStringConvertible, Equatable, Send
     case unsupportedProvider(ManagedSession.Provider)
     case unverifiedStop(UUID)
     case requestNotPending(String)
+    case openRequestHarnessMismatch
     /// Deletion is refused for this conversation; the text says why (shown to the user).
     case deletionRefused(String)
     /// The conversation is being deleted: no start, resume, view or input until it finishes.
@@ -158,6 +159,8 @@ public enum SessionRuntimeError: Error, CustomStringConvertible, Equatable, Send
             "The last stop of this session could not be verified: \(id)"
         case let .requestNotPending(id):
             "The provider request is no longer pending: \(id)"
+        case .openRequestHarnessMismatch:
+            "The open request belongs to a different harness"
         case let .deletionRefused(reason):
             "This session cannot be deleted: \(reason)"
         case let .deletionPending(id):
@@ -494,9 +497,12 @@ public actor SessionRuntime {
     ) async throws -> T {
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
         if let choices = draft?.choices ?? opening?.choices {
-            guard choices.harness.provider == provider, choices.claudeChoices != nil else {
+            guard choices.harness.provider == provider else {
                 let name = HarnessCatalogue.descriptor(for: choices.harness)?.displayName ?? choices.harness.rawValue
                 throw LoomError.message("\(name) cannot start this session in this build")
+            }
+            if choices.claudeChoices == nil {
+                try choices.validate(models: await configuration.openedModels?(choices.harness) ?? [], allowFullAccess: false)
             }
         }
         guard (opening == nil && draft == nil) || harnesses[provider]?.takesOpeningOrDraft == true else {
@@ -506,9 +512,12 @@ public actor SessionRuntime {
             throw LoomError.message("A start takes an opening or a draft, never both.")
         }
         // Before any git step or card: a message that cannot be an argument is refused here, whoever asks.
-        if let draft, draft.firstMessage.utf8.count > NewSessionLaunch.maxFirstMessageBytes {
-            throw LoomError.message("The first message is too long to start a session with (the limit is "
-                + "\(NewSessionLaunch.maxFirstMessageBytes / 1024) KB).")
+        if let text = draft?.firstMessage ?? opening?.firstMessage {
+            if text.utf8.count > NewSessionLaunch.maxFirstMessageBytes {
+                throw LoomError.message("The first message is too long to start a session with (the limit is "
+                    + "\(NewSessionLaunch.maxFirstMessageBytes / 1024) KB).")
+            }
+            guard !text.utf8.contains(0) else { throw LoomError.message("The first message contains a NUL character") }
         }
         let key = StartKey(provider: provider, projectID: projectID)
         guard startingNew.insert(key).inserted else {
@@ -727,19 +736,39 @@ public actor SessionRuntime {
         hookServer = nil
         hookTask?.cancel()
         hookTask = nil
+        var socketErrors: [String] = []
+        var preparedSockets = Set<UUID>()
         for server in servers {
             _ = await server.teardownTask?.value
             server.requestTask?.cancel()
             server.requestTask = nil
             await server.coordinator?.stop()
-            _ = await server.manager.stopServer()
+            let stopped = await server.manager.stopServer()
+            socketErrors += stopped.errors
+            if stopped.errors.isEmpty {
+                let errors = await server.manager.prepareSocketCleanup()
+                socketErrors += errors
+                if errors.isEmpty { preparedSockets.insert(server.id) }
+            }
         }
         // A backup still waiting for its turn gives up; one being copied is awaited at the end, so nothing
         // of the runtime writes to the data root after shutdown returns.
         let backup = backupTask
         backupTask = nil
         backup?.cancel()
-        let report = await supervisor.shutdown()
+        let supervisorReport = await supervisor.shutdown()
+        if supervisorReport.succeeded {
+            for server in servers where preparedSockets.contains(server.id) {
+                let errors = await server.manager.finishSocketCleanup()
+                socketErrors += errors
+                if errors.isEmpty { server.finished = true }
+            }
+            codexServers.removeAll { $0.finished }
+        }
+        let report = ShutdownReport(remainingCountVerified: supervisorReport.remainingCountVerified,
+            elapsedSeconds: supervisorReport.elapsedSeconds, signals: supervisorReport.signals,
+            remaining: supervisorReport.remaining, errors: supervisorReport.errors + socketErrors,
+            outsideOwnership: supervisorReport.outsideOwnership, ownershipGuarantee: supervisorReport.ownershipGuarantee)
         recordQuit(report)
         observer?.cancel()
         observer = nil
@@ -747,13 +776,6 @@ public actor SessionRuntime {
         // genuinely finished runs on both successful and failed Quit; a live
         // run from a failed shutdown keeps its resources for the retry.
         await reconcileEnded()
-        if report.succeeded {
-            for server in servers {
-                unlink(server.socket)
-                server.finished = true
-            }
-            codexServers.removeAll()
-        }
         await backup?.value
         return report
     }

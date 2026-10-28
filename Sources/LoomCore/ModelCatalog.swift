@@ -192,9 +192,9 @@ public final class ModelCatalog {
 
     /// What Codex's group shows before a probe has answered.
     public nonisolated static let codexFallback: [ModelCatalogEntry] = [
-        ModelCatalogEntry(harness: .codex, id: "GPT-6 Astra", title: "GPT-6 Astra", note: "Most capable"),
-        ModelCatalogEntry(harness: .codex, id: "GPT-6.1 Sol", title: "GPT-6.1 Sol", note: "Near Astra, for less"),
-        ModelCatalogEntry(harness: .codex, id: "GPT-6 Luna", title: "GPT-6 Luna", note: "Focused, high-volume work"),
+        ModelCatalogEntry(harness: .codex, id: "gpt-6-astra", title: "GPT-6 Astra", note: "Most capable"),
+        ModelCatalogEntry(harness: .codex, id: "gpt-6.1-sol", title: "GPT-6.1 Sol", note: "Near Astra, for less"),
+        ModelCatalogEntry(harness: .codex, id: "gpt-6-luna", title: "GPT-6 Luna", note: "Focused, high-volume work"),
     ]
 
     private nonisolated static func entry(of model: HarnessModel, harness: HarnessID) -> ModelCatalogEntry {

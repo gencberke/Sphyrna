@@ -3,6 +3,20 @@ import Testing
 @testable import LoomCore
 
 struct ProviderProfileTests {
+    @Test func newCodexSafetyFlagsComeAfterExtrasAndBeforeTheFirstMessage() throws {
+        let capabilities = ProviderCapabilities(version: "test", help: "--remote <ADDR>", serverHelp: "--listen <URL>")
+        let choices = HarnessLaunchChoices(harness: .codex, mode: .acceptEdits)
+        let profile = try ProviderLaunchProfile.codex(route: .remote(socket: "/tmp/owned.sock", threadID: nil, workingDirectory: "/tmp/project"),
+            capabilities: capabilities, home: URL(fileURLWithPath: "/tmp/home"), environment: [:], choices: choices, firstMessage: "hello")
+        let extras = ["-c", "approvals_reviewer=\"auto_review\"", "-c", "sandbox_workspace_write.network_access=true"]
+        let argv = profile.launchArguments(extra: extras)
+        let required = ["-c", "approvals_reviewer=\"user\"", "-c", "sandbox_workspace_write.network_access=false",
+                        "-c", "sandbox_workspace_write.writable_roots=[]", "--", "hello"]
+        #expect(Array(argv.suffix(required.count)) == required)
+        #expect((argv.firstIndex(of: extras[1]) ?? -1) < (argv.lastIndex(of: required[1]) ?? -1))
+        #expect((argv.firstIndex(of: extras[3]) ?? -1) < (argv.lastIndex(of: required[3]) ?? -1))
+    }
+
     @Test func rejectsUnknownCapabilities() throws {
         let unknown = ProviderCapabilities(version: "unknown", help: "")
         #expect(throws: (any Error).self) {

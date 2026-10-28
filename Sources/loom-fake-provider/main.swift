@@ -22,6 +22,15 @@ func take(_ flag: String) -> String? {
     return value
 }
 
+func takeCodexConfig() -> [String: String] {
+    var result: [String: String] = [:]
+    while let entry = take("-c") {
+        let parts = entry.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+        if parts.count == 2 { result[String(parts[0])] = String(parts[1]) }
+    }
+    return result
+}
+
 // Hold a real Stop hook's wrapper after delivery, until the test releases it.
 // This makes the otherwise brief helper lifetime overlap the idle decision.
 if arguments.first == "--hold-stop-hook", arguments.count == 2 {
@@ -432,13 +441,37 @@ case "claude":
         claude.run(resume: false)
     }
 case "codex-server":
+    if let stateDirectory, let bytes = try? JSONSerialization.data(withJSONObject: Array(CommandLine.arguments.dropFirst())),
+       let line = String(data: bytes, encoding: .utf8) {
+        let file = stateDirectory.appendingPathComponent("codex-server-arguments.log")
+        let previous = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
+        try? (previous + line + "\n").write(to: file, atomically: true, encoding: .utf8)
+    }
     guard let listen = take("--listen"), listen.hasPrefix("unix://") else { fail("codex-server needs --listen unix://PATH") }
-    runCodexServer(socketPath: String(listen.dropFirst("unix://".count)))
+    runCodexServer(socketPath: String(listen.dropFirst("unix://".count)), config: takeCodexConfig())
 case "codex-tui":
+    if let stateDirectory, let bytes = try? JSONSerialization.data(withJSONObject: Array(CommandLine.arguments.dropFirst())),
+       let line = String(data: bytes, encoding: .utf8) {
+        let file = stateDirectory.appendingPathComponent("codex-tui-arguments.log")
+        let previous = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
+        try? (previous + line + "\n").write(to: file, atomically: true, encoding: .utf8)
+    }
     guard let remote = take("--remote"), remote.hasPrefix("unix://") else { fail("codex-tui needs --remote unix://PATH") }
     var resumeID: String?
     if let index = arguments.firstIndex(of: "resume"), index + 1 < arguments.count { resumeID = arguments[index + 1] }
-    runCodexTUI(socketPath: String(remote.dropFirst("unix://".count)), resumeID: resumeID, workingDirectory: take("--cd"))
+    let directory = take("--cd")
+    let model = take("-m")
+    let sandbox = take("-s")
+    let approval = take("-a")
+    let config = takeCodexConfig()
+    let rawEffort = config["model_reasoning_effort"]
+    let effort = rawEffort.flatMap { $0.hasPrefix("\"") && $0.hasSuffix("\"") ? String($0.dropFirst().dropLast()) : nil }
+    let prompt = arguments.firstIndex(of: "--").flatMap { $0 + 1 < arguments.count ? arguments[$0 + 1] : nil }
+    if resumeID != nil && (model != nil || effort != nil || sandbox != nil || approval != nil) {
+        fail("Permission overrides are not supported when resuming a remote task.")
+    }
+    runCodexTUI(socketPath: String(remote.dropFirst("unix://".count)), resumeID: resumeID, workingDirectory: directory,
+                model: model, effort: effort, sandbox: sandbox, approval: approval, firstMessage: prompt, config: config)
 default:
     fail("unknown role \(role)")
 }

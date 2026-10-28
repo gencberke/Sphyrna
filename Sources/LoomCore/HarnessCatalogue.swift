@@ -68,7 +68,10 @@ public enum HarnessCatalogue {
         startable: true,
         provider: .codex,
         markRendering: .template,
-        showsOnboardingWhenMissing: true)
+        showsOnboardingWhenMissing: true,
+        modes: [.askBeforeEdits, .acceptEdits],
+        agentModes: [.askBeforeEdits, .acceptEdits],
+        defaultMode: .askBeforeEdits)
 
     /// opencode 2.2.0 (2.1.4 when P1 was planned). Install lines and the profile variable are to confirm; `opencode auth
     /// login` is its own `auth --help`'s. It has no doctor yet: `opencode debug config` prints the whole resolved config,

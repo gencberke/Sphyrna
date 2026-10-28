@@ -401,8 +401,13 @@ public actor CodexSessionCoordinator {
     private func retryJoin(_ binding: CodexRunBinding, status: CodexThreadStatus) {
         guard var join = joins[binding.managedRunID], join.binding == binding else { return }
         let changed = join.lastStatus != status
+        let wasActive: Bool
+        if case .active = join.lastStatus { wasActive = true } else { wasActive = false }
         join.lastStatus = status
         if changed, case .active = status { join.retryStatus = status }
+        // A short first turn may persist only after its active retry failed. Its
+        // active-to-idle transition is another bounded, event-driven retry point.
+        if changed, wasActive, case .idle = status { join.retryStatus = status }
         joins[binding.managedRunID] = join
         if join.awaitingPersistence, join.retryStatus != nil {
             joins[binding.managedRunID]?.retryStatus = nil

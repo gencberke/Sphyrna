@@ -607,8 +607,9 @@ extension CatalogModel {
 
     /// Whether ↵ would start the draft now.
     public func canSendDraft(projectID: UUID?) -> Bool {
-        guard draftSendBlock(projectID: projectID) == nil, actionsAvailable, capabilities(of: .newSessionDefault).startable, !isStarting(.newSessionDefault, projectID: projectID),
-              let draft = newSession.draft(for: projectID), draft.choices.claudeChoices != nil,
+        guard draftSendBlock(projectID: projectID) == nil, actionsAvailable,
+              let draft = newSession.draft(for: projectID), let provider = draft.choices.harness.provider,
+              capabilities(of: provider).startable, !isStarting(provider, projectID: projectID),
               draft.isVisible, !newSession.isSending(draft: draft.id),
               intents is any NewSessionIntents else { return false }
         if draft.branchKind != .stay {

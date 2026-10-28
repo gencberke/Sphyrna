@@ -1,5 +1,6 @@
 import CryptoKit
 import Darwin
+import Dispatch
 import Foundation
 
 // A tiny stand-in for `codex app-server` (Unix-socket WebSocket, JSON-RPC) and
@@ -104,6 +105,13 @@ private struct FakeThread {
     var turns: [FakeTurn] = []
     var active = false
     var flags: [String] = []
+    var model = "fake-codex-alpha"
+    var effort = "low"
+    var sandbox = "read-only"
+    var approval = "on-request"
+    var networkAccess = false
+    var writableRoots: [String] = []
+    var reviewer = "user"
 }
 
 private final class FakeServerConnection {
@@ -125,7 +133,7 @@ private final class FakeServerConnection {
     }
 }
 
-func runCodexServer(socketPath: String) -> Never {
+func runCodexServer(socketPath: String, config: [String: String]) -> Never {
     let state = ProcessInfo.processInfo.environment["LOOM_FAKE_STATE"].map { URL(fileURLWithPath: $0, isDirectory: true) }
     if ProcessInfo.processInfo.environment["LOOM_FAKE_CODEX_SERVER_ESCAPE"] != nil, let state {
         // A command the server started that left its session and carries no
@@ -157,6 +165,25 @@ func runCodexServer(socketPath: String) -> Never {
         }
     }
     guard bound == 0, Darwin.listen(listener, 8) == 0 else { fail("cannot listen on \(socketPath): \(errno)") }
+    guard chmod(socketPath, 0o600) == 0 else { fail("cannot secure socket") }
+    var original = stat()
+    guard lstat(socketPath, &original) == 0 else { fail("cannot inspect socket") }
+    let device = original.st_dev, inode = original.st_ino
+    var terminationSources: [DispatchSourceSignal] = []
+    if ProcessInfo.processInfo.environment["LOOM_FAKE_CODEX_LEAVE_SOCKET"] == nil {
+        for number in [SIGHUP, SIGTERM] {
+            signal(number, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: number)
+            source.setEventHandler {
+                var current = stat()
+                if lstat(socketPath, &current) == 0, current.st_dev == device, current.st_ino == inode { unlink(socketPath) }
+                exit(0)
+            }
+            source.resume()
+            terminationSources.append(source)
+        }
+    }
+    defer { terminationSources.forEach { $0.cancel() } }
     _ = fcntl(listener, F_SETFL, O_NONBLOCK)
     signal(SIGPIPE, SIG_IGN)
     out("FAKE-CODEX-SERVER LISTENING \(socketPath)\r\n")
@@ -189,10 +216,22 @@ func runCodexServer(socketPath: String) -> Never {
         appendState("codex-turns-list.log", "limit=\((params["limit"] as? Int).map(String.init) ?? "none") sort=\((params["sortDirection"] as? String) ?? "default")")
     }
 
+    func applyPermissions(_ overrides: [String: String], to thread: inout FakeThread) {
+        if let reviewer = overrides["approvals_reviewer"] { thread.reviewer = reviewer.trimmingCharacters(in: CharacterSet(charactersIn: "\"")) }
+        if let network = overrides["sandbox_workspace_write.network_access"] { thread.networkAccess = network == "true" }
+        if overrides["sandbox_workspace_write.writable_roots"] == "[]" { thread.writableRoots = [] }
+    }
+
     func persist(_ thread: FakeThread) {
         guard let state else { return }
         try? FileManager.default.createDirectory(at: state, withIntermediateDirectories: true)
         try? thread.cwd.write(to: state.appendingPathComponent("codex-thread-\(thread.id).cwd"), atomically: true, encoding: .utf8)
+        let values: [String: Any] = ["model": thread.model, "effort": thread.effort, "sandbox": thread.sandbox,
+            "approval": thread.approval, "networkAccess": thread.networkAccess, "writableRoots": thread.writableRoots,
+            "reviewer": thread.reviewer]
+        if let data = try? JSONSerialization.data(withJSONObject: values) {
+            try? data.write(to: state.appendingPathComponent("codex-thread-\(thread.id).settings"), options: .atomic)
+        }
     }
 
     func known(_ id: String) -> Bool {
@@ -202,7 +241,17 @@ func runCodexServer(socketPath: String) -> Never {
     func load(_ id: String) -> FakeThread? {
         if let thread = threads[id] { return thread }
         guard let state, let cwd = try? String(contentsOf: state.appendingPathComponent("codex-thread-\(id).cwd"), encoding: .utf8) else { return nil }
-        let thread = FakeThread(id: id, cwd: cwd)
+        var thread = FakeThread(id: id, cwd: cwd)
+        if let data = try? Data(contentsOf: state.appendingPathComponent("codex-thread-\(id).settings")),
+           let values = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+            thread.model = (values["model"] as? String) ?? thread.model
+            thread.effort = (values["effort"] as? String) ?? thread.effort
+            thread.sandbox = (values["sandbox"] as? String) ?? thread.sandbox
+            thread.approval = (values["approval"] as? String) ?? thread.approval
+            thread.networkAccess = (values["networkAccess"] as? Bool) ?? false
+            thread.writableRoots = (values["writableRoots"] as? [String]) ?? []
+            thread.reviewer = (values["reviewer"] as? String) ?? "user"
+        }
         threads[id] = thread
         return thread
     }
@@ -357,12 +406,41 @@ func runCodexServer(socketPath: String) -> Never {
                 }
             }
         case "thread/start":
-            let thread = FakeThread(id: UUID().uuidString.lowercased(), cwd: (params["cwd"] as? String) ?? FileManager.default.currentDirectoryPath)
+            var thread = FakeThread(id: UUID().uuidString.lowercased(), cwd: (params["cwd"] as? String) ?? FileManager.default.currentDirectoryPath)
+            if ProcessInfo.processInfo.environment["LOOM_FAKE_CODEX_GLOBAL_FULL"] != nil {
+                thread.sandbox = "danger-full-access"
+                thread.approval = "never"
+            }
+            if ProcessInfo.processInfo.environment["LOOM_FAKE_CODEX_GLOBAL_WIDENED"] != nil {
+                thread.reviewer = "auto_review"
+                thread.networkAccess = true
+                thread.writableRoots = ["/synthetic-outside"]
+            }
+            applyPermissions(config, to: &thread)
+            applyPermissions((params["config"] as? [String: String]) ?? [:], to: &thread)
+            thread.model = (params["model"] as? String) ?? thread.model
+            thread.effort = ((params["config"] as? [String: Any])?["model_reasoning_effort"] as? String) ?? thread.effort
+            thread.sandbox = (params["sandbox"] as? String) ?? thread.sandbox
+            thread.approval = (params["approvalPolicy"] as? String) ?? thread.approval
+            if thread.sandbox == "read-only" { thread.networkAccess = false; thread.writableRoots = [] }
             threads[thread.id] = thread
             connection.resumedThreads.insert(thread.id)
             persist(thread)
             reply(["thread": threadObject(thread, includeTurns: false)])
             broadcast("thread/started", ["thread": threadObject(thread, includeTurns: false)])
+        case "fixture/settings":
+            let threadID = (params["threadId"] as? String) ?? ""
+            guard var thread = load(threadID) else { failure(-32600, "thread not found: \(threadID)"); return }
+            thread.model = (params["model"] as? String) ?? thread.model
+            thread.effort = (params["effort"] as? String) ?? thread.effort
+            thread.sandbox = (params["sandbox"] as? String) ?? thread.sandbox
+            thread.approval = (params["approval"] as? String) ?? thread.approval
+            thread.networkAccess = (params["networkAccess"] as? Bool) ?? thread.networkAccess
+            thread.writableRoots = (params["writableRoots"] as? [String]) ?? thread.writableRoots
+            thread.reviewer = (params["reviewer"] as? String) ?? thread.reviewer
+            threads[threadID] = thread
+            persist(thread)
+            reply([:])
         case "fixture/resolve":
             let threadID = (params["threadId"] as? String) ?? ""
             let mode = (params["mode"] as? String) ?? "first"
@@ -430,7 +508,7 @@ func runCodexServer(socketPath: String) -> Never {
             reply([:])
         case "thread/resume":
             let threadID = (params["threadId"] as? String) ?? ""
-            guard let thread = load(threadID) else { failure(-32600, "thread not found: \(threadID)"); return }
+            guard var thread = load(threadID) else { failure(-32600, "thread not found: \(threadID)"); return }
             let isTUI = connection.initializeData.map { String(decoding: $0, as: UTF8.self).contains("fake-codex-tui") } ?? false
             let mode = ProcessInfo.processInfo.environment["LOOM_FAKE_CODEX_JOIN"] ?? ""
             if !isTUI {
@@ -440,13 +518,20 @@ func runCodexServer(socketPath: String) -> Never {
                     let old = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
                     try? (old + "join \(threadID) \(params.keys.sorted().joined(separator: ","))\n").write(to: url, atomically: true, encoding: .utf8)
                 }
-                if mode == "blank-always" || (mode.hasPrefix("blank") && thread.turns.isEmpty) {
+                if mode == "blank-always" || (mode.hasPrefix("blank") && thread.turns.isEmpty)
+                    || (mode == "blank-until-idle" && thread.active) {
                     failure(-32600, "no rollout found for thread \(threadID)"); return
                 }
                 if mode == "wrong" { reply(["thread": ["id": "wrong-thread"]]); return }
                 if mode == "missing" { reply(["thread": [:]]); return }
                 if mode == "error" { failure(-32001, "join failed"); return }
             }
+            thread.model = (params["model"] as? String) ?? thread.model
+            thread.effort = ((params["config"] as? [String: Any])?["model_reasoning_effort"] as? String) ?? thread.effort
+            thread.sandbox = (params["sandbox"] as? String) ?? thread.sandbox
+            thread.approval = (params["approvalPolicy"] as? String) ?? thread.approval
+            threads[threadID] = thread
+            persist(thread)
             let finish = {
                 if !isTUI && mode == "delay-error" { failure(-32001, "late join failed"); return }
                 connection.resumedThreads.insert(threadID)
@@ -473,7 +558,17 @@ func runCodexServer(socketPath: String) -> Never {
                         "params": ["threadId": threadID, "turnId": turn.id]])
                     broadcast("thread/started", ["thread": threadObject(thread, includeTurns: false)])
                 }
-                reply(["thread": threadObject(thread, includeTurns: false)])
+                let sandboxType: String = switch thread.sandbox {
+                case "read-only": "readOnly"
+                case "workspace-write": "workspaceWrite"
+                case "danger-full-access": "dangerFullAccess"
+                default: "futurePolicy"
+                }
+                reply(["thread": threadObject(thread, includeTurns: false),
+                       "cwd": !isTUI && mode == "wrong-cwd" ? "/different-cwd" : thread.cwd,
+                       "model": thread.model, "reasoningEffort": thread.effort,
+                       "sandbox": ["type": sandboxType, "networkAccess": thread.networkAccess, "writableRoots": thread.writableRoots],
+                       "approvalPolicy": thread.approval, "approvalsReviewer": thread.reviewer])
             }
             if !isTUI && mode.hasPrefix("delay") {
                 let delay = Double(mode.dropFirst("delay".count)) ?? 0.3
@@ -537,6 +632,12 @@ func runCodexServer(socketPath: String) -> Never {
         case "turn/start":
             let threadID = (params["threadId"] as? String) ?? ""
             guard var thread = load(threadID) else { failure(-32600, "thread not found: \(threadID)"); return }
+            appendState("codex-turn-settings.log", "\(threadID) \(thread.sandbox) \(thread.approval)")
+            let permissions: [String: Any] = ["reviewer": thread.reviewer, "networkAccess": thread.networkAccess,
+                                              "writableRoots": thread.writableRoots]
+            if let data = try? JSONSerialization.data(withJSONObject: permissions), let line = String(data: data, encoding: .utf8) {
+                appendState("codex-turn-permissions.log", line)
+            }
             let text = ((params["input"] as? [[String: Any]])?.first?["text"] as? String) ?? ""
             var turn = FakeTurn(id: "turn-\(thread.turns.count + 1)-\(thread.id.prefix(6))")
             turn.items = [["type": "userMessage", "text": text]]
@@ -704,7 +805,8 @@ private final class FakeCodexClient {
     }
 }
 
-func runCodexTUI(socketPath: String, resumeID: String?, workingDirectory: String?) -> Never {
+func runCodexTUI(socketPath: String, resumeID: String?, workingDirectory: String?, model: String?, effort: String?,
+                 sandbox: String?, approval: String?, firstMessage: String?, config: [String: String]) -> Never {
     let environment = ProcessInfo.processInfo.environment
     if resumeID == nil, environment["LOOM_FAKE_CODEX_INPUT_BEFORE_IDENTITY"] != nil {
         out("FAKE-CODEX BEFORE-IDENTITY: type continue (or exit)\r\n")
@@ -734,7 +836,14 @@ func runCodexTUI(socketPath: String, resumeID: String?, workingDirectory: String
     let cwd = FileManager.default.currentDirectoryPath
 
     func startThread() {
-        let reply = client.request("thread/start", ["cwd": cwd], sink: sink)
+        var params: [String: Any] = ["cwd": cwd]
+        if let model { params["model"] = model }
+        var settings = config
+        if let effort { settings["model_reasoning_effort"] = effort }
+        if !settings.isEmpty { params["config"] = settings }
+        if let sandbox { params["sandbox"] = sandbox }
+        if let approval { params["approvalPolicy"] = approval }
+        let reply = client.request("thread/start", params, sink: sink)
         threadID = (((reply["result"] as? [String: Any])?["thread"] as? [String: Any])?["id"] as? String) ?? ""
     }
 
@@ -750,6 +859,9 @@ func runCodexTUI(socketPath: String, resumeID: String?, workingDirectory: String
         startThread()
     }
     out("FAKE-CODEX READY \(threadID) cwd=\(cwd) home=\(environment["CODEX_HOME"] ?? "default")\r\n> ")
+    if let firstMessage {
+        _ = client.request("turn/start", ["threadId": threadID, "input": [["type": "text", "text": firstMessage]]], sink: sink)
+    }
 
     func show(_ message: [String: Any]) {
         switch message["method"] as? String {
@@ -787,6 +899,14 @@ func runCodexTUI(socketPath: String, resumeID: String?, workingDirectory: String
             out("RESOLUTION-SENT \(text)\r\n> ")
         case "/interrupt", "/complete":
             _ = client.request("fixture/endTurn", ["threadId": threadID, "status": text == "/interrupt" ? "interrupted" : "completed"], sink: sink)
+        case "/settings-safe", "/settings-full", "/settings-unknown", "/settings-network", "/settings-roots", "/settings-never", "/settings-reviewer":
+            let sandbox = text == "/settings-full" ? "danger-full-access" : text == "/settings-unknown" ? "future-policy"
+                : text == "/settings-roots" ? "workspace-write" : "read-only"
+            _ = client.request("fixture/settings", ["threadId": threadID, "model": "fake-codex-beta", "effort": "low",
+                "sandbox": sandbox, "approval": text == "/settings-full" || text == "/settings-never" ? "never" : "on-request",
+                "networkAccess": text == "/settings-network", "writableRoots": text == "/settings-roots" ? ["/outside"] : [],
+                "reviewer": text == "/settings-reviewer" ? "auto" : "user"], sink: sink)
+            out("SETTINGS-SAVED \(text)\r\n> ")
         case "/helper":
             _ = client.request("fixture/helper", ["cwd": cwd], sink: sink)
             out("HELPER-SENT\r\n> ")

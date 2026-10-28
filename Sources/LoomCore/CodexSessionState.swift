@@ -1,5 +1,13 @@
 import Foundation
 
+/// Provider-reported settings at the last successful, identity-checked resume.
+/// Native changes after that response are not reflected until the next resume.
+public struct CodexResumeSettings: Equatable, Sendable {
+    public let model: String?
+    public let effort: String?
+    public let mode: HarnessMode
+}
+
 public struct CodexSessionStatus: Equatable, Sendable {
     public var providerThreadID: String
     public var activity: AgentActivity

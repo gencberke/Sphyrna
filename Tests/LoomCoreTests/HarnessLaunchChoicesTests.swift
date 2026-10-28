@@ -3,6 +3,13 @@ import Testing
 @testable import LoomCore
 
 struct HarnessLaunchChoicesTests {
+    @Test func codexOffersOnlyTheModesVerifiedForItsTerminal() throws {
+        let descriptor = try #require(HarnessCatalogue.descriptor(for: .codex))
+        #expect(descriptor.modes == [.askBeforeEdits, .acceptEdits])
+        #expect(descriptor.agentModes == [.askBeforeEdits, .acceptEdits])
+        #expect(descriptor.defaultMode == .askBeforeEdits)
+    }
+
     @Test func choosingAnotherHarnessUsesTheDefaultForAnUnsupportedEffortAndNeverCarriesFullAccess() {
         let original = HarnessLaunchChoices(harness: .claude, model: "opus", effort: "max", mode: .fullAccess)
         let model = ModelCatalogEntry(harness: .codex, id: "codex-test", title: "Codex test",
@@ -10,7 +17,7 @@ struct HarnessLaunchChoicesTests {
         let selected = original.choosing(model)
         #expect(selected.harness == .codex && selected.model == "codex-test")
         #expect(selected.effort == "high")
-        #expect(selected.mode == nil, "Codex modes wait for the P0 mapping")
+        #expect(selected.mode == .askBeforeEdits, "the old Full access choice is not carried across harnesses")
         #expect(selected.claudeChoices == nil)
 
         let back = selected.choosing(ModelCatalog.claude[0])

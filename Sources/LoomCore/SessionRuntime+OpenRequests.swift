@@ -19,21 +19,31 @@ extension SessionRuntime {
     /// start throws and leaves the request in the list as failed; it is never retried.
     public func approveOpenRequest(
         _ requestID: UUID, rows: UInt16 = 24, columns: UInt16 = 80,
-        outputSink: (any TerminalOutputSink)? = nil
+        outputSink: (any TerminalOutputSink)? = nil,
+        expectedProvider: ManagedSession.Provider? = nil,
+        onTerminalReady: (@MainActor @Sendable (RuntimeLaunch) async -> Void)? = nil
     ) async throws -> RuntimeLaunch {
+        if let expectedProvider {
+            guard let request = await openRequests.snapshot().first(where: { $0.id == requestID }) else {
+                throw OpenSessionError.unknownRequest(requestID)
+            }
+            guard request.choices.harness.provider == expectedProvider else {
+                throw SessionRuntimeError.openRequestHarnessMismatch
+            }
+        }
         let launched = LaunchBox()
         let sessionID = try await openRequests.approve(requestID) { spec in
-            guard spec.choices.claudeChoices != nil else {
+            guard let provider = spec.choices.harness.provider else {
                 let name = HarnessCatalogue.descriptor(for: spec.choices.harness)?.displayName ?? spec.choices.harness.rawValue
                 throw LoomError.message("\(name) cannot start an opened session in this build")
             }
             let launch = try await self.startConversation(
-                provider: .claude, projectID: spec.projectID, rows: rows, columns: columns,
+                provider: provider, projectID: spec.projectID, rows: rows, columns: columns,
                 outputSink: outputSink,
                 opening: SessionOpening(
                     title: spec.title, firstMessage: spec.message, openedBy: spec.requesterID,
                     choices: spec.choices, modeFromUserDefault: spec.modeFromUserDefault
-                )
+                ), onTerminalReady: onTerminalReady
             )
             launched.value = launch
             return launch.sessionID

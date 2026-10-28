@@ -237,8 +237,9 @@ struct SessionServiceTests {
         let told: Told
     }
 
-    private func makeRig(runsIn: SessionLiveFace = .chat, host hasHost: Bool = true, startable: Set<ManagedSession.Provider> = [.claude, .codex]) async throws -> Rig {
-        let context = try await SessionRuntimeTests.makeContext()
+    private func makeRig(runsIn: SessionLiveFace = .chat, host hasHost: Bool = true, startable: Set<ManagedSession.Provider> = [.claude, .codex],
+                         extraEnvironment: [String: String] = [:]) async throws -> Rig {
+        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: extraEnvironment)
         let host = FakeHost()
         let sinks = FakeSinks()
         let told = Told()
@@ -254,6 +255,20 @@ struct SessionServiceTests {
     }
 
     // MARK: Faces
+
+    @Test func aCodexTerminalIsShownBeforeIdentityButItsFailureIsReportedAsAStartFailure() async throws {
+        let rig = try await makeRig(extraEnvironment: ["LOOM_FAKE_CODEX_EXIT_AT_START": "1"])
+        defer { rig.context.cleanup() }
+        var outcomes: [Bool] = []
+        let draft = NewSessionLaunch(firstMessage: "keep this draft", choices: HarnessLaunchChoices(harness: .codex, mode: .askBeforeEdits))
+        let task = rig.service.startSession(projectID: nil, launch: draft,
+            cardCreated: { rig.told.card($0) }, notStarted: { rig.told.none() }, startResolved: { outcomes.append($0) })
+        await task?.value
+        #expect(rig.host.newSessions.isEmpty)
+        #expect(rig.sinks.adopted.count == 1 && rig.told.cards.count == 1)
+        #expect(outcomes == [false], "showing the terminal does not make the draft start successful")
+        #expect((await rig.context.runtime.shutdown()).succeeded)
+    }
 
     @Test func aStartGoesToTheFaceThePolicyNames() async throws {
         let chat = try await makeRig(runsIn: .chat)
@@ -360,6 +375,36 @@ struct SessionServiceTests {
         await terminal.service.approveOpen(requestID: request)?.value
         #expect(terminal.host.opened.isEmpty && terminal.sinks.requested == 1 && terminal.sinks.failed == 1)
         #expect(terminal.told.failures == [.openRequestNotAnswered])
+    }
+
+    @Test func anApprovalCannotUseAnotherHarnessGateToStartDisabledCodex() async throws {
+        let rig = try await makeRig(runsIn: .terminal, startable: [.claude])
+        defer { rig.context.cleanup() }
+        let folder = rig.context.root.appendingPathComponent("approval-owner", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let project = try await rig.context.catalog.addProject(path: folder.path).project
+        let requester = try await rig.context.runtime.startConversation(provider: .claude, projectID: project.id)
+        let hooks = try #require(await rig.context.runtime.hookConfiguration)
+        let socket = try #require(hooks.controlSocketPath)
+        let wire = OpenSessionWireRequest(authenticationToken: hooks.authenticationToken, sessionID: requester.sessionID,
+            managedRunID: requester.runID, title: "Codex", project: nil, message: "go", harness: "codex")
+        let reply = Task.detached { try OpenSessionClient.exchange(wire, socketPath: socket) }
+        let runtime = rig.context.runtime
+        let deadline = ProcessInfo.processInfo.systemUptime + 5
+        while await runtime.openRequestSnapshot().isEmpty && ProcessInfo.processInfo.systemUptime < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await runtime.openRequestSnapshot().count == 1)
+        let pending = try #require(await rig.context.runtime.openRequestSnapshot().first)
+        // The legacy caller supplies its default Claude gate, but the server-owned request says Codex.
+        await rig.service.approveOpen(requestID: pending.id)?.value
+        let after = await rig.context.runtime.openRequestSnapshot()
+        #expect(after.first?.phase == .waiting)
+        #expect(try await rig.context.catalog.sessions().count == 1)
+        #expect(rig.told.failures == [.openRequestNotAnswered])
+        if after.first != nil { try await rig.context.runtime.denyOpenRequest(pending.id) }
+        _ = try await reply.value
+        #expect((await rig.context.runtime.shutdown()).succeeded)
     }
 
     @Test func aSecondApprovalOfTheSameRequestIsRefusedWhileTheFirstRuns() async throws {

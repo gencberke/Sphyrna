@@ -44,12 +44,12 @@ private let defaultRoot = URL(fileURLWithPath: "/default/Loom-Dev", isDirectory:
         #expect(nameA.hasPrefix(BuildIdentity(bundleIdentifier: nil).commandChannelPrefix))
     }
 
-    @Test func productionIdentityHidesCodexAndPinsEveryName() {
+    @Test func productionIdentityStartsCodexAndPinsEveryName() {
         let production = BuildIdentity(bundleIdentifier: "local.loom.desktop")
         #expect(production.isProduction)
         #expect(production.dataDirectoryName == "Loom")
         #expect(production.socketDirectoryName == ".loom")
-        #expect(production.startableProviders == ["claude"])
+        #expect(production.startableProviders == ["claude", "codex"])
     }
 
     @Test func developmentIdentityKeepsEveryNameAndBothProviders() {

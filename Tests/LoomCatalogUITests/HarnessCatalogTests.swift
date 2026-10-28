@@ -131,6 +131,11 @@ struct HarnessCatalogTests {
         #expect(picker().groups(codex: []).map(\.provider) == [.claude], "switched off: Claude's group only")
     }
 
+    @Test func fallbackCodexRowsUseModelIDsRatherThanDisplayNames() {
+        #expect(ModelCatalog.codexFallback.map(\.id) == ["gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna"])
+        #expect(ModelCatalog.codexFallback.map(\.title) == ["GPT-6 Astra", "GPT-6.1 Sol", "GPT-6 Luna"])
+    }
+
     // MARK: Startable (C2B)
 
     /// One rule for "startable": a harness switched off is not startable, and switching it on again makes it startable with no

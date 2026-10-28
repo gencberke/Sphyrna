@@ -8,6 +8,7 @@ public struct CodexAppServerConfiguration: Sendable {
     public let workingDirectory: String
     public let socketPath: String
     public let clientVersion: String
+    public let launchChoices: HarnessLaunchChoices?
     public let startupTimeout: TimeInterval
     /// The conversation's run scope. The server is launched into it so that
     /// stopping the conversation's last run also ends everything it forked.
@@ -20,7 +21,7 @@ public struct CodexAppServerConfiguration: Sendable {
     public init(
         executable: String, capabilities: ProviderCapabilities, home: URL,
         baseEnvironment: [String: String], workingDirectory: String,
-        socketPath: String, clientVersion: String,
+        socketPath: String, clientVersion: String, launchChoices: HarnessLaunchChoices? = nil,
         startupTimeout: TimeInterval = 5, scope: RunScope? = nil,
         optOutNotificationMethods: [String] = CodexAppServerClient.productOptOutNotificationMethods,
         inboundObserver: CodexInboundObserver? = nil
@@ -32,6 +33,7 @@ public struct CodexAppServerConfiguration: Sendable {
         self.workingDirectory = workingDirectory
         self.socketPath = socketPath
         self.clientVersion = clientVersion
+        self.launchChoices = launchChoices
         self.startupTimeout = startupTimeout
         self.scope = scope
         self.optOutNotificationMethods = optOutNotificationMethods
@@ -54,6 +56,9 @@ public actor CodexAppServerManager {
     private var startTask: Task<Running, any Error>?
     private var stopTask: Task<(report: SessionStopReport?, errors: [String]), Never>?
     private var failedInternalSessionID: UUID?
+    private var socketOwnership: CodexSocketOwnership?
+    private var socketCleanupPrepared = false
+    private var socketPreparationTask: Task<[String], Never>?
 
     public init(supervisor: ProcessSupervisor,
                 configuration: CodexAppServerConfiguration) {
@@ -93,7 +98,11 @@ public actor CodexAppServerManager {
 
     @discardableResult
     public func stop(graceSeconds: Double = 0.2) async -> SessionStopReport? {
-        await stopServer(graceSeconds: graceSeconds).report
+        let result = await stopServer(graceSeconds: graceSeconds)
+        var errors = result.errors
+        if errors.isEmpty, let scope = configuration.scope { errors += await supervisor.releaseScope(scope) }
+        if errors.isEmpty { errors += await cleanupSocket() }
+        return result.report.map { errors.isEmpty ? $0 : $0.adding(errors: errors) }
     }
 
     /// Stops the server (or retries a failed stop) and says what could not be
@@ -150,6 +159,8 @@ public actor CodexAppServerManager {
     }
 
     private func startServer() async throws -> Running {
+        guard socketOwnership == nil else { throw LoomError.message("Previous Codex socket cleanup is incomplete") }
+        socketOwnership = try CodexSocketOwnership(requested: configuration.socketPath)
         let internalSession = ManagedSession(
             provider: .synthetic,
             workingDirectory: configuration.workingDirectory
@@ -164,7 +175,7 @@ public actor CodexAppServerManager {
             let profile = try ProviderLaunchProfile.codex(
                 route: .server(socket: configuration.socketPath),
                 capabilities: configuration.capabilities,
-                home: configuration.home, environment: environment
+                home: configuration.home, environment: environment, choices: configuration.launchChoices
             )
             let diagnostics = DiagnosticOutputTee(downstream: nil)
             let launch = try await supervisor.launch(
@@ -175,6 +186,9 @@ public actor CodexAppServerManager {
                 outputSink: diagnostics,
                 scope: configuration.scope
             )
+            guard let leader = launch.session.currentRun?.leader else {
+                throw LoomError.message("Codex app-server process identity is unavailable")
+            }
             let deadline = ProcessInfo.processInfo.systemUptime
                 + max(0.02, configuration.startupTimeout)
             var lastError: (any Error)?
@@ -187,6 +201,11 @@ public actor CodexAppServerManager {
                     throw startupExit(status, output: diagnostics.text)
                 }
                 do {
+                    guard try socketOwnership?.claimIfReady(leader: leader) == true else {
+                        lastError = CodexAppServerError.system(operation: "connect", code: ENOENT)
+                        try await Task.sleep(for: .milliseconds(20))
+                        continue
+                    }
                     let client = try await CodexAppServerClient.connect(
                         socketPath: configuration.socketPath,
                         clientVersion: configuration.clientVersion,
@@ -228,6 +247,58 @@ public actor CodexAppServerManager {
             } catch { failedInternalSessionID = internalSession.id }
             throw error
         }
+    }
+
+    /// Check that the recorded node has no remaining listener while helpers
+    /// can still run. Quit may then stop its last TUI before the final unlink.
+    func prepareSocketCleanup() async -> [String] {
+        // Stop, the end observer, and Quit may all arrive together. One
+        // inspection is shared, and a later caller must not invalidate a proof
+        // already made just before supervisor shutdown stopped helper launches.
+        if socketCleanupPrepared || socketOwnership == nil { return [] }
+        if let socketPreparationTask { return await socketPreparationTask.value }
+        let task = Task { await self.inspectSocketCleanup() }
+        socketPreparationTask = task
+        let errors = await task.value
+        socketPreparationTask = nil
+        return errors
+    }
+
+    private func inspectSocketCleanup() async -> [String] {
+        guard let ownership = socketOwnership else { return [] }
+        do {
+            if let path = try ownership.remainingSocket() {
+                do {
+                    _ = try await supervisor.captureHelper("/usr/sbin/lsof", ["-nP", "-a", "-U", path],
+                        environment: ["PATH": "/usr/bin:/bin"], timeout: 5, outputLimit: 16_384)
+                    throw LoomError.message("Codex socket is still open")
+                } catch let LoomError.helperExit(status, detail) where status == 1 && detail.isEmpty {
+                    // lsof reports no matching open Unix socket with this exit.
+                }
+                _ = try ownership.remainingSocket()
+            }
+            socketCleanupPrepared = true
+            return []
+        } catch {
+            socketCleanupPrepared = false
+            return ["Codex socket cleanup could not be verified: \(error)"]
+        }
+    }
+
+    func finishSocketCleanup() -> [String] {
+        guard let ownership = socketOwnership else { return [] }
+        guard socketCleanupPrepared else { return ["Codex socket cleanup was not verified"] }
+        do {
+            try ownership.removeRemaining()
+            socketOwnership = nil
+            socketCleanupPrepared = false
+            return []
+        } catch { return ["Codex socket cleanup could not be verified: \(error)"] }
+    }
+
+    func cleanupSocket() async -> [String] {
+        let errors = await prepareSocketCleanup()
+        return errors.isEmpty ? finishSocketCleanup() : errors
     }
 
     private func startupExit(_ status: Int32, output: String) -> LoomError {
