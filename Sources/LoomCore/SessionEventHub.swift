@@ -146,6 +146,9 @@ public struct SessionViewState: Equatable, Sendable {
     /// Background work left after a turn does not keep it under way (D-103). Viewing or "Mark as Read" ends it; so do a prompt,
     /// a new run and the end of the run. An idle notice after a turn the user read changes nothing.
     public var activePhase: ActivePhase
+    /// When this hub first observed the current turn under way (work or an approval). Kept across tool and approval
+    /// updates, including skipped frames; nil before a turn is observed and after it ends. Memory only, with no clock.
+    public var turnStartedAt: Date?
     /// The last thing that went wrong for this conversation outside a stop
     /// (start failure, missing history, lost provider connection). Cleared by a
     /// new run; survives skipped frames.
@@ -180,8 +183,9 @@ public struct SessionViewState: Equatable, Sendable {
         waitingAcknowledged: Bool = false, activePhase: ActivePhase = .inactive, issue: String? = nil,
         userRequests: [ProviderUserRequest] = [], subagents: [SubagentRecord] = [], reason: StatusReason? = nil,
         runEndpoint: RunEndpointKind? = nil, pendingRequests: [ProviderPendingRequest] = [],
-        permissionMode: String? = nil, effort: String? = nil
+        permissionMode: String? = nil, effort: String? = nil, turnStartedAt: Date? = nil
     ) {
+        self.turnStartedAt = turnStartedAt
         self.permissionMode = permissionMode
         self.effort = effort
         self.runEndpoint = runEndpoint
@@ -294,8 +298,9 @@ public actor SessionEventHub {
     private var states: [UUID: SessionViewState] = [:]
     private var subscribers: [UUID: AsyncStream<SessionEventFrame>.Continuation] = [:]
     private var viewedSessionID: UUID?
+    private let now: @Sendable () -> Date
 
-    public init() {}
+    public init(now: @escaping @Sendable () -> Date = { Date() }) { self.now = now }
 
     public func snapshot() -> SessionEventFrame {
         SessionEventFrame(
