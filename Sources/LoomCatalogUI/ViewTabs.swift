@@ -79,7 +79,15 @@ private struct ViewTabStyle: ButtonStyle {
                     Rectangle().fill(LoomTheme.Accent.base).frame(height: LoomTheme.ViewTabs.underline)
                         .opacity(selected ? 1 : 0).accessibilityHidden(true)
                 }
-                .controlFocusRing(visible: ring, radius: LoomTheme.InkRadius.key)
+                .overlay {
+                    if ring {
+                        Color.clear
+                            .controlFocusRing(visible: true, radius: LoomTheme.InkRadius.key)
+                            .padding(.vertical, LoomTheme.ViewTabs.focusInset)
+                            .padding(.horizontal, -LoomTheme.ViewTabs.focusOutset)
+                            .allowsHitTesting(false).accessibilityHidden(true)
+                    }
+                }
                 .onHover { hovering = $0 }
         }
     }

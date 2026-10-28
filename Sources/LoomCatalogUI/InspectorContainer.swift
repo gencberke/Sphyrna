@@ -154,7 +154,15 @@ private struct InspectorTabStyle: ButtonStyle {
                     Rectangle().fill(LoomTheme.Accent.base).frame(height: LoomTheme.Inspector.tabUnderline)
                         .opacity(selected ? 1 : 0).accessibilityHidden(true)
                 }
-                .controlFocusRing(visible: ring, radius: LoomTheme.InkRadius.key)
+                .overlay {
+                    if ring {
+                        Color.clear
+                            .controlFocusRing(visible: true, radius: LoomTheme.InkRadius.key)
+                            .padding(.vertical, LoomTheme.Inspector.tabFocusInset)
+                            .padding(.horizontal, -LoomTheme.Inspector.tabFocusOutset)
+                            .allowsHitTesting(false).accessibilityHidden(true)
+                    }
+                }
                 .onHover { hovering = $0 }
         }
     }

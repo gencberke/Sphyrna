@@ -258,17 +258,18 @@ private struct ControlFocusRing: ViewModifier {
         let haloOpacity = contrast == .increased
             ? LoomTheme.Control.focusHaloIncreasedOpacity : LoomTheme.Control.focusHaloOpacity
         content.overlay {
-            ZStack {
-                // A stroke centred half the halo's width outside the edge covers the band from the edge out to the halo's width.
-                RoundedRectangle(cornerRadius: radius + halo / 2)
-                    .stroke(LoomTheme.Surface.focusRing.opacity(haloOpacity), lineWidth: halo)
-                    .padding(-halo / 2)
-                RoundedRectangle(cornerRadius: radius)
-                    .strokeBorder(LoomTheme.Surface.focusRing, lineWidth: LoomTheme.Control.focusEdge)
+            if visible {
+                ZStack {
+                    // A stroke centred half the halo's width outside the edge covers the band from the edge out to the halo's width.
+                    RoundedRectangle(cornerRadius: radius + halo / 2)
+                        .stroke(LoomTheme.Surface.focusRing.opacity(haloOpacity), lineWidth: halo)
+                        .padding(-halo / 2)
+                    RoundedRectangle(cornerRadius: radius)
+                        .strokeBorder(LoomTheme.Surface.focusRing, lineWidth: LoomTheme.Control.focusEdge)
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
             }
-            .opacity(visible ? 1 : 0)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
         }
     }
 }

@@ -10,6 +10,36 @@ import Testing
 @MainActor
 @Suite(.timeLimit(.minutes(2)))
 struct InspectorResizeTests {
+    /// Measure the real detail view and its inspector in an unshown window. This exercises the same accessibility frames as the
+    /// shown-window handle test without ordering a window on screen.
+    @Test func theOffscreenInspectorHandleMatchesItsContainer() async throws {
+        enableAccessibilityTree()
+        let rig = try await InspectorRig.make(sessions: 1)
+        defer { rig.cleanup() }
+        let size = NSSize(width: 1_100, height: 700)
+        let host = NSHostingView(rootView: DetailView(model: rig.model))
+        host.frame = NSRect(origin: .zero, size: size)
+        rig.window.contentView = host
+        rig.window.setContentSize(size)
+        rig.model.select(rig.ids[0])
+        rig.model.toggleInspector()
+        #expect(await inspectorWaitUntil { rig.model.selectedRow != nil })
+        await rig.settle()
+        #expect(!rig.window.isVisible, "the test must never order its window on screen")
+        let elements = accessibilityElements(in: host)
+        func frame(_ id: String) -> CGRect? {
+            elements.first { $0.accessibilityIdentifier?() == id }?.accessibilityFrame?()
+        }
+        let handle = try #require(frame("inspector-resize-handle"))
+        let inspector = try #require(frame("inspector"))
+        print("INSPECTOR-OFFSCREEN handle=\(handle) inspector=\(inspector) host=\(host.frame) visible=\(rig.window.isVisible)")
+        #expect(abs(handle.width - LoomTheme.Inspector.resizeHandleWidth) < 0.5)
+        #expect(abs(handle.minX - inspector.minX) < 0.5)
+        #expect(abs(handle.height - inspector.height) < 0.5)
+        let tabs = elements.filter { ($0.accessibilityLabel?() ?? "") == "Overview" }.compactMap { $0.accessibilityFrame?() }
+        #expect(!tabs.isEmpty && tabs.allSatisfy { !$0.intersects(handle) })
+    }
+
     private func openRig() async throws -> InspectorRig {
         let rig = try await InspectorRig.make()
         rig.model.readOnlyChatEnabled = true // the Side tab is the frozen Chat face's (D-100)

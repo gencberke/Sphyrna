@@ -267,6 +267,32 @@ struct ControlFamilyTests {
         #expect(LoomTheme.Control.focusHaloIncreasedOpacity > LoomTheme.Control.focusHaloOpacity)
     }
 
+    /// A hidden halo must not enlarge any shared control's accessibility frame.
+    @MainActor @Test func anUnfocusedSharedControlKeepsItsAccessibilityFrame() async throws {
+        enableAccessibilityTree()
+        let size = NSSize(width: 120, height: 28)
+        func frame<V: View>(_ view: V) async throws -> CGRect {
+            let root = view.accessibilityElement(children: .contain).accessibilityIdentifier("test-control-frame")
+            let host = NSHostingView(rootView: root)
+            host.frame = NSRect(origin: .zero, size: size)
+            let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentView = host
+            defer { window.close() }
+            try await Task.sleep(for: .milliseconds(120))
+            host.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            #expect(!window.isVisible)
+            let element = try #require(accessibilityElements(in: host).first { InkAX.identifier($0) == "test-control-frame" })
+            return element.accessibilityFrame()
+        }
+        let button = Button("Action") {}.buttonStyle(.plain).frame(width: size.width, height: size.height)
+        let reference = try await frame(button)
+        let hidden = try await frame(button.controlFocusRing(visible: false, radius: LoomTheme.Control.iconRadius))
+        print("CONTROL-FOCUS-OFFSCREEN reference=\(reference) hidden=\(hidden)")
+        #expect(abs(hidden.width - reference.width) < 0.5 && abs(hidden.height - reference.height) < 0.5)
+    }
+
     /// The custom drawing keeps a native toggle's value and action, and each segment remains an actionable named choice.
     @MainActor @Test func sharedControlsExposeAccessibleActionsAndRespectDisabledState() async throws {
         enableAccessibilityTree()
