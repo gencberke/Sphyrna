@@ -150,8 +150,9 @@ cat > "$host/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
-# Provider marks shown on conversation cards.
-cp assets/harness/harness-claude.png assets/harness/harness-codex.png assets/harness/harness-codex-template.png "$app/Contents/Resources/"
+# Harness marks shown on session cards and Connections.
+cp assets/harness/harness-claude.png assets/harness/harness-codex.png assets/harness/harness-codex-template.png \
+  assets/harness/harness-opencode.png assets/harness/harness-agy.png "$app/Contents/Resources/"
 # Third-party licenses (T3 Code MIT text; SwiftTerm is named there) ship inside the app.
 cp THIRD-PARTY-NOTICES.md "$app/Contents/Resources/"
 cat > "$app/Contents/Info.plist" <<PLIST

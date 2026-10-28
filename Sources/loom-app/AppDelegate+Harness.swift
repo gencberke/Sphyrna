@@ -9,11 +9,8 @@ import LoomCore
 extension AppDelegate {
     func installHarness(model: CatalogModel, preferences: UIPreferencesStore, root: URL, limits: ClaudePlanLimitsFetcher?) {
         // The switch starts from the stored flags; a change goes back to the file, and the CLIs are looked for again (C2B).
-        let connections = HarnessConnections(disconnected: preferences.current.disconnectedHarnesses) { [weak model] provider, connected in
-            Task { @MainActor in
-                try? preferences.update { $0.setHarnessConnected(provider, connected) }
-                model?.refreshHarnessAvailability(force: true)
-            }
+        let connections = preferences.makeHarnessConnections { [weak model] in
+            model?.refreshHarnessAvailability(force: true)
         }
         // The composer's model lists: the app's one catalogue, read with the same switch, handed to the model (C2B).
         let catalog = ModelCatalog(connections: connections)
