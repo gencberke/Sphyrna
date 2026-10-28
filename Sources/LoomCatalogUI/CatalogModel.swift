@@ -422,6 +422,8 @@ public final class CatalogModel {
     /// The menu bar item in numbers (working changes the Dock badge never sees), kept beside the count and
     /// fired from the same places on a change only. The menu itself is built when it opens (`menuBarState()`).
     @ObservationIgnored public internal(set) var menuBarSummary = MenuBarSummary.idle
+    /// The already-derived count used by the window status bar; unrelated live frames do not publish it.
+    public internal(set) var workingSessionCount = 0
     @ObservationIgnored public var onMenuBarChange: (@MainActor (MenuBarSummary) -> Void)?
     /// The Show in menu bar and Notify switches in Settings changed; the app reads `showInMenuBar` and `notifyApprovals`.
     @ObservationIgnored public var onShowInMenuBarChange: (@MainActor () -> Void)?

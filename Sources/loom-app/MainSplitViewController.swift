@@ -63,34 +63,13 @@ final class MainSplitViewController: NSSplitViewController {
         splitView.setPosition(CGFloat(width), ofDividerAt: 0)
     }
 
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        // The command palette (⌘K) is one window-level overlay over both panes; it draws and takes clicks only while open.
-        let palette = makePaletteOverlayView(model: model)
-        palette.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(palette)
-        NSLayoutConstraint.activate([
-            palette.leadingAnchor.constraint(equalTo: view.leadingAnchor), palette.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            palette.topAnchor.constraint(equalTo: view.topAnchor), palette.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
-        // The popovers and menus (the composer's pickers, the draft's, the project menu) are one more window-level layer, over the
-        // palette's so that a popover is never under it; it takes clicks and keys only while one is open.
-        let hosts = inkHost.view
-        hosts.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(hosts)
-        NSLayoutConstraint.activate([
-            hosts.leadingAnchor.constraint(equalTo: view.leadingAnchor), hosts.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            hosts.topAnchor.constraint(equalTo: view.topAnchor), hosts.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
-        // The window's questions (rename, delete, rewind, discard) are one more window-level layer, over the panes and the
-        // popovers alike: a question hides the whole window and takes every click while it is open.
-        let sheets = makeMainSheetOverlayView(model: model)
-        sheets.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(sheets)
-        NSLayoutConstraint.activate([
-            sheets.leadingAnchor.constraint(equalTo: view.leadingAnchor), sheets.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            sheets.topAnchor.constraint(equalTo: view.topAnchor), sheets.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
+    /// One root for both panes, the bar, and the existing window-wide overlays.
+    func makeWindowContentController() -> NSViewController {
+        let status = NSHostingController(rootView: StatusBarView(model: model).inkHost(inkHost))
+        status.sizingOptions = []
+        return StatusBarWindowLayout(split: self, bar: status, overlays: [
+            makePaletteOverlayView(model: model), inkHost.view, makeMainSheetOverlayView(model: model),
+        ], popoverHost: inkHost)
     }
 
     override func viewDidLayout() {

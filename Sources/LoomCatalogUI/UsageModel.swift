@@ -190,6 +190,8 @@ public final class UsageModel {
     public private(set) var lastFailure: String?
     /// The footer's text; replaced only when it changes, so its readers redraw only then.
     public private(set) var chip: UsageChipContent?
+    /// Compact limits for the window bar. Replaced only when a displayed value changes.
+    private(set) var statusSegments: [StatusBarUsage] = []
     /// Today's tokens by kind, from the read the chip is made from; nil until the first read. Replaced only
     /// when a figure changes.
     public private(set) var todayUsage: UsageToday?
@@ -308,6 +310,7 @@ public final class UsageModel {
             HarnessProbe(connections: HarnessConnections(), sources: [Self.planLimitsHarness: ClaudeProbeSource(fetcher: source)],
                          clock: clock)
         }
+        rebuildStatusSegments()
     }
 
     // MARK: Events
@@ -408,6 +411,7 @@ public final class UsageModel {
         guard active != windowIsActive else { return }
         windowIsActive = active
         guard active else { return }
+        rebuildStatusSegments()
         refresh(reason: .activation)
         fetchLimitsIfDue(after: cadence.afterShown)
         // Codex is asked on activation too, under the probe's five-minute floor, so the footer's Codex line is current (FB6-3).
@@ -603,6 +607,15 @@ public final class UsageModel {
             codex: isConnected(.codex) ? readings[.codex] : nil, codexConnected: isConnected(.codex) && harnessProbe != nil,
             now: clock(), timeZone: timeZone)
         if content != chip { chip = content }
+        rebuildStatusSegments()
+    }
+
+    private func rebuildStatusSegments() {
+        let now = clock()
+        let next = Self.usageHarnesses.map {
+            StatusBarUsage.make(harness: $0, reading: readings[$0], now: now)
+        }
+        if next != statusSegments { statusSegments = next }
     }
 
     // MARK: Context
@@ -747,6 +760,7 @@ public final class UsageModel {
         self.connections = connections
         self.section = section
         self.onSectionChange = onSectionChange
+        rebuildStatusSegments()
     }
 
     public func selectSection(_ next: UsageSection) {
@@ -765,6 +779,29 @@ public final class UsageModel {
 
     /// The reading the Limits section draws for `harness`: the probe's.
     func limitsReading(of harness: ManagedSession.Provider) -> HarnessReading? { readings[harness] }
+
+    /// Full pace lines for a single cached reading. Drawing the bar or opening its popover asks nothing.
+    func statusPaces(of harness: ManagedSession.Provider, at now: Date) -> [PlanPaceLine.Content] {
+        guard isConnected(harness) else { return [] }
+        return StatusBarUsage.paceLines(reading: readings[harness], now: now, timeZone: timeZone)
+    }
+
+    /// An explicit Check Again asks only this harness's probe and never scans transcripts.
+    func checkStatusLimits(of harness: ManagedSession.Provider) async {
+        guard let harnessProbe, isConnected(harness) else { return }
+        await limitsTask?.value
+        await harnessTask?.value
+        guard isConnected(harness) else { return }
+        let outcome = await harnessProbe.ask(harness: harness, force: true)
+        guard isConnected(harness) else { return }
+        if harness == Self.planLimitsHarness {
+            lastLimitsAsk = clock()
+            takeClaude(outcome)
+        } else {
+            applyAsk(outcome, of: harness)
+        }
+        rebuildChip()
+    }
 
     /// The groups of the Limits section for the harnesses shown, at `now`.
     func limitGroups(shown: [ManagedSession.Provider], now: Date) -> [UsageLimitsGroup] {

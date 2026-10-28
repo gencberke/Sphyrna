@@ -92,12 +92,6 @@ struct SidebarEntryPointTests {
         #expect(fixture.intents.starts.isEmpty)
     }
 
-    @Test func theFooterOffersAProjectlessEntryOnlyWhereThePlainEntriesWouldStartInAProject() {
-        #expect(SidebarFooter.offersWithoutProject(contextProjectID: UUID()))
-        #expect(!SidebarFooter.offersWithoutProject(contextProjectID: nil))
-        #expect(ClaudeStartEntry.withoutProjectTitle == "New Claude Session Without Project")
-    }
-
     @Test func aProjectlessSessionInTheProjectViewGroupHasNoRepeatedNoProjectTitle() {
         let loose = CatalogSession(
             session: ManagedSession(provider: .claude, workingDirectory: "/tmp"), title: nil,

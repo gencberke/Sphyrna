@@ -57,6 +57,7 @@ extension CatalogModel {
             onAttentionCountChange?(count)
         }
         let summary = MenuBarSummary.derive(candidates)
+        if workingSessionCount != summary.working { workingSessionCount = summary.working }
         if summary != menuBarSummary {
             menuBarSummary = summary
             onMenuBarChange?(summary)
