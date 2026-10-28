@@ -28,6 +28,7 @@ source "$root/scripts/release/allowlist.sh"
 
 # Window tests (open a real window: need an unlocked screen). Matched as regexes against test ids.
 window_tests=(
+  WindowEventTests                                              # All serialized shown-window suites, including inspector resize
   byteQuotaCoversRasterRounding                                  # TerminalImageLimitTests
   layerBackingStorePreservesPixelsOutsideTheDirtyRect            # TerminalPartialDrawTests
   hostedWorkingIndicatorRunsOnlyWhenTheEnvironmentAllowsIt       # SidebarStatusTests
