@@ -133,7 +133,7 @@ struct FullAccessSheet: View {
     }
 }
 
-/// "Clear Remora's working memory?": Cancel has the focus; "Clear Working Memory" is in the failure wash; Return does nothing and Esc
+/// "Clear Remora's working memory?": Cancel has the focus; "Clear Working Memory" is outlined; Return does nothing and Esc
 /// cancels. `Remora.md` is kept. Opened from the memory sheet, either answer brings the memory sheet back.
 struct RemoraClearSheet: View {
     let model: CatalogModel
@@ -143,7 +143,7 @@ struct RemoraClearSheet: View {
     var body: some View {
         InkSheet(
             title: RemoraSettingsText.clearTitle, cancel: leave,
-            actions: [SheetAction(id: "clear-memory", title: RemoraSettingsText.clearConfirm, tint: .failure,
+            actions: [SheetAction(id: "clear-memory", title: RemoraSettingsText.clearConfirm, tint: .accent,
                                   perform: { Self.confirm(model: model, presenter: presenter, returnsToMemory: returnsToMemory) })]
         ) {
             SheetText(text: RemoraSettingsText.clearBody)

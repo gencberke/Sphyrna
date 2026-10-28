@@ -69,14 +69,19 @@ extension LoomTheme {
 }
 
 extension LoomTheme {
+    enum Palette {
+        /// The reserved slot for the shared search activity indicator.
+        static let searchIndicatorSide: CGFloat = 14
+    }
+
     /// Ask Remora in the palette (DESIGN §20 ⌘K; the reference's `remora/remora.css` `.palette .prow .sc` and `.palans`): the row's
-    /// scope and key caps in 11 mono, the answer padded 12 18 14 with its head line in 12.
+    /// scope in the reading face and key caps in mono, the answer padded 12 18 14 with its head line in 12.
     enum PaletteRemora {
         static let rowGap: CGFloat = 10
         /// The leading slot is the indicator slot and 4, as the palette's other rows.
         static let leadingExtra: CGFloat = 4
         static let keyGap: CGFloat = 6
-        static let scope = InkStyle(size: 11, mono: true)
+        static let scope = InkStyle(size: 11)
         static let capRadius: CGFloat = 4
         static let head = InkStyle(size: 12)
         static let answerPaddingH: CGFloat = 18
