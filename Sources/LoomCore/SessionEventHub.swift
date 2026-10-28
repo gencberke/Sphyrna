@@ -147,7 +147,7 @@ public struct SessionViewState: Equatable, Sendable {
     /// a new run and the end of the run. An idle notice after a turn the user read changes nothing.
     public var activePhase: ActivePhase
     /// When this hub first observed the current turn under way (work or an approval). Kept across tool and approval
-    /// updates, including skipped frames; nil before a turn is observed and after it ends. Memory only, with no clock.
+    /// updates, including skipped frames; nil before a turn is observed and after it ends. Memory only, with no timer.
     public var turnStartedAt: Date?
     /// The last thing that went wrong for this conversation outside a stop
     /// (start failure, missing history, lost provider connection). Cleared by a
@@ -336,6 +336,12 @@ public actor SessionEventHub {
         case let .status(value):
             let wasComplete = state.status?.activity == .turnComplete
             state.status = value
+            switch value?.activity {
+            case .working?, .waitingForApproval?:
+                if state.turnStartedAt == nil { state.turnStartedAt = now() }
+            case .waitingForInput?, .unknown?: break
+            default: state.turnStartedAt = nil
+            }
             if !Self.isAtPromptPeriod(value?.activity) { state.waitingAcknowledged = false }
             if value?.activity == .working {
                 state.unviewedCompletion = false
@@ -361,6 +367,7 @@ public actor SessionEventHub {
             state.unviewedCompletion = false
             state.waitingAcknowledged = false
             state.activePhase = .inactive
+            state.turnStartedAt = nil
             state.subagents = []
             state.reason = nil
             state.permissionMode = nil
@@ -371,6 +378,7 @@ public actor SessionEventHub {
                 state.runID = nil; state.status = nil; state.waitingAcknowledged = false; state.subagents = []
                 state.runEndpoint = nil; state.pendingRequests = []
                 state.activePhase = .inactive
+                state.turnStartedAt = nil
                 state.permissionMode = nil; state.effort = nil
                 state.reason = state.reason.flatMap(Self.keptAfterRun)
             }
@@ -382,6 +390,7 @@ public actor SessionEventHub {
                 state.status = nil
                 state.waitingAcknowledged = false
                 state.activePhase = .inactive
+                state.turnStartedAt = nil
                 state.userRequests = []
                 state.subagents = []
                 state.permissionMode = nil
