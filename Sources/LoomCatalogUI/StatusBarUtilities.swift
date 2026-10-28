@@ -30,10 +30,19 @@ private struct StatusBarHelpButton: View {
 
 @MainActor private final class StatusBarHelpAnchor {
     weak var view: NSView?
+    private var pendingOrOpen = false
 
     func open() {
-        guard let view, let menu = NSApp.helpMenu else { return }
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.maxY), in: view)
+        guard !pendingOrOpen, let view, let window = view.window, !view.isHiddenOrHasHiddenAncestor else { return }
+        pendingOrOpen = true
+        // Return from an accessibility press before AppKit enters the menu's nested tracking loop.
+        DispatchQueue.main.async { [weak self, weak view, weak window] in
+            guard let self else { return }
+            defer { self.pendingOrOpen = false }
+            guard let view, let window, self.view === view, view.window === window, !view.isHiddenOrHasHiddenAncestor,
+                  let menu = NSApp.helpMenu else { return }
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.maxY), in: view)
+        }
     }
 }
 

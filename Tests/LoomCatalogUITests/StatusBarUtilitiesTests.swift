@@ -12,11 +12,20 @@ extension StatusBarTests {
         private(set) weak var anchor: NSView?
         private(set) var location: NSPoint?
         private(set) var calls = 0
+        private(set) var openedDuringPress = false
+        private(set) var usedAppMenu = true
+        var performingPress = false
+        var onOpen: (() -> Void)?
 
         override func popUp(positioning item: NSMenuItem?, at location: NSPoint, in view: NSView?) -> Bool {
             calls += 1
             anchor = view
             self.location = location
+            openedDuringPress = openedDuringPress || performingPress
+            usedAppMenu = usedAppMenu && NSApp.helpMenu === self
+            let action = onOpen
+            onOpen = nil
+            action?()
             return true
         }
     }
@@ -33,6 +42,66 @@ extension StatusBarTests {
 
     private func buttons(_ label: String, in view: NSView) -> [AnyObject] {
         accessibilityElements(in: view).filter { $0.accessibilityRole?() == .button && InkAX.label($0) == label }
+    }
+
+    @Test func helpReturnsBeforeMenuTrackingAndIgnoresStaleOrRepeatedPresses() async throws {
+        enableAccessibilityTree()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("loom-status-help-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = CatalogModel(catalog: nil, events: SessionEventHub(),
+                                 preferences: UIPreferencesStore(url: directory.appendingPathComponent("preferences.json")))
+        defer { model.stop() }
+        let menu = HelpMenu(title: "Help")
+        let originalHelp = NSApp.helpMenu
+        NSApp.helpMenu = menu
+        defer { NSApp.helpMenu = originalHelp }
+        let host = InkHost()
+        let panes = NSViewController()
+        panes.view = NSView()
+        let bar = NSHostingController(rootView: StatusBarView(model: model).inkHost(host))
+        bar.sizingOptions = []
+        let root = StatusBarWindowLayout(split: panes, bar: bar, overlays: [host.view], popoverHost: host)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 600), styleMask: [.borderless],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentViewController = root
+        window.setContentSize(NSSize(width: 900, height: 600))
+        defer { host.state.dismiss(); window.close() }
+        try await settle(window)
+        #expect(!window.isVisible && !window.isKeyWindow)
+        let help = try #require(buttons("Help", in: bar.view).first)
+        func press() -> Bool {
+            menu.performingPress = true
+            defer { menu.performingPress = false }
+            return help.accessibilityPerformPress?() == true
+        }
+        // Simulate a second activation while the menu's nested tracking loop is active.
+        menu.onOpen = { #expect(press()) }
+        #expect(press())
+        #expect(menu.calls == 0, "the accessibility action must return before menu tracking begins")
+        #expect(press())
+        #expect(menu.calls == 0, "another pending press must not open another menu")
+        try await settle(window)
+        #expect(menu.calls == 1 && !menu.openedDuringPress && menu.usedAppMenu,
+                "one deferred popup uses the actual app Help menu, including during a repeated active press")
+        if let anchor = menu.anchor {
+            #expect(anchor.window === window && anchor.isDescendant(of: bar.view))
+            #expect(menu.location == NSPoint(x: 0, y: anchor.bounds.maxY))
+        } else { Issue.record("Help did not use the actual status bar anchor") }
+
+        let opened = menu.calls
+        #expect(press())
+        NotificationCenter.default.post(name: NSWindow.willEnterFullScreenNotification, object: window)
+        #expect(bar.view.isHidden)
+        try await settle(window)
+        #expect(menu.calls == opened, "a pending popup must not open after the bar becomes hidden")
+        NotificationCenter.default.post(name: NSWindow.willExitFullScreenNotification, object: window)
+        try await settle(window)
+        #expect(!bar.view.isHidden)
+        #expect(press())
+        window.contentViewController = nil
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(menu.calls == opened, "a pending popup must not open after the root is detached")
     }
 
     @Test func utilitiesAreInsideTheOneBottomBarWithAndWithoutTheSidebar() async throws {
@@ -119,7 +188,9 @@ extension StatusBarTests {
             #expect(settings.accessibilityPerformPress?() == true && settingsOpens == 1)
         }
         if let help = buttons("Help", in: bar.view).first {
-            #expect(help.accessibilityPerformPress?() == true && menu.calls == 1)
+            #expect(help.accessibilityPerformPress?() == true && menu.calls == 0)
+            try await settle(window)
+            #expect(menu.calls == 1)
             if let anchor = menu.anchor {
                 #expect(anchor.window === window && anchor.isDescendant(of: bar.view))
                 #expect(menu.location == NSPoint(x: 0, y: anchor.bounds.maxY))
@@ -137,7 +208,9 @@ extension StatusBarTests {
             #expect(settings.accessibilityPerformPress?() == true && settingsOpens == 2)
         }
         if let help = buttons("Help", in: bar.view).first {
-            #expect(help.accessibilityPerformPress?() == true && menu.calls == 2)
+            #expect(help.accessibilityPerformPress?() == true && menu.calls == 1)
+            try await settle(window)
+            #expect(menu.calls == 2)
         }
         NotificationCenter.default.post(name: NSWindow.willEnterFullScreenNotification, object: window)
         try await settle(window)
