@@ -1,10 +1,10 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-28, 10:04 +03.
-- **State:** `waiting for planning`, between slices. B1b and the reference consistency pass are integrated on `v2`;
-  the planner's combined off-screen check passes 63 tests. No implementer is running.
+- **Updated:** 2026-10-28, 10:56 +03.
+- **State:** `waiting for implementation`. B2 (sidebar and cards) and C3 (Connections and Home connect cards) are starting
+  in separate worktrees from `6d4744f`; the planner owns review, shared checks and canonical docs.
 - **Where we left off:** B1b closes the shared v4 controls and focus-ring migration; the reference now reuses complete window
-  parts. Next: B2 and C3 side by side. The full test attempt was interrupted, not passed (see §1).
+  parts. B2 and C3 are in flight side by side. The full test attempt was interrupted, not passed (see §1).
 - **Installed:** Sphyrna 1.7.2 (build 10702) in `/Applications/Loom.app`. The CLIs on this Mac: Claude Code 2.1.311,
   Codex 0.164.0, opencode 2.1.4, agy 1.4.5, pi 0.85.1.
 - **Public:** `0.4.4` is still the latest GitHub release. The tags `v1.6.0` to `v1.7.2` are local in the loom tree; their push
@@ -46,6 +46,8 @@ as every check used it (swift-png 4.5.2).
 | Worktree | Branch | State |
 | --- | --- | --- |
 | `~/Library/Caches/loom-v2/wt/v2` | `v2` | Code checkpoint `5c1f073`; canonical docs follow at HEAD; 63 affected tests pass |
+| `~/Library/Caches/loom-v2/wt/r9-b2` | `slice/r9-b2` | B2 implementation from `6d4744f`; scratch `build/r9-b2` |
+| `~/Library/Caches/loom-v2/wt/r9-c3` | `slice/r9-c3` | C3 implementation from `6d4744f`; scratch `build/r9-c3` |
 | `~/Documents/github/loom-dev` | `swarm/1` | The docs mirror (its changes are `v2`'s docs copied over, by design); never build or commit here |
 | `~/Documents/github/loom` | `main` | The public release tree, a separate repository |
 
@@ -55,14 +57,19 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
 
 ## 3. File locks
 
-- **`@planner`:** canonical records. No active implementation or reference locks; B1b's locks are released.
+- **`@planner`:** canonical records, including both slices' DESIGN and ARCHITECTURE updates; no implementer edits docs.
+- **B2:** SidebarView/CardModels/DraftRows/ListHeading/Background/Peek/RenderProbe, BrailleSpinner, RowHighlight,
+  LoomTheme+Sidebar, UIPreferences' sidebar-fill default, and sidebar/highlight tests. SidebarFooter is reserved for B3.
+- **C3:** SettingsConnections*, CatalogModel+Connections, HomeConnect, LoomTheme+Settings' Connections tokens,
+  ProviderIcon's catalogue mark support, harness assets, Connections/Home tests; CatalogModel's resume-unavailable reason
+  and CatalogModel+Handover's blocked-reason seam only. No overlapping B2 files.
 - **1.8.0:** each brief's write set. Shared by region: `CatalogModel.swift` (C4, D1, F1); `SidebarView.swift` (B2, B3);
   Settings files (C3, B5c, G1). `Package.swift` belongs to I1 alone.
 
 ## 4. Next actions by role
 
 - **`@planner`:**
-  1. Start B2 and C3 side by side (disjoint), then B3; C4 after them; the rest in the plan's order, two at most at once.
+  1. Review and integrate B2 and C3, run their combined affected checks, then B3; C4 after them; two at most at once.
   2. Carry B1b's layout-bound control migrations to B5 (its report); do not reopen the shared family to change a surface layout.
   3. At the pooled gate, use the corrected checker; rerun the full off-screen set and, in the authorized idle window, the
      inspector handle test and the native visual/keyboard/VoiceOver checks. Do not call B1b's interrupted full run a pass.
@@ -72,5 +79,6 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
   2. Optional: object to the small calls taken at review (B1 and C2b's "Decisions taken" in their reports), such as hiding,
      not disabling, the sidebar's New session row when Claude cannot start.
   3. Still open from before: the push of `v1.6.0`–`v1.7.2` and the GitHub release; the Trash folders of 22, 25, 26 and 28 Oct.
-- **Implementers:** none running; wait for the next Brief.
+- **`@implementer-ink` B2:** complete B2 in `wt/r9-b2`; narrow off-screen checks only; report visual/window work for the pool.
+- **`@implementer-ink` C3:** complete C3 in `wt/r9-c3`; fake PATH and profiles only; narrow off-screen checks; no real CLI turns.
 - **`@optimizer`:** at the 1.8.0 gate (plans/1.8.0/README.md §4).
