@@ -35,12 +35,14 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 2 | C2b the catalogue reaches every list | integrated `175f653` (no `ModelCatalog.shared`; availability on `CatalogModel`; one startable rule; File, Dock, Home, sidebar and menu bar follow the switch and the CLI); its follow-ups are in C3's brief |
 | 2 | B2 sidebar and card | integrated `497a962` + `6601d5c`; off-screen layout/selection, viewport clock, rest render and accessibility checks pass |
 | 2 | C3 Connections and Home connect cards | integrated `365b2d2` + `175f0e2`, parent seams `425878a`, `c84572b`, `1d4326d`; 9 core + 76 UI scoped tests pass; pooled guard/expectation fixes closed by `8e6fbf7` (112 affected tests PASS) |
-| 2 | B3 status bar | running on `slice/r9-b3` from `ab9ecc9`; Q7's documented Yes default applied at slice start |
+| 2 | B3 status bar | integrated `26acb6c`; full-width 26 pt bar, cached limits/popover, bounded working menu, shared awake setting and sidebar utilities; 185 affected tests PASS; Q7's documented Yes default applied |
 | 3 | C4 neutral draft · B4 model and effort pickers · D1 Codex sessions · D2 Codex reader and deletion · B5a/b/c surfaces | queued |
 | 4 | E1 opencode · E2 agy · E3 pi · F1 send · F2 Changes → session · G1 Remora backends · H1 usage · I1 names | queued |
 | 5 | Z the gate, the optimizer, the release | planner |
 
 ## Open notes for the planner
+
+- **B3 closed (28 Oct):** integrated-tree check passes **185 tests** (7 core + 178 UI), including the shared offscreen root/popover, limit freshness, menu bounds/actions and unrelated-hook redraw regression: `check-20261028T125618-89179.log`. Report: `~/Library/Caches/loom-v2/evidence/r9/b3/INTEGRATION.md`. Worktree/patch-equivalent branch and 1.7 GB scratch removed; evidence retained. No new whole-pool run or shown-window/real-CLI check (D-90). Next: C4's per-harness draft/store/open choices, then B4's model/effort controls and B5's surface migrations.
 
 - **Reference consistency is closed** (28 Oct): shared session chrome and harness marks, terminal, Overview, Connections, Settings tabs and
   About; one complete-app frame rule and labelled crops (DESIGN §1). Source guard, Ink/Paper geometry and browser flows pass;

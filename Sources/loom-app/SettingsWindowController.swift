@@ -3,7 +3,7 @@ import LoomCatalogUI
 import LoomTerminal
 import SwiftUI
 
-/// The one Settings window, reused by Cmd+, the gear and the usage chip. Its shape is `SettingsWindowConfiguration`'s; the window
+/// The one Settings window, reused by Cmd+, the gear and the status bar's Open Usage action. Its shape is `SettingsWindowConfiguration`'s; the window
 /// is built on first use and only hidden when closed.
 @MainActor
 final class SettingsWindowController {

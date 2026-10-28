@@ -68,8 +68,8 @@ extension ClaudeUsageIndex: UsageIndexing {
     public func refreshChanged(_ paths: [URL]) async throws -> UsageScanReport { try await refresh(paths: paths) }
 }
 
-/// Today's tokens by kind, as the latest read of the index found them (the same summary the footer chip is
-/// made from). Home's Today block shows its cache share and bars.
+/// Today's tokens by kind, as the latest read of the index found them. Home's Today block shows its
+/// cache share and bars; the legacy evidence chip uses the same read.
 public struct UsageToday: Equatable, Sendable {
     public let tokens: UsageTokens
     public init(_ tokens: UsageTokens) { self.tokens = tokens }
@@ -169,7 +169,7 @@ public struct PlanLimitsCadence: Equatable, Sendable {
     public init() {}
 }
 
-/// The one observable usage state both the footer chip and the Settings page read. Index work
+/// The observable usage state shared by the window status bar, Home and Settings. Index work
 /// runs on the index's own queue, never on the main actor, and only on events: launch, window
 /// activation, the Usage page showing, a change under the profile's `projects` folder (reported by
 /// `UsageTranscriptWatcher`, debounced and read for just the changed files), a finished Claude turn
@@ -188,7 +188,7 @@ public final class UsageModel {
     public private(set) var isRefreshing = false
     /// A refresh failed while earlier data is still shown.
     public private(set) var lastFailure: String?
-    /// The footer's text; replaced only when it changes, so its readers redraw only then.
+    /// Legacy evidence presentation; replaced only when its text changes.
     public private(set) var chip: UsageChipContent?
     /// Compact limits for the window bar. Replaced only when a displayed value changes.
     private(set) var statusSegments: [StatusBarUsage] = []
@@ -600,7 +600,7 @@ public final class UsageModel {
         rebuildChip()
     }
 
-    /// Replaced only when the text changes, so the footer redraws only then.
+    /// Rebuild the legacy evidence chip and the native bar from the same cached state.
     private func rebuildChip() {
         let content = UsageChipContent.make(
             state: state, today: today, hasHistory: hasHistory, limits: limits,

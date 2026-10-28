@@ -194,27 +194,29 @@ One spinner (the braille spinner) for every in-flight state.
   - The reason line (the Activity view) sits under the title in Small secondary.
   - **Subagents** branch from the mark's column, the line leaving the mark's centre. Their rows are 24, with a still running mark.
 - **Drag:** the project reorder is live (A1): the head lifts and the blocks slide.
-- **The bottom:** the footer chip goes (the status bar takes it). Settings and Help stay as ghost icon buttons at the sidebar's
-  bottom edge.
+- **The bottom:** Settings and Help are 24 pt ghost icon buttons in a 38 pt utility row. Help opens the app's existing Help
+  menu. The window status bar takes the former usage chip's place; the footer's `+` menu is retired.
 
 #### The status bar (Q7, B3)
 
 - **The bar:** 26 high along the whole window's bottom, under the sidebar and the content. It is the sidebar plane's colour with
   a hairline on top, in caption type.
 - **The leading side** has one segment per connected harness that reports limits:
-  - the segment reads `[mark] ▬▬▭ 4% · 3h 39m   7% · 5d`: the meter is 40 × 4, then each window's used share and its time to
+  - the segment reads `[mark] ▬▬▭ 4% · 3h 39m   7% · 5d`: the meter is 40 × 4, then each window's remaining share and its time to
     reset;
   - the meter fills by the share left, orange under 20 %, as the plan meters do;
   - a click opens a 360-wide popover with each window's full line, the reset times, when it was read, Check Again and Open Usage;
   - a harness that reports no limits shows only its mark and "No limits read";
-  - nothing is asked to fill the bar beyond what Usage already asks.
+  - the leading segments scroll horizontally at narrow widths; more than four popover pace lines scroll in a bounded area;
+  - nothing is asked to fill the bar beyond what Usage already asks; Check Again explicitly asks only the chosen harness.
 - **The trailing side:**
-  - "N working" when sessions work;
+  - "N working" when sessions work; its menu shows at most five, then "and N more…" opens Activity with the sidebar expanded;
   - Keep Mac Awake as a toggle, its state the same as Settings → General;
   - a Remora segment while a brief is being read;
-  - an update notice when a harness needs one.
-- **Rules:** the bar never animates while the app is not in front, and it is redrawn only when a figure changes. It hides in
-  full screen with the menu bar.
+  - update advice only for a known installed harness version below its recommendation/minimum.
+- **Rules:** controls use the shared 24 pt ghost family. Cached limits publish only when a displayed value changes; the working
+  count publishes only when that count changes, and its spinner stops in an inactive or invisible window. The bar hides in
+  full screen and dismisses its popover. The palette, shared popover host and sheets cover the strip with the rest of the root.
 
 #### The model and the effort (FB6-7, FB6-8, B4)
 
@@ -296,7 +298,7 @@ at 100 %. No window draws the art
 
 ## 2. Elements to keep
 
-> **1.8.0 (B2, C3):** §0.5 is the current sidebar: trailing status words, aligned three-line cards, neutral raised selection, 32 pt Search, one view toggle and a Raised fresh default. Connections and Home follow the five-harness rules below; earlier version snapshots in this section describe the previous layouts.
+> **1.8.0 (B2, B3, C3):** §0.5 is the current sidebar and window status bar: trailing status words, aligned three-line cards, neutral raised selection, 32 pt Search, one view toggle and a Raised fresh default. Settings/Help remain in the sidebar; cached limits move to the 26 pt window-wide strip. Connections and Home follow the five-harness rules below; earlier version snapshots in this section describe the previous layouts.
 
 > **1.7.1 (FB6-1, FB6-2, FB6-6, [D-103](../DECISIONS.md)):** the sidebar draws one plain fill: Canvas (the default), Raised (one step lighter) or Deep (one step darker), at Solid, 90, 80 or 65 % over what is behind the window, with no material and no blur; Reduce Transparency draws Solid. The split view's divider is opaque under its hairline, so the desktop never shows through the 1 pt gap. A card's title, reason line and branch start on one edge under the project (or harness) mark, 20 from the row's inset; the name keeps its place after the mark, whose box is its own 12 pt.
 
@@ -304,43 +306,21 @@ at 100 %. No window draws the art
 
 The window's structure stays; Ink redraws it.
 
-1. **Window buttons and the sidebar header.** The native red, yellow and green window buttons stay. The sidebar's 52 pt header row holds them and, at its trailing end, the sidebar toggle, nothing else. The view switch is the list's heading (item 3), so the header has no folder and clock buttons and no ⋯ menu; Add Project is in the footer's `+` menu (D-75).
+1. **Window buttons and the sidebar header.** The native red, yellow and green window buttons stay. The sidebar's 52 pt header row holds them and, at its trailing end, the sidebar toggle, nothing else. The view switch is in the list's heading (item 3), with Add Project in the Projects heading; the header has no folder and clock buttons or ⋯ menu.
 
    There is no navbar band: the header sits on the canvas (O-03, closed by D-69), with a hairline under it.
 2. **One canvas.** The sidebar and the main pane are one canvas, divided by a 1 pt opaque hairline (the canvas under it, FB6-1); nothing between them is boxed (rule 1).
    - **Appearance:** Ink (dark, the default), Paper (light) or Match system, chosen in Settings → Theme.
    - **The terminal face** is dark in every appearance (§6 Terminal framing).
-   - **The sidebar** draws one plain fill (FB6-6): Canvas (the default, D-81), Raised (one step lighter, as the Claude desktop app's sidebar) or Deep (one step darker than the canvas), at Solid, 90, 80 or 65 %, straight over what is behind the window with no material and no blur (80 % is the step 1.7.0 called Transparent, D-57). Reduce Transparency draws Solid.
+   - **The sidebar** draws one plain fill (FB6-6): Canvas, Raised (the fresh default, one step lighter) or Deep (one step darker than the canvas), at Solid, 90, 80 or 65 %, straight over what is behind the window with no material and no blur (80 % is the step 1.7.0 called Transparent, D-57). Reduce Transparency draws Solid.
    - **The tone** (D-63, D-81): Neutral, Warm or Cool, chosen in Settings → Theme → Tone, a cast over every grey of the window (§3 Tones).
-3. **The sidebar, top to bottom.**
-   - The search field: 30 pt, a hairline box, with ⌘K in mono.
-   - The Home row: 28 pt, with the count of sessions that need you. The count is the Dock badge's, drawn only above 0, as an attention-wash badge with attention text.
-   - The New session row (V19).
-   - The list, under its heading: the view's name as a section label, and at the trailing end the switch "projects · activity" in text, the chosen word in primary medium and the other in tertiary (⌘2 and ⌘1 still switch). Then the project view or the activity view.
-   - The footer.
-4. **Session rows** (§6 Rows).
-   - **The project view** has one 28 pt line per session: the status column, the harness's mark (§6 Iconography), the title, a pin glyph when pinned, and the time in mono. A selected session takes its project's tint.
-   - **The activity view** (E7 in [the reference](reference.html#session), D-75) lists Drafts, then Active, then the days (Today, Yesterday, weekday, date). Each section has a heading in 11.5 medium tertiary, with its count in mono. Active holds the sessions with a run under way or an end nobody read; the selected one stays until another is selected. A session is a card, from top to bottom:
-     - the status column, the harness's mark, the title (13) and the time;
-     - the reason line, only in the Active section (D-69), in 11.5 secondary with a command in mono, such as "Allow: <command>", "Asks: <header>", "Plan ready for review" or "Failed: <cause>";
-     - a fixed bottom row in 11 tertiary: the branch glyph and the branch in mono (or the origin of a session another one opened), the pin glyph, and at the trailing end the project's mark (12) and name (D-69 (7)).
-
-     The title, the reason line and the branch start on one edge under the project (or harness) mark; the name keeps its place after the mark (FB6-2). A card takes the project view's row language: radius 10, the selected one in its project's tint, and its subagents branching from the status column (§4). The harness's mark replaces the old trailing provider mark.
-5. **Footer bar** (D-32). It is 46 pt, with a hairline above it, and holds:
-   - **Left: a `+` menu.** Its session items carry their harness's mark (14). It offers:
-     - a new Claude session;
-     - a new Codex session, disabled with "Codex comes in a later version" in a build that cannot start it;
-     - a new Claude session without a project, while a session is selected;
-     - Add Project.
-   - **Middle: the usage chip**, in mono 11, one line per connected harness that reports usage (FB6-3): the harness's mark at 12, today's tokens, its bottleneck window with the meter. Two lines fit the 46 pt footer; a third makes it one line taller (60), at most three lines.
-     - Its left side is today's tokens (`1.2M today`).
-     - Pinned to the right is the plan window that runs out first, when the Claude CLI reports plan limits: `5h` or `Wk`, a 40×4 meter of the share remaining, and the percent remaining.
-     - There is no money. Under 20 % remaining, the percent and the meter fill take the attention colour.
-     - When the chip is narrow, the meter drops first, then the tokens are cut with an ellipsis. The limit is never cut.
-     - Its states are `Indexing…` and `No usage yet`, and it is hidden when there is no usage index.
-     - The tooltip has the token split and both plan windows; the accessibility label has the tokens and the bottleneck window.
-     - A click opens Settings at Usage.
-   - **Right: a gear** that opens Settings.
+3. **The sidebar, top to bottom** (§0.5).
+   - The 32 pt Search door opens the palette (`⌘K` / `⌘F`).
+   - Home and New session are 28 pt nav rows; Home's attention count matches the Dock badge.
+   - The list heading names Projects or Activity and carries the single view toggle and that view's action.
+   - The project or activity list, then Settings and Help in the utility row.
+4. **Session cards** (§0.5). Both views use the shared three-line card with trailing status, a two-line title, branch and harness mark; selection is neutral raised, and subagents branch from the mark's column. Activity keeps Drafts, Active and day buckets, and Active's reason line. There is no leading status column.
+5. **Bottom utilities and status bar** (§0.5, B3). Settings and Help stay in the sidebar's 38 pt utility row as 24 pt ghost icon buttons. Limits live in the 26 pt strip beneath both panes, with working sessions, Keep Mac Awake and the existing Remora/version state. The former sidebar usage chip and `+` menu are retired.
 
    **Settings** (D-81; [the reference](reference.html#settings)) is one 680×520 window that follows the appearance and the tone (`SettingsWindowConfiguration`). Only its close button shows. It is not movable by its background, only by its title strip: AppKit took a mouse-down on SwiftUI's drawn controls as the start of a window drag, and the section tabs and the pages' controls never saw their clicks (1.6.0). The band of tabs also lies above the page (`zIndex`), because the page's scroll view reaches up under the title strip. Closing the window closes the sheet open over it. Its sections are underlined view tabs (§6 Tabs) in the 52 pt title band, where the window's title would be: General, Connections (D-98, 1.6.2), Theme, Usage, Sessions, Remora (§20, D-80) and About. The seven tabs measure 445 pt and the band leaves 488 (the 680 window less 96 at each side, where the close button sits), so they stay centred and none is cut. ⌘, opens it on the section last shown, and the usage chip opens it on Usage.
    - **A section's content** has a 32 inset and scrolls under the band. A group is a card on raised 1 under a section label, 20 apart. A row holds the label in 13, one line of help in 12 secondary and the control at the trailing edge, and is at least 48 high. Inside the card, as the reference draws it (D-88): the rows start 5 below its top and end 6 above its bottom; a row's content starts 32 from the leading edge and ends 24 from the trailing edge; and the rules between rows run from 16 inside the leading edge to 8 inside the trailing edge. A notice from macOS adds an attention line and its button. A menu picker is a secondary button with the value and two chevrons; its menu is the popover.

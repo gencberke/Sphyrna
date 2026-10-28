@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var openingFrame: NSRect?
     /// The one Settings window (`SettingsWindowController`); nil until the model exists.
     var settingsController: SettingsWindowController?
-    /// Claude usage for the footer chip and Settings; nil when the data root was refused.
+    /// Usage for the window status bar and Settings; nil when the data root was refused.
     var usage: UsageModel?
     /// The one file-system stream behind the usage numbers; nil without a usage index.
     var usageWatcher: UsageTranscriptWatcher?

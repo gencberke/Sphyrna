@@ -135,8 +135,8 @@ The sidebar has two views:
 - **Projects:** sessions grouped by project, with drag reordering.
 - **Activity:** Drafts, Active (with a one-line reason) and day buckets.
 
-Each card shows its harness, model, branch and subagent tree, and Peek shows the last ask and answer on hover. The
-footer carries a usage line per harness.
+Each card shows its harness, model, branch and subagent tree, and Peek shows the last ask and answer on hover.
+Settings and Help remain at the sidebar's bottom; the window-wide status bar carries the cached limits (B3, integrated on `v2`).
 - **Spec:** [SPEC §6.2](../SPEC.md) · **Status:** Live
 - **Orca:** A lifted sidebar plane (`--worktree-sidebar`), search and nav rows with counts, project groups of worktree cards with their agents (status, harness, title, last action, model, time). Tabs reorder with dnd-kit (`components/tab-bar/use-sortable-tab-rename.ts`).
 - **T3 Code:** Thread rows with the project mark and name, the status and elapsed time at the trailing end, the title, then the branch and harness mark (`sidebar/SidebarThreadRow.tsx`). Projects reorder with `@dnd-kit` sortable, vertical axis, inside the scroll view (`Sidebar.tsx:23-25, 2936`).
@@ -225,13 +225,13 @@ Deep Check. Sphyrna never handles a credential. Codex is read but not started.
 
 ### F14. Usage & plan limits
 Limits appear in three places, each read with no model call and no credential:
-- the sidebar footer's line per harness;
+- the window-wide status bar's cached line per connected harness, with a details popover and explicit per-harness refresh (B3, integrated on `v2`);
 - Settings → Usage (Limits and Tokens, filtered by harness);
 - Home's plan limits, with pace ticks.
 - **Spec:** [SPEC §6.2, §6.6, §6.7](../SPEC.md) · **Status:** Live · **Already after T3 Code:** D-99
 - **Orca:** A 24 pt status bar along the window's bottom: one segment per provider (mark, 48 × 6 meter, windows' figures), a 360-wide popover with details and refresh, plus keep-awake, ports and resource segments (`components/status-bar/StatusBarSurface.tsx:116`, `StatusBarProviderSegment.tsx`, `InlineProviderUsage.tsx`).
 - **T3 Code:** Settings' usage page (already Sphyrna's model, D-99).
-- **Sphyrna takes:** Orca's status bar replaces the sidebar footer (FEEDBACK-7 Q7, B3); model-scoped windows and the reset notification (H1).
+- **Sphyrna takes:** Orca's status bar replaces the sidebar footer (FEEDBACK-7 Q7, B3; implemented on `v2`); model-scoped windows and the reset notification remain H1.
 
 ### F15. Models
 One model catalog feeds the draft's picker, the popover and the header. Models are shown by their full release names,
