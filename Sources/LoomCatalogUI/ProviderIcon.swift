@@ -28,6 +28,21 @@ enum ProviderImages {
         cache[asset.name] = image
         return (image, asset.template)
     }
+
+    /// Catalogue-only marks: the existing provider paths above stay unchanged.
+    static func image(forHarness id: HarnessID) -> (image: NSImage, template: Bool)? {
+        if let provider = id.provider { return image(for: provider) }
+        guard id == .opencode || id == .agy, let descriptor = HarnessCatalogue.descriptor(for: id) else { return nil }
+        let name = descriptor.mark
+        let template = id == .agy
+        if let cached = cache[name] { return (cached, template) }
+        guard let url = Bundle.main.url(forResource: name, withExtension: "png"),
+              let image = NSImage(contentsOf: url) else { return nil }
+        image.isTemplate = template
+        cache[name] = image
+        return (image, template)
+    }
+
 }
 
 extension ProviderImages {
@@ -66,15 +81,49 @@ struct HarnessMenuLabel: View {
     }
 }
 
+/// opencode's public mark has a light body and a darker inset; a plain alpha template would merge them.
+/// A luminance mask preserves those tones while the foreground supplies the appearance's text color.
+struct OpencodeHarnessMark: View {
+    let image: NSImage
+    var tint: Color = LoomTheme.Text.primary
+
+    var body: some View {
+        tint.mask {
+            Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fit).luminanceToAlpha()
+        }
+    }
+}
+
 struct ProviderIcon: View {
-    let provider: ManagedSession.Provider
-    /// 12 on rows, cards and tabs; 13 in the header and on the model chip; 14 in menus (`LoomTheme.Layout.harnessMark…`).
-    var size: CGFloat = LoomTheme.Layout.harnessMarkRow
+    let provider: ManagedSession.Provider?
+    let harness: HarnessID?
+    var size: CGFloat
+
+    init(provider: ManagedSession.Provider, size: CGFloat = LoomTheme.Layout.harnessMarkRow) {
+        self.provider = provider
+        self.harness = nil
+        self.size = size
+    }
+
+    init(harness: HarnessID, size: CGFloat = LoomTheme.Layout.harnessMarkRow) {
+        self.provider = harness.provider
+        self.harness = harness
+        self.size = size
+    }
 
     var body: some View {
         Group {
-            if let found = ProviderImages.image(for: provider) {
-                if found.template {
+            if harness == .pi {
+                ZStack {
+                    RoundedRectangle(cornerRadius: LoomTheme.Connect.piRadius)
+                        .strokeBorder(LoomTheme.Surface.strongerHairline, lineWidth: LoomTheme.Line.hairline)
+                    Text("π").projectType(LoomTheme.Connect.piGlyph).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                }
+            } else if let found = harness.flatMap({ ProviderImages.image(forHarness: $0) })
+                ?? provider.flatMap({ ProviderImages.image(for: $0) }) {
+                if harness == .opencode {
+                    OpencodeHarnessMark(image: found.image)
+                } else if found.template {
                     Image(nsImage: found.image).renderingMode(.template).resizable().interpolation(.high)
                         .aspectRatio(contentMode: .fit).foregroundStyle(LoomTheme.Text.primary)
                 } else {

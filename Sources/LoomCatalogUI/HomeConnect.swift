@@ -1,30 +1,49 @@
 import LoomCore
 import SwiftUI
 
-/// Home's "Connect your agents" (D-98, FB5-8): over an empty catalog, one card per connected harness giving its state (Install,
-/// Sign In or Ready) in the first run's place; over a catalog with sessions, one compact card under the band while a connected
-/// harness needs attention. Both replace the old "no Claude" notice, and both read the harness health, never the plan limits.
+/// The first-run cards and the notice over a catalog with sessions share Connections' PATH and switch states.
 enum HomeConnect {
-    /// One harness's card.
-    struct Card: Identifiable, Equatable {
-        let health: HarnessHealth
-        let name: String
-        /// The state in a word: "Install", "Sign In", "Ready", "Attention", "Checking…".
-        let word: String
-        /// How to install or sign in, while the state asks for it.
-        let command: HarnessSetupCommand?
-        /// Why this build cannot start the harness's sessions ("Sessions arrive in a later version"), where it cannot.
-        let startNote: String?
+    enum Action: Equatable {
+        case copyInstall(HarnessSetupCommand)
+        case copySignIn(HarnessSetupCommand)
+        case turnOn
 
-        var id: ManagedSession.Provider { health.provider }
+        var title: String {
+            switch self {
+            case .copyInstall: "Copy Install Command"
+            case .copySignIn: "Copy Sign-In Command"
+            case .turnOn: "Turn On"
+            }
+        }
+    }
+
+    struct Card: Identifiable, Equatable {
+        let row: ConnectionsContent.HarnessRow
+        let action: Action?
+        var id: HarnessID { row.id }
+        var name: String { row.name }
+        var word: String {
+            switch row.availability {
+            case .notFound: "Not found"
+            case .off: "Off"
+            case .on where row.descriptor.provider == nil: "Found"
+            case .on:
+                switch row.state {
+                case .install: "Not found"
+                case .signIn: "Sign In"
+                case .ready: "Ready"
+                case .attention: "Attention"
+                case .checking: "Checking…"
+                case .disabled: "Off"
+                }
+            case nil: "Checking…"
+            }
+        }
     }
 
     struct Plan: Equatable {
-        /// The first run's cards: every connected harness, and only while one of them needs setting up.
         var cards: [Card] = []
-        /// The connected harnesses the build can start that need attention (not found, not signed in, too old).
         var attention: [Card] = []
-
         var showsCards: Bool { !cards.isEmpty }
         var showsNotice: Bool { !attention.isEmpty }
     }
@@ -33,47 +52,45 @@ enum HomeConnect {
     static let firstRunText = "Sphyrna works with the agents already on your Mac. Set up the ones you use, then add the folder you work in."
     static let noticeSuffix = "Sessions already listed stay readable."
 
-    /// What to show for `healths` (the connected harnesses' states). A harness the build cannot start (Codex, in a production
-    /// build) never makes the first run or the notice appear on its own: it only stands among the cards when another needs them.
-    @MainActor static func plan(healths: [HarnessHealth], startable: Set<ManagedSession.Provider>) -> Plan {
-        let connected = healths.filter { $0.state != .disabled }
-        let cards = connected.map { card(for: $0, startable: startable) }
-        let attention = cards.filter { needsSetup($0.health) && startable.contains($0.health.provider) }
-        return Plan(cards: attention.isEmpty ? [] : cards, attention: attention)
+    /// Claude and Codex always appear on onboarding; the other harnesses only when found. An unsupported build never asks
+    /// for its setup, and a deliberate off choice does not raise the notice over an existing catalog.
+    static func plan(rows: [ConnectionsContent.HarnessRow]) -> Plan {
+        let visible = rows.filter { $0.id == .claude || $0.id == .codex || $0.canSwitch }
+        let cards = visible.map(card(for:))
+        let attention = cards.filter { needsSetup($0.row) }
+        let offNeedsOnboarding = cards.contains { $0.row.buildSupportsSessions && $0.row.availability == .off }
+        return Plan(cards: attention.isEmpty && !offNeedsOnboarding ? [] : cards, attention: attention)
     }
 
-    /// Not found, not signed in, or too old. A check that could not tell (also `.attention`) is not setup: it waits on Check
-    /// Again in Connections and says nothing here, so a signed-in user is never sent to sign in.
-    static func needsSetup(_ health: HarnessHealth) -> Bool {
-        switch health.state {
-        case .install, .signIn: true
-        case .attention: health.versionStatus == .belowMinimum
-        default: false
+    static func needsSetup(_ row: ConnectionsContent.HarnessRow) -> Bool {
+        guard row.buildSupportsSessions, row.switchPreference else { return false }
+        switch row.availability {
+        case .notFound: return true
+        case .on:
+            return row.state == .signIn || (row.state == .attention && row.health?.versionStatus == .belowMinimum)
+        default: return false
         }
     }
 
-    @MainActor static func card(for health: HarnessHealth, startable: Set<ManagedSession.Provider>) -> Card {
-        let word: String
-        switch health.state {
-        case .install: word = "Install"
-        case .signIn: word = "Sign In"
-        case .ready: word = "Ready"
-        case .attention: word = "Attention"
-        case .checking: word = "Checking…"
-        case .disabled: word = "Off"
+    static func card(for row: ConnectionsContent.HarnessRow) -> Card {
+        let action: Action?
+        if row.availability == .off {
+            action = .turnOn
+        } else if row.availability == .notFound, row.buildSupportsSessions, let command = row.descriptor.install {
+            action = .copyInstall(command)
+        } else if row.canStart, row.state == .signIn, let command = row.descriptor.signIn {
+            action = .copySignIn(command)
+        } else {
+            action = nil
         }
-        return Card(health: health, name: ProviderName.title(health.provider), word: word,
-                    command: HarnessSetupCommand.command(for: health.provider, state: health.state),
-                    startNote: CatalogModel.newSessionUnavailableReason(health.provider, startable: startable))
+        return Card(row: row, action: action)
     }
 
-    /// The compact card's line: "Claude · Not signed in", one per harness, then what stays true.
     static func noticeText(_ attention: [Card]) -> String {
-        attention.map { "\($0.name) · \($0.health.headline)" }.joined(separator: ", ") + ". " + noticeSuffix
+        attention.map { "\($0.name) · \($0.row.headline)" }.joined(separator: ", ") + ". " + noticeSuffix
     }
 }
 
-/// The first run's cards, one under the other.
 struct HomeConnectCards: View {
     let model: CatalogModel
 
@@ -92,39 +109,48 @@ private struct HomeConnectCardView: View {
     let card: HomeConnect.Card
 
     var body: some View {
-        HomeCard(identifier: "home-connect-\(card.health.provider.rawValue)") {
+        HomeCard(identifier: "home-connect-\(card.id.rawValue)") {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: LoomTheme.Home.connectRowGap) {
-                    ProviderIcon(provider: card.health.provider, size: LoomTheme.Layout.harnessMarkHeader)
+                    ProviderIcon(harness: card.id, size: LoomTheme.Layout.harnessMarkHeader)
                     VStack(alignment: .leading, spacing: 0) {
                         Text(card.name).homeType(LoomTheme.Home.connectName).foregroundStyle(LoomTheme.Text.primary)
-                        Text(card.health.headline).homeType(LoomTheme.Home.connectHeadline)
+                        Text(card.row.headline).homeType(LoomTheme.Home.connectHeadline)
                             .foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
                     }
                     Spacer(minLength: LoomTheme.Home.connectRowGap)
-                    Circle().fill(LoomTheme.Connect.dotColor(card.health.state))
+                    Circle().fill(LoomTheme.Connect.dotColor(card.row.state))
                         .frame(width: LoomTheme.Connect.dot, height: LoomTheme.Connect.dot).accessibilityHidden(true)
                     Text(card.word).homeType(LoomTheme.Home.connectWord).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
                 }
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(card.name), \(card.word), \(card.health.headline)")
-                if let note = card.startNote {
+                .accessibilityLabel("\(card.name), \(card.word), \(card.row.headline)")
+                if let note = card.row.startNote {
                     Text(note).homeType(LoomTheme.Home.codexNote).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                         .padding(.top, LoomTheme.Home.codexNoteGap)
-                        .accessibilityIdentifier("home-connect-note-\(card.health.provider.rawValue)")
+                        .accessibilityIdentifier("home-connect-note-\(card.id.rawValue)")
                 }
-                if let command = card.command, let health = model.harnessHealth {
-                    HarnessSetupBlock(health: health, provider: card.health.provider, command: command, note: card.health.note)
+                if let action = card.action {
+                    Button(action.title) { perform(action) }
+                        .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                         .padding(.top, LoomTheme.Home.connectSetupTop)
+                        .accessibilityIdentifier("home-connect-action-\(card.id.rawValue)")
                 }
             }
             .padding(LoomTheme.Home.connectPadding)
         }
     }
+
+    private func perform(_ action: HomeConnect.Action) {
+        switch action {
+        case .turnOn: model.setHarnessConnected(card.id, true)
+        case let .copyInstall(command), let .copySignIn(command):
+            model.harnessHealth?.copy(command, forHarness: card.id)
+        }
+    }
 }
 
-/// Above a catalog that has sessions: one compact card under the band while a connected harness needs attention. Plan limits is
-/// left out, and so is the sidebar's New session row.
+/// Above a catalog that has sessions: a compact notice while a supported, switched-on harness needs setup.
 struct HomeConnectNotice: View {
     let model: CatalogModel
 
@@ -156,8 +182,5 @@ struct HomeConnectNotice: View {
 }
 
 extension CatalogModel {
-    /// What Home's "Connect your agents" shows now.
-    var homeConnect: HomeConnect.Plan {
-        HomeConnect.plan(healths: harnessHealth?.healths ?? [], startable: startableProviders)
-    }
+    var homeConnect: HomeConnect.Plan { HomeConnect.plan(rows: connectionRows) }
 }

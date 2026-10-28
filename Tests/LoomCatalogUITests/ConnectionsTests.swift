@@ -61,6 +61,13 @@ struct ConnectionsTests {
         }
     }
 
+    private func row(for health: HarnessHealth, buildSupportsSessions: Bool) -> ConnectionsContent.HarnessRow {
+        let descriptor = HarnessCatalogue.descriptor(for: HarnessID(health.provider))!
+        return ConnectionsContent.harnessRow(descriptor: descriptor, availability: nil, switchedOn: true, health: health,
+                                             buildSupportsSessions: buildSupportsSessions,
+                                             canStart: buildSupportsSessions && health.state != .install)
+    }
+
     // MARK: The page model
 
     @Test func theRowAndDetailForClaudeReady() async {
@@ -68,7 +75,7 @@ struct ConnectionsTests {
         rig.model.checkAll()
         await rig.model.settle()
         let health = rig.model.health(of: .claude)
-        let row = ConnectionsContent.row(for: health, connected: true, startNote: nil)
+        let row = row(for: health, buildSupportsSessions: true)
         #expect(row.name == "Claude" && row.version == "2.1.300" && row.headline == "Ready · Claude Max")
         #expect(row.accessibilityLabel == "Claude, Ready · Claude Max", "the row reads its name and headline; the switch is its own element")
         let detail = ConnectionsContent.detail(for: health)
@@ -87,9 +94,9 @@ struct ConnectionsTests {
         let note = CatalogModel.newSessionUnavailableReason(.codex, startable: [.claude])
         #expect(note != nil, "a production build cannot start Codex sessions")
         let health = missing.model.health(of: .codex)
-        let row = ConnectionsContent.row(for: health, connected: true, startNote: note)
-        #expect(row.version == "—" && row.headline == "Not found")
-        #expect(row.accessibilityLabel == "Codex, Not found, \(note ?? "")")
+        let row = row(for: health, buildSupportsSessions: false)
+        #expect(row.version == "—" && row.headline == "Not found on this Mac")
+        #expect(row.accessibilityLabel == "Codex, Not found on this Mac, \(note ?? "")")
         let detail = ConnectionsContent.detail(for: health)
         #expect(detail.path == nil && detail.location == "Not found on your terminal's PATH")
         #expect(detail.version == "—" && detail.account == "—" && detail.limits == "Not checked yet")
@@ -113,7 +120,7 @@ struct ConnectionsTests {
         await rig.model.settle()
         var health = rig.model.health(of: .claude)
         health.accountChanged = true
-        let row = ConnectionsContent.row(for: health, connected: true, startNote: nil)
+        let row = row(for: health, buildSupportsSessions: true)
         #expect(row.showsAccountChanged && row.accessibilityLabel == "Claude, Ready · Claude Max, Account changed")
     }
 

@@ -1862,14 +1862,21 @@ public final class CatalogModel {
         rowModels[id]?.record.session.provider
     }
 
-    /// Why Resume is not offered for a conversation of a provider this build cannot start; nil when
-    /// that is not the reason (a busy or running conversation has its own state line).
+    /// A blocked resume names a missing CLI or an off switch before the build's limitation.
     public func resumeUnavailableReason(_ row: SessionRowModel) -> String? {
         let provider = row.record.session.provider
-        // The build's answer only: a harness that is off or not found has no reason of its own here (no copy for it yet).
+        if let reason = blockedHarnessReason(provider) { return reason }
         let capabilities = HarnessCapabilities.of(provider, startable: startableProviders)
         guard capabilities.hasHarness, !capabilities.startable else { return nil }
         return "\(ProviderName.title(provider)) sessions can't be resumed in this version."
+    }
+
+    /// Shared words for a start blocked by the PATH or connect switch.
+    func blockedHarnessReason(_ provider: ManagedSession.Provider) -> String? {
+        guard capabilities(of: provider).hasHarness else { return nil }
+        if !isFound(provider) { return Self.notFoundReason }
+        if !isSwitchedOn(provider) { return "\(ProviderName.title(provider)) is off" }
+        return nil
     }
 
     public func canStop(_ row: SessionRowModel) -> Bool {

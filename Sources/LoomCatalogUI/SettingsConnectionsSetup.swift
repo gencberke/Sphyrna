@@ -4,17 +4,17 @@ import SwiftUI
 
 /// The setup of a harness without credentials (D-98): the vendor's command in a selectable field, with Copy and Open Terminal.
 /// Sphyrna runs nothing, types into nothing and never handles a password: the person runs the command in their own Terminal.
-/// Either button also makes the app's next activation check the harness again, once, whatever the floor says.
+/// Provider-backed setup also makes the next activation check that provider once.
 struct HarnessSetupBlock: View {
     let health: HarnessHealthModel
-    let provider: ManagedSession.Provider
+    let id: HarnessID
     let command: HarnessSetupCommand
     var note: String?
 
     private typealias C = LoomTheme.Connect
 
     var body: some View {
-        let name = ProviderName.title(provider)
+        let name = HarnessCatalogue.descriptor(for: id)?.displayName ?? id.rawValue
         VStack(alignment: .leading, spacing: 0) {
             Text("\(command.title) \(name)").projectType(LoomTheme.Settings.rowTitle).foregroundStyle(LoomTheme.Text.primary)
             Text(Self.help(command: command, name: name))
@@ -26,7 +26,7 @@ struct HarnessSetupBlock: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, LoomTheme.Settings.noticeTop)
             }
-            commandField(command.command, label: "\(command.title) command for \(name)", id: "setup-command-\(provider.rawValue)")
+            commandField(command.command, label: "\(command.title) command for \(name)", id: "setup-command-\(id.rawValue)")
                 .padding(.top, C.commandTop)
             if let alternative = command.alternative {
                 Text("Or: \(alternative)").projectType(C.alternative).foregroundStyle(LoomTheme.Text.tertiaryStyle)
@@ -35,25 +35,25 @@ struct HarnessSetupBlock: View {
                     .accessibilityLabel("Other way to \(command.title.lowercased()) \(name): \(alternative)")
             }
             HStack(spacing: C.commandGap) {
-                Button("Copy") { health.copy(command, for: provider) }
+                Button("Copy") { health.copy(command, forHarness: id) }
                     .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                     .accessibilityLabel("Copy the \(command.title.lowercased()) command for \(name)")
-                    .accessibilityIdentifier("setup-copy-\(provider.rawValue)")
-                Button("Open Terminal") { health.openTerminal(for: provider) }
+                    .accessibilityIdentifier("setup-copy-\(id.rawValue)")
+                Button("Open Terminal") { health.openTerminal(forHarness: id) }
                     .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
                     .accessibilityLabel("Open Terminal")
-                    .accessibilityIdentifier("setup-open-terminal-\(provider.rawValue)")
+                    .accessibilityIdentifier("setup-open-terminal-\(id.rawValue)")
             }
             .padding(.top, C.commandTop)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("setup-\(provider.rawValue)")
+        .accessibilityIdentifier("setup-\(id.rawValue)")
     }
 
     /// What the block says it does: show the command, never run it.
     static func help(command: HarnessSetupCommand, name: String) -> String {
-        "Run this in Terminal, then come back: Sphyrna checks \(name) again when you return. Sphyrna does not run it for you."
+        "Run this in Terminal, then choose Check Again. Sphyrna does not run it for you."
     }
 
     private func commandField(_ text: String, label: String, id: String) -> some View {

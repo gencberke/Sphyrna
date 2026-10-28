@@ -46,6 +46,12 @@ extension CatalogModel {
         return owner != target
     }
 
+    /// Why the terminal handover is blocked by the same harness state as Resume.
+    public func continueUnavailableReason(in target: SessionFace, row: SessionRowModel) -> String? {
+        guard target == .terminal, capabilities(of: row.record.session.provider).structuredFace else { return nil }
+        return blockedHarnessReason(row.record.session.provider)
+    }
+
     /// What the composer says while the session is being moved: sending waits. Nil without a handover.
     public func composerHandoverNotice(of sessionID: UUID) -> String? {
         handovers[sessionID] == nil ? nil : "Moving to the terminal…"

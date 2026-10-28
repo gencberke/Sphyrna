@@ -2,12 +2,10 @@ import AppKit
 import LoomCore
 import SwiftUI
 
-/// Settings → Connections (D-98, FB5-8): each harness, whether it is found, its version, who is signed in and whether its limits
-/// can be read; a switch to connect or disconnect it; and a detail for the one picked, with how to set it up. Opening the page
-/// checks the harnesses (under the 5-minute floor).
+/// Settings → Connections: every catalogue harness, its PATH and switch state, and the selected harness's detail.
 struct ConnectionsSettings: View {
     let model: CatalogModel
-    @State private var picked: ManagedSession.Provider = .claude
+    @State private var picked: HarnessID = .claude
 
     var body: some View {
         if let health = model.harnessHealth {
@@ -21,65 +19,65 @@ struct ConnectionsSettings: View {
 private struct ConnectionsPage: View {
     let model: CatalogModel
     let health: HarnessHealthModel
-    @Binding var picked: ManagedSession.Provider
-
+    @Binding var picked: HarnessID
     private typealias S = LoomTheme.Settings
 
     var body: some View {
+        let rows = model.connectionRows
         SettingsPage {
             VStack(alignment: .leading, spacing: S.groupGap) {
                 SettingsGroup(label: "Agents") {
-                    ForEach(Array(HarnessHealthModel.providers.enumerated()), id: \.element) { index, provider in
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                         if index > 0 { SettingsRowDivider() }
-                        ConnectionRow(model: model, health: health, provider: provider, isPicked: picked == provider) { picked = provider }
+                        ConnectionRow(model: model, row: row, isPicked: picked == row.id) { picked = row.id }
                     }
                 }
-                ConnectionDetail(model: model, health: health, provider: picked)
+                if let row = rows.first(where: { $0.id == picked }) {
+                    ConnectionDetail(model: model, health: health, row: row)
+                }
             }
         }
         .onAppear { health.pageOpened() }
-        // The mark "Account changed" stays until the page has been seen.
         .onDisappear { for provider in HarnessHealthModel.providers { health.acknowledgeAccountChange(provider) } }
         .accessibilityIdentifier("settings-connections")
     }
 }
 
-/// A harness row: the mark, the name over its version, the status dot and headline, and the connect switch.
 private struct ConnectionRow: View {
     let model: CatalogModel
-    let health: HarnessHealthModel
-    let provider: ManagedSession.Provider
+    let row: ConnectionsContent.HarnessRow
     let isPicked: Bool
     let onPick: () -> Void
-
     private typealias S = LoomTheme.Settings
     private typealias C = LoomTheme.Connect
 
     var body: some View {
-        let row = ConnectionsContent.row(
-            for: health.health(of: provider), connected: health.connections.isConnected(provider),
-            startNote: model.newSessionUnavailableReason(provider))
         HStack(spacing: C.rowGap) {
-            ProviderIcon(provider: provider, size: C.markSize)
-            VStack(alignment: .leading, spacing: C.versionTop) {
-                Text(row.name).projectType(C.name).foregroundStyle(LoomTheme.Text.primary)
-                Text(row.version).projectType(C.version).foregroundStyle(LoomTheme.Text.tertiaryStyle)
-            }
-            Spacer(minLength: S.rowGap)
-            HStack(spacing: C.dotGap) {
-                Circle().fill(C.dotColor(row.health.state)).frame(width: C.dot, height: C.dot).accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(row.headline).projectType(C.headline).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                        .lineLimit(1).truncationMode(.tail)
-                    if row.showsAccountChanged {
-                        Text("Account changed").projectType(C.changed).foregroundStyle(LoomTheme.Status.attentionLight)
+            HStack(spacing: C.rowGap) {
+                ProviderIcon(harness: row.id, size: C.markSize)
+                VStack(alignment: .leading, spacing: C.versionTop) {
+                    Text(row.name).projectType(C.name).foregroundStyle(LoomTheme.Text.primary)
+                    Text(row.version).projectType(C.version).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                }
+                Spacer(minLength: S.rowGap)
+                HStack(spacing: C.dotGap) {
+                    Circle().fill(C.dotColor(row.state)).frame(width: C.dot, height: C.dot).accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(row.headline).projectType(C.headline).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                            .lineLimit(1).truncationMode(.tail)
+                        if row.showsAccountChanged {
+                            Text("Account changed").projectType(C.changed).foregroundStyle(LoomTheme.Status.attentionLight)
+                        }
                     }
                 }
+                .frame(maxWidth: C.headlineMaxWidth, alignment: .trailing)
             }
-            .frame(maxWidth: C.headlineMaxWidth, alignment: .trailing)
+            .opacity(row.availability == .off ? C.offOpacity : 1)
             SettingsSwitch(title: "Connect \(row.name)", isOn: Binding(
-                get: { health.connections.isConnected(provider) }, set: { health.setConnected(provider, $0) }))
+                get: { row.isOn }, set: { model.setHarnessConnected(row.id, $0) }))
+                .disabled(!row.canSwitch)
                 .help(ConnectionsContent.switchHelp)
+                .accessibilityIdentifier("connection-switch-\(row.id.rawValue)")
         }
         .padding(.vertical, S.rowPaddingV).padding(.horizontal, S.rowPaddingH)
         .frame(minHeight: S.rowMinHeight)
@@ -90,67 +88,94 @@ private struct ConnectionRow: View {
         .accessibilityLabel(row.accessibilityLabel)
         .accessibilityAddTraits(isPicked ? .isSelected : [])
         .accessibilityAction(.default, onPick)
-        .accessibilityIdentifier("connection-row-\(provider.rawValue)")
+        .accessibilityIdentifier("connection-row-\(row.id.rawValue)")
     }
 }
 
-/// The detail of the picked harness: where it is, its version, who is signed in, the profile folder, its limits and the last
-/// check; how to set it up while that is needed; and Deep Check.
 private struct ConnectionDetail: View {
     let model: CatalogModel
     let health: HarnessHealthModel
-    let provider: ManagedSession.Provider
-
+    let row: ConnectionsContent.HarnessRow
     private typealias S = LoomTheme.Settings
-    private typealias C = LoomTheme.Connect
 
     var body: some View {
+        SettingsGroup(label: row.name) {
+            if row.availability == .notFound {
+                SettingsRow(title: "Status", detail: row.missingExplanation) { checkButton }
+                if let command = row.descriptor.install {
+                    SettingsRowDivider()
+                    HarnessSetupBlock(health: health, id: row.id, command: command)
+                        .padding(.vertical, S.rowPaddingV).padding(.horizontal, S.rowPaddingH)
+                }
+                documentation
+            } else if let provider = row.descriptor.provider {
+                providerDetail(provider)
+            } else {
+                SettingsRow(title: "Location", detail: row.executable ?? "Not read", detailStyle: S.path) { checkButton }
+                SettingsRowDivider()
+                SettingsRow(title: "Status", detail: row.headline, notice: row.startNote) {}
+                documentation
+            }
+        }
+    }
+
+    private var checkButton: some View {
+        Button("Check Again") { model.recheckHarness(row.id) }
+            .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
+            .accessibilityLabel("Check \(row.name) again")
+            .accessibilityIdentifier("connection-check-again")
+    }
+
+    @ViewBuilder private var documentation: some View {
+        if let url = row.descriptor.docs {
+            SettingsRowDivider()
+            SettingsRow(title: "Documentation", detail: "Open the vendor's setup guide.") {
+                Link("Open Docs", destination: url).buttonStyle(ControlButtonStyle(kind: .ghost, size: .small))
+            }
+        }
+    }
+
+    @ViewBuilder private func providerDetail(_ provider: ManagedSession.Provider) -> some View {
         let value = health.health(of: provider)
         let detail = ConnectionsContent.detail(for: value)
-        let checking = health.isChecking(provider) || value.state == .checking
-        SettingsGroup(label: detail.name) {
-            SettingsRow(title: "Location", detail: detail.location, detailStyle: S.path) {
-                if detail.path != nil, let executable = value.executable {
-                    Button("Reveal") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: executable)]) }
-                        .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
-                        .accessibilityLabel("Reveal \(detail.name) in Finder")
-                }
-            }
-            SettingsRowDivider()
-            SettingsRow(title: "Version", detail: detail.version) {}
-            SettingsRowDivider()
-            SettingsRow(title: "Account", detail: detail.account) {}
-            if let profile = detail.profile {
-                SettingsRowDivider()
-                SettingsRow(title: "Profile folder", detail: profile, detailStyle: S.path) {}
-            }
-            SettingsRowDivider()
-            SettingsRow(title: "Limits", detail: detail.limits) {}
-            SettingsRowDivider()
-            SettingsRow(title: "Check", detail: detail.checked, notice: detail.setup == nil ? value.note : nil) {
-                Button(checking ? "Checking…" : "Check Again") { health.checkAgain(provider) }
+        SettingsRow(title: "Location", detail: row.executable ?? detail.location, detailStyle: S.path) {
+            if let executable = row.executable {
+                Button("Reveal") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: executable)]) }
                     .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
-                    .disabled(checking || value.state == .disabled)
-                    .accessibilityLabel("Check \(detail.name) again")
-                    .accessibilityIdentifier("connection-check-again")
+                    .accessibilityLabel("Reveal \(detail.name) in Finder")
             }
-            if let setup = detail.setup {
-                SettingsRowDivider()
-                HarnessSetupBlock(health: health, provider: provider, command: setup, note: value.note)
-                    .padding(.vertical, S.rowPaddingV).padding(.horizontal, S.rowPaddingH)
-            }
-            SettingsRowDivider()
-            ConnectionDeepCheck(health: health, provider: provider, detail: detail)
         }
+        SettingsRowDivider()
+        SettingsRow(title: "Version", detail: detail.version) {}
+        SettingsRowDivider()
+        SettingsRow(title: "Account", detail: detail.account) {}
+        if let profile = detail.profile {
+            SettingsRowDivider()
+            SettingsRow(title: "Profile folder", detail: profile, detailStyle: S.path) {}
+        }
+        SettingsRowDivider()
+        SettingsRow(title: "Limits", detail: detail.limits) {}
+        SettingsRowDivider()
+        SettingsRow(title: "Check", detail: detail.checked, notice: detail.setup == nil ? value.note : nil) { checkButton }
+        if let setup = detail.setup, value.state == .signIn {
+            SettingsRowDivider()
+            HarnessSetupBlock(health: health, id: row.id, command: setup, note: value.note)
+                .padding(.vertical, S.rowPaddingV).padding(.horizontal, S.rowPaddingH)
+        }
+        if let note = row.startNote {
+            SettingsRowDivider()
+            SettingsRow(title: "Sessions", detail: note) {}
+        }
+        SettingsRowDivider()
+        ConnectionDeepCheck(health: health, provider: provider, detail: detail)
     }
 }
 
-/// Deep Check: the CLI's own health command, run only when the button is pressed, shown as text.
+/// Deep Check runs a provider's own health command only when chosen.
 private struct ConnectionDeepCheck: View {
     let health: HarnessHealthModel
     let provider: ManagedSession.Provider
     let detail: ConnectionsContent.Detail
-
     private typealias S = LoomTheme.Settings
     private typealias C = LoomTheme.Connect
 

@@ -297,6 +297,9 @@ extension LoomTheme {
         /// A harness row: the mark (13), 12 to the name and version, then the status dot (8), 8 from its headline, the switch last.
         static let rowGap: CGFloat = 12
         static let markSize = Layout.harnessMarkHeader
+        static let offOpacity = 0.55
+        static let piRadius: CGFloat = 3
+        static let piGlyph = InkStyle(size: 9, weight: .semibold, mono: true)
         static let dot: CGFloat = 8
         static let dotGap: CGFloat = 8
         /// The name over its version in mono 11; the headline in 12 at most 250 wide.

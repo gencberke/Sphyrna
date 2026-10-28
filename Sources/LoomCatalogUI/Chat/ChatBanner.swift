@@ -58,14 +58,17 @@ struct ChatBannerItem: Equatable, Identifiable {
     let actionTitle: String?
     /// How much it weighs; a kind has its own unless the caller says otherwise.
     let tone: ChatBannerTone
+    /// The policy explanation may wrap so its reason remains visible.
+    let lineLimit: Int?
 
     var id: Kind { kind }
 
-    init(kind: Kind, message: String, actionTitle: String?, tone: ChatBannerTone? = nil) {
+    init(kind: Kind, message: String, actionTitle: String?, tone: ChatBannerTone? = nil, lineLimit: Int? = 2) {
         self.kind = kind
         self.message = message
         self.actionTitle = actionTitle
         self.tone = tone ?? Self.defaultTone(kind)
+        self.lineLimit = lineLimit
     }
 
     static func defaultTone(_ kind: Kind) -> ChatBannerTone {
@@ -81,16 +84,18 @@ enum ChatBanners {
     /// `owner` is the face that owns the session: the fallback text without a button names the terminal only where the
     /// terminal really runs the session (the live chat is the Chat face's, so it never does there).
     static func items(policySignal: Bool, policyDismissed: Bool, canContinueInTerminal: Bool, owner: SessionFace = .chat,
-                      wireDrift: Int, wireDriftDismissed: Bool,
+                      continueUnavailableReason: String? = nil, wireDrift: Int, wireDriftDismissed: Bool,
                       unknownRecords: Int, recordsDismissed: Bool) -> [ChatBannerItem] {
         var items: [ChatBannerItem] = []
         if policySignal, !policyDismissed {
+            let message = canContinueInTerminal || owner == .chat
+                ? "Claude says this account's plan may not allow the Chat face."
+                : "Claude says this account's plan may not allow the Chat face. The terminal still runs this session."
+            let reason = canContinueInTerminal ? nil : continueUnavailableReason
             items.append(ChatBannerItem(
-                kind: .policy,
-                message: canContinueInTerminal || owner == .chat
-                    ? "Claude says this account's plan may not allow the Chat face."
-                    : "Claude says this account's plan may not allow the Chat face. The terminal still runs this session.",
-                actionTitle: canContinueInTerminal ? "Switch to Terminal" : nil))
+                kind: .policy, message: message + (reason.map { " \($0)." } ?? ""),
+                actionTitle: canContinueInTerminal ? "Switch to Terminal" : nil,
+                lineLimit: reason == nil ? 2 : nil))
         }
         if wireDrift > 0, !wireDriftDismissed {
             items.append(ChatBannerItem(
@@ -139,7 +144,7 @@ struct ChatBannerView: View {
 
     private func row(_ item: ChatBannerItem, peek: Bool) -> some View {
         BannerBox(
-            tone: item.tone, text: item.message, lineLimit: 2,
+            tone: item.tone, text: item.message, lineLimit: item.lineLimit,
             actions: item.actionTitle.map { title in
                 [BannerAction(id: "chat-banner-action", title: title, perform: { perform(item.kind) })]
             } ?? [],

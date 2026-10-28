@@ -15,4 +15,33 @@ extension CatalogModel {
 
     /// Opens Settings on the Connections page.
     func showConnections() { onShowSettings?(.connections) }
+
+    /// One row for every catalogue harness, combining the PATH result and the shared switch with provider health.
+    var connectionRows: [ConnectionsContent.HarnessRow] {
+        guard let health = harnessHealth else { return [] }
+        return HarnessCatalogue.all.map { descriptor in
+            let provider = descriptor.provider
+            let buildSupportsSessions = provider.map { HarnessCapabilities.of($0, startable: startableProviders).startable } ?? false
+            return ConnectionsContent.harnessRow(
+                descriptor: descriptor, availability: harnessAvailability.map { $0[descriptor.id] ?? HarnessAvailability(id: descriptor.id, state: .notFound) },
+                switchedOn: health.connections.isOn(descriptor.id), health: provider.map { health.health(of: $0) },
+                buildSupportsSessions: buildSupportsSessions, canStart: provider.map { capabilities(of: $0).startable } ?? false)
+        }
+    }
+
+    /// The missing switch never changes a stored choice. Found switches persist through the app's shared connections.
+    func setHarnessConnected(_ id: HarnessID, _ on: Bool) {
+        guard let row = connectionRows.first(where: { $0.id == id }), row.canSwitch, let health = harnessHealth else { return }
+        if let provider = row.descriptor.provider {
+            health.setConnected(provider, on)
+        } else {
+            health.connections.setOn(id, on)
+        }
+    }
+
+    /// Rechecks provider health where supported and always repeats the PATH lookup.
+    func recheckHarness(_ id: HarnessID) {
+        if let provider = HarnessCatalogue.descriptor(for: id)?.provider { harnessHealth?.checkAgain(provider) }
+        refreshHarnessAvailability(force: true)
+    }
 }

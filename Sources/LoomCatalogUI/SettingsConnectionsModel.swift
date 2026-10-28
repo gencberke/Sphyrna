@@ -140,6 +140,17 @@ public final class HarnessHealthModel {
         setupStarted(for: provider)
     }
 
+    /// Setup of catalogue harnesses without a provider still only copies the command or opens Terminal.
+    func copy(_ command: HarnessSetupCommand, forHarness id: HarnessID) {
+        if let provider = HarnessCatalogue.descriptor(for: id)?.provider { copy(command, for: provider) }
+        else { copyToPasteboard(command.command) }
+    }
+
+    func openTerminal(forHarness id: HarnessID) {
+        if let provider = HarnessCatalogue.descriptor(for: id)?.provider { openTerminal(for: provider) }
+        else { _ = openTerminalApp() }
+    }
+
     // MARK: Account change and Deep Check
 
     /// The person saw the "Account changed" mark.

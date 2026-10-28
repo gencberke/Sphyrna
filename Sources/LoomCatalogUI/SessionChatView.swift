@@ -98,6 +98,7 @@ struct SessionChatView: View {
                 model.openChanges(newest ? .lastTurn : .wholeSession, for: sessionID)
             }, onContinueInTerminal: model.canContinue(in: .terminal, row: row)
                 ? { [model, sessionID = row.id] in model.switchToTerminal(sessionID: sessionID) } : nil,
+               continueUnavailableReason: model.continueUnavailableReason(in: .terminal, row: row),
                quickQuestion: model.quick.panel(for: row.id, driver: driver),
                pinned: { maxHeight in PinnedCardsView(cards: feed.cards, maxHeight: maxHeight) })
             .id(ObjectIdentifier(feed))

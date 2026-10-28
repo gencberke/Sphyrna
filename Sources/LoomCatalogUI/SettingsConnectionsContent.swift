@@ -5,29 +5,6 @@ import LoomCore
 /// What the Connections page says about each harness, as plain values: a test reads the words without a view. The detail's
 /// account line carries the email (the one place it is shown); it is built when the page draws and kept nowhere.
 enum ConnectionsContent {
-    /// One row of the list.
-    struct Row: Equatable {
-        let provider: ManagedSession.Provider
-        let name: String
-        /// "2.1.300", or a dash while the version is not known.
-        let version: String
-        let health: HarnessHealth
-        let isConnected: Bool
-        /// The reason the build cannot start this harness's sessions, where it cannot ("Sessions arrive in a later version").
-        let startNote: String?
-
-        var headline: String { health.headline }
-        var showsAccountChanged: Bool { health.accountChanged }
-
-        /// What VoiceOver reads for the row: the name, then the headline; the switch is its own element.
-        var accessibilityLabel: String {
-            var parts = [name, health.headline]
-            if health.accountChanged { parts.append("Account changed") }
-            if let startNote { parts.append(startNote) }
-            return parts.joined(separator: ", ")
-        }
-    }
-
     /// The detail of the picked harness.
     struct Detail: Equatable {
         let name: String
@@ -49,11 +26,6 @@ enum ConnectionsContent {
 
     static let switchHelp = "Off, Sphyrna stops checking this agent and reading its usage and models. Sessions that exist keep working. "
         + "Sphyrna never signs the CLI out or changes its settings."
-
-    static func row(for health: HarnessHealth, connected: Bool, startNote: String?) -> Row {
-        Row(provider: health.provider, name: ProviderName.title(health.provider),
-            version: health.version.map(HarnessVersionTable.text) ?? "—", health: health, isConnected: connected, startNote: startNote)
-    }
 
     static func detail(for health: HarnessHealth, now: Date = Date()) -> Detail {
         let provider = health.provider
@@ -142,4 +114,83 @@ extension SettingsBand {
     /// The room the tabs have in the band: the window's width less the close button's side, taken from both sides because the
     /// tabs are centred.
     static var tabsRoom: CGFloat { LoomTheme.Settings.width - 2 * LoomTheme.Connect.tabsReserve }
+}
+
+// The catalogue's row and the current PATH result, combined with the health read for the two supported providers.
+extension ConnectionsContent {
+    struct HarnessRow: Equatable, Identifiable {
+        let descriptor: HarnessDescriptor
+        let availability: HarnessAvailabilityState?
+        let executable: String?
+        let switchPreference: Bool
+        let health: HarnessHealth?
+        let buildSupportsSessions: Bool
+        let canStart: Bool
+
+        var id: HarnessID { descriptor.id }
+        var name: String { descriptor.displayName }
+        var isOn: Bool { availability == .on }
+        var canSwitch: Bool { availability == .on || availability == .off }
+        var version: String { availability == .notFound ? "—" : (health?.version.map(HarnessVersionTable.text) ?? "—") }
+        var startNote: String? { buildSupportsSessions ? nil : "\(name) comes in a later version" }
+        var showsAccountChanged: Bool { isOn && health?.accountChanged == true }
+
+        var state: HarnessHealthState {
+            switch availability {
+            case .notFound: return .install
+            case .off: return .disabled
+            case .on:
+                guard descriptor.provider != nil else { return .disabled }
+                guard let health, health.state != .install && health.state != .disabled else { return .checking }
+                return health.state
+            case nil: return .checking
+            }
+        }
+
+        var headline: String {
+            switch availability {
+            case .notFound: "Not found on this Mac"
+            case .off: "Off"
+            case .on where descriptor.provider == nil: "Found"
+            case .on where state == .checking: "Checking…"
+            case .on: health?.headline ?? "Checking…"
+            case nil: "Checking…"
+            }
+        }
+
+        var accessibilityLabel: String {
+            var parts = [name, headline]
+            if showsAccountChanged { parts.append("Account changed") }
+            if let startNote { parts.append(startNote) }
+            return parts.joined(separator: ", ")
+        }
+
+        var missingExplanation: String {
+            "Not found on this Mac. Sphyrna looks for `\(descriptor.command)` on your shell's PATH."
+        }
+    }
+
+    static func harnessRow(descriptor: HarnessDescriptor, availability: HarnessAvailability?, switchedOn: Bool,
+                           health: HarnessHealth?, buildSupportsSessions: Bool, canStart: Bool) -> HarnessRow {
+        // The PATH reader is authoritative once it has answered. Before then, a completed provider health check
+        // can supply the same fact; the remaining rows stay Checking and cannot be switched yet.
+        let found: Bool?
+        let executable: String?
+        if let availability {
+            found = availability.isFound
+            executable = availability.executable
+        } else if health?.state == .install {
+            found = false
+            executable = nil
+        } else if let path = health?.executable {
+            found = true
+            executable = path
+        } else {
+            found = nil
+            executable = nil
+        }
+        let state: HarnessAvailabilityState? = found.map { $0 ? (switchedOn ? .on : .off) : .notFound }
+        return HarnessRow(descriptor: descriptor, availability: state, executable: executable,
+                          switchPreference: switchedOn, health: health, buildSupportsSessions: buildSupportsSessions, canStart: canStart)
+    }
 }

@@ -66,6 +66,30 @@ struct ChatFirstPureTests {
         #expect(dismissed.map(\.kind) == [.wireDrift])
     }
 
+    @Test func policyBannerExplainsWhyTerminalHandoverIsBlocked() {
+        let preferences = UIPreferencesStore(url: FileManager.default.temporaryDirectory.appendingPathComponent("banner-\(UUID()).json"))
+        let model = CatalogModel(catalog: nil, events: SessionEventHub(), preferences: preferences)
+        let record = CatalogSession(
+            session: ManagedSession(provider: .claude, providerConversationID: "fixture", workingDirectory: "/tmp"),
+            title: nil, createdAt: Date(), lastUsedAt: Date(), lifecycle: .idle, pinned: false)
+        let row = SessionRowModel(record: record, live: nil)
+        let connections = HarnessConnections(choices: [.claude: false])
+        model.harnessConnections = connections
+        for missing in [false, true] {
+            if missing {
+                connections.setOn(.claude, true)
+                model.harnessAvailability = [.claude: HarnessAvailability(id: .claude, state: .notFound)]
+            }
+            let reason = model.continueUnavailableReason(in: .terminal, row: row) ?? "missing reason"
+            let items = ChatBanners.items(policySignal: true, policyDismissed: false,
+                                          canContinueInTerminal: model.canContinue(in: .terminal, row: row),
+                                          continueUnavailableReason: reason, wireDrift: 0, wireDriftDismissed: false, unknownRecords: 0, recordsDismissed: false)
+            #expect(items.first?.actionTitle == nil)
+            #expect(items.first?.message.contains(reason) == true)
+            #expect(items.first?.lineLimit == nil, "the explanation can wrap without being cut off")
+        }
+    }
+
     /// D-69: the session's ⋯ menu holds no move to a face; the one item left ends a move that waits (the policy banner's).
     @Test func theHeaderMenuOffersNoMoveOnlyTheWayToCancelOneThatWaits() {
         #expect(CatalogModel.cancelMoveTitle(for: nil) == nil)

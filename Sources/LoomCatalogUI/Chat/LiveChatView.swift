@@ -102,6 +102,7 @@ struct LiveChatView<Pinned: View>: View {
     var onOpenChanges: ((Bool) -> Void)?
     /// "Switch to Terminal" on the policy banner (the switch in Settings goes to Terminal and this session moves); nil where the session cannot be moved.
     var onContinueInTerminal: (() -> Void)?
+    var continueUnavailableReason: String?
     /// The quick question's panel for this session (V22), drawn over the bottom of the stream while it is open.
     var quickQuestion: QuickQuestionPanel?
     @ViewBuilder let pinned: (_ maxHeight: CGFloat?) -> Pinned
@@ -112,7 +113,7 @@ struct LiveChatView<Pinned: View>: View {
             if let model {
                 LiveChatContent(model: model, feed: feed, composer: composer, onOpenSubagent: onOpenSubagent,
                                 onOpenChanges: onOpenChanges, onContinueInTerminal: onContinueInTerminal,
-                                quickQuestion: quickQuestion, pinned: pinned)
+                                continueUnavailableReason: continueUnavailableReason, quickQuestion: quickQuestion, pinned: pinned)
             } else {
                 LoomTheme.Surface.canvas
             }
@@ -139,6 +140,7 @@ struct LiveChatContent<Pinned: View>: View {
     let onOpenSubagent: ((String?, String) -> Void)?
     var onOpenChanges: ((Bool) -> Void)?
     var onContinueInTerminal: (() -> Void)?
+    var continueUnavailableReason: String?
     var quickQuestion: QuickQuestionPanel?
     /// The cards that wait for the user, between the stream and the composer. They get the most they may take.
     @ViewBuilder let pinned: (_ maxHeight: CGFloat?) -> Pinned
@@ -195,7 +197,7 @@ struct LiveChatContent<Pinned: View>: View {
         let items = feed.phase == .ready ? ChatBanners.items(
             policySignal: feed.policySignal != nil, policyDismissed: feed.policyDismissed,
             canContinueInTerminal: onContinueInTerminal != nil, owner: .chat,
-            wireDrift: feed.wireDrift, wireDriftDismissed: feed.wireDriftDismissed,
+            continueUnavailableReason: continueUnavailableReason, wireDrift: feed.wireDrift, wireDriftDismissed: feed.wireDriftDismissed,
             unknownRecords: presentation.unknownRecordCount, recordsDismissed: presentation.driftDismissed) : []
         return ChatBannerView(items: items, dismiss: { kind in
             switch kind {
