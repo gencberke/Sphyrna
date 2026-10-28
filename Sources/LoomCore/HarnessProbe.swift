@@ -305,6 +305,11 @@ public actor HarnessProbe {
         connections.isConnected(harness) ? readings[harness] : nil
     }
 
+    /// The explicit health recheck waits for an older usage ask without starting another child alongside it.
+    func waitForCurrentAsk(of harness: ManagedSession.Provider) async {
+        if let task = running[harness] { _ = await task.value }
+    }
+
     /// Takes one ask's answer into the reading and remembers its failure. The failure is stamped with the probe's clock.
     private func finish(_ harness: ManagedSession.Provider, _ ask: HarnessProbeAsk) -> HarnessProbeOutcome {
         running[harness] = nil

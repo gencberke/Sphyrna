@@ -56,6 +56,15 @@ public actor HarnessHealthChecker {
         return await task.value
     }
 
+    /// The user's explicit recheck, after PATH was refreshed. An older health or independent usage ask finishes first;
+    /// its answer cannot stand in for the fresh check. Ordinary concurrent checks keep sharing their current task.
+    public func checkAgain(_ provider: ManagedSession.Provider) async -> HarnessHealth {
+        guard connections.isConnected(provider) else { return await check(provider, force: true) }
+        if let task = running[provider] { _ = await task.value }
+        await probe.waitForCurrentAsk(of: provider)
+        return await check(provider, force: true)
+    }
+
     /// The person has seen the "Account changed" mark: it goes.
     public func acknowledgeAccountChange(_ provider: ManagedSession.Provider) {
         checked[provider]?.accountChanged = false

@@ -130,6 +130,7 @@ public actor SystemProviderToolchains {
     private let environmentSource: (@Sendable () async throws -> LaunchEnvironment.Resolution)?
     private var environment: LaunchEnvironment.Resolution?
     private var environmentTask: Task<LaunchEnvironment.Resolution, any Error>?
+    private var environmentGeneration: UInt64 = 0
     private var resolved: [ManagedSession.Provider: ProviderToolchain] = [:]
     /// Resolutions since this object was created, per provider (tests and the diagnostics read it).
     public private(set) var resolutionCount = 0
@@ -162,6 +163,7 @@ public actor SystemProviderToolchains {
             resolved[provider] = nil
             if current == nil { dropTerminalEnvironment() }
         }
+        let generation = environmentGeneration
         let resolution = try await terminalEnvironment()
         let value: ProviderToolchain
         switch provider {
@@ -170,7 +172,7 @@ public actor SystemProviderToolchains {
         case .synthetic:
             throw ProviderToolchainError.unsupported("Synthetic sessions have no provider CLI")
         }
-        resolved[provider] = value
+        if generation == environmentGeneration { resolved[provider] = value }
         resolutionCount += 1
         return value
     }
@@ -201,6 +203,7 @@ public actor SystemProviderToolchains {
     }
 
     private func dropTerminalEnvironment() {
+        environmentGeneration &+= 1
         environment = nil
         environmentTask = nil
     }
@@ -208,6 +211,7 @@ public actor SystemProviderToolchains {
     /// An explicit Check Again recaptures PATH after an installation changed the shell's setup. Normal reads stay cached;
     /// concurrent asks join the same in-flight shell. No CLI is probed until a caller actually asks for its toolchain.
     public func refreshTerminalEnvironment() async throws -> LaunchEnvironment.Resolution {
+        environmentGeneration &+= 1
         environment = nil
         resolved.removeAll()
         return try await terminalEnvironment()

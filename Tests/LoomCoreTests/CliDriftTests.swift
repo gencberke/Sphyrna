@@ -62,6 +62,47 @@ struct CliDriftTests {
         var count: Int { lock.withLock { value } }
     }
 
+    private final class ChangingEnvironment: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: [String: String]
+        init(_ value: [String: String]) { self.value = value }
+        func replace(_ value: [String: String]) { lock.withLock { self.value = value } }
+        func read() -> LaunchEnvironment.Resolution { lock.withLock { LaunchEnvironment.Resolution(environment: value) } }
+    }
+
+    @Test func aResolutionStartedBeforePathRefreshCannotRestoreTheOldToolchainCache() async throws {
+        let oldBin = try Bin(), newBin = try Bin()
+        try newBin.replace(version: "2.1.300", help: Self.fullHelp)
+        let hold = oldBin.folder.appendingPathComponent("hold"), ready = oldBin.folder.appendingPathComponent("ready")
+        try Data().write(to: hold)
+        defer { try? FileManager.default.removeItem(at: hold) }
+        try """
+        #!/bin/sh
+        case "$1" in
+          --version)
+            : > "$LOOM_TEST_READY"
+            while [ -f "$LOOM_TEST_HOLD" ]; do /bin/sleep 0.01; done
+            echo '2.1.299' ;;
+          --help) echo '--model' ;;
+        esac
+        """.write(to: oldBin.executable, atomically: true, encoding: .utf8)
+        chmod(oldBin.executable.path, 0o755)
+        let environment = ChangingEnvironment(["PATH": oldBin.folder.path, "LOOM_TEST_READY": ready.path, "LOOM_TEST_HOLD": hold.path])
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
+        let resolver = SystemProviderToolchains(supervisor: supervisor, origin: .development, environmentSource: { environment.read() })
+        let earlier = Task { try await resolver.toolchain(for: .claude) }
+        let started = try await SessionRuntimeTests.waitUntil(3) { FileManager.default.fileExists(atPath: ready.path) }
+        #expect(started)
+        environment.replace(["PATH": newBin.folder.path])
+        _ = try await resolver.refreshTerminalEnvironment()
+        try FileManager.default.removeItem(at: hold)
+        _ = try await earlier.value
+        let next = try await resolver.toolchain(for: .claude)
+        #expect(next.executable == newBin.executable.path, "The earlier probe cannot repopulate the invalidated cache")
+        #expect(next.capabilities.version == "2.1.300")
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
     // MARK: System resolver
 
     @Test func theCachedToolchainIsKeptWhileTheExecutableIsTheSameFile() async throws {
