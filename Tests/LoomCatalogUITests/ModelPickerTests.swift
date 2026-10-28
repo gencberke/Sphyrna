@@ -17,7 +17,7 @@ private struct PickerRenderProbeParent: View {
     var body: some View {
         let _ = probe.unrelated
         let title = probe.title
-        return ModelPickerAccessibility(role: .menu, label: "Render probe") {
+        return ModelPickerAccessibility(role: .menu, label: "Render probe", size: CGSize(width: 156, height: 48)) {
             PickerRenderProbeChild(probe: probe, title: title)
         }.fixedSize()
     }
@@ -29,6 +29,36 @@ private struct PickerRenderProbeChild: View {
     var body: some View {
         let _ = { probe.childBodies += 1 }()
         return Text(title).frame(width: 156, height: 48)
+    }
+}
+
+private final class PickerMeasurementProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var measurements: [CGSize] = []
+
+    func record(_ proposal: ProposedViewSize) {
+        lock.lock()
+        measurements.append(CGSize(width: proposal.width ?? 0, height: proposal.height ?? 0))
+        lock.unlock()
+    }
+
+    var unboundedMeasurements: [CGSize] {
+        lock.lock()
+        defer { lock.unlock() }
+        return measurements.filter { $0.width > 10_000 || $0.height > 10_000 }
+    }
+}
+
+private struct PickerMeasurementProbeLayout: Layout {
+    let probe: PickerMeasurementProbe
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        probe.record(proposal)
+        return CGSize(width: 156, height: 48)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
     }
 }
 
@@ -359,6 +389,30 @@ private struct PickerRenderProbeChild: View {
         #expect(!window.isVisible)
     }
 
+    @Test func accessibilityContainerNeverMeasuresItsChildWithAnUnboundedProposal() async throws {
+        enableAccessibilityTree()
+        let probe = PickerMeasurementProbe()
+        let content = ModelPickerAccessibility(role: .menu, label: "Bounded layout", size: CGSize(width: 156, height: 48)) {
+            PickerMeasurementProbeLayout(probe: probe) { Button("Choose") {} }
+        }.fixedSize()
+        let hosting = NSHostingView(rootView: content)
+        hosting.frame = NSRect(x: 0, y: 0, width: 300, height: 100)
+        let window = NSWindow(contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = hosting
+        defer { window.close() }
+        try await Task.sleep(for: .milliseconds(150))
+        hosting.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        let menu = try #require(accessibilityElements(in: hosting).first {
+            $0.accessibilityRole?() == .menu && InkAX.label($0) == "Bounded layout"
+        })
+        #expect(abs(InkAX.frame(menu).width - 156) < 1 && abs(InkAX.frame(menu).height - 48) < 1)
+        #expect(probe.unboundedMeasurements.isEmpty, "the parent layout must never measure the child with an oversized proposal")
+        #expect(accessibilityElements(in: menu).contains { $0.accessibilityRole?() == .button && InkAX.label($0) == "Choose" })
+        #expect(!window.isVisible)
+    }
+
     @Test func accessibilityContainerKeepsUnrelatedParentUpdatesQuiet() async throws {
         enableAccessibilityTree()
         let probe = PickerRenderProbe()
@@ -387,7 +441,7 @@ private struct PickerRenderProbeChild: View {
 
     @Test func accessibilityContainerMeasuresContentWithoutPublishingAnAppKitIntrinsicSize() async throws {
         enableAccessibilityTree()
-        let content = ModelPickerAccessibility(role: .menu, label: "Sizing test") {
+        let content = ModelPickerAccessibility(role: .menu, label: "Sizing test", size: CGSize(width: 156, height: 48)) {
             Button("Choose") {}.frame(width: 156, height: 48)
         }.fixedSize()
         let hosting = NSHostingView(rootView: content)
@@ -469,6 +523,22 @@ private struct PickerRenderProbeChild: View {
         #expect(ultra.accessibilityPerformPress?() == true)
         try await settle()
         #expect(host.state.active == nil && model.resolvedStart(for: nil).choices.effort == "ultra")
+
+        try await openEffort()
+        let manyLevels = ["low", "medium", "high", "xhigh", "max", "ultra", "super", "deep", "extra"]
+        model.modelCatalog.apply(HarnessReading(provider: .codex, models: [
+            HarnessModel(id: "same", displayName: "Same Codex", isDefault: false, efforts: manyLevels)
+        ], readAt: Date()))
+        try await settle()
+        #expect(host.state.active?.id == "draft-effort")
+        let cappedHeight = 2 * LoomTheme.ModelPicker.effortInset + LoomTheme.ModelPicker.effortHeaderHeight
+            + LoomTheme.ModelPicker.effortListMaxHeight
+        #expect(host.state.contentSize.width == LoomTheme.ModelPicker.effortWidth && host.state.contentSize.height == cappedHeight,
+                "an open menu resizes to its capped list when a cached reading adds levels")
+        #expect(accessibilityElements(in: host.view).contains { InkAX.identifier($0) == "draft-effort-choice-Super" })
+        #expect(host.state.handle(.down) && host.state.handle(.return))
+        try await settle()
+        #expect(host.state.active == nil && model.resolvedStart(for: nil).choices.effort == "super")
         #expect(!window.isVisible)
     }
 

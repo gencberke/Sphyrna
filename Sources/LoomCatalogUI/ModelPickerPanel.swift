@@ -23,11 +23,15 @@ struct ModelPickerPanel: View {
             search
             Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline)
             HStack(spacing: 0) {
-                ModelPickerAccessibility(role: .list, label: "Model sources") { rail(snapshot) }
-                    .frame(width: LoomTheme.ModelPicker.railWidth, height: LoomTheme.ModelPicker.bodyHeight)
+                ModelPickerAccessibility(role: .list, label: "Model sources",
+                                         size: CGSize(width: LoomTheme.ModelPicker.railWidth, height: LoomTheme.ModelPicker.bodyHeight)) {
+                    rail(snapshot)
+                }
                 Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(width: LoomTheme.Line.hairline)
-                ModelPickerAccessibility(role: .list, label: "Models") { list(snapshot) }
-                    .frame(width: LoomTheme.ModelPicker.listWidth, height: LoomTheme.ModelPicker.bodyHeight)
+                ModelPickerAccessibility(role: .list, label: "Models",
+                                         size: CGSize(width: LoomTheme.ModelPicker.listWidth, height: LoomTheme.ModelPicker.bodyHeight)) {
+                    list(snapshot)
+                }
             }
         }
         .frame(width: LoomTheme.ModelPicker.width, height: LoomTheme.ModelPicker.height)

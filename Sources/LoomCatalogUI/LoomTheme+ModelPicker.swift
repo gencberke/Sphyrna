@@ -44,6 +44,10 @@ extension LoomTheme {
         static let effortNameWidth: CGFloat = 72
         static let effortTagHeight: CGFloat = 18
         static let effortTagInset: CGFloat = 6
+        static func effortLayout(levelCount: Int) -> (size: CGSize, listHeight: CGFloat) {
+            let listHeight = min(CGFloat(levelCount + 1) * rowHeight, effortListMaxHeight)
+            return (CGSize(width: effortWidth, height: 2 * effortInset + effortHeaderHeight + listHeight), listHeight)
+        }
         static var railFill: Color { Surface.muted.opacity(0.4) }
     }
 }

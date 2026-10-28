@@ -75,7 +75,8 @@ struct ModelPickerChip: View {
         .help("Model").accessibilityLabel("Model, \(title)").accessibilityIdentifier(identifier)
         .inkPopover(isPresented: $isOpen, id: identifier, label: "Choose model", side: .below, alignment: .trailing,
                     keys: handle, restoreFocus: restoreFocus) {
-            ModelPickerAccessibility(role: .menu, label: "Model menu") {
+            ModelPickerAccessibility(role: .menu, label: "Model menu",
+                                     size: CGSize(width: LoomTheme.ModelPicker.width, height: LoomTheme.ModelPicker.height)) {
                 ModelPickerPanel(model: model, selected: selected, cursor: cursor, identifier: identifier,
                                  handle: handle, choose: commit, close: { isOpen = false })
             }
@@ -128,7 +129,8 @@ struct EffortPickerChip: View {
         .help("Effort").accessibilityLabel("Effort, \(options.title)").accessibilityIdentifier(identifier)
         .inkPopover(isPresented: $isOpen, id: identifier, label: "Effort for \(modelTitle)", side: .below, alignment: .trailing,
                     keys: handle, restoreFocus: restoreFocus) {
-            ModelPickerAccessibility(role: .menu, label: "Effort for \(modelTitle)") {
+            ModelPickerAccessibility(role: .menu, label: "Effort for \(modelTitle)",
+                                     size: LoomTheme.ModelPicker.effortLayout(levelCount: options.levels.count).size) {
                 EffortPickerMenu(modelTitle: modelTitle, options: options, cursor: cursor, identifier: identifier, choose: commit)
             }
         }

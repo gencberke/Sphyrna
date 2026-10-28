@@ -9,7 +9,8 @@ struct EffortPickerMenu: View {
     let choose: (EffortPickerController.Choice) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let layout = LoomTheme.ModelPicker.effortLayout(levelCount: options.levels.count)
+        return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: LoomTheme.ModelPicker.rowGap) {
                 Text("Effort").font(LoomTheme.ModelPicker.groupFont).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 Spacer(minLength: 0)
@@ -28,13 +29,12 @@ struct EffortPickerMenu: View {
                         }
                     }
                 }
-                .frame(height: min(CGFloat(options.levels.count + 1) * LoomTheme.ModelPicker.rowHeight,
-                                   LoomTheme.ModelPicker.effortListMaxHeight))
+                .frame(height: layout.listHeight)
                 .onChange(of: cursor.cursor) { _, choice in if let choice { proxy.scrollTo(choice) } }
             }
         }
         .padding(LoomTheme.ModelPicker.effortInset)
-        .frame(width: LoomTheme.ModelPicker.effortWidth)
+        .frame(width: layout.size.width, height: layout.size.height)
         .accessibilityElement(children: .contain).accessibilityLabel("Effort for \(modelTitle)")
         .accessibilityIdentifier("\(identifier)-list")
     }
