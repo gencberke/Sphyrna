@@ -145,17 +145,32 @@ enum ChangesBodyWords {
     }
 }
 
-/// While git reads the branch (DESIGN §13): the art's place, "Reading the branch…", and the command with its time in mono. The
-/// time counts once a second while the read runs; the view goes when the read ends, and its clock with it.
-private struct ChangesBranchReading: View {
+/// While git reads the branch: the command and elapsed time. Only an active window keeps the one-second clock.
+struct ChangesBranchReading: View {
     @State private var start = Date()
+    @Environment(\.indicatorsAnimate) private var indicatorsAnimate
 
     var body: some View {
-        TimelineView(.periodic(from: start, by: 1)) { context in
-            InspectorEmptyState(text: ChangesBodyWords.readingBranch,
-                                detail: ChangesBodyWords.readingLine(elapsed: context.date.timeIntervalSince(start)))
+        Group {
+            if indicatorsAnimate {
+                TimelineView(.periodic(from: start, by: 1)) { context in
+                    reading(at: context.date)
+                }
+            } else {
+                reading(at: Date())
+            }
         }
         .accessibilityIdentifier("changes-reading-branch")
+    }
+
+    private func reading(at date: Date) -> some View {
+        VStack(spacing: 0) {
+            BrailleSpinner(animating: indicatorsAnimate)
+                .frame(width: LoomTheme.Layout.indicatorSlot.width, height: LoomTheme.Layout.indicatorSlot.height)
+                .accessibilityHidden(true)
+            InspectorEmptyState(text: ChangesBodyWords.readingBranch,
+                                detail: ChangesBodyWords.readingLine(elapsed: date.timeIntervalSince(start)))
+        }
     }
 }
 

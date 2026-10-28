@@ -128,28 +128,34 @@ import Testing
         .text("The branch offsets are the reference's own."),
     ]
 
-    @Test func eachEntryTakesItsVoice() {
+    @Test func eachEntryTakesItsVoice() throws {
         let lines = TranscriptLines.make(brief: nil, omitsEarlier: false, items: items(stream), isRunning: false, isWaiting: false,
                                          isFinished: false)
-        #expect(lines.map(\.kind) == [.words, .call, .result, .call, .result, .thought, .words])
+        #expect(lines.map(\.kind) == [.words, .tools, .thought, .words])
+        try #require(lines.count == 4)
+        let group = try #require(lines.first { $0.kind == .tools })
+        #expect(group.text == "Ran 2 tools")
+        let tools = group.children
+        try #require(tools.count == 4)
+        #expect(tools.map(\.kind) == [.call, .result, .call, .result])
         // The agent's words: the chat's type (12.5), primary, after ⏺.
         #expect(lines[0].mark == .glyph("⏺") && lines[0].markTone == .primary)
         #expect(lines[0].style == LoomTheme.InkStyle(size: 12.5, lineHeight: 19.4) && lines[0].tone == .primary && lines[0].label == nil)
         // A tool call in mono 11.5: the name semibold primary, the argument secondary.
-        #expect(lines[1].name == "Read" && lines[1].text == "(Sources/LoomCatalogUI/SubagentTree.swift)")
-        #expect(lines[1].style.mono && lines[1].style.size == 11.5 && lines[1].tone == .secondary)
+        #expect(tools[0].name == "Read" && tools[0].text == "(Sources/LoomCatalogUI/SubagentTree.swift)")
+        #expect(tools[0].style.mono && tools[0].style.size == 11.5 && tools[0].tone == .secondary)
         #expect(LoomTheme.Agents.callName.weight == .semibold && LoomTheme.Agents.callName.mono)
         // Its result after ⎿: mono 11, tertiary, its first three lines; the lines the entry did not keep are behind a click (FB6-18).
-        #expect(lines[2].mark == .glyph("⎿") && lines[2].text == "import SwiftUI" && lines[2].unkeptLines == 87)
-        #expect(lines[2].style.mono && lines[2].style.size == 11 && lines[2].tone == .tertiary
-                && lines[2].lineLimit == LoomTheme.Agents.resultWrapLines)
+        #expect(tools[1].mark == .glyph("⎿") && tools[1].text == "import SwiftUI" && tools[1].unkeptLines == 87)
+        #expect(tools[1].style.mono && tools[1].style.size == 11 && tools[1].tone == .tertiary
+                && tools[1].lineLimit == LoomTheme.Agents.resultWrapLines)
         // An error is in the failure text.
-        #expect(lines[4].tone == .failure && lines[4].markTone == .failure && lines[4].text == "error: no such module")
-        #expect(lines[4].accessibilityLabel == "Error: error: no such module")
+        #expect(tools[3].tone == .failure && tools[3].markTone == .failure && tools[3].text == "error: no such module")
+        #expect(tools[3].accessibilityLabel == "Error: error: no such module")
         // "✻ Thought for Ns" in tertiary.
-        #expect(lines[5].mark == .glyph("✻") && lines[5].text == "Thought for 6s" && lines[5].tone == .tertiary)
+        #expect(lines[2].mark == .glyph("✻") && lines[2].text == "Thought for 6s" && lines[2].tone == .tertiary)
         // A result sits right under its call; the other entries are a block apart.
-        #expect(lines[0].top == 0 && lines[1].top == LoomTheme.Agents.blockGap && lines[2].top == LoomTheme.Agents.resultGap)
+        #expect(lines[0].top == 0 && lines[1].top == LoomTheme.Agents.blockGap && tools[1].top == LoomTheme.Agents.resultGap)
     }
 
     @Test func theBriefOpensTheTranscriptUnderItsLabelCutAtFourLines() {

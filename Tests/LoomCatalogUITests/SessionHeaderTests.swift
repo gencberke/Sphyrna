@@ -416,8 +416,7 @@ struct SessionHeaderTests {
         #expect(try #require(wide.chip).minX - (try #require(wide.pill).maxX) > 40, "wide: the room opens between the pill and the chip")
     }
 
-    /// DESIGN §6 Header: 52 pt, its content centred on one line; the inspector toggle is a 26 pt icon button 8 before the group,
-    /// and the group is 26 high. The chip, the toggle and the group keep their sizes at every width.
+    /// DESIGN §0 Header: 52 pt, its content centred on one line; the inspector toggle and control group are 28 pt.
     @Test func theHeaderIs52WithItsPartsOnOneLineAndTheToggleIsAnIconButton() async throws {
         let rig = try await rig()
         defer { cleanup(rig) }
@@ -433,7 +432,7 @@ struct SessionHeaderTests {
             toggleSizes.insert(toggle.width)
             #expect(toggle.width == 28 && toggle.height == 28, "\(width): a 28 pt icon button, \(toggle)")
             #expect(abs(group.minX - toggle.maxX - LoomTheme.Space.detailSpacing) < 1.5, "\(width): 8 before the group")
-            #expect(group.height >= 26 - 0.5 && group.height <= 26 + 0.5, "\(width): the group is 26 high, \(group)")
+            #expect(group.height >= 28 - 0.5 && group.height <= 28 + 0.5, "\(width): the group is 28 high, \(group)")
             // One centre line for the title, the pill, the chip, the toggle and the group.
             let centres = [frames.title, frames.pill, frames.chip, frames.toggle, frames.group].compactMap { $0?.midY }
             #expect((centres.max() ?? 0) - (centres.min() ?? 0) < 1.5, "\(width): one line, \(centres)")

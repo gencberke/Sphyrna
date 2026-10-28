@@ -2,6 +2,18 @@ import AppKit
 import LoomCore
 import SwiftUI
 
+extension LoomTheme.Header {
+    /// The session header's v4 Stop / actions group.
+    static let sessionGroupHeight = LoomTheme.InkHeight.sm
+    static let sessionGroupRadius = LoomTheme.InkRadius.row
+}
+
+extension LoomTheme.TabStrip {
+    /// A session tab on its 36 pt row.
+    static let sessionTabHeight = LoomTheme.InkHeight.sm
+    static let sessionTabRadius = LoomTheme.InkRadius.row
+}
+
 /// The values of the window's shell in Ink (DESIGN §3 Shape and rhythm, §6 Project colour, Iconography, Controls and Terminal
 /// framing): the project's mark, the control family and Sphyrna's focus ring. The header's, the tab row's and the pane's own
 /// numbers are `Header`, `TabStrip`, `Layout` and `Space` in `LoomTheme.swift`.

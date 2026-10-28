@@ -26,6 +26,8 @@ final class SubagentTranscriptModel {
 
     private(set) var items: [Item] = []
     private(set) var brief: String?
+    /// The bounded presentation is rebuilt on a changed batch or status, never during view evaluation.
+    private(set) var lines: [TranscriptLine] = []
     /// Entries before the first one shown exist but are not shown: the ring moved on, or the file's start
     /// was not read.
     private(set) var omitsEarlier = false
@@ -44,6 +46,8 @@ final class SubagentTranscriptModel {
     @ObservationIgnored private var onScreen = false
     @ObservationIgnored private var windowVisible: Bool
     @ObservationIgnored private var closed = false
+    @ObservationIgnored private var presentationWaiting = false
+    @ObservationIgnored private var presentationFinished = false
 
     /// `locate` turns the record's path into a checked file (or nothing); the model never opens a path itself.
     init(agentID: String, transcriptPath: String?, isRunning: Bool, windowVisible: Bool,
@@ -82,7 +86,17 @@ final class SubagentTranscriptModel {
     }
 
     func setRunning(_ value: Bool) {
-        if isRunning != value { isRunning = value }
+        guard isRunning != value else { return }
+        isRunning = value
+        rebuildPresentation()
+    }
+
+    /// The host's current waiting and completion state changes the tail and the Result label.
+    func setPresentation(isWaiting: Bool, isFinished: Bool) {
+        guard isWaiting != presentationWaiting || isFinished != presentationFinished else { return }
+        presentationWaiting = isWaiting
+        presentationFinished = isFinished
+        rebuildPresentation()
     }
 
     /// The record learned the path after the panel opened (its meta file was read late).
@@ -169,9 +183,18 @@ final class SubagentTranscriptModel {
             ring.removeFirst(ring.count - Self.ringLimit)
             omitted = true
         }
-        items = ring
+        let itemsChanged = items != ring
+        let changed = itemsChanged || brief != newBrief || omitsEarlier != omitted
+        if itemsChanged { items = ring }
         if brief != newBrief { brief = newBrief }
         if omitsEarlier != omitted { omitsEarlier = omitted }
+        if changed || phase != .live { rebuildPresentation() }
         if phase != .live { phase = .live }
+    }
+
+    private func rebuildPresentation() {
+        let next = TranscriptLines.make(brief: brief, omitsEarlier: omitsEarlier, items: items,
+                                        isRunning: isRunning, isWaiting: presentationWaiting, isFinished: presentationFinished)
+        if lines != next { lines = next }
     }
 }

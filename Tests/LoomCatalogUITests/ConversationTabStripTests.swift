@@ -212,10 +212,10 @@ struct ConversationTabStripTests {
                 "the row is back with the session")
     }
 
-    /// The sizes of DESIGN §6 Tabs, and the tint of §6 Project colour: 6 %, 11 % and 16 % with a 42 % edge when open; no tone, no tint.
+    /// The v4 tab's size and the existing project tone's hover and selected strengths.
     @Test func aTabHasTheSizesAndTheTintOfInk() {
         typealias T = LoomTheme.TabStrip
-        #expect(T.tabHeight == 26 && T.tabRadius == 7 && T.gap == 4 && T.inset == 8 && T.maxTabWidth == 230 && T.minTabWidth == 112)
+        #expect(T.sessionTabHeight == 28 && T.sessionTabRadius == 8 && T.gap == 4 && T.inset == 8 && T.maxTabWidth == 230 && T.minTabWidth == 112)
         #expect(T.close == 16 && T.plus == 24 && LoomTheme.Layout.harnessMarkRow == 12)
         for tone in ProjectTone.allCases {
             let rest = ProjectTabStyle(tone: tone, selected: false, hovering: false)

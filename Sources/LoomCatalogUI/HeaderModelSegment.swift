@@ -158,6 +158,7 @@ struct HeaderModelSegment: View {
 
     private func segment(_ content: HeaderModelContent) -> some View {
         HStack(spacing: LoomTheme.Header.modelGap) {
+            ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Layout.harnessMarkRow)
             if let usage = content.usage { HeaderContextMark(usage: usage) }
             if let name = content.name {
                 Text(name).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondary).lineLimit(1)

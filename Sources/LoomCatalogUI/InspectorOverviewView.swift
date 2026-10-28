@@ -60,26 +60,21 @@ struct InspectorOverview: View {
     var body: some View {
         let content = content
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: LoomTheme.Overview.cardGap) {
                 sessionSection(content)
-                OverviewDivider()
                 OverviewSection(title: "Context", headline: contextHeadline) { context }
                 if let conversationID = usageConversationID {
-                    OverviewDivider()
                     OverviewSection(title: "Usage", headline: usageHeadline(conversationID)) { usageBlock(conversationID) }
                 }
-                OverviewDivider()
                 worktreeSection(content)
                 if let lastTurn = content.lastTurn {
-                    OverviewDivider()
                     changesSection(lastTurn)
                 }
                 if let agents = content.agents {
-                    OverviewDivider()
                     agentsSection(agents)
                 }
             }
-            .padding(LoomTheme.Inspector.bodyInset)
+            .padding(LoomTheme.Overview.cardListInset)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .loadsLaunchModel(model, row: row)
@@ -117,11 +112,11 @@ struct InspectorOverview: View {
                     }
                 }
                 // The run on one line: the harness's version, the model and its effort.
-                if let run = content.runLine {
+                if content.runLine != nil {
                     OverviewFact(model.capabilities(of: row.record.session.provider).displayName) {
                         HStack(spacing: LoomTheme.Overview.valueGap) {
                             ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Overview.harnessMark)
-                            OverviewText(run, mono: true)
+                            OverviewRunValue(claudeCode: content.claudeCode, model: content.model, effort: content.effort)
                         }
                     }
                 }
@@ -258,6 +253,45 @@ struct InspectorOverview: View {
 
 // MARK: - Parts
 
+/// The run's known values share one line and keep the same spoken order.
+struct OverviewRunValue: View {
+    let claudeCode: String?
+    let model: String?
+    let effort: String?
+
+    var body: some View {
+        value.lineLimit(1).textSelection(.enabled)
+    }
+
+    private var value: Text {
+        var value = Text("")
+        var hasPart = false
+        func add(_ part: Text) {
+            let separator = Text(" · ").font(LoomTheme.Overview.value.font).foregroundStyle(LoomTheme.Text.primary)
+            value = hasPart ? Text("\(value)\(separator)\(part)") : part
+            hasPart = true
+        }
+        if let claudeCode {
+            let prefix = "Claude Code "
+            if claudeCode.hasPrefix(prefix) {
+                let name = Text(prefix).font(LoomTheme.Overview.value.font).foregroundStyle(LoomTheme.Text.primary)
+                let version = Text(verbatim: String(claudeCode.dropFirst(prefix.count)))
+                    .font(LoomTheme.Overview.machine.font).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                add(Text("\(name)\(version)"))
+            } else {
+                add(Text(verbatim: claudeCode).font(LoomTheme.Overview.value.font).foregroundStyle(LoomTheme.Text.primary))
+            }
+        }
+        if let model {
+            add(Text(verbatim: model).font(LoomTheme.Overview.value.font).foregroundStyle(LoomTheme.Text.primary))
+        }
+        if let effort {
+            add(Text(verbatim: effort).font(LoomTheme.Overview.machine.font).foregroundStyle(LoomTheme.Text.secondaryStyle))
+        }
+        return value
+    }
+}
+
 /// A section of the Overview: its label in Ink's label type, an optional "Open ›" at the end of the head, then the content.
 private struct OverviewSection<Content: View>: View {
     let title: String
@@ -265,10 +299,9 @@ private struct OverviewSection<Content: View>: View {
     var headline: String?
     var link: (label: String, action: () -> Void)?
     @ViewBuilder let content: () -> Content
-    @Environment(\.inspectorOverlays) private var overlays
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LoomTheme.Inspector.sectionTitleGap) {
+        VStack(alignment: .leading, spacing: LoomTheme.Overview.cardHeadGap) {
             HStack(spacing: LoomTheme.Space.detailSpacing) {
                 Text(title).inspectorType(LoomTheme.Inspector.sectionLabel)
                     .foregroundStyle(LoomTheme.Text.secondaryStyle)
@@ -282,16 +315,13 @@ private struct OverviewSection<Content: View>: View {
             }
             content()
         }
+        .padding(.horizontal, LoomTheme.Overview.cardPaddingH)
+        .padding(.top, LoomTheme.Overview.cardPaddingTop)
+        .padding(.bottom, LoomTheme.Overview.cardPaddingBottom)
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-/// The hairline between two sections, 16 above and 16 below.
-private struct OverviewDivider: View {
-    var body: some View {
-        Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline)
-            .padding(.vertical, LoomTheme.Overview.sectionPad)
-            .accessibilityHidden(true)
+        .background(RoundedRectangle(cornerRadius: LoomTheme.Overview.cardRadius).fill(LoomTheme.Surface.raised1))
+        .overlay(RoundedRectangle(cornerRadius: LoomTheme.Overview.cardRadius)
+            .strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline))
     }
 }
 

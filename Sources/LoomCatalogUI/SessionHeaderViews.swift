@@ -234,7 +234,7 @@ struct HeaderSegmentStyle: ButtonStyle {
             configuration.label
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(secondaryUntilHovered && !active ? LoomTheme.Text.secondary : LoomTheme.Text.primary)
-                .frame(height: LoomTheme.Header.groupHeight)
+                .frame(height: LoomTheme.Header.sessionGroupHeight)
                 .background(RoundedRectangle(cornerRadius: LoomTheme.Control.iconRadius).fill(fill))
                 .controlFocusRing(
                     visible: ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled),
@@ -246,7 +246,7 @@ struct HeaderSegmentStyle: ButtonStyle {
     }
 }
 
-/// The inspector toggle: a 26 pt icon button (`sidebar.right`), on the selected fill while the inspector is open. It does what
+/// The inspector toggle: a 28 pt icon button (`sidebar.right`), on the selected fill while the inspector is open. It does what
 /// View > Toggle Inspector does.
 struct HeaderInspectorToggle: View {
     let model: CatalogModel
@@ -264,7 +264,7 @@ struct HeaderInspectorToggle: View {
     }
 }
 
-/// One container, 26 pt high, radius 7, with the strong hairline for an edge: a Stop segment (only while the run can be
+/// One container, 28 pt high, radius 8, with an input edge: a Stop segment (only while the run can be
 /// stopped) and the ⋯ menu segment, with a hairline between them. When the run ends Stop goes and ⋯ stays at the trailing edge.
 struct HeaderControlGroup<MenuItems: View>: View {
     let canStop: Bool
@@ -272,14 +272,14 @@ struct HeaderControlGroup<MenuItems: View>: View {
     @ViewBuilder let menuItems: () -> MenuItems
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: LoomTheme.Header.groupRadius)
+        let shape = RoundedRectangle(cornerRadius: LoomTheme.Header.sessionGroupRadius)
         HStack(spacing: 0) {
             if canStop {
                 Button(action: stop) {
                     HStack(spacing: LoomTheme.Header.stopGap) {
                         RoundedRectangle(cornerRadius: LoomTheme.Header.stopGlyphRadius)
                             .frame(width: LoomTheme.Header.stopGlyph, height: LoomTheme.Header.stopGlyph)
-                        Text("Stop").font(LoomTheme.Header.stopFont)
+                        Text("Stop").font(LoomTheme.InkType.button.font)
                     }
                     .padding(.horizontal, LoomTheme.Header.stopPadding)
                 }
@@ -297,8 +297,9 @@ struct HeaderControlGroup<MenuItems: View>: View {
             .menuIndicator(.hidden).fixedSize().focusEffectDisabled()
             .accessibilityLabel("Session actions")
         }
-        .frame(height: LoomTheme.Header.groupHeight)
-        .overlay(shape.strokeBorder(LoomTheme.Surface.strongEdgeStyle, lineWidth: LoomTheme.Line.hairline).allowsHitTesting(false))
+        .frame(height: LoomTheme.Header.sessionGroupHeight)
+        .background(shape.fill(LoomTheme.Surface.inputFill))
+        .overlay(shape.strokeBorder(LoomTheme.Surface.inputEdge, lineWidth: LoomTheme.Line.hairline).allowsHitTesting(false))
         .fixedSize()
     }
 }

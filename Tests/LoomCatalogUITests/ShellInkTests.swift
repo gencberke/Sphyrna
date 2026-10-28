@@ -38,8 +38,8 @@ struct ShellInkTests {
 
     @Test func theIconButtonIsTwentyEightAndKeepsItsHitArea() {
         #expect(LoomTheme.Layout.chromeButton == CGSize(width: 28, height: 28), "an icon button is 28 pt")
-        #expect(LoomTheme.Control.iconRadius == 8 && LoomTheme.Header.groupHeight == 26 )
-        #expect(LoomTheme.Header.groupRadius == 7 && LoomTheme.TabStrip.tabHeight == 26)
+        #expect(LoomTheme.Control.iconRadius == 8 && LoomTheme.Header.sessionGroupHeight == 28)
+        #expect(LoomTheme.Header.sessionGroupRadius == 8 && LoomTheme.TabStrip.sessionTabHeight == 28)
         #expect(LoomTheme.Opacity.disabled == 0.38)
         // Rows and controls use the same accent edge and halo.
         #expect(LoomTheme.Control.focusEdge == 1 && LoomTheme.Control.focusHalo == 3)

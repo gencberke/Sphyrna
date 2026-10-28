@@ -8,9 +8,9 @@ extension LoomTheme {
         // MARK: Facts
 
         /// The label column of a fact, and the gap before its value.
-        static let labelWidth: CGFloat = 72
-        static let columnGap: CGFloat = 12
-        static let rowGap: CGFloat = 8
+        static let labelWidth: CGFloat = 62
+        static let columnGap: CGFloat = 10
+        static let rowGap: CGFloat = 7
         /// A glyph or a mark, and the text after it, in a value.
         static let valueGap: CGFloat = 8
         /// The value's icons: the mode's shield, the harness's mark.
@@ -58,8 +58,14 @@ extension LoomTheme {
         static let agentCheck = Font.system(size: 9, weight: .semibold)
         // MARK: Sections
 
-        /// A hairline between sections, with this much above and below it (FB6-19).
-        static let sectionPad: CGFloat = 16
+        /// Cards on the inspector canvas, matching the session-window reference.
+        static let cardListInset: CGFloat = 14
+        static let cardGap: CGFloat = 10
+        static let cardPaddingH: CGFloat = 13
+        static let cardPaddingTop: CGFloat = 11
+        static let cardPaddingBottom: CGFloat = 12
+        static let cardRadius = InkRadius.card
+        static let cardHeadGap: CGFloat = 9
         /// The head's headline ("38%", "~$1.23", "4 files +120 −8", "2 running"), in mono.
         static let headlineType = InkType.metaLarge
         /// The Usage block's three rows: the name's column, and the gap above "Details".

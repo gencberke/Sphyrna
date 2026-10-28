@@ -45,6 +45,7 @@ struct OpenRequestBox: View {
     var position = 1
     var of = 1
     @State private var showsFullMessage = false
+    @Environment(\.indicatorsAnimate) private var indicatorsAnimate
 
     var body: some View {
         let content = OpenRequestBoxContent(request, position: position, count: of)
@@ -148,9 +149,10 @@ struct OpenRequestBox: View {
                         .disabled(content.actionsDisabled)
                 case .openSession:
                     if content.showsSpinner {
-                        ProgressView().controlSize(.small)
+                        BrailleSpinner(animating: indicatorsAnimate)
                             .frame(width: LoomTheme.OpenRequest.spinnerWidth,
-                                   height: LoomTheme.InkHeight.control)
+                                   height: LoomTheme.Control.Size.regular.height)
+                            .accessibilityElement(children: .ignore)
                             .accessibilityLabel("Opening…")
                     } else {
                         // Neither button is the default action: Return belongs to the terminal below.

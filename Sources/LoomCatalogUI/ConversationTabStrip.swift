@@ -134,7 +134,7 @@ struct ConversationTabStrip: View {
 private struct TabInsertionMark: View {
     var body: some View {
         Rectangle().fill(LoomTheme.Accent.base)
-            .frame(width: LoomTheme.Drag.lineWidth, height: LoomTheme.TabStrip.tabHeight)
+            .frame(width: LoomTheme.Drag.lineWidth, height: LoomTheme.TabStrip.sessionTabHeight)
             .allowsHitTesting(false).accessibilityHidden(true)
     }
 }
@@ -288,25 +288,26 @@ struct ConversationTabItem: View {
         // The mark names the project whatever the setting says; with project colors off it is neutral.
         let shown = row.flatMap { model.headerProjectMark(of: $0.record) }
         let tint = ProjectTabStyle(tone: mark?.tone, selected: selected, hovering: hovering)
-        let shape = RoundedRectangle(cornerRadius: LoomTheme.TabStrip.tabRadius)
+        let shape = RoundedRectangle(cornerRadius: LoomTheme.TabStrip.sessionTabRadius)
         HStack(spacing: LoomTheme.TabStrip.tabSpacing) {
             if let shown { ProjectMarkView(name: shown.name, tone: mark?.tone, size: .chip) }
             IndicatorView(indicator: indicator)
             Text(title)
-                .font(LoomTheme.TabStrip.titleFont).italic(transient)
+                .font(LoomTheme.InkType.small.font).italic(transient)
                 .foregroundStyle(titleColor(selected: selected, stale: indicator == .stale))
                 .lineLimit(1).truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
             TabEndSlot(model: model, id: id, provider: row?.record.session.provider, showsClose: hovering)
         }
         .padding(.horizontal, LoomTheme.TabStrip.tabInset)
-        .frame(height: LoomTheme.TabStrip.tabHeight)
+        .frame(height: LoomTheme.TabStrip.sessionTabHeight)
         .background {
-            // A project tone washes the tab; without a tone the neutral fills stand in (hover, and selected with a hairline).
+            // Resting tabs are flat; a selected or hovered tab keeps its project's tint.
             ZStack {
-                shape.fill(selected ? LoomTheme.Surface.selected : (hovering && tint.wash == nil ? LoomTheme.Highlight.hover : .clear))
-                if let wash = tint.washColor { shape.fill(wash) }
+                shape.fill(selected ? LoomTheme.Surface.raised2 : (hovering ? LoomTheme.Highlight.hover : .clear))
+                if selected || hovering, let wash = tint.washColor { shape.fill(wash) }
             }
+            .depth(selected ? LoomTheme.Elevation.lift : LoomTheme.Elevation.card)
         }
         .overlay(shape.strokeBorder(
             selected ? tint.stroke.map(AnyShapeStyle.init) ?? AnyShapeStyle(LoomTheme.Surface.hairlineStyle) : AnyShapeStyle(Color.clear),
@@ -417,7 +418,7 @@ private struct TabOverflowButton: View {
             Image(systemName: "chevron.down").font(LoomTheme.Typography.chevron)
         }
         .menuStyle(.button).buttonStyle(ChromeButtonStyle(size: CGSize(
-            width: LoomTheme.TabStrip.overflowWidth, height: LoomTheme.TabStrip.tabHeight)))
+            width: LoomTheme.TabStrip.overflowWidth, height: LoomTheme.TabStrip.sessionTabHeight)))
         .menuIndicator(.hidden).fixedSize()
         .overlay(alignment: .topTrailing) {
             if let attention {

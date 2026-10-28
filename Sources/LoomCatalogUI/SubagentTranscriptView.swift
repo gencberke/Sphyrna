@@ -1,10 +1,8 @@
 import LoomCore
 import SwiftUI
 
-/// One line of a subagent's transcript as the Agents tab draws it, in two voices (DESIGN §4 "The Agents tab"): the agent's words
-/// in the chat's type after ⏺, a tool call in mono with its name semibold, its result after ⎿ in quieter mono, a thought in
-/// tertiary. The brief opens the transcript under its label; a finished agent's last words carry "Result"; the tail says the agent
-/// runs or waits. A plain value, so the mapping is pinned without drawing.
+/// A projected row of the subagent transcript: Markdown prose, a folded group of calls and results, or the live tail.
+/// Tool details keep their mono voice; the brief and a finished agent's last words carry their own labels.
 struct TranscriptLine: Equatable, Identifiable {
     enum Tone: Equatable {
         case primary, secondary, tertiary, failure, attention
@@ -21,7 +19,7 @@ struct TranscriptLine: Equatable, Identifiable {
     }
 
     enum Kind: Equatable {
-        case brief, omitted, words, call, result, thought, tail, tooLong
+        case brief, omitted, words, tools, call, result, thought, tail, tooLong
     }
 
     let id: String
@@ -44,6 +42,10 @@ struct TranscriptLine: Equatable, Identifiable {
     /// The room above the line.
     let top: CGFloat
     var accessibilityLabel: String?
+    /// A tool group's calls and results, in their original order.
+    var children: [TranscriptLine] = []
+    /// Changes when a later tool fails, even if this group already contained an error.
+    var lastFailureID: String?
 }
 
 /// Turns what the panel holds into the lines it draws.
@@ -69,8 +71,46 @@ enum TranscriptLines {
                                         style: Metrics.omitted, tone: .tertiary, lineLimit: nil, top: gap(after: lines.last)))
         }
         let lastWords = isFinished && !isRunning ? items.lastIndex { if case .text = $0.entry { true } else { false } } : nil
-        for (index, item) in items.enumerated() {
-            lines.append(line(item, isResult: index == lastWords, top: gap(after: lines.last, before: item.entry)))
+        var index = 0
+        var finalWords: SubagentTranscriptModel.Item?
+        while index < items.count {
+            let item = items[index]
+            if index == lastWords {
+                finalWords = item
+                index += 1
+                continue
+            }
+            if case .toolCall = item.entry {
+                let start = index
+                var children: [TranscriptLine] = []
+                var count = 0
+                var outstanding = 0
+                while index < items.count {
+                    let next = items[index]
+                    guard isTool(next.entry) else { break }
+                    switch next.entry {
+                    case .toolCall:
+                        count += 1
+                        outstanding += 1
+                    case .toolResult:
+                        if outstanding > 0 { outstanding -= 1 }
+                    default: break
+                    }
+                    children.append(line(next, isResult: false, top: gap(after: children.last, before: next.entry)))
+                    index += 1
+                }
+                let toolCount = "\(count) \(count == 1 ? "tool" : "tools")"
+                lines.append(TranscriptLine(id: "tools-\(items[start].id)", kind: .tools, mark: .none, markTone: .tertiary,
+                                            text: outstanding == 0 ? "Ran \(toolCount)" : toolCount, style: Metrics.tail,
+                                            tone: .secondary, lineLimit: 1, top: gap(after: lines.last), children: children,
+                                            lastFailureID: children.last { $0.kind == .result && $0.tone == .failure }?.id))
+            } else {
+                lines.append(line(item, isResult: false, top: gap(after: lines.last, before: item.entry)))
+                index += 1
+            }
+        }
+        if let finalWords {
+            lines.append(line(finalWords, isResult: true, top: gap(after: lines.last, before: finalWords.entry)))
         }
         if isRunning || isWaiting {
             lines.append(isWaiting
@@ -80,6 +120,13 @@ enum TranscriptLines {
                                  style: Metrics.tail, tone: .secondary, lineLimit: 1, top: gap(after: lines.last)))
         }
         return lines
+    }
+
+    private static func isTool(_ entry: SubagentTranscriptEntry) -> Bool {
+        switch entry {
+        case .toolCall, .toolResult: true
+        default: false
+        }
     }
 
     private static func line(_ item: SubagentTranscriptModel.Item, isResult: Bool, top: CGFloat) -> TranscriptLine {
@@ -149,9 +196,8 @@ enum TranscriptEntryRow {
     static func thoughtText(milliseconds: Int?) -> String { TranscriptLines.thoughtText(milliseconds: milliseconds) }
 }
 
-/// One subagent's transcript in Claude's own marks (FB4-5): ⏺ for words and tool calls, ⎿ for a result, ✻ for thinking. The agent's
-/// words and its Result are Markdown (FB6-18) and only web and mail links open; a tool's input and output stay plain text. The list is lazy and bounded by the model's ring; it follows
-/// the newest entry only while the reader is at the bottom.
+/// A subagent's transcript: prose and the Result are Markdown, while consecutive tool calls and results share a disclosure.
+/// Only web and mail links open; tool input and output stay plain text. The lazy list follows the tail only at the bottom.
 struct SubagentTranscriptView: View {
     let panel: SubagentTranscriptModel
     var isWaiting = false
@@ -175,7 +221,12 @@ struct SubagentTranscriptView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { panel.setOnScreen(true) }
+        .onAppear {
+            panel.setPresentation(isWaiting: isWaiting, isFinished: isFinished)
+            panel.setOnScreen(true)
+        }
+        .onChange(of: isWaiting) { panel.setPresentation(isWaiting: isWaiting, isFinished: isFinished) }
+        .onChange(of: isFinished) { panel.setPresentation(isWaiting: isWaiting, isFinished: isFinished) }
         .onDisappear { panel.setOnScreen(false) }
     }
 
@@ -185,11 +236,9 @@ struct SubagentTranscriptView: View {
     }
 
     private var transcript: some View {
-        let lines = TranscriptLines.make(brief: panel.brief, omitsEarlier: panel.omitsEarlier, items: panel.items,
-                                         isRunning: panel.isRunning, isWaiting: isWaiting, isFinished: isFinished)
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(lines) { line in
+                ForEach(panel.lines) { line in
                     TranscriptLineView(line: line).padding(.top, line.top)
                 }
             }
@@ -220,7 +269,9 @@ private struct TranscriptLineView: View {
     @State private var expanded = false
 
     var body: some View {
-        if line.kind == .brief {
+        if line.kind == .tools {
+            toolGroup
+        } else if line.kind == .brief {
             VStack(alignment: .leading, spacing: 0) {
                 content(of: line)
                     .padding(.bottom, Metrics.briefBottom)
@@ -236,6 +287,31 @@ private struct TranscriptLineView: View {
             .accessibilityElement(children: line.accessibilityLabel == nil ? .contain : .combine)
             .modifier(OptionalAccessibilityLabel(label: line.accessibilityLabel))
         }
+    }
+
+    private var toolGroup: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button { expanded.toggle() } label: {
+                HStack(spacing: Metrics.toolFoldGap) {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                        .font(Metrics.toolFoldGlyph).accessibilityHidden(true)
+                    Text(line.text)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(ControlButtonStyle(kind: .ghost, size: .regular))
+            .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+            if expanded {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(line.children) { child in
+                        TranscriptLineView(line: child).padding(.top, child.top)
+                    }
+                }
+                .padding(.leading, Metrics.toolFoldIndent)
+            }
+        }
+        .onAppear { if line.lastFailureID != nil { expanded = true } }
+        .onChange(of: line.lastFailureID) { _, failure in if failure != nil { expanded = true } }
     }
 
     @ViewBuilder private var mark: some View {

@@ -103,5 +103,9 @@ extension LoomTheme {
         static let blockGap: CGFloat = 11
         static let resultGap: CGFloat = 2
         static let afterBriefGap: CGFloat = 12
+        /// A tool group is a 28 pt ghost disclosure, with its entries indented below it.
+        static let toolFoldGap: CGFloat = 6
+        static let toolFoldIndent: CGFloat = 12
+        static let toolFoldGlyph = Font.system(size: 11)
     }
 }

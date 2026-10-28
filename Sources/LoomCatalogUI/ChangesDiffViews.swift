@@ -315,10 +315,15 @@ struct ChangesNote: View {
     var busy = false
     var openPath: String?
     var retry: (() -> Void)?
+    @Environment(\.indicatorsAnimate) private var indicatorsAnimate
 
     var body: some View {
         HStack(spacing: LoomTheme.Changes.stateGap) {
-            if busy { ProgressView().controlSize(.small) }
+            if busy {
+                BrailleSpinner(animating: indicatorsAnimate)
+                    .frame(width: LoomTheme.Layout.indicatorSlot.width, height: LoomTheme.Layout.indicatorSlot.height)
+                    .accessibilityHidden(true)
+            }
             Text(verbatim: text).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
             if let retry { Button("Try Again", action: retry).buttonStyle(ControlButtonStyle(kind: .link, size: .small)) }
             if let openPath { ChangesOpenInEditor(path: openPath) }
