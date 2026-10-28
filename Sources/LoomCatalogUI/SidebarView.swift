@@ -25,7 +25,6 @@ public struct SidebarView: View {
             NewSessionRow(model: model)
             SidebarListHeading(model: model)
             SidebarList(model: model)
-            SidebarFooter(model: model)
         }
         .background(SidebarBackground(reduceTransparency: reduceTransparency, appearance: model.sidebarAppearance))
         .ignoresSafeArea(.container, edges: .top)

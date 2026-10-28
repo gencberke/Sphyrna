@@ -36,10 +36,10 @@ extension WindowEventTests {
             for gone in ["Group by project", "Recent activity", "More actions"] {
                 #expect(!all.contains(gone), "\(gone) left the header: \(all)")
             }
-            // The heading owns the current view's action; the footer contains Settings and Help (B3).
+            // The heading owns the current view's action; the window-wide bar owns Settings and Help.
             let nodes = axTree(of: hosting.view).flattened()
             #expect(nodes.contains { $0.role == "AXButton" && [$0.label, $0.title, $0.help].contains("New Session") }, "\(all)")
-            #expect(all.contains("Settings") && all.contains("Help"))
+            #expect(!all.contains("Settings") && !all.contains("Help"))
         }
 
         @Test func theListHeadingNamesTheViewAndItsSwitchChangesIt() async throws {

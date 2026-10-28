@@ -1,41 +1,34 @@
 import AppKit
 import SwiftUI
 
-/// The sidebar's two quiet utilities; usage belongs to the window-wide status bar.
-struct SidebarFooter: View {
+/// The window-wide strip's two quiet utilities.
+struct StatusBarUtilities: View {
     let model: CatalogModel
 
     var body: some View {
-        HStack(spacing: LoomTheme.StatusBar.sidebarUtilityGap) {
+        HStack(spacing: LoomTheme.StatusBar.utilityGap) {
             Button { model.showSettings() } label: { Image(systemName: "gearshape") }
-                .buttonStyle(ChromeButtonStyle(size: LoomTheme.StatusBar.sidebarUtilitySize))
+                .buttonStyle(ChromeButtonStyle(size: LoomTheme.StatusBar.utilitySize))
                 .help("Settings").accessibilityLabel("Settings")
-            SidebarHelpButton()
-            Spacer(minLength: 0)
+            StatusBarHelpButton()
         }
         .focusEffectDisabled()
-        .padding(.horizontal, LoomTheme.StatusBar.sidebarUtilityInset)
-        .frame(height: LoomTheme.StatusBar.sidebarUtilityHeight)
-        .overlay(alignment: .top) {
-            Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline)
-                .allowsHitTesting(false).accessibilityHidden(true)
-        }
     }
 }
 
 /// Open the app's actual Help menu at its utility button, keeping its own menu items and actions.
-private struct SidebarHelpButton: View {
-    @State private var anchor = SidebarHelpAnchor()
+private struct StatusBarHelpButton: View {
+    @State private var anchor = StatusBarHelpAnchor()
 
     var body: some View {
         Button { anchor.open() } label: { Image(systemName: "questionmark.circle") }
-            .buttonStyle(ChromeButtonStyle(size: LoomTheme.StatusBar.sidebarUtilitySize))
-            .background(SidebarHelpAnchorView(anchor: anchor))
+            .buttonStyle(ChromeButtonStyle(size: LoomTheme.StatusBar.utilitySize))
+            .background(StatusBarHelpAnchorView(anchor: anchor))
             .help("Help").accessibilityLabel("Help").accessibilityHint("Opens the Help menu")
     }
 }
 
-@MainActor private final class SidebarHelpAnchor {
+@MainActor private final class StatusBarHelpAnchor {
     weak var view: NSView?
 
     func open() {
@@ -44,8 +37,8 @@ private struct SidebarHelpButton: View {
     }
 }
 
-private struct SidebarHelpAnchorView: NSViewRepresentable {
-    let anchor: SidebarHelpAnchor
+private struct StatusBarHelpAnchorView: NSViewRepresentable {
+    let anchor: StatusBarHelpAnchor
 
     func makeNSView(context: Context) -> NSView {
         let view = AnchorView()

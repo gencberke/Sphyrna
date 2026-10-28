@@ -257,17 +257,18 @@ import Testing
         let originalHelp = NSApp.helpMenu
         NSApp.helpMenu = menu
         defer { NSApp.helpMenu = originalHelp }
-        let footer = NSHostingController(rootView: SidebarFooter(model: model))
-        footer.sizingOptions = []
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 280, height: 80), styleMask: [.borderless],
+        let status = NSHostingController(rootView: StatusBarView(model: model))
+        status.sizingOptions = []
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 280, height: 26), styleMask: [.borderless],
                               backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
-        window.contentViewController = footer
+        window.contentViewController = status
+        window.setContentSize(NSSize(width: 280, height: 26))
         defer { window.close() }
         try await Task.sleep(for: .milliseconds(120))
-        footer.view.layoutSubtreeIfNeeded()
+        status.view.layoutSubtreeIfNeeded()
         window.displayIfNeeded()
-        let elements = accessibilityElements(in: footer.view)
+        let elements = accessibilityElements(in: status.view)
         let settings = try #require(elements.first { InkAX.label($0) == "Settings" })
         #expect(elements.contains { InkAX.label($0) == "Help" })
         #expect(abs(settings.accessibilityFrame().height - 24) < 1)
@@ -276,12 +277,6 @@ import Testing
         menu.performActionForItem(at: 0)
         #expect(target.calls == 1)
 
-        let status = NSHostingController(rootView: StatusBarView(model: model))
-        status.sizingOptions = []
-        window.contentViewController = status
-        try await Task.sleep(for: .milliseconds(120))
-        status.view.layoutSubtreeIfNeeded()
-        window.displayIfNeeded()
         let toggle = try #require(accessibilityElements(in: status.view).first { InkAX.label($0) == "Keep Mac awake" })
         #expect(abs(toggle.accessibilityFrame().height - 24) < 1)
         #expect(model.integration.keepAwake == .off)

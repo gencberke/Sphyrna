@@ -1,7 +1,7 @@
 import SwiftUI
 
 extension LoomTheme {
-    /// The window-wide status strip and the sidebar's retained utility row.
+    /// The window-wide status strip and its utilities.
     enum StatusBar {
         static let height: CGFloat = 26
         static let inset: CGFloat = 8
@@ -20,10 +20,8 @@ extension LoomTheme {
         static let popoverPacesMaxHeight: CGFloat = 260
         static let popoverPacesBeforeScrolling = 4
         static let popoverTitle = Font.system(size: 12.5, weight: .semibold)
-        static let sidebarUtilityHeight: CGFloat = 38
-        static let sidebarUtilityInset: CGFloat = 8
-        static let sidebarUtilityGap: CGFloat = 2
-        static let sidebarUtilitySize = CGSize(width: InkHeight.xs, height: InkHeight.xs)
+        static let utilityGap: CGFloat = 2
+        static let utilitySize = CGSize(width: InkHeight.xs, height: InkHeight.xs)
         static let switchSize = CGSize(width: 22, height: 12)
         static let switchThumb: CGFloat = 8
         static let switchInset: CGFloat = 2

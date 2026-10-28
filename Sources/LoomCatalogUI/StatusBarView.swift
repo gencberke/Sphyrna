@@ -15,6 +15,7 @@ public struct StatusBarView: View {
         // Removing the controls also closes their host popovers on entry to full screen.
         if !model.isFullScreen {
             HStack(spacing: LoomTheme.StatusBar.gap) {
+                StatusBarUtilities(model: model)
                 if let usage = model.usage {
                     ScrollView(.horizontal) {
                         HStack(spacing: LoomTheme.StatusBar.gap) { StatusBarUsageSegments(usage: usage, model: model) }
@@ -131,7 +132,7 @@ private struct StatusBarUsagePopover: View {
                         .font(LoomTheme.StatusBar.figures).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 }
                 Button { showing = false } label: { Image(systemName: "xmark") }
-                    .buttonStyle(ChromeButtonStyle(size: LoomTheme.StatusBar.sidebarUtilitySize))
+                    .buttonStyle(ChromeButtonStyle(size: LoomTheme.StatusBar.utilitySize))
                     .help("Close").accessibilityLabel("Close")
             }
             if lines.isEmpty {
