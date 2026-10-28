@@ -33,8 +33,8 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 1 | B0b the rest of the reference in v4 | integrated `bdaad69`; consistency pass closed by `fca9e2a` + `2d10f93` (shared complete parts, frame/crop rule, Connections and About) |
 | 2 | C2 catalogue consumers | integrated `608266d` (one probe outcome, limits from the probe, efforts on the entries, no Peek singleton) |
 | 2 | C2b the catalogue reaches every list | integrated `175f653` (no `ModelCatalog.shared`; availability on `CatalogModel`; one startable rule; File, Dock, Home, sidebar and menu bar follow the switch and the CLI); its follow-ups are in C3's brief |
-| 2 | B2 sidebar and card | running on `slice/r9-b2` from `6d4744f`; planner review and combined checks follow |
-| 2 | C3 Connections and Home connect cards | running on `slice/r9-c3` from `6d4744f`; planner review and combined checks follow |
+| 2 | B2 sidebar and card | integrated `497a962` + `6601d5c`; off-screen layout/selection, viewport clock, rest render and accessibility checks pass |
+| 2 | C3 Connections and Home connect cards | integrated `365b2d2` + `175f0e2`, parent seams `425878a`, `c84572b`, `1d4326d`; 9 core + 76 UI scoped tests pass; pooled source-guard fix pending |
 | 2 | B3 status bar | queued after B2 and C3 |
 | 3 | C4 neutral draft · B4 model and effort pickers · D1 Codex sessions · D2 Codex reader and deletion · B5a/b/c surfaces | queued |
 | 4 | E1 opencode · E2 agy · E3 pi · F1 send · F2 Changes → session · G1 Remora backends · H1 usage · I1 names | queued |
@@ -49,6 +49,9 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
   now excludes the whole `WindowEventTests` namespace (`bb8889b`). The harness timeout passes in a scoped retry; the confirmed
   invisible-halo/inspector regression is fixed and checked off screen. Rerun the corrected full off-screen set at the pool and
   the actual inspector resize/window test in the authorized idle window; keep the partial log marked incomplete.
+- **B2/C3 pool (28 Oct):** the corrected off-screen `--tests` run is in progress at
+  `~/Library/Caches/loom-check-logs/check-20261028T114138-69249.log`. Core's catalogue guard caught C3's raw icon/onboarding
+  comparisons; move those presentation policies into descriptors after the batch, then recheck only that scope (D-90).
 - **The by-hand checks waiting for the gate:** A1's drag in the dev app (lift, slide, landing, Escape); the v4 look in
   evidence-mode screenshots after B1b (Home, a session with the inspector, Settings, a sheet; Ink and Paper).
 

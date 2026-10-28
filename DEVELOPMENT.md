@@ -135,6 +135,9 @@ Transcripts made for evidence must sit in `<config dir>/projects/<folder>/<sessi
 ## 6. Packaging
 
 `scripts/package-dev-app.sh [output-dir]` (default `Loom-Dev/app`): release-builds the four products with `loom_scratch_path`, assembles `Loom Dev.app` (+ `LoomRunHost.app`) in a temp dir next to the target, signs, verifies (`codesign --verify --deep --strict`, owner requirement), then swaps. Exit 2 if the output is under `~/Documents`; exit 3 if anything runs from the target app (quit it first; never kill the user's app). `CFBundleVersion` is the commit count (`git rev-list --count HEAD`; LaunchServices needs a number) and `LoomRevision` the short commit (shown in About and diagnostics); neither reflects uncommitted changes, so identify packages by SHA of the binary. `LSApplicationCategoryType` is developer tools, as in the release.
+
+Both package flavours copy Claude, Codex (including its template), opencode and agy marks; the release allowlist exports the same PNGs. Pi is drawn as the approved boxed glyph. Source-only asset staging can be checked without building or opening an app; actual package/visual verification stays in the idle-window gate.
+
 - Identity: `LOOM_CODESIGN_IDENTITY` (name or SHA-1, `-` = ad-hoc), else local `Loom Dev Code Signing`, else the first `Apple Development`/`Developer ID Application` identity, else ad-hoc. Ad-hoc loses TCC grants (Documents prompts return) and the run host can only check Loom's identifier. The script prints the chosen signing. Do not create certificates per build; the private key stays out of repo and logs. Signing blocks while the screen is locked.
 - Changing bundle id, signer or install path invalidates earlier TCC consent ([evidence](plans/experiments/cp5-stable-signing.json)).
 
