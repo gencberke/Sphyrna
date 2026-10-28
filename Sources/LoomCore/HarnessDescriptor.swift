@@ -52,6 +52,12 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
     public let startable: Bool
     /// The stored provider this build runs the harness with; nil for a harness that has none yet (opencode, agy, pi).
     public let provider: ManagedSession.Provider?
+    /// Product modes whose mapping has been established for this harness, and its safe fallback.
+    public let modes: [HarnessMode]
+    public let agentModes: [HarnessMode]
+    public let defaultMode: HarnessMode?
+    /// Effort levels known for the harness's own default model when no model was named.
+    public let defaultEfforts: [String]
 
     public init(
         id: HarnessID, displayName: String, command: String, mark: String, markFallback: String? = nil,
@@ -59,7 +65,9 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
         docs: URL? = nil, profileVariable: String? = nil, profileFolder: String,
         versions: HarnessVersionTable? = nil, requiresAppServerListen: Bool = false, pinsDefaultProfile: Bool = false,
         capabilities: HarnessCapabilities, onWhenFound: Bool, startable: Bool, provider: ManagedSession.Provider? = nil,
-        markRendering: MarkRendering = .image, showsOnboardingWhenMissing: Bool = false
+        markRendering: MarkRendering = .image, showsOnboardingWhenMissing: Bool = false,
+        modes: [HarnessMode] = [], agentModes: [HarnessMode] = [], defaultMode: HarnessMode? = nil,
+        defaultEfforts: [String] = []
     ) {
         self.id = id
         self.displayName = displayName
@@ -81,6 +89,10 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
         self.onWhenFound = onWhenFound
         self.startable = startable
         self.provider = provider
+        self.modes = modes
+        self.agentModes = agentModes
+        self.defaultMode = defaultMode
+        self.defaultEfforts = defaultEfforts
     }
 
     /// The doctor command as a person reads it ("claude doctor"), nil when the CLI has none.

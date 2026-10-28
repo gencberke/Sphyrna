@@ -303,6 +303,27 @@ struct OpenSessionCommandTests {
         }
     }
 
+    @Test func anExplicitHarnessReachesTheServerAndAnAgentCannotRequestFullAccess() async throws {
+        let entry = ModelCatalogEntry(harness: .codex, id: "codex-test", title: "Codex test",
+                                      efforts: ["low", "high"], defaultEffort: "low")
+        let rig = try await OpenRig.make(models: { _ in [entry] })
+        defer { rig.cleanup() }
+        let env = environment(rig)
+
+        let denied = await run(["open", "--title", "T", "--harness", "codex", "--mode", "bypassPermissions",
+                                "--message", "-"], environment: env, stdin: Data("go".utf8))
+        #expect(denied.code == 2 && denied.out.stderr.joined().contains("Full access"))
+        #expect(await rig.coordinator.snapshot().isEmpty)
+
+        let command = Task { await run(["open", "--title", "T", "--harness", "codex", "--model", "codex-test",
+                                        "--effort", "high", "--message", "-"],
+                                       environment: env, stdin: Data("go".utf8)) }
+        let request = try #require(await rig.waitForEntries(1).first)
+        #expect(request.choices == HarnessLaunchChoices(harness: .codex, model: "codex-test", effort: "high"))
+        try await rig.coordinator.deny(request.id)
+        #expect(await command.value.code == 1)
+    }
+
     @Test func badArgumentsExitTwoBeforeAnythingIsSent() async throws {
         let rig = try await OpenRig.make()
         defer { rig.cleanup() }
@@ -517,6 +538,15 @@ struct OpenSessionCommandTests {
 
 @Suite(.serialized, .timeLimit(.minutes(2)))
 struct OpenSessionRuntimeTests {
+    private final class DefaultMode: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored = "plan"
+        var value: String {
+            get { lock.withLock { stored } }
+            set { lock.withLock { stored = newValue } }
+        }
+    }
+
     private func stub() throws -> (script: String, directory: URL) {
         let directory = URL(fileURLWithPath: "/tmp/lo-stub-\(UUID().uuidString.prefix(8))", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -560,9 +590,10 @@ struct OpenSessionRuntimeTests {
     @Test func anOpenedSessionWithoutItsOwnModeTakesSphyrnasDefaultAndLeavesTheProjectsLastUsedAlone() async throws {
         let (script, directory) = try stub()
         defer { try? FileManager.default.removeItem(at: directory) }
+        let defaultMode = DefaultMode()
         let context = try await SessionRuntimeTests.makeContext(
             executableOverride: script, extraClaudeHelp: " --permission-mode <mode>",
-            defaultOpenedMode: { _ in "plan" }
+            defaultOpenedMode: { _ in defaultMode.value }
         )
         defer { context.cleanup() }
         let folder = context.root.appendingPathComponent("project", isDirectory: true)
@@ -588,6 +619,10 @@ struct OpenSessionRuntimeTests {
 
         // No `--mode`: the session starts in Sphyrna's default, as a draft does.
         let defaulted = ask("Defaulted", mode: nil)
+        #expect(await SessionRuntimeTests.waitUntil { await context.runtime.openRequestSnapshot().count == 1 })
+        let pending = try #require(await context.runtime.openRequestSnapshot().first)
+        #expect(pending.choices.mode == .plan && pending.modeFromUserDefault)
+        defaultMode.value = "auto"
         let first = try await approveNext()
         #expect(try await defaulted.value.status == .started)
         let argv = try #require(await arguments(of: first.sessionID, in: context))
@@ -605,6 +640,46 @@ struct OpenSessionRuntimeTests {
         let chosenIndex = try #require(chosenArgv.firstIndex(of: "--permission-mode"))
         #expect(chosenArgv[chosenIndex + 1] == ClaudePermissionMode.acceptEdits.rawValue)
         #expect(try await context.catalog.lastUsedLaunchChoices()[project.id.uuidString] == nil)
+
+        // A user-fixed Full access default is shown and frozen; the agent did not select it.
+        defaultMode.value = ClaudePermissionMode.fullAccess.rawValue
+        let userDefault = ask("User default", mode: nil)
+        #expect(await SessionRuntimeTests.waitUntil { await context.runtime.openRequestSnapshot().count == 1 })
+        let full = try #require(await context.runtime.openRequestSnapshot().first)
+        #expect(full.choices.mode == .fullAccess && full.modeFromUserDefault)
+        defaultMode.value = "plan"
+        let third = try await approveNext()
+        #expect(try await userDefault.value.status == .started)
+        let fullArgv = try #require(await arguments(of: third.sessionID, in: context))
+        let fullIndex = try #require(fullArgv.firstIndex(of: "--permission-mode"))
+        #expect(fullArgv[fullIndex + 1] == ClaudePermissionMode.fullAccess.rawValue)
+        #expect(try await context.catalog.lastUsedLaunchChoices()[project.id.uuidString] == nil)
+    }
+
+    @Test func approvedNonClaudeOpenIsRefusedWithoutCreatingASession() async throws {
+        let (script, directory) = try stub()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let context = try await SessionRuntimeTests.makeContext(executableOverride: script)
+        defer { context.cleanup() }
+        let folder = context.root.appendingPathComponent("project", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let project = try await context.catalog.addProject(path: folder.path).project
+        let requester = try await context.runtime.startConversation(provider: .claude, projectID: project.id)
+        let hooks = try #require(await context.runtime.hookConfiguration)
+        let request = OpenSessionWireRequest(authenticationToken: hooks.authenticationToken, sessionID: requester.sessionID,
+            managedRunID: requester.runID, title: "Codex request", project: nil, message: "go", harness: "codex")
+        let socket = try #require(hooks.controlSocketPath)
+        let reply = Task.detached { try OpenSessionClient.exchange(request, socketPath: socket) }
+        #expect(await SessionRuntimeTests.waitUntil { await context.runtime.openRequestSnapshot().count == 1 })
+        let pending = try #require(await context.runtime.openRequestSnapshot().first)
+        #expect(pending.choices.harness == .codex)
+        let before = try await context.catalog.sessions().map(\.session.id)
+        do {
+            _ = try await context.runtime.approveOpenRequest(pending.id)
+            Issue.record("A Codex opening must be refused until its draft launch path exists")
+        } catch {}
+        #expect(try await reply.value.status == .failed)
+        #expect(try await context.catalog.sessions().map(\.session.id) == before)
     }
 
     @Test func approvingARequestStartsANormalSessionWithTheNameTheMessageAndItsOrigin() async throws {

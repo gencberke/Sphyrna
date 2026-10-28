@@ -63,6 +63,8 @@ struct HarnessCapabilitiesTests {
     /// choice of the harness to fake. No other file asks which harness a session has; it asks the table or the descriptor.
     /// (The usage page's ask cadence reads the catalogue since C2, so `UsageModel.swift` is not here.)
     private static let dispatchFiles: Set<String> = [
+        // The explicit bridge from neutral choices to the frozen Claude launch profile.
+        "Sources/LoomCore/HarnessLaunchChoices.swift",
         "Sources/LoomCore/ProviderResume.swift",
         "Sources/loom-app/Evidence/AppDelegate+Evidence.swift",
         "Sources/loom-app/Evidence/EvidenceCatalogCommands.swift",

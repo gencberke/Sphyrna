@@ -47,8 +47,7 @@ struct OpenRequestBox: View {
     @State private var showsFullMessage = false
 
     var body: some View {
-        let content = OpenRequestBoxContent(
-            request, defaults: model.draftStartChoices(projectID: request.projectID), position: position, count: of)
+        let content = OpenRequestBoxContent(request, position: position, count: of)
         let shape = RoundedRectangle(cornerRadius: LoomTheme.OpenRequest.radius)
         VStack(alignment: .leading, spacing: LoomTheme.OpenRequest.sectionSpacing) {
             header(content)
@@ -93,8 +92,8 @@ struct OpenRequestBox: View {
             Text(content.title).font(LoomTheme.OpenRequest.title)
                 .foregroundStyle(LoomTheme.Text.primary).lineLimit(2).textSelection(.enabled)
             HStack(spacing: LoomTheme.OpenRequest.metaGap) {
-                HarnessMark(provider: .claude)
-                Text([content.model, content.effort, content.mode].joined(separator: " \u{00B7} "))
+                if let provider = content.provider { HarnessMark(provider: provider) }
+                Text([content.harnessName, content.model, content.effort, content.mode].joined(separator: " \u{00B7} "))
                     .font(LoomTheme.OpenRequest.meta).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 Text("\u{00B7}").font(LoomTheme.OpenRequest.meta).foregroundStyle(LoomTheme.Text.faint)
                 ProjectMarkView(name: content.projectName,

@@ -69,10 +69,15 @@ struct OpenRequestTests {
         #expect(OpenRequestBoxContent(asked, position: 2, count: 3).counter == "2 of 3")
         #expect(OpenRequestBoxContent(asked, position: 1, count: 1).counter == nil)
 
-        let defaults = ClaudeLaunchChoices(permissionMode: "auto", model: "sonnet", effort: "low")
-        let defaulted = OpenRequestBoxContent(openRequest(), defaults: defaults)
-        #expect(defaulted.model == "Sonnet" && defaulted.effort == "low" && defaulted.mode == "Auto")
+        let defaulted = OpenRequestBoxContent(openRequest(choices: ClaudeLaunchChoices(permissionMode: "auto")))
+        #expect(defaulted.model == "Default model" && defaulted.effort == "Default effort" && defaulted.mode == "Auto")
         #expect(defaulted.requester == "from Planner")
+
+        let codex = OpenSessionRequest(requesterID: UUID(), projectID: UUID(), projectName: "project", title: "T", message: "go",
+                                       choices: HarnessLaunchChoices(harness: .codex, model: "codex-test", effort: "high"))
+        let codexContent = OpenRequestBoxContent(codex)
+        #expect(codexContent.harnessName == "Codex" && codexContent.provider == .codex)
+        #expect(codexContent.model == "codex-test" && codexContent.effort == "high" && codexContent.mode == "Default mode")
     }
 
     @Test func anAnsweredRequestFoldsToOneLineAndADismissedFailureDoesNot() {

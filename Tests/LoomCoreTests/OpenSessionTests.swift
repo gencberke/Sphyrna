@@ -19,7 +19,8 @@ final class OpenRig: @unchecked Sendable {
     let runID = UUID()
     let requester: ManagedSession
 
-    static func make(replyDelay: TimeInterval = 5) async throws -> OpenRig {
+    static func make(replyDelay: TimeInterval = 5,
+                     models: @escaping @Sendable (HarnessID) async -> [ModelCatalogEntry] = { _ in ModelCatalog.claude }) async throws -> OpenRig {
         let root = URL(fileURLWithPath: "/tmp/lo-\(UUID().uuidString.prefix(8))", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
@@ -33,12 +34,13 @@ final class OpenRig: @unchecked Sendable {
         let requester = ManagedSession(provider: .claude, workingDirectory: projects[0].path)
         try await catalog.insertSession(requester, title: "Planner", projectID: projects[0].id)
         return try OpenRig(
-            root: root, catalog: catalog, projects: projects, requester: requester, replyDelay: replyDelay
+            root: root, catalog: catalog, projects: projects, requester: requester, replyDelay: replyDelay, models: models
         )
     }
 
     private init(root: URL, catalog: SessionCatalog, projects: [CatalogProject],
-                 requester: ManagedSession, replyDelay: TimeInterval) throws {
+                 requester: ManagedSession, replyDelay: TimeInterval,
+                 models: @escaping @Sendable (HarnessID) async -> [ModelCatalogEntry]) throws {
         self.root = root
         self.catalog = catalog
         projectA = projects[0]
@@ -49,7 +51,7 @@ final class OpenRig: @unchecked Sendable {
         let coordinator = OpenSessionCoordinator(
             catalog: catalog,
             authorize: { session, run in session == cardID && run == runID ? cardID : nil },
-            replyDelay: replyDelay
+            replyDelay: replyDelay, models: models
         )
         self.coordinator = coordinator
         server = try OpenSessionControlServer(
@@ -118,6 +120,99 @@ final class StartRecorder: @unchecked Sendable {
 struct OpenSessionTests {
     // MARK: Validation
 
+    /// 1.7.2 decodes this exact shape, ignores the extra key, then dispatches only version 1 as open.
+    private struct OldOpenWire: Decodable {
+        var version: Int
+        var authenticationToken: String
+        var sessionID: UUID
+        var managedRunID: UUID
+        var title: String
+        var project: String?
+        var message: String
+        var model: String?
+        var effort: String?
+        var mode: String?
+    }
+
+    @Test func oldServersRefuseANonClaudeRequestInsteadOfRoutingItToClaude() async throws {
+        let rig = try await OpenRig.make()
+        defer { rig.cleanup() }
+        let oldHelper = rig.wire()
+        let claude = try JSONDecoder().decode(OldOpenWire.self, from: JSONEncoder().encode(oldHelper))
+        #expect(claude.version == 1)
+        var explicitClaude = oldHelper
+        explicitClaude.harness = "claude"
+        let oldReaderForClaude = try JSONDecoder().decode(OldOpenWire.self, from: JSONEncoder().encode(explicitClaude))
+        #expect(oldReaderForClaude.version == 1 && oldReaderForClaude.message == oldHelper.message,
+                "the old reader ignores the added Claude field and still routes version 1")
+        var newer = rig.wire()
+        newer.harness = "codex"
+        let oldReader = try JSONDecoder().decode(OldOpenWire.self, from: JSONEncoder().encode(newer))
+        #expect(oldReader.version == 4 && oldReader.version != 1, "the old server's open dispatch rejects it")
+
+        // A forged old-version request with a new harness cannot bypass the new server's boundary.
+        newer.version = 1
+        #expect(try await rig.send(newer).status == .invalid)
+        newer.harness = "codex"
+        newer.authenticationToken = "wrong"
+        #expect(try await rig.send(newer).status == .unavailable, "version 4 retains authentication")
+    }
+
+    @Test func openAcceptsAnExplicitHarnessOption() throws {
+        // A named harness is a request choice, not an unknown command option.
+        let parsed = try OpenSessionCommand.parse(
+            ["--title", "T", "--harness", "codex", "--message", "-"])
+        #expect(parsed.title == "T" && parsed.harness == "codex")
+    }
+
+    @Test func harnessAndModelValidationAreRepeatedOnTheAuthenticatedWire() async throws {
+        let model = ModelCatalogEntry(harness: .codex, id: "codex-test", title: "Codex",
+                                      efforts: ["low", "high"], defaultEffort: "low", isDefault: true)
+        let rig = try await OpenRig.make(models: { _ in [model] })
+        defer { rig.cleanup() }
+        for alias in ["bypassPermissions", "full-access", "danger-full-access", "yolo"] {
+            #expect(throws: OpenSessionRejection.self) {
+                try OpenSessionInput.validated(title: "T", project: nil, message: "go", harness: "codex", mode: alias)
+            }
+            var request = rig.wire()
+            request.harness = "codex"
+            request.mode = alias
+            #expect(try await rig.send(request).status == .invalid)
+        }
+        var invalid = rig.wire()
+        invalid.harness = "codex"
+        invalid.model = model.id
+        invalid.effort = "max"
+        #expect(try await rig.send(invalid).status == .invalid)
+        invalid.effort = "high"
+        let pending = rig.sendInBackground(invalid)
+        let entry = try #require(await rig.waitForEntries(1).first)
+        #expect(entry.choices == HarnessLaunchChoices(harness: .codex, model: model.id, effort: "high"))
+        let recorder = StartRecorder()
+        _ = try await rig.coordinator.approve(entry.id, start: recorder.start)
+        #expect(try await pending.value.status == .started)
+        #expect(recorder.recorded.first?.choices == entry.choices)
+
+        // With no --model, the cached default model still defines which efforts are supported.
+        var defaultModel = rig.wire()
+        defaultModel.harness = "codex"
+        defaultModel.effort = "max"
+        #expect(try await rig.send(defaultModel).status == .invalid)
+        defaultModel.effort = "high"
+        let defaulted = rig.sendInBackground(defaultModel)
+        let defaultEntry = try #require(await rig.waitForEntries(1).first)
+        #expect(defaultEntry.choices.harness == .codex && defaultEntry.choices.effort == "high")
+        try await rig.coordinator.deny(defaultEntry.id)
+        #expect(try await defaulted.value.status == .denied)
+
+        // A helper predating the optional field remains Claude.
+        let old = rig.sendInBackground(rig.wire())
+        let oldEntry = try #require(await rig.waitForEntries(1).first)
+        #expect(oldEntry.choices.harness == .claude && oldEntry.choices.mode == .askBeforeEdits)
+        try await rig.coordinator.deny(oldEntry.id)
+        #expect(try await old.value.status == .denied)
+    }
+
     @Test func inputRulesCoverTitleMessageAndProject() throws {
         func check(_ title: String = "ok", _ project: String? = nil, _ message: String = "go") throws -> OpenSessionInput {
             try OpenSessionInput.validated(title: title, project: project, message: message)
@@ -167,9 +262,8 @@ struct OpenSessionTests {
         #expect(throws: OpenSessionRejection.self) {
             try OpenSessionInput.validated(title: "T", project: nil, message: "go", model: "--opus")
         }
-        #expect(throws: OpenSessionRejection.self) {
-            try OpenSessionInput.validated(title: "T", project: nil, message: "go", effort: "extreme")
-        }
+        #expect(try OpenSessionInput.validated(title: "T", project: nil, message: "go", effort: "extreme").effort == "extreme",
+                "a shaped token is checked against the cached model on the server")
     }
 
     // MARK: Authentication

@@ -136,13 +136,18 @@ public struct NewSessionLaunch: Equatable, Sendable {
     public static let maxFirstMessageBytes = 128 * 1024
 
     public let firstMessage: String
-    public let choices: ClaudeLaunchChoices
+    public let choices: HarnessLaunchChoices
     public let workspace: SessionWorkspace
 
     public init(firstMessage: String,
-                choices: ClaudeLaunchChoices = ClaudeLaunchChoices(), workspace: SessionWorkspace = .projectFolder) {
+                choices: HarnessLaunchChoices = HarnessLaunchChoices(), workspace: SessionWorkspace = .projectFolder) {
         self.firstMessage = firstMessage
         self.choices = choices
         self.workspace = workspace
+    }
+
+    /// Older Claude callers and the frozen Chat driver retain their existing input shape.
+    public init(firstMessage: String, choices: ClaudeLaunchChoices, workspace: SessionWorkspace = .projectFolder) {
+        self.init(firstMessage: firstMessage, choices: HarnessLaunchChoices(choices), workspace: workspace)
     }
 }

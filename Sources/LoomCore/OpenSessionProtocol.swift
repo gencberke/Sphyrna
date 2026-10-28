@@ -26,22 +26,22 @@ public struct OpenSessionRejection: Error, CustomStringConvertible, Equatable, S
     public var description: String { reason }
 }
 
-/// What an agent asked for, after the rules: the same check runs in the command (before it
-/// connects) and in Loom (which trusts nothing it receives).
+/// What an agent asked for after the shared syntax rules. The server repeats them and also validates the cached model's levels.
 public struct OpenSessionInput: Equatable, Sendable {
     public let title: String
     public let project: String?
     public let message: String
+    public let harness: HarnessID
     /// The model the agent asked for (`--model`), a safe token; nil leaves it to the CLI.
     public let model: String?
-    /// The effort the agent asked for (`--effort`), one of `ClaudeLaunchChoices.effortLevels`; nil leaves it to the CLI.
+    /// The effort the agent asked for (`--effort`); the server checks it against the cached model catalogue.
     public let effort: String?
-    /// The mode the agent asked for (`--mode`), one of `ClaudeLaunchChoices.openedModes`; nil takes Sphyrna's default.
+    /// The mode the agent asked for (`--mode`); nil takes the user's configured default.
     public let mode: String?
 
     public static func validated(
         title: String, project: String?, message: String,
-        model: String? = nil, effort: String? = nil, mode: String? = nil
+        harness: String? = nil, model: String? = nil, effort: String? = nil, mode: String? = nil
     ) throws -> OpenSessionInput {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { throw OpenSessionRejection("the title is empty") }
@@ -63,9 +63,15 @@ public struct OpenSessionInput: Equatable, Sendable {
         guard message.utf8.count <= OpenSessionLimits.messageByteLimit else {
             throw OpenSessionRejection("the message is larger than 64 KiB")
         }
+        let id = HarnessID(harness?.trimmingCharacters(in: .whitespacesAndNewlines) ?? HarnessID.claude.rawValue)
+        guard let descriptor = HarnessCatalogue.descriptor(for: id) else { throw OpenSessionRejection("the harness is not known") }
+        let chosenModel = try validatedModel(model)
+        let chosenEffort = try validatedEffort(effort)
+        let chosenMode = try validatedMode(mode, descriptor: descriptor)
+        // The helper has no model probe; the server validates the token against its cached model list.
         return OpenSessionInput(
             title: trimmedTitle, project: projectName, message: message,
-            model: try validatedModel(model), effort: try validatedEffort(effort), mode: try validatedMode(mode)
+            harness: id, model: chosenModel, effort: chosenEffort, mode: chosenMode
         )
     }
 
@@ -79,35 +85,29 @@ public struct OpenSessionInput: Equatable, Sendable {
         return value
     }
 
-    /// An `--effort` value: one of Claude's five levels, or nil.
+    /// An `--effort` value: a shaped token, or nil. Its model-specific validity is checked on the server.
     public static func validatedEffort(_ effort: String?) throws -> String? {
         guard let raw = effort else { return nil }
         let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard ClaudeLaunchChoices.effortLevels.contains(value) else {
-            throw OpenSessionRejection(
-                "the effort must be one of \(ClaudeLaunchChoices.effortLevels.joined(separator: ", "))"
-            )
-        }
+        guard HarnessEffort.isToken(value) else { throw OpenSessionRejection("the effort is not a valid level") }
         return value
     }
 
     /// A `--mode` value: one of the four modes an agent may pick (Q3), or nil. Full access is refused by name, so the agent
     /// reads why instead of guessing.
-    public static func validatedMode(_ mode: String?) throws -> String? {
+    public static func validatedMode(_ mode: String?, descriptor: HarnessDescriptor = HarnessCatalogue.descriptor(for: .claude)!) throws -> String? {
         guard let raw = mode else { return nil }
         let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if value == ClaudePermissionMode.fullAccess.rawValue {
-            throw OpenSessionRejection("Full access is never an agent's choice; pick Ask before edits, Accept edits, Plan or Auto")
-        }
-        guard ClaudeLaunchChoices.openedModes.contains(where: { $0.rawValue == value }) else {
-            throw OpenSessionRejection("the mode must be one of default (Ask before edits), acceptEdits, plan or auto")
+        if HarnessMode.isFullAccessAlias(value) { throw OpenSessionRejection("Full access is never an agent's choice") }
+        guard let mode = HarnessMode(rawValue: value), descriptor.agentModes.contains(mode) else {
+            throw OpenSessionRejection("the mode is not supported for this harness")
         }
         return value
     }
 
     /// The choices an opened session starts with, as the catalog records them.
-    public var choices: ClaudeLaunchChoices {
-        ClaudeLaunchChoices(permissionMode: mode, model: model, effort: effort)
+    public var choices: HarnessLaunchChoices {
+        HarnessLaunchChoices(harness: harness, model: model, effort: effort, mode: HarnessMode.fromStored(mode))
     }
 
     /// A `--project` value (name or path) after the rules; nil stays nil. Shared by `open` and `sessions`.
@@ -177,6 +177,8 @@ public struct OpenSessionReply: Codable, Equatable, Sendable {
 
 struct OpenSessionWireRequest: Codable, Sendable {
     static let protocolVersion = 1
+    /// Older servers reject this version instead of ignoring a non-Claude harness and starting Claude.
+    static let harnessProtocolVersion = 4
     var version = Self.protocolVersion
     var authenticationToken: String
     var sessionID: UUID
@@ -188,6 +190,30 @@ struct OpenSessionWireRequest: Codable, Sendable {
     var model: String? = nil
     var effort: String? = nil
     var mode: String? = nil
+    /// Older helpers omit this field; the server treats it as Claude.
+    var harness: String? = nil {
+        didSet { version = Self.version(for: harness) }
+    }
+
+    init(authenticationToken: String, sessionID: UUID, managedRunID: UUID, title: String, project: String?,
+         message: String, model: String? = nil, effort: String? = nil, mode: String? = nil, harness: String? = nil) {
+        version = Self.version(for: harness)
+        self.authenticationToken = authenticationToken
+        self.sessionID = sessionID
+        self.managedRunID = managedRunID
+        self.title = title
+        self.project = project
+        self.message = message
+        self.model = model
+        self.effort = effort
+        self.mode = mode
+        self.harness = harness
+    }
+
+    static func version(for harness: String?) -> Int {
+        guard let harness else { return protocolVersion }
+        return HarnessLaunchChoices(harness: HarnessID(harness)).claudeChoices == nil ? harnessProtocolVersion : protocolVersion
+    }
 }
 
 /// A request that passed the token check.
@@ -200,9 +226,10 @@ struct OpenSessionCall: Sendable {
     let model: String?
     let effort: String?
     let mode: String?
+    let harness: String?
 
     init(sessionID: UUID, managedRunID: UUID, title: String, project: String?, message: String,
-         model: String? = nil, effort: String? = nil, mode: String? = nil) {
+         model: String? = nil, effort: String? = nil, mode: String? = nil, harness: String? = nil) {
         self.sessionID = sessionID
         self.managedRunID = managedRunID
         self.title = title
@@ -211,6 +238,7 @@ struct OpenSessionCall: Sendable {
         self.model = model
         self.effort = effort
         self.mode = mode
+        self.harness = harness
     }
 }
 
@@ -380,9 +408,9 @@ final class OpenSessionControlServer: @unchecked Sendable {
         } catch {
             return finish(connection, nil)
         }
-        // Version 1 is `open` (what older helpers send); version 2 carries `sessions`; version 3 carries `whoami`.
+        // Version 1 is Claude `open` (what older helpers send); 2 carries `sessions`, 3 `whoami`, 4 a non-Claude `open`.
         guard let wire = try? JSONDecoder().decode(OpenSessionWireRequest.self, from: data),
-              wire.version == OpenSessionWireRequest.protocolVersion else {
+              [OpenSessionWireRequest.protocolVersion, OpenSessionWireRequest.harnessProtocolVersion].contains(wire.version) else {
             if let list = try? JSONDecoder().decode(SessionListWireRequest.self, from: data),
                list.version == SessionListWireRequest.protocolVersion,
                list.command == SessionListWireRequest.commandName {
@@ -400,10 +428,13 @@ final class OpenSessionControlServer: @unchecked Sendable {
                 status: .unavailable, detail: "this process is not part of a live Sphyrna session"
             ))
         }
+        guard wire.version == OpenSessionWireRequest.version(for: wire.harness) else {
+            return finish(connection, OpenSessionReply(status: .invalid, detail: "the harness requires a newer open protocol"))
+        }
         let call = OpenSessionCall(
             sessionID: wire.sessionID, managedRunID: wire.managedRunID, title: wire.title,
             project: wire.project, message: wire.message,
-            model: wire.model, effort: wire.effort, mode: wire.mode
+            model: wire.model, effort: wire.effort, mode: wire.mode, harness: wire.harness
         )
         let handler = self.handler
         Task.detached(priority: .userInitiated) { [self] in

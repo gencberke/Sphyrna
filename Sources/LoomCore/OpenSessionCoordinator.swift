@@ -19,16 +19,17 @@ public struct OpenSessionRequest: Identifiable, Equatable, Sendable {
     public let projectName: String
     public let title: String
     public let message: String
-    /// The model, effort and mode the agent asked for (Q3, D-103); all nil unless `open` passed them. The session starts with
-    /// these; a missing mode takes Sphyrna's default at the start.
-    public let choices: ClaudeLaunchChoices
+    /// The requested model and effort, with a missing mode resolved once from the user's default when the request arrives.
+    public let choices: HarnessLaunchChoices
+    /// True only when the agent omitted --mode and the user's default supplied it.
+    public let modeFromUserDefault: Bool
     public let receivedAt: Date
     public internal(set) var phase: Phase
 
     public init(
         id: UUID = UUID(), requesterID: UUID, requesterTitle: String? = nil, projectID: UUID,
         projectName: String, title: String, message: String,
-        choices: ClaudeLaunchChoices = ClaudeLaunchChoices(),
+        choices: HarnessLaunchChoices = HarnessLaunchChoices(), modeFromUserDefault: Bool = false,
         receivedAt: Date = Date(), phase: Phase = .waiting
     ) {
         self.id = id
@@ -39,8 +40,17 @@ public struct OpenSessionRequest: Identifiable, Equatable, Sendable {
         self.title = title
         self.message = message
         self.choices = choices
+        self.modeFromUserDefault = modeFromUserDefault
         self.receivedAt = receivedAt
         self.phase = phase
+    }
+
+    public init(id: UUID = UUID(), requesterID: UUID, requesterTitle: String? = nil, projectID: UUID,
+                projectName: String, title: String, message: String, choices: ClaudeLaunchChoices,
+                receivedAt: Date = Date(), phase: Phase = .waiting) {
+        self.init(id: id, requesterID: requesterID, requesterTitle: requesterTitle, projectID: projectID,
+                  projectName: projectName, title: title, message: message, choices: HarnessLaunchChoices(choices),
+                  receivedAt: receivedAt, phase: phase)
     }
 
     /// An open request the user has not decided on yet, or has approved and is starting.
@@ -79,7 +89,8 @@ struct OpenSessionSpec: Sendable {
     let projectID: UUID
     let title: String
     let message: String
-    let choices: ClaudeLaunchChoices
+    let choices: HarnessLaunchChoices
+    let modeFromUserDefault: Bool
 }
 
 /// Keeps the requests of agents until the user decides (contract section 7: nothing starts
@@ -101,15 +112,23 @@ actor OpenSessionCoordinator {
     private let catalog: SessionCatalog
     private let authorize: Authorize
     private let replyDelay: TimeInterval
+    private let models: @Sendable (HarnessID) async -> [ModelCatalogEntry]
+    private let defaultMode: @Sendable (UUID?, HarnessID) async -> HarnessMode?
     private var entries: [Entry] = []
     private var subscribers: [UUID: AsyncStream<[OpenSessionRequest]>.Continuation] = [:]
     private var shutDown = false
 
     init(catalog: SessionCatalog, authorize: @escaping Authorize,
-         replyDelay: TimeInterval = OpenSessionLimits.serverReplyDelay) {
+         replyDelay: TimeInterval = OpenSessionLimits.serverReplyDelay,
+         models: @escaping @Sendable (HarnessID) async -> [ModelCatalogEntry] = { _ in ModelCatalog.claude },
+         defaultMode: @escaping @Sendable (UUID?, HarnessID) async -> HarnessMode? = { _, id in
+             HarnessCatalogue.descriptor(for: id)?.defaultMode
+         }) {
         self.catalog = catalog
         self.authorize = authorize
         self.replyDelay = replyDelay
+        self.models = models
+        self.defaultMode = defaultMode
     }
 
     // MARK: List for the UI
@@ -148,7 +167,7 @@ actor OpenSessionCoordinator {
         do {
             input = try OpenSessionInput.validated(
                 title: call.title, project: call.project, message: call.message,
-                model: call.model, effort: call.effort, mode: call.mode
+                harness: call.harness, model: call.model, effort: call.effort, mode: call.mode
             )
         } catch {
             return OpenSessionReply(status: .invalid, detail: String(describing: error))
@@ -168,6 +187,17 @@ actor OpenSessionCoordinator {
             return OpenSessionReply(status: .invalid, detail: "Sphyrna could not read its catalog: \(error)")
         }
 
+        // Validate the agent's own choices before adding a user-selected default.
+        var choices = input.choices
+        do { try choices.validate(models: await models(choices.harness), allowFullAccess: false) }
+        catch { return OpenSessionReply(status: .invalid, detail: String(describing: error)) }
+        let modeFromUserDefault = choices.mode == nil
+        // Freeze the default now: the card shows exactly the mode that approval will launch, even if settings change.
+        if choices.mode == nil, let descriptor = HarnessCatalogue.descriptor(for: choices.harness) {
+            let candidate = await defaultMode(project.id, choices.harness)
+            choices.mode = candidate.flatMap { descriptor.modes.contains($0) ? $0 : nil } ?? descriptor.defaultMode
+        }
+
         // Checked after the last suspension so two requests of one session cannot both pass.
         guard !shutDown else { return Self.unavailable("Sphyrna is quitting") }
         guard !entries.contains(where: {
@@ -182,7 +212,8 @@ actor OpenSessionCoordinator {
         let request = OpenSessionRequest(
             id: id, requesterID: requesterID, requesterTitle: requesterTitle, projectID: project.id,
             projectName: project.name, title: input.title,
-            message: input.message, choices: input.choices, receivedAt: Date(), phase: .waiting
+            message: input.message, choices: choices, modeFromUserDefault: modeFromUserDefault,
+            receivedAt: Date(), phase: .waiting
         )
         return await withCheckedContinuation { continuation in
             let timeout = Task { [replyDelay] in
@@ -331,7 +362,7 @@ actor OpenSessionCoordinator {
         do {
             let sessionID = try await start(OpenSessionSpec(
                 requesterID: request.requesterID, projectID: request.projectID, title: request.title,
-                message: request.message, choices: request.choices
+                message: request.message, choices: request.choices, modeFromUserDefault: request.modeFromUserDefault
             ))
             resolveWaiter(id, OpenSessionReply(status: .started, sessionID: sessionID, title: request.title))
             remove(id)

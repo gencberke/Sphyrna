@@ -53,6 +53,9 @@ public struct SessionRuntimeConfiguration: Sendable {
     /// The mode an opened session takes when its agent passed no `--mode` (Q3, D-103): Sphyrna's default, read on the main
     /// actor for the request's project. Nil takes Ask before edits.
     public var defaultOpenedMode: (@Sendable (UUID?) async -> String?)?
+    /// Cached values only: no probe or model request is made while an agent asks to open a session.
+    public var openedModels: (@Sendable (HarnessID) async -> [ModelCatalogEntry])?
+    public var openedDefaultMode: (@Sendable (UUID?, HarnessID) async -> HarnessMode?)?
     /// How long a failed capability probe waits before its one retry (`SessionRuntime.toolchain(for:)`).
     public var toolchainProbeRetryPause: Duration
 
@@ -74,6 +77,8 @@ public struct SessionRuntimeConfiguration: Sendable {
         toolchainInvalidator: (@Sendable (ManagedSession.Provider) async -> Void)? = nil,
         runsRecovered: (@Sendable () async -> Void)? = nil,
         defaultOpenedMode: (@Sendable (UUID?) async -> String?)? = nil,
+        openedModels: (@Sendable (HarnessID) async -> [ModelCatalogEntry])? = nil,
+        openedDefaultMode: (@Sendable (UUID?, HarnessID) async -> HarnessMode?)? = nil,
         toolchainProbeRetryPause: Duration = .seconds(1)
     ) {
         self.toolchains = toolchains
@@ -96,6 +101,8 @@ public struct SessionRuntimeConfiguration: Sendable {
         self.toolchainInvalidator = toolchainInvalidator
         self.runsRecovered = runsRecovered
         self.defaultOpenedMode = defaultOpenedMode
+        self.openedModels = openedModels
+        self.openedDefaultMode = openedDefaultMode
         self.toolchainProbeRetryPause = toolchainProbeRetryPause
     }
 }
@@ -181,14 +188,20 @@ public struct SessionOpening: Equatable, Sendable {
     /// The session whose agent asked.
     public let openedBy: UUID
     /// What the agent asked for with `open --model`, `--effort` and `--mode` (Q3, D-103); all nil leaves Loom's defaults.
-    public let choices: ClaudeLaunchChoices
+    public let choices: HarnessLaunchChoices
+    public let modeFromUserDefault: Bool
 
     public init(title: String, firstMessage: String, openedBy: UUID,
-                choices: ClaudeLaunchChoices = ClaudeLaunchChoices()) {
+                choices: HarnessLaunchChoices = HarnessLaunchChoices(), modeFromUserDefault: Bool = false) {
         self.title = title
         self.firstMessage = firstMessage
         self.openedBy = openedBy
         self.choices = choices
+        self.modeFromUserDefault = modeFromUserDefault
+    }
+
+    public init(title: String, firstMessage: String, openedBy: UUID, choices: ClaudeLaunchChoices) {
+        self.init(title: title, firstMessage: firstMessage, openedBy: openedBy, choices: HarnessLaunchChoices(choices))
     }
 }
 
@@ -354,6 +367,14 @@ public actor SessionRuntime {
                       let run = context.session.currentRun, run.id == runID, run.state == .running
                 else { return nil }
                 return context.activeSessionID
+            },
+            models: { id in await configuration.openedModels?(id) ?? ModelCatalog.claude },
+            defaultMode: { projectID, id in
+                if let resolve = configuration.openedDefaultMode { return await resolve(projectID, id) }
+                if HarnessLaunchChoices(harness: id).claudeChoices != nil, let resolve = configuration.defaultOpenedMode {
+                    return HarnessMode.fromStored(await resolve(projectID))
+                }
+                return HarnessCatalogue.descriptor(for: id)?.defaultMode
             }
         )
         relay.runtime = self
@@ -472,6 +493,12 @@ public actor SessionRuntime {
         _ body: (_ directory: String, _ toolchain: ProviderToolchain) async throws -> T
     ) async throws -> T {
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
+        if let choices = draft?.choices ?? opening?.choices {
+            guard choices.harness.provider == provider, choices.claudeChoices != nil else {
+                let name = HarnessCatalogue.descriptor(for: choices.harness)?.displayName ?? choices.harness.rawValue
+                throw LoomError.message("\(name) cannot start this session in this build")
+            }
+        }
         guard (opening == nil && draft == nil) || harnesses[provider]?.takesOpeningOrDraft == true else {
             throw SessionRuntimeError.unsupportedProvider(provider)
         }
@@ -501,14 +528,18 @@ public actor SessionRuntime {
         opening: SessionOpening?, draft: NewSessionLaunch?, face: ProviderLaunchProfile.ClaudeFace,
         launch: (ProviderLaunchProfile) async throws -> T
     ) async throws -> T {
-        let hooks = try ensureHooks()
-        var choices = draft?.choices ?? opening?.choices ?? ClaudeLaunchChoices()
-        // An opened session takes Sphyrna's default mode when its agent named none (Q3, D-103); the agent's own mode, when it
-        // gave one, wins. Full access never comes from the agent: validation refuses it, and only the user's default can.
+        var choices = (draft?.choices ?? opening?.choices)?.claudeChoices ?? ClaudeLaunchChoices()
+        // Direct callers obey the same agent boundary as requests that passed through the coordinator.
+        if let opening, !opening.modeFromUserDefault, choices.permissionMode.map(HarnessMode.isFullAccessAlias) == true {
+            throw OpenSessionRejection("Full access is never an agent's choice")
+        }
         if opening != nil, choices.permissionMode == nil {
-            choices.permissionMode = await configuration.defaultOpenedMode?(projectID)
+            let candidate = HarnessMode.fromStored(await configuration.defaultOpenedMode?(projectID))
+            let descriptor = HarnessCatalogue.descriptor(for: .claude)
+            choices.permissionMode = candidate.flatMap { descriptor?.modes.contains($0) == true ? $0.rawValue : nil }
                 ?? ClaudePermissionMode.askBeforeEdits.rawValue
         }
+        let hooks = try ensureHooks()
         // Validated before the card exists: an unsupported CLI leaves nothing behind.
         let profile = try claudeProfile(
             route: .new(sessionID), toolchain: toolchain, sessionID: sessionID, hooks: hooks, choices: choices,
@@ -527,10 +558,16 @@ public actor SessionRuntime {
                 ManagedSession(id: sessionID, provider: .claude, workingDirectory: prepared.folder),
                 projectID: projectID, title: opening?.title, openedBy: opening?.openedBy
             )
-            await recordLaunchChoices(choices, sessionID: sessionID, rememberingInProject: opening == nil)
+            let bareManualStart = choices.isEmpty && opening == nil && draft == nil
+            if !bareManualStart {
+                await recordLaunchChoices(choices, sessionID: sessionID, rememberingInProject: opening == nil,
+                                          completeNewStart: draft != nil)
+            }
             startingSessions.insert(sessionID)
             defer { startingSessions.remove(sessionID) }
-            return try await launch(profile)
+            let result = try await launch(profile)
+            if bareManualStart { await rememberBareNewStart(sessionID: sessionID) }
+            return result
         } catch {
             // A start that fails after the branch or worktree was made puts them back. What cannot be put
             // back is told with the failure; a card that was already made stays, with its error.
@@ -577,6 +614,15 @@ public actor SessionRuntime {
 
     // MARK: Launch choices (V16)
 
+    /// A bare manual start still changes the project's last harness, while preserving its remembered choices.
+    private func rememberBareNewStart(sessionID: UUID) async {
+        do {
+            try await catalog.recordLaunchChoices(HarnessLaunchChoices(), sessionID: sessionID)
+        } catch {
+            LoomLog.error(.catalog, "Launch choices could not be recorded (\(LoomLog.category(of: error)))")
+        }
+    }
+
     /// The mode, model and effort a resume passes: the catalog's, with `passed` choices on top (and recorded).
     func resumeChoices(sessionID: UUID, passed: ClaudeLaunchChoices) async throws -> ClaudeLaunchChoices {
         await recordLaunchChoices(passed, sessionID: sessionID)
@@ -600,10 +646,12 @@ public actor SessionRuntime {
     /// Records a session's mode, model or effort (a start, or a live change that succeeded in the Chat face), so
     /// every later spawn in either face passes them. A failed write is logged; the session goes on. `rememberingInProject`
     /// false keeps a session an agent opened out of the project's "last used" (Q3, D-103).
-    public func recordLaunchChoices(_ choices: ClaudeLaunchChoices, sessionID: UUID, rememberingInProject: Bool = true) async {
-        guard !choices.isEmpty else { return }
+    public func recordLaunchChoices(_ choices: ClaudeLaunchChoices, sessionID: UUID, rememberingInProject: Bool = true,
+                                    completeNewStart: Bool = false) async {
+        guard !choices.isEmpty || completeNewStart else { return }
         do {
-            try await catalog.recordLaunchChoices(choices, sessionID: sessionID, rememberingInProject: rememberingInProject)
+            try await catalog.recordLaunchChoices(choices, sessionID: sessionID, rememberingInProject: rememberingInProject,
+                                                  completeNewStart: completeNewStart)
         } catch {
             LoomLog.error(.catalog, "Launch choices could not be recorded (\(LoomLog.category(of: error)))")
         }

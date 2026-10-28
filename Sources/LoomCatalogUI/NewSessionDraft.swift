@@ -19,9 +19,34 @@ public struct SessionDraft: Equatable, Identifiable, Sendable {
     /// Whether the text holds anything but white space. Kept up to date when the text is set, so asking is free
     /// on every redraw; the scan stops at the first character that is not white space.
     public private(set) var hasText: Bool
-    var modePick: DraftPick = .inherit
-    var modelPick: DraftPick = .inherit
-    var effortPick: DraftPick = .inherit
+    /// Explicit picks share one owner; inherited defaults are resolved when the draft is read.
+    public var choices = HarnessLaunchChoices()
+    public var harness: HarnessID { choices.harness }
+    /// A new untouched draft follows the project's latest harness until a model or preset is picked.
+    var followsProjectHarness = true
+    var modelUsesDefault = false
+    var effortUsesDefault = false
+    var modePick: DraftPick {
+        get { choices.mode.map { .value($0.rawValue) } ?? .inherit }
+        set {
+            if case let .value(raw) = newValue { choices.mode = HarnessMode.fromStored(raw) }
+            else { choices.mode = nil }
+        }
+    }
+    var modelPick: DraftPick {
+        get { modelUsesDefault ? .claudeDefault : choices.model.map(DraftPick.value) ?? .inherit }
+        set {
+            modelUsesDefault = newValue == .claudeDefault
+            if case let .value(value) = newValue { choices.model = value } else { choices.model = nil }
+        }
+    }
+    var effortPick: DraftPick {
+        get { effortUsesDefault ? .claudeDefault : choices.effort.map(DraftPick.value) ?? .inherit }
+        set {
+            effortUsesDefault = newValue == .claudeDefault
+            if case let .value(value) = newValue { choices.effort = value } else { choices.effort = nil }
+        }
+    }
     var branchKind: BranchKind = .stay
     /// A branch name the user typed; nil follows the suggestion made from the text.
     var branchName: String?
@@ -56,8 +81,15 @@ public struct NewSessionPreset: Equatable, Identifiable, Sendable, Codable {
     public let id: UUID
     public var name: String
     public var message: String
-    public var permissionMode: String?
-    public var model: String?
+    public var choices: HarnessLaunchChoices
+    public var permissionMode: String? {
+        get { choices.mode?.rawValue }
+        set { choices.mode = HarnessMode.fromStored(newValue) }
+    }
+    public var model: String? {
+        get { choices.model }
+        set { choices.model = newValue }
+    }
     public var projectID: UUID?
 
     public init(id: UUID = UUID(), name: String, message: String, permissionMode: String? = nil,
@@ -65,9 +97,42 @@ public struct NewSessionPreset: Equatable, Identifiable, Sendable, Codable {
         self.id = id
         self.name = name
         self.message = message
-        self.permissionMode = permissionMode
-        self.model = model
+        self.choices = HarnessLaunchChoices(model: model, mode: HarnessMode.fromStored(permissionMode))
         self.projectID = projectID
+    }
+
+    public init(id: UUID = UUID(), name: String, message: String, choices: HarnessLaunchChoices, projectID: UUID? = nil) {
+        self.id = id
+        self.name = name
+        self.message = message
+        self.choices = choices
+        self.projectID = projectID
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, name, message, permissionMode, model, projectID, choices }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        message = try container.decode(String.self, forKey: .message)
+        projectID = try container.decodeIfPresent(UUID.self, forKey: .projectID)
+        choices = try container.decodeIfPresent(HarnessLaunchChoices.self, forKey: .choices)
+            ?? HarnessLaunchChoices(model: container.decodeIfPresent(String.self, forKey: .model),
+                                    mode: HarnessMode.fromStored(container.decodeIfPresent(String.self, forKey: .permissionMode)))
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(message, forKey: .message)
+        try container.encodeIfPresent(projectID, forKey: .projectID)
+        try container.encode(choices, forKey: .choices)
+        if let legacy = choices.claudeChoices {
+            try container.encodeIfPresent(legacy.permissionMode, forKey: .permissionMode)
+            try container.encodeIfPresent(legacy.model, forKey: .model)
+        }
     }
 }
 

@@ -14,24 +14,40 @@ struct StoredDraft: Equatable, Codable {
     var branchKind: BranchKind
     var branchName: String?
     var updatedAt: Date
+    /// New readers use this; old readers use the legacy pick keys above.
+    var choices: HarnessLaunchChoices?
+    var modelUsesDefault: Bool?
+    var effortUsesDefault: Bool?
 
     init(_ draft: SessionDraft) {
         id = draft.id
         projectID = draft.projectID
         text = draft.text
-        modePick = draft.modePick
-        modelPick = draft.modelPick
-        effortPick = draft.effortPick
+        // A downgrade must not interpret another harness's model or mode as a Claude choice.
+        let isClaude = draft.choices.claudeChoices != nil
+        modePick = isClaude ? draft.modePick : .inherit
+        modelPick = isClaude ? draft.modelPick : .inherit
+        effortPick = isClaude ? draft.effortPick : .inherit
         branchKind = draft.branchKind
         branchName = draft.branchName
         updatedAt = draft.updatedAt
+        choices = draft.choices
+        modelUsesDefault = draft.modelUsesDefault
+        effortUsesDefault = draft.effortUsesDefault
     }
 
     var draft: SessionDraft {
         var value = SessionDraft(id: id ?? UUID(), projectID: projectID, text: text, updatedAt: updatedAt)
-        value.modePick = modePick
-        value.modelPick = modelPick
-        value.effortPick = effortPick ?? .inherit
+        value.followsProjectHarness = false
+        if let choices {
+            value.choices = choices
+            value.modelUsesDefault = modelUsesDefault ?? false
+            value.effortUsesDefault = effortUsesDefault ?? false
+        } else {
+            value.modePick = modePick
+            value.modelPick = modelPick
+            value.effortPick = effortPick ?? .inherit
+        }
         value.branchKind = branchKind
         value.branchName = branchName
         return value

@@ -22,10 +22,11 @@ extension SessionCatalog {
 
     /// Records the choices that are set; one that is nil keeps its stored value. The session's project remembers them for its
     /// next session (`lastUsedLaunchChoices`): a start and a live change of mode, model or effort count alike.
-    /// `rememberingInProject` false keeps a session an agent opened out of that memory (Q3, D-103).
+    /// `rememberingInProject` false keeps a session an agent opened out of that memory (Q3, D-103). A complete draft
+    /// start replaces model and effort even when nil; live changes continue to merge only the fields they name.
     public func recordLaunchChoices(_ choices: ClaudeLaunchChoices, sessionID: UUID,
-                                    rememberingInProject: Bool = true) throws {
-        guard !choices.isEmpty else { return }
+                                    rememberingInProject: Bool = true, completeNewStart: Bool = false) throws {
+        guard !choices.isEmpty || completeNewStart else { return }
         try database.transaction {
             try database.withStatement("""
                 UPDATE sessions SET permission_mode = COALESCE(?, permission_mode), model = COALESCE(?, model),
@@ -47,10 +48,18 @@ extension SessionCatalog {
             }
             guard let key else { return }
             var all = try storedLastUsed()
-            let updated = choices.remembered(over: all[key])
-            guard !updated.isEmpty, updated != all[key] else { return }
-            all[key] = updated
-            try storeLastUsed(all)
+            var updated = choices.remembered(over: all[key])
+            if completeNewStart {
+                updated.model = choices.model
+                updated.effort = choices.effort
+            }
+            if updated.isEmpty {
+                if all.removeValue(forKey: key) != nil { try storeLastUsed(all) }
+            } else if updated != all[key] {
+                all[key] = updated
+                try storeLastUsed(all)
+            }
+            try rememberHarness(.claude, choices: nil, projectKey: key)
         }
     }
 
@@ -84,6 +93,82 @@ extension SessionCatalog {
     /// The key of the sessions that belong to no project in `lastUsedLaunchChoices`.
     public static let noProjectKey = "none"
     private static let lastUsedKey = "launch.last-used"
+    private static let harnessLastUsedKey = "launch.last-used-harnesses"
+
+    /// The legacy Claude record stays authoritative for Claude, so an older build can still update it after a downgrade.
+    public func lastUsedHarnessChoices() throws -> [String: HarnessProjectChoices] {
+        var all = try storedHarnessLastUsed()
+        for (key, legacy) in try storedLastUsed() {
+            var project = all[key] ?? HarnessProjectChoices()
+            project.byHarness[HarnessID.claude.rawValue] = HarnessLaunchChoices(legacy).remembered(over: nil)
+            all[key] = project
+        }
+        return all
+    }
+
+    private func storedHarnessLastUsed() throws -> [String: HarnessProjectChoices] {
+        guard let text = try appState(Self.harnessLastUsedKey), let data = text.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([String: HarnessProjectChoices].self, from: data) else { return [:] }
+        return decoded
+    }
+
+    private func rememberHarness(_ harness: HarnessID, choices: HarnessLaunchChoices?, projectKey: String,
+                                 completeNewStart: Bool = false) throws {
+        var all = try storedHarnessLastUsed()
+        var project = all[projectKey] ?? HarnessProjectChoices()
+        project.lastHarness = harness
+        if let choices {
+            var remembered = choices.remembered(over: project.choices(for: harness))
+            if completeNewStart {
+                remembered.model = choices.model
+                remembered.effort = choices.effort
+            }
+            project.byHarness[harness.rawValue] = remembered.isEmpty ? nil : remembered
+        }
+        guard all[projectKey] != project else { return }
+        all[projectKey] = project
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        try setAppState(Self.harnessLastUsedKey, to: String(decoding: try encoder.encode(all), as: UTF8.self))
+    }
+
+    /// A neutral engine can record its own choices once it has a start path; it cannot update another provider's row.
+    public func recordLaunchChoices(_ choices: HarnessLaunchChoices, sessionID: UUID,
+                                    rememberingInProject: Bool = true, completeNewStart: Bool = false) throws {
+        let key: String? = try database.withStatement("SELECT provider, project_id FROM sessions WHERE id = ?") { statement in
+            try database.bind(sessionID.uuidString, at: 1, to: statement)
+            guard sqlite3_step(statement) == SQLITE_ROW,
+                  try database.text(statement, column: 0) == choices.harness.rawValue else { return nil }
+            return database.optionalText(statement, column: 1) ?? Self.noProjectKey
+        }
+        guard let key else { return }
+        if let legacy = choices.claudeChoices {
+            if legacy.isEmpty && !completeNewStart {
+                if rememberingInProject { try rememberHarness(choices.harness, choices: nil, projectKey: key) }
+            } else {
+                try recordLaunchChoices(legacy, sessionID: sessionID, rememberingInProject: rememberingInProject,
+                                        completeNewStart: completeNewStart)
+            }
+            return
+        }
+        try database.transaction {
+            if !choices.isEmpty {
+                try database.withStatement("""
+                    UPDATE sessions SET permission_mode = COALESCE(?, permission_mode), model = COALESCE(?, model),
+                        effort = COALESCE(?, effort) WHERE id = ?
+                    """) { statement in
+                    try database.bind(choices.mode?.rawValue, at: 1, to: statement)
+                    try database.bind(choices.model, at: 2, to: statement)
+                    try database.bind(choices.effort, at: 3, to: statement)
+                    try database.bind(sessionID.uuidString, at: 4, to: statement)
+                    try database.stepDone(statement, operation: "record harness launch choices")
+                }
+            }
+            if rememberingInProject {
+                try rememberHarness(choices.harness, choices: choices, projectKey: key, completeNewStart: completeNewStart)
+            }
+        }
+    }
 
     /// The mode, model and effort each project's next session starts with unless the draft says otherwise: what its newest
     /// start or live change set (Full access excepted). Keyed by the project id, `noProjectKey` for sessions with none.

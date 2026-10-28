@@ -108,6 +108,8 @@ public final class SessionService {
     public func startSession(projectID: UUID?, launch: NewSessionLaunch,
                              cardCreated: @escaping @MainActor (UUID) -> Void,
                              notStarted: @escaping @MainActor () -> Void) -> Task<Void, Never>? {
+        // Other harnesses have no first-message draft path in this build yet.
+        guard launch.choices.claudeChoices != nil else { notStarted(); return nil }
         if facePolicy.faceOfStart(capabilities(of: .claude)) == .chat, let host = structuredHost {
             return startInStructuredFace(host: host, projectID: projectID, launch: launch,
                                          cardCreated: cardCreated, notStarted: notStarted)

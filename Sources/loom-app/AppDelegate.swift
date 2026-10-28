@@ -570,8 +570,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             runsRecovered: { await model.runsWereRecovered() },
             // An opened session whose agent passed no `--mode` takes Sphyrna's default, resolved as the draft resolves it
             // (Q3, D-103): Settings' fixed mode, else the project's last used, else Ask before edits.
-            defaultOpenedMode: { [weak model] projectID in
-                await MainActor.run { model?.draftStartChoices(projectID: projectID).permissionMode }
+            openedModels: { [weak model] harness in
+                await MainActor.run {
+                    model?.modelCatalog.validationModels(for: harness) ?? []
+                }
+            },
+            openedDefaultMode: { [weak model] projectID, harness in
+                await MainActor.run { model?.openedDefaultMode(projectID: projectID, harness: harness) }
             }
         )
     }

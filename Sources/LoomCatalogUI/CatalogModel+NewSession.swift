@@ -48,7 +48,10 @@ public final class NewSessionState {
     private(set) var settings = NewSessionSettings()
     /// The mode, model and effort each project's next draft starts with, by `SessionDraft.projectKey` (the catalog's record,
     /// `SessionCatalog.lastUsedLaunchChoices`): a live change in a session counts as well as a start.
-    public private(set) var lastUsedChoices: [String: ClaudeLaunchChoices] = [:]
+    private(set) var harnessLastUsed: [String: HarnessProjectChoices] = [:]
+    public var lastUsedChoices: [String: ClaudeLaunchChoices] {
+        harnessLastUsed.compactMapValues { $0.choices(for: .claude)?.claudeChoices }
+    }
     /// What the user should know about the saved drafts, in plain words: a save that failed (what is typed is
     /// still here, but may not survive a restart), or an unreadable file that was moved aside. Nil when all is well.
     public private(set) var storeNotice: String?
@@ -120,7 +123,7 @@ public final class NewSessionState {
 
     /// Opens the project's draft: the one it shows, else an empty one (in memory only).
     func open(projectID: UUID?) {
-        if currentID(for: projectID) == nil { makeCurrent(SessionDraft(projectID: projectID, updatedAt: clock())) }
+        if currentID(for: projectID) == nil { makeCurrent(fresh(projectID: projectID)) }
     }
 
     /// Makes one of a project's drafts the one it shows. An empty draft it showed before is dropped: it held nothing.
@@ -138,7 +141,7 @@ public final class NewSessionState {
         if let empty = drafts.values.first(where: { $0.projectKey == key && isDisposable($0.id) }) {
             show(id: empty.id)
         } else {
-            makeCurrent(SessionDraft(projectID: projectID, updatedAt: clock()))
+            makeCurrent(fresh(projectID: projectID))
         }
     }
 
@@ -151,9 +154,16 @@ public final class NewSessionState {
         current[draft.projectKey] = draft.id
     }
 
+    private func fresh(projectID: UUID?, text: String = "") -> SessionDraft {
+        var draft = SessionDraft(projectID: projectID, text: text, updatedAt: clock())
+        draft.choices.harness = harnessLastUsed[draft.projectKey]?.lastHarness ?? .claude
+        if !text.isEmpty { draft.followsProjectHarness = false }
+        return draft
+    }
+
     /// The project's draft to edit: the one it shows, else a new empty one (not yet put in).
     private func editable(_ projectID: UUID?) -> SessionDraft {
-        draft(for: projectID) ?? SessionDraft(projectID: projectID, updatedAt: clock())
+        draft(for: projectID) ?? fresh(projectID: projectID)
     }
 
     func setFullAccessConfirmed(_ confirmed: Bool, for projectID: UUID?) {
@@ -172,6 +182,7 @@ public final class NewSessionState {
         let isNew = drafts[draft.id] == nil
         edit(&draft)
         guard draft != before || isNew else { return }
+        draft.followsProjectHarness = false
         if touching { draft.updatedAt = clock() }
         makeCurrent(draft)
         persistDrafts()
@@ -182,6 +193,7 @@ public final class NewSessionState {
     func setText(_ text: String, for projectID: UUID?) {
         var draft = editable(projectID)
         draft.text = text
+        draft.followsProjectHarness = false
         draft.updatedAt = clock()
         makeCurrent(draft)
         // An emptied draft holds no brief of Remora's any more.
@@ -193,6 +205,7 @@ public final class NewSessionState {
     func setText(_ text: String, draft id: UUID) {
         guard var draft = drafts[id] else { return }
         draft.text = text
+        draft.followsProjectHarness = false
         draft.updatedAt = clock()
         drafts[id] = draft
         if !draft.hasText { remoraOrigins[id] = nil }
@@ -201,7 +214,7 @@ public final class NewSessionState {
 
     /// One more draft of the project, with text, which the project then shows (Draft Brief over the user's own text).
     func addDraft(projectID: UUID?, text: String) -> UUID {
-        let draft = SessionDraft(projectID: projectID, text: text, updatedAt: clock())
+        let draft = fresh(projectID: projectID, text: text)
         drafts[draft.id] = draft
         show(id: draft.id)
         persistDrafts()
@@ -232,7 +245,7 @@ public final class NewSessionState {
         guard let draft = drafts[id] else { return }
         let wasCurrent = current[draft.projectKey] == id
         forget(id)
-        if wasCurrent { makeCurrent(SessionDraft(projectID: draft.projectID, updatedAt: clock())) }
+        if wasCurrent { makeCurrent(fresh(projectID: draft.projectID)) }
         persistDrafts()
     }
 
@@ -253,7 +266,7 @@ public final class NewSessionState {
         moved.projectID = new
         moved.updatedAt = clock()
         makeCurrent(moved)
-        makeCurrent(SessionDraft(projectID: old, updatedAt: clock()))
+        makeCurrent(fresh(projectID: old))
         // Remora's brief was about the old project: the moved text is no longer its draft there or here.
         remoraOrigins[moved.id] = nil
         persistDrafts()
@@ -276,7 +289,7 @@ public final class NewSessionState {
         let wasCurrent = current[draft.projectKey] == id
         drafts[id] = nil
         remoraOrigins[id] = nil
-        if wasCurrent { makeCurrent(SessionDraft(projectID: draft.projectID, updatedAt: clock())) }
+        if wasCurrent { makeCurrent(fresh(projectID: draft.projectID)) }
         persistDrafts()
         return draft
     }
@@ -296,22 +309,35 @@ public final class NewSessionState {
     /// The session started: a draft that stayed in (↵) is cleared. The project remembers what it was started with in the
     /// catalog (the runtime records it when the card is made); the next draft shows it at once, and the catalog's own record
     /// replaces this copy when it is read (`CatalogModel.refreshLastUsedChoices`).
-    func started(_ draft: SessionDraft, choices: ClaudeLaunchChoices, clearsSlot: Bool) {
+    func started(_ draft: SessionDraft, choices: HarnessLaunchChoices, clearsSlot: Bool) {
+        let key = draft.projectKey
+        var project = harnessLastUsed[key] ?? HarnessProjectChoices()
+        project.lastHarness = choices.harness
+        var updated = choices.remembered(over: project.choices(for: choices.harness))
+        updated.model = choices.model
+        updated.effort = choices.effort
+        project.byHarness[choices.harness.rawValue] = updated.isEmpty ? nil : updated
+        harnessLastUsed[key] = project
         if clearsSlot { discard(id: draft.id) }
         endSending(draft: draft.id)
-        let key = draft.projectKey
-        let updated = choices.remembered(over: lastUsedChoices[key])
-        if !updated.isEmpty, updated != lastUsedChoices[key] { lastUsedChoices[key] = updated }
         store?.flush()
     }
 
     /// The catalog's record wins for a project it has one for; a start's optimistic copy stays for one it does not have yet.
-    func setLastUsedChoices(_ all: [String: ClaudeLaunchChoices]) {
-        let merged = lastUsedChoices.merging(all) { _, catalog in catalog }
-        if merged != lastUsedChoices { lastUsedChoices = merged }
+    func setLastUsedChoices(_ all: [String: HarnessProjectChoices]) {
+        let merged = harnessLastUsed.merging(all) { _, catalog in catalog }
+        if merged != harnessLastUsed { harnessLastUsed = merged }
+        for id in drafts.keys {
+            guard var draft = drafts[id], draft.followsProjectHarness, !draft.isVisible, !sending.contains(id),
+                  let harness = merged[draft.projectKey]?.lastHarness, draft.harness != harness else { continue }
+            draft.choices.harness = harness
+            drafts[id] = draft
+        }
     }
 
-    func lastUsed(for projectID: UUID?) -> ClaudeLaunchChoices? { lastUsedChoices[SessionDraft.projectKey(for: projectID)] }
+    func lastUsed(for projectID: UUID?, harness: HarnessID = .claude) -> HarnessLaunchChoices? {
+        harnessLastUsed[SessionDraft.projectKey(for: projectID)]?.choices(for: harness)
+    }
 
     /// What the older new-session file remembered: every launch (newest wins) and each project's last used choices, for the
     /// one-time copy into the catalog (`ConversationController.begin`). Nothing writes either list any more.
@@ -389,7 +415,7 @@ extension CatalogModel {
     func refreshLastUsedChoices() {
         guard let catalog else { return }
         Task { [weak self] in
-            guard let all = try? await catalog.lastUsedLaunchChoices() else { return }
+            guard let all = try? await catalog.lastUsedHarnessChoices() else { return }
             self?.newSession.setLastUsedChoices(all)
         }
     }
@@ -436,7 +462,32 @@ extension CatalogModel {
         setDraftBranch(kind, name: name, projectID: projectID)
     }
 
-    func setDraftModel(_ pick: DraftPick, projectID: UUID?) { newSession.update(projectID) { $0.modelPick = pick } }
+    func setDraftModel(_ pick: DraftPick, projectID: UUID?) {
+        if case let .value(id) = pick, let entry = modelCatalog.claudeModels.first(where: { $0.id == id }) {
+            setDraftModel(entry, projectID: projectID)
+        } else {
+            newSession.update(projectID) { $0.modelPick = pick }
+        }
+    }
+
+    /// B4 passes the actual catalogue entry, so identical model names in two harnesses cannot be confused.
+    func setDraftModel(_ entry: ModelCatalogEntry, projectID: UUID?) {
+        let current = resolvedStart(for: projectID).choices
+        let switchesHarness = current.harness != entry.harness
+        newSession.update(projectID) { draft in
+            let selected = current.choosing(entry)
+            if draft.harness != entry.harness {
+                draft.choices = selected
+            } else {
+                draft.choices.model = selected.model
+                draft.choices.effort = selected.effort
+            }
+            draft.modelUsesDefault = false
+            draft.effortUsesDefault = draft.choices.effort == nil
+            draft.followsProjectHarness = false
+        }
+        if switchesHarness { newSession.setFullAccessConfirmed(false, for: projectID) }
+    }
 
     func setDraftEffort(_ pick: DraftPick, projectID: UUID?) { newSession.update(projectID) { $0.effortPick = pick } }
 
@@ -467,15 +518,33 @@ extension CatalogModel {
     }
 
     func resolvedStart(draft: SessionDraft?, projectID: UUID?) -> ResolvedStart {
-        NewSessionDefaults.resolve(
+        let harness = draft?.harness ?? newSession.harnessLastUsed[SessionDraft.projectKey(for: projectID)]?.lastHarness ?? .claude
+        let resolved = NewSessionDefaults.resolve(
+            harness: harness,
             modePick: draft?.modePick ?? .inherit, modelPick: draft?.modelPick ?? .inherit,
             effortPick: draft?.effortPick ?? .inherit,
-            lastUsed: newSession.lastUsed(for: projectID), settings: newSession.settings, askAllowed: newSessionAllowsAsk)
+            lastUsed: newSession.lastUsed(for: projectID, harness: harness), settings: newSession.settings, askAllowed: newSessionAllowsAsk)
+        guard let effort = resolved.effort.value else { return resolved }
+        let descriptor = HarnessCatalogue.descriptor(for: harness)
+        let models = modelCatalog.validationModels(for: harness)
+        let levels: [String]
+        if let id = resolved.model.value { levels = models.first { $0.id == id }?.efforts ?? [] }
+        else { levels = models.first { $0.isDefault || $0.id == "default" }?.efforts ?? descriptor?.defaultEfforts ?? [] }
+        guard !levels.contains(effort) else { return resolved }
+        return ResolvedStart(harness: harness, mode: resolved.mode, model: resolved.model,
+                             effort: ResolvedChoice(value: nil, source: .cliDefault))
     }
 
     /// Development evidence: the choices a new session of this project would start with, resolved as the draft resolves them (a
     /// project with no remembered mode starts with the explicit `default`).
-    public func draftStartChoices(projectID: UUID?) -> ClaudeLaunchChoices { resolvedStart(for: projectID).choices }
+    public func draftStartChoices(projectID: UUID?) -> HarnessLaunchChoices { resolvedStart(for: projectID).choices }
+
+    /// Agent requests use project defaults without inheriting a user's in-progress draft picks.
+    public func openedDefaultMode(projectID: UUID?, harness: HarnessID) -> HarnessMode? {
+        NewSessionDefaults.resolve(harness: harness, modePick: .inherit, modelPick: .inherit,
+            lastUsed: newSession.lastUsed(for: projectID, harness: harness), settings: newSession.settings,
+            askAllowed: newSessionAllowsAsk, forAgent: true).choices.mode
+    }
 
     /// Whether a new session starts in the face that has Ask: Ask is a Chat mode (D-63), and the terminal never runs it. The
     /// one place that says which face a new session starts in for the mode menu: Settings → "Sessions run in" (V19, D-69).
@@ -539,7 +608,8 @@ extension CatalogModel {
     /// Whether ↵ would start the draft now.
     public func canSendDraft(projectID: UUID?) -> Bool {
         guard draftSendBlock(projectID: projectID) == nil, actionsAvailable, capabilities(of: .newSessionDefault).startable, !isStarting(.newSessionDefault, projectID: projectID),
-              let draft = newSession.draft(for: projectID), draft.isVisible, !newSession.isSending(draft: draft.id),
+              let draft = newSession.draft(for: projectID), draft.choices.claudeChoices != nil,
+              draft.isVisible, !newSession.isSending(draft: draft.id),
               intents is any NewSessionIntents else { return false }
         if draft.branchKind != .stay {
             guard draftProject(projectID) != nil, newSession.branch(for: projectID).map({ $0 != .unavailable }) ?? true,
@@ -606,9 +676,7 @@ extension CatalogModel {
         let resolved = resolvedStart(for: projectID)
         let line = draft.trimmedText.split(whereSeparator: \.isNewline).first.map(String.init) ?? draft.trimmedText
         let name = line.count > 40 ? String(line.prefix(39)) + "…" : line
-        newSession.addPreset(NewSessionPreset(
-            name: name, message: draft.trimmedText, permissionMode: resolved.mode.value, model: resolved.model.value,
-            projectID: projectID))
+        newSession.addPreset(NewSessionPreset(name: name, message: draft.trimmedText, choices: resolved.choices, projectID: projectID))
     }
 
     /// One click: the preset's message goes into the draft (after what is there, if anything) and its mode and
@@ -618,8 +686,10 @@ extension CatalogModel {
             if !preset.message.isEmpty {
                 draft.text = draft.isVisible ? draft.text + "\n\n" + preset.message : preset.message
             }
-            if let mode = preset.permissionMode { draft.modePick = .value(mode) }
-            if let model = preset.model { draft.modelPick = .value(model) }
+            draft.choices = preset.choices
+            draft.modelUsesDefault = false
+            draft.effortUsesDefault = false
+            draft.followsProjectHarness = false
         }
         // A preset's mode is a pick kept from earlier, even when it was just clicked.
         newSession.setFullAccessConfirmed(false, for: projectID)

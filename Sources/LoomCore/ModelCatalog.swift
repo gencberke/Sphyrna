@@ -17,9 +17,11 @@ public struct ModelCatalogEntry: Equatable, Sendable, Identifiable {
     public var efforts: [String]
     /// The level the CLI starts the model at, when it names one.
     public var defaultEffort: String?
+    /// The harness identified this entry as its own default model.
+    public var isDefault: Bool
 
     public init(harness: HarnessID, id: String, title: String, note: String? = nil, description: String? = nil,
-                efforts: [String] = [], defaultEffort: String? = nil) {
+                efforts: [String] = [], defaultEffort: String? = nil, isDefault: Bool = false) {
         self.harness = harness
         self.id = id
         self.title = title
@@ -27,6 +29,7 @@ public struct ModelCatalogEntry: Equatable, Sendable, Identifiable {
         self.description = description
         self.efforts = efforts
         self.defaultEffort = defaultEffort
+        self.isDefault = isDefault
     }
 }
 
@@ -76,6 +79,21 @@ public final class ModelCatalog {
         }
     }
 
+    /// Cached models for validation, including a default alias that the picker itself does not list.
+    public func validationModels(for harness: HarnessID) -> [ModelCatalogEntry] {
+        guard let provider = HarnessCatalogue.descriptor(for: harness)?.provider, connections.isConnected(provider) else { return [] }
+        var entries = models(for: provider)
+        if HarnessLaunchChoices(harness: harness).claudeChoices != nil,
+           let probedClaude, let defaultModel = probedClaude.first(where: \.isDefault) {
+            var entry = Self.entry(of: defaultModel, harness: harness)
+            if !probedClaude.contains(where: { !$0.efforts.isEmpty }) {
+                entry.efforts = HarnessCatalogue.descriptor(for: harness)?.defaultEfforts ?? []
+            }
+            entries.append(entry)
+        }
+        return entries
+    }
+
     /// Takes the models of a probe's reading; a reading of Codex with no models (the ask for them failed) leaves the list as
     /// it was, and a reading of another harness changes nothing.
     public func apply(_ reading: HarnessReading) {
@@ -92,11 +110,13 @@ public final class ModelCatalog {
     public var claudeModels: [ModelCatalogEntry] {
         let listed = (probedClaude ?? []).filter { $0.id != "default" && !$0.id.hasPrefix("claude-") && !$0.id.contains("[") }
         guard !listed.isEmpty else { return Self.claude }
+        let probeListsEfforts = (probedClaude ?? []).contains { !$0.efforts.isEmpty }
         return listed.map { model in
             ModelCatalogEntry(harness: .claude, id: model.id,
                               title: Self.claudeFullName(resolvedModel: model.resolvedModel, displayName: model.displayName),
                               note: Self.claudeNote(forAlias: model.id), description: model.description,
-                              efforts: model.efforts, defaultEffort: model.defaultEffort)
+                              efforts: probeListsEfforts ? model.efforts : Self.claudeEffortLevels,
+                              defaultEffort: model.defaultEffort)
         }
     }
 
@@ -153,9 +173,9 @@ public final class ModelCatalog {
 
     /// Claude Code's models: the aliases the CLI takes, and what each is for.
     public nonisolated static let claude: [ModelCatalogEntry] = [
-        ModelCatalogEntry(harness: .claude, id: "opus", title: "Opus", note: "Long agentic coding"),
-        ModelCatalogEntry(harness: .claude, id: "sonnet", title: "Sonnet", note: "Fast, everyday work"),
-        ModelCatalogEntry(harness: .claude, id: "haiku", title: "Haiku", note: "Quick answers, no effort"),
+        ModelCatalogEntry(harness: .claude, id: "opus", title: "Opus", note: "Long agentic coding", efforts: ClaudeLaunchChoices.effortLevels),
+        ModelCatalogEntry(harness: .claude, id: "sonnet", title: "Sonnet", note: "Fast, everyday work", efforts: ClaudeLaunchChoices.effortLevels),
+        ModelCatalogEntry(harness: .claude, id: "haiku", title: "Haiku", note: "Quick answers, no effort", efforts: ClaudeLaunchChoices.effortLevels),
     ]
 
     /// The title of a Claude alias; the alias itself when it is not one of the three.
@@ -179,6 +199,7 @@ public final class ModelCatalog {
 
     private nonisolated static func entry(of model: HarnessModel, harness: HarnessID) -> ModelCatalogEntry {
         ModelCatalogEntry(harness: harness, id: model.id, title: model.displayName, note: model.isDefault ? "Default" : nil,
-                          description: model.description, efforts: model.efforts, defaultEffort: model.defaultEffort)
+                          description: model.description, efforts: model.efforts, defaultEffort: model.defaultEffort,
+                          isDefault: model.isDefault)
     }
 }

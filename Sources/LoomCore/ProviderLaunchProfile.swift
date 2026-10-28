@@ -228,8 +228,13 @@ public struct ProviderLaunchProfile: Sendable {
         // The level the session's record names, else the one its transcript last recorded; without either Claude
         // falls back to the saved default.
         var effortArguments: [String] = []
-        if capabilities.supportsEffort, let level = choices.effort ?? effort, ClaudeTranscriptEffort.levels.contains(level) {
-            effortArguments = ["--effort", level]
+        if capabilities.supportsEffort {
+            if let level = choices.effort {
+                guard HarnessEffort.isToken(level) else { throw LoomError.message("The effort is not valid") }
+                effortArguments = ["--effort", level]
+            } else if let level = effort, ClaudeTranscriptEffort.levels.contains(level) {
+                effortArguments = ["--effort", level]
+            }
         }
         // The session's mode and model (V07). A choice the user made is never dropped quietly: a CLI that
         // cannot take the option, or a value that is not a plain word, refuses the start before any card

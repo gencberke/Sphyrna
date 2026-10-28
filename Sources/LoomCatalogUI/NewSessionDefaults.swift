@@ -70,23 +70,27 @@ struct ResolvedChoice: Equatable, Sendable {
 }
 
 struct ResolvedStart: Equatable, Sendable {
+    var harness: HarnessID = .claude
     let mode: ResolvedChoice
     let model: ResolvedChoice
     let effort: ResolvedChoice
 
-    var choices: ClaudeLaunchChoices {
-        ClaudeLaunchChoices(permissionMode: mode.value, model: model.value, effort: effort.value)
+    var choices: HarnessLaunchChoices {
+        HarnessLaunchChoices(harness: harness, model: model.value, effort: effort.value, mode: HarnessMode.fromStored(mode.value))
     }
 
     /// The mode as the bar names it: Loom's name, always something (the mode always has a value).
     var modeTitle: String {
-        mode.value.map(ClaudePermissionMode.title(forRaw:)) ?? ClaudePermissionMode.askBeforeEdits.title
+        mode.value.map(ClaudePermissionMode.title(forRaw:)) ?? "Mode"
     }
 
     /// The model as the bar names it: the chosen one by its full name ("Opus 5.5", once the probe said which release the alias
     /// means), else "Default model" (the CLI decides which). The names come from the model's catalogue (`CatalogModel.modelCatalog`).
     @MainActor func modelTitle(in catalog: ModelCatalog) -> String {
-        model.value.map(catalog.claudeTitle(of:)) ?? NewSessionDefaults.defaultModelTitle
+        guard let id = model.value else { return NewSessionDefaults.defaultModelTitle }
+        if HarnessLaunchChoices(harness: harness).claudeChoices != nil { return catalog.claudeTitle(of: id) }
+        guard let provider = HarnessCatalogue.descriptor(for: harness)?.provider else { return id }
+        return catalog.models(for: provider).first(where: { $0.id == id })?.title ?? id
     }
 
     /// The effort as the bar names it, in the lighter word after the model; nil when none is chosen.
@@ -122,7 +126,35 @@ enum NewSessionDefaults {
             mode: mode.value == nil ? ResolvedChoice(value: fallbackMode, source: .loomDefault) : mode,
             model: resolve(pick: modelPick, remembered: lastUsed?.model, configured: settings.model, allowed: { _ in true }),
             effort: resolve(pick: effortPick, remembered: lastUsed?.effort, configured: nil,
-                            allowed: { NewSessionModels.effortLevels.contains($0) }))
+                            allowed: HarnessEffort.isToken))
+    }
+
+    /// Resolve per-harness memory while keeping the established Claude precedence.
+    static func resolve(harness: HarnessID, modePick: DraftPick, modelPick: DraftPick, effortPick: DraftPick = .inherit,
+                        lastUsed: HarnessLaunchChoices?, settings: NewSessionSettings, askAllowed: Bool = true,
+                        forAgent: Bool = false) -> ResolvedStart {
+        let descriptor = HarnessCatalogue.descriptor(for: harness)
+        if HarnessLaunchChoices(harness: harness).claudeChoices != nil {
+            return resolve(modePick: forAgent ? .inherit : modePick, modelPick: modelPick, effortPick: effortPick,
+                           lastUsed: lastUsed?.claudeChoices, settings: settings, askAllowed: askAllowed)
+        }
+        let supported = descriptor?.modes ?? []
+        let selectedMode: DraftPick
+        if case let .value(raw) = modePick, HarnessMode.fromStored(raw).map(supported.contains) != true {
+            selectedMode = .inherit
+        } else {
+            selectedMode = forAgent ? .inherit : modePick
+        }
+        let mode = resolve(pick: selectedMode, levels: [
+            (lastUsed?.mode?.rawValue, .lastUsed, { raw in
+                HarnessMode.fromStored(raw).map { $0 != .fullAccess && supported.contains($0) } ?? false
+            })
+        ])
+        let fallback = descriptor?.defaultMode?.rawValue
+        return ResolvedStart(harness: harness,
+            mode: mode.value == nil ? ResolvedChoice(value: fallback, source: .loomDefault) : mode,
+            model: resolve(pick: modelPick, remembered: lastUsed?.model, configured: nil, allowed: { _ in true }),
+            effort: resolve(pick: effortPick, remembered: lastUsed?.effort, configured: nil, allowed: HarnessEffort.isToken))
     }
 
     private static func resolve(pick: DraftPick, remembered: String?, configured: String?,

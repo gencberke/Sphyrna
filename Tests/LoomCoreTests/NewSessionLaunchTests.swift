@@ -43,6 +43,16 @@ struct NewSessionLaunchProfileTests {
         #expect(!(try arguments(choices: ClaudeLaunchChoices(model: "opus"))).contains("--permission-mode"))
     }
 
+    @Test func aValidatedModelEffortIsNotDroppedByTheClaudeLaunchBridge() throws {
+        let model = ModelCatalogEntry(harness: .claude, id: "opus", title: "Opus", efforts: ["low", "turbo"])
+        let choices = HarnessLaunchChoices(model: model.id, effort: "turbo", mode: .plan)
+        try choices.validate(models: [model])
+        let args = try arguments(choices: #require(choices.claudeChoices))
+        let index = try #require(args.firstIndex(of: "--effort"))
+        #expect(args[index + 1] == "turbo")
+        #expect(throws: (any Error).self) { try arguments(choices: ClaudeLaunchChoices(effort: "--unsafe")) }
+    }
+
     @Test func aDraftWithoutATitleLeavesTheNamingToClaude() throws {
         let args = try arguments(choices: ClaudeLaunchChoices(), opening: .init(title: "", firstMessage: "fix the flaky test"))
         #expect(!args.contains("-n"))

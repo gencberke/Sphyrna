@@ -23,12 +23,16 @@ extension SessionRuntime {
     ) async throws -> RuntimeLaunch {
         let launched = LaunchBox()
         let sessionID = try await openRequests.approve(requestID) { spec in
+            guard spec.choices.claudeChoices != nil else {
+                let name = HarnessCatalogue.descriptor(for: spec.choices.harness)?.displayName ?? spec.choices.harness.rawValue
+                throw LoomError.message("\(name) cannot start an opened session in this build")
+            }
             let launch = try await self.startConversation(
                 provider: .claude, projectID: spec.projectID, rows: rows, columns: columns,
                 outputSink: outputSink,
                 opening: SessionOpening(
                     title: spec.title, firstMessage: spec.message, openedBy: spec.requesterID,
-                    choices: spec.choices
+                    choices: spec.choices, modeFromUserDefault: spec.modeFromUserDefault
                 )
             )
             launched.value = launch
@@ -50,10 +54,14 @@ extension SessionRuntime {
     ) async throws -> RuntimeOpenedChat {
         let launched = ChatLaunchBox()
         let started = try await openRequests.approve(requestID) { spec in
+            guard spec.choices.claudeChoices != nil else {
+                let name = HarnessCatalogue.descriptor(for: spec.choices.harness)?.displayName ?? spec.choices.harness.rawValue
+                throw LoomError.message("\(name) cannot start an opened session in this build")
+            }
             let launch = try await self.startChatConversation(
                 projectID: spec.projectID, sessionID: sessionID,
                 opening: SessionOpening(title: spec.title, firstMessage: spec.message, openedBy: spec.requesterID,
-                                        choices: spec.choices),
+                                        choices: spec.choices, modeFromUserDefault: spec.modeFromUserDefault),
                 outputSink: outputSink
             )
             launched.value = RuntimeOpenedChat(launch: launch, firstMessage: spec.message)

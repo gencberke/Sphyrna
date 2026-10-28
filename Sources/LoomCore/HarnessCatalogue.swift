@@ -42,7 +42,10 @@ public enum HarnessCatalogue {
         onWhenFound: true,
         startable: true,
         provider: .claude,
-        showsOnboardingWhenMissing: true)
+        showsOnboardingWhenMissing: true,
+        modes: [.ask, .askBeforeEdits, .acceptEdits, .plan, .auto, .fullAccess],
+        agentModes: [.askBeforeEdits, .acceptEdits, .plan, .auto],
+        defaultMode: .askBeforeEdits, defaultEfforts: ClaudeLaunchChoices.effortLevels)
 
     private static let codex = HarnessDescriptor(
         id: .codex,

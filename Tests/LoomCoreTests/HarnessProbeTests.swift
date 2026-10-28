@@ -176,6 +176,7 @@ struct HarnessProbeTests {
         #expect(catalog.models(for: .codex).map(\.efforts) == [["low", "medium", "high"], ["low", "medium", "high"]])
         #expect(catalog.models(for: .codex).map(\.defaultEffort) == ["medium", "medium"])
         #expect(catalog.models(for: .codex).allSatisfy { $0.harness == .codex })
+        #expect(catalog.validationModels(for: .codex).first?.isDefault == true)
 
         // A reading with no models (their ask failed) leaves the list; Claude's reading changes Claude's list only.
         catalog.apply(HarnessReading(provider: .codex, readAt: Date()))
@@ -184,6 +185,13 @@ struct HarnessProbeTests {
                                                                               efforts: ["low", "high"])], readAt: Date()))
         #expect(catalog.models(for: .codex).count == 2 && catalog.models(for: .claude).map(\.title) == ["X"])
         #expect(catalog.models(for: .claude).first?.efforts == ["low", "high"] && catalog.models(for: .claude).first?.harness == .claude)
+
+        catalog.apply(HarnessReading(provider: .claude, models: [
+            HarnessModel(id: "default", displayName: "Default", isDefault: true, efforts: ["low"]),
+            HarnessModel(id: "opus", displayName: "Opus", isDefault: false, efforts: ["low", "high"]),
+        ], readAt: Date()))
+        #expect(catalog.models(for: .claude).map(\.id) == ["opus"], "the alias stays out of the picker")
+        #expect(catalog.validationModels(for: .claude).first(where: \.isDefault)?.efforts == ["low"])
 
         connections.setConnected(.codex, false)
         #expect(catalog.models(for: .codex).isEmpty, "a switched-off harness offers no models")

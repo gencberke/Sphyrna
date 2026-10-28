@@ -349,7 +349,7 @@ struct NewSessionTests {
         let none = resolve()
         #expect(none.mode == ResolvedChoice(value: "default", source: .loomDefault))
         #expect(none.model == ResolvedChoice(value: nil, source: .cliDefault) && none.effort == ResolvedChoice(value: nil, source: .cliDefault))
-        #expect(none.choices == ClaudeLaunchChoices(permissionMode: "default") && none.modeTitle == "Ask before edits")
+        #expect(none.choices == HarnessLaunchChoices(ClaudeLaunchChoices(permissionMode: "default")) && none.modeTitle == "Ask before edits")
         #expect(none.modelTitle(in: ModelCatalog()) == "Default model" && none.effortTitle == nil)
         // 3: what was last used in the project, which is what "Last used in the project" in Settings means (no mode stored).
         let remembered = resolve(last: last, settings: NewSessionSettings(model: "haiku"))
@@ -453,7 +453,7 @@ struct NewSessionTests {
         #expect(resolved.effort == ResolvedChoice(value: "high", source: .lastUsed))
         #expect(resolved.model == ResolvedChoice(value: "opus", source: .lastUsed))
         model.beginNewSession(projectID: rig.otherProjectID)
-        #expect(model.resolvedStart(for: rig.otherProjectID).choices == ClaudeLaunchChoices(permissionMode: "default"))
+        #expect(model.resolvedStart(for: rig.otherProjectID).choices == HarnessLaunchChoices(ClaudeLaunchChoices(permissionMode: "default")))
         // The file keeps no last-used list any more: across a relaunch it is the catalog's (see the catalog tests).
         let again = NewSessionState()
         again.attach(store: NewSessionStore(url: rig.storeURL))
@@ -517,7 +517,7 @@ struct NewSessionTests {
         model.setDraftText("go", projectID: rig.projectID)
         model.sendDraft(projectID: rig.projectID)
         #expect(await waitUntil { !rig.intents.sends.isEmpty })
-        #expect(rig.intents.sends[0].launch.choices == ClaudeLaunchChoices(permissionMode: "default", model: "sonnet", effort: "xhigh"))
+        #expect(rig.intents.sends[0].launch.choices == HarnessLaunchChoices(ClaudeLaunchChoices(permissionMode: "default", model: "sonnet", effort: "xhigh")))
         rig.intents.sends[0].outcome(.started(UUID()))
         #expect(await waitUntil { model.newSession.lastUsed(for: rig.projectID)?.effort == "xhigh" })
         // The next draft of the project starts from them; choosing the default on purpose is a pick of its own.
@@ -545,7 +545,12 @@ struct NewSessionTests {
         var file = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: rig.storeURL)) as? [String: Any])
         var drafts = try #require(file["drafts"] as? [[String: Any]])
         #expect(drafts.allSatisfy { $0["effortPick"] != nil }, "the new file carries the pick")
-        for index in drafts.indices { drafts[index]["effortPick"] = nil }
+        for index in drafts.indices {
+            drafts[index]["effortPick"] = nil
+            drafts[index]["choices"] = nil
+            drafts[index]["modelUsesDefault"] = nil
+            drafts[index]["effortUsesDefault"] = nil
+        }
         file["drafts"] = drafts
         try JSONSerialization.data(withJSONObject: file).write(to: rig.storeURL)
         let state = NewSessionState()
@@ -571,7 +576,7 @@ struct NewSessionTests {
         model.setDraftText("go", projectID: rig.projectID)
         model.sendDraft(projectID: rig.projectID)
         #expect(await waitUntil { rig.intents.sends.count == 1 })
-        #expect(rig.intents.sends[0].launch.choices == ClaudeLaunchChoices(permissionMode: "acceptEdits", model: "haiku"))
+        #expect(rig.intents.sends[0].launch.choices == HarnessLaunchChoices(ClaudeLaunchChoices(permissionMode: "acceptEdits", model: "haiku")))
         model.newSession.flush()
         let again = NewSessionState()
         again.attach(store: NewSessionStore(url: rig.storeURL))
@@ -805,7 +810,7 @@ struct NewSessionTests {
         #expect(rig.intents.sends.count == 1 && rig.intents.plainStarts == 0)
         #expect(sent.projectID == rig.projectID && sent.focus == .session)
         #expect(sent.launch.firstMessage == "PAY-418 Add the reverse-charge note\nThe wording is in the doc.")
-        #expect(sent.launch.choices == ClaudeLaunchChoices(permissionMode: "plan", model: "haiku"))
+        #expect(sent.launch.choices == HarnessLaunchChoices(ClaudeLaunchChoices(permissionMode: "plan", model: "haiku")))
         #expect(sent.launch.workspace == .newBranch("sphyrna/pay-418-add-the"))
         // The draft keeps its words until the session exists.
         #expect(model.newSession.draft(for: rig.projectID)?.isVisible == true)
@@ -826,7 +831,7 @@ struct NewSessionTests {
         #expect(await waitUntil { rig.intents.sends.count == 1 })
         let plain = rig.intents.sends[0].launch
         #expect(plain.workspace == .projectFolder
-            && plain.choices == ClaudeLaunchChoices(permissionMode: "default"))
+            && plain.choices == HarnessLaunchChoices(ClaudeLaunchChoices(permissionMode: "default")))
         rig.intents.sends[0].outcome(.failed)
 
         model.setDraftBranch(.newWorktree, name: "feat/mine", projectID: rig.projectID)

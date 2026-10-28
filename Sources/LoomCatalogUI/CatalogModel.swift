@@ -585,7 +585,7 @@ public final class CatalogModel {
         guard catalog != nil else { isReady = true; return }
         // The saved drafts are listed in the sidebar from the first frame.
         prepareNewSession()
-        if let all = try? await catalog?.lastUsedLaunchChoices() { newSession.setLastUsedChoices(all) }
+        if let all = try? await catalog?.lastUsedHarnessChoices() { newSession.setLastUsedChoices(all) }
         // Taken before the lists are read, so a batch landing meanwhile is seen.
         lastCatalogRevision = await events.snapshot().catalogRevision
         let began = ContinuousClock.now

@@ -49,6 +49,8 @@ struct OpenRequestBoxContent: Equatable {
     let counter: String?
     /// The title of the session that will open.
     let title: String
+    let harnessName: String
+    let provider: ManagedSession.Provider?
     /// The choices the session starts with, as the user reads them: a missing choice is Sphyrna's default.
     let model: String
     let effort: String
@@ -68,18 +70,19 @@ struct OpenRequestBoxContent: Equatable {
     /// The buttons are shown but cannot be pressed (the session is starting).
     let actionsDisabled: Bool
 
-    /// `defaults` is what Sphyrna will use for a choice the agent left nil (`CatalogModel.draftStartChoices(projectID:)`).
-    /// `position` and `count` are the card's place among the requests of this session, oldest first.
-    init(_ request: OpenSessionRequest, defaults: ClaudeLaunchChoices = ClaudeLaunchChoices(),
-         position: Int = 1, count: Int = 1) {
+    /// `position` and `count` are the card's place among the requests of this session, oldest first. The coordinator
+    /// has already resolved the mode; nil model and effort mean the harness's own defaults.
+    init(_ request: OpenSessionRequest, position: Int = 1, count: Int = 1) {
         requester = "from " + (request.requesterTitle ?? SessionOrigin.unknownRequester)
         counter = count > 1 ? "\(position) of \(count)" : nil
         title = request.title
-        model = (request.choices.model ?? defaults.model).map(ModelCatalog.claudeTitle(of:)) ?? "Default model"
-        effort = request.choices.effort ?? defaults.effort ?? "Default effort"
-        let rawMode = request.choices.permissionMode ?? defaults.permissionMode
-            ?? ClaudePermissionMode.askBeforeEdits.rawValue
-        mode = ClaudePermissionMode.title(forRaw: rawMode)
+        let descriptor = HarnessCatalogue.descriptor(for: request.choices.harness)
+        harnessName = descriptor?.displayName ?? request.choices.harness.rawValue
+        provider = descriptor?.provider
+        model = request.choices.model.map { request.choices.claudeChoices != nil ? ModelCatalog.claudeTitle(of: $0) : $0 }
+            ?? "Default model"
+        effort = request.choices.effort ?? "Default effort"
+        mode = request.choices.mode?.title ?? descriptor?.defaultMode?.title ?? "Default mode"
         projectName = request.projectName
         let split = Self.preview(of: request.message)
         preview = split.text
