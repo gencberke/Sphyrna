@@ -73,4 +73,5 @@
 .i4key,kbd{font:11px/18px var(--mono);height:18px;padding:0 4px;border-radius:4px}
 
 .sheet .sbtn .btn.pri,.sheet .sbtn .btn.dan,.sheet .sbtn .btn.out{height:36px}
+.firstrun .acts>.btn.pri{height:36px;padding:0 16px}
 .popup:focus-visible,.stepper button:focus-visible{outline:0;box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3px color-mix(in srgb,var(--accent) 45%,transparent)}
