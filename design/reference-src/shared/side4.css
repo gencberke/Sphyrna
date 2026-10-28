@@ -61,7 +61,7 @@
 .i4side[data-view=activity] .i4plist{display:none}
 .i4side:not([data-view=activity]) .i4alist{display:none}
 .i4pgroup{padding:0 0 2px}
-.i4phead{height:28px;display:flex;align-items:center;gap:6px;padding:0 4px 0 10px;border-radius:8px;font:500 12.5px var(--ui);color:var(--fg-1)}
+.i4phead{height:28px;display:flex;align-items:center;gap:6px;padding:0 4px 0 10px;border-radius:8px;font:500 13px var(--ui);color:var(--fg-1)}
 .i4phead:hover,.i4phead.hov{background:var(--hover)}
 .i4phead .i4pmark{margin-right:1px}
 .i4phead .pn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
