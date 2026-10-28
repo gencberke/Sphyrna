@@ -168,6 +168,31 @@ struct SidebarB2Tests {
         }
     }
 
+    @Test func aReadyCardDrawsContentAtItsLeadingInset() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-b2-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = CatalogModel(catalog: nil, events: SessionEventHub(),
+                                 preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
+        let session = ManagedSession(provider: .claude, workingDirectory: root.path)
+        let record = CatalogSession(session: session, title: "MMMMMMMM", createdAt: Date(), lastUsedAt: Date(),
+                                    lifecycle: .active, pinned: false)
+        let row = SessionRowModel(record: record, live: SessionViewState(
+            status: ProviderWorkState(activity: .atPrompt), runID: UUID()))
+        #expect(row.indicator == .ready)
+        let view = NSHostingView(rootView: SessionCardView(row: row, model: model).frame(width: 240))
+        view.appearance = NSAppearance(named: .darkAqua)
+        view.frame = NSRect(x: 0, y: 0, width: 240, height: 80)
+        view.layoutSubtreeIfNeeded()
+        let image = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: image)
+        let scale = image.pixelsWide / 240
+        let hasLeadingContent = (12 * scale..<26 * scale).contains { x in
+            (0..<image.pixelsHigh).contains { y in (image.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.2 }
+        }
+        #expect(hasLeadingContent, "the ready card must not leave the old status column empty")
+    }
+
     @Test func viewToggleKeepsItsTwoAccessibleChoices() async throws {
         enableAccessibilityTree()
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-b2-\(UUID())")
