@@ -278,7 +278,7 @@ at 100 %. No window draws the art
 (D-102): Remora's face is the still Front mark, the first launch shows the still app icon.
 - **Its sources** are in `design/reference-src/`. `docs/` holds one document per surface: the Ink v4 chapter (`v4`, D-106), the
   turn style (`chat`), the project page, the identity, the review surfaces, the edges, Remora, and Settings and About. `shared/`
-  holds the tokens (`head.css`), the shared v4 sidebar, cards and status bar (`side4.css`, `side4.js`), repeated markup in
+  holds the tokens (`head.css`), the harness marks (`harness.css`), the shared v4 sidebar, cards and status bar (`side4.css`, `side4.js`), repeated markup in
   `parts/` (expanded by the builder), window behavior and geometry (`window4.js`, `window4.css`), and the
   sheets; `engine.js` and `iconart.js` stay only to draw the app icon (`identity/icon/layers.html` loads them). `shell/` and
   `landing/` hold the two pages' own parts.

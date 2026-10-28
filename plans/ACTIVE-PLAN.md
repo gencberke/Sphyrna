@@ -40,7 +40,7 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 
 ## Open notes for the planner
 
-- **Reference consistency is closed** (28 Oct): shared session chrome, terminal, Overview, Connections, Settings tabs and
+- **Reference consistency is closed** (28 Oct): shared session chrome and harness marks, terminal, Overview, Connections, Settings tabs and
   About; one complete-app frame rule and labelled crops (DESIGN §1). Source guard, Ink/Paper geometry and browser flows pass;
   evidence is in `~/Library/Caches/loom-v2/evidence/r9/reference-consistency/REPORT.md`.
 - **B1b's validation pool:** its full `--tests` attempt was interrupted after the window skip-list gap was found. The checker

@@ -1,5 +1,6 @@
 """Check the reference's repeated window contract without building Swift."""
 from html.parser import HTMLParser
+import re
 import build
 
 
@@ -71,6 +72,9 @@ def check():
         if name in {'v4', 'settings'}:
             assert build.read('shared/parts/connections.html') in html, f'{name}: use the complete shared Connections content'
             assert 'so it is not drawn twice' not in html, f'{name}: Connections is a placeholder'
+            css = re.search(r'<style>(.*?)</style>', html, re.S)[1]
+            for harness in ['opencode', 'agy', 'pi']:
+                assert re.search(r'^\.hm\.' + harness + r'\{', css, re.M), f'{name}: {harness} mark must be shared, not scoped to the v4 chapter'
     print(f'reference: PASS ({windows} declared frames; app, Settings, crops and desktop)')
 
 

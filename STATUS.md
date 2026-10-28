@@ -1,6 +1,6 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-28, 09:49 +03.
+- **Updated:** 2026-10-28, 10:04 +03.
 - **State:** `waiting for planning`, between slices. B1b and the reference consistency pass are integrated on `v2`;
   the planner's combined off-screen check passes 63 tests. No implementer is running.
 - **Where we left off:** B1b closes the shared v4 controls and focus-ring migration; the reference now reuses complete window
@@ -16,7 +16,7 @@
 
 | Slice | State on `v2` | What it gave |
 | --- | --- | --- |
-| B0, B0b | integrated (`5ba94f1`, `bdaad69`); consistency `fca9e2a`, `2d10f93` | Ink v4 only; shared complete window parts, explicit crops, real Connections content; 11 chapters, no art |
+| B0, B0b | integrated (`5ba94f1`, `bdaad69`); consistency `fca9e2a`, `2d10f93` | Ink v4 only; shared complete window parts and harness marks, explicit crops, real Connections content; 11 chapters, no art |
 | C1 | integrated (`59e300e`) | The harness catalogue: five descriptors, On / Off / Not found |
 | A1 | integrated (`075cd7d`) | The project reorder by a live drag; the sidebar's rows stay lazy |
 | B1 | integrated (`fe6f102`, `a81e2c0`) | Ink v4 tokens, six button roles at four sizes, the focus halo, three elevations |
