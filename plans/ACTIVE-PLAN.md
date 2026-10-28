@@ -24,7 +24,7 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | Wave | Slice | Status |
 | --- | --- | --- |
 | 0 | B0 the reference in Ink v4 | integrated `5ba94f1` (approved by `@user`, D-106, with the planner's fixes: Activity marks, the two pickers) |
-| 0 | P0 Codex spike | running, planner-owned `evidence/r9/p0/`; D-108 ≤15 isolated turns, read-only probe/login verified; T1/T2 completed, hook/tool events and no-daemon process observed |
+| 0 | P0 Codex spike | running, planner-owned `evidence/r9/p0/`; D-108 ≤15 isolated turns, 3 spent; read-only probe/login, direct TUI/hooks/OSC/resume observed. Safe hook trust/owned remote route pending; real runs held during two UI slices |
 | 0 | P1 opencode, agy, pi spike | real-turn permission D-108 (≤5 each); prepare isolated profiles, user signs in when needed |
 | 1 | A1 project reorder | integrated `075cd7d` (after review: rows are direct list children again, `SidebarPagingTests`; the released gap holds until the order lands); a by-hand drag check waits for the gate |
 | 1 | C1 harness catalogue | integrated `59e300e` (with the planner's fix: opencode has no doctor until P1) |
@@ -37,14 +37,16 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 2 | C3 Connections and Home connect cards | integrated `365b2d2` + `175f0e2`, parent seams `425878a`, `c84572b`, `1d4326d`; 9 core + 76 UI scoped tests pass; pooled guard/expectation fixes closed by `8e6fbf7` (112 affected tests PASS) |
 | 2 | B3 status bar | integrated `26acb6c`; full-width 26 pt bar, cached limits/popover, bounded working menu, shared awake setting and sidebar utilities; 185 affected tests PASS; Q7's documented Yes default applied |
 | 3 | C4 neutral draft | integrated `049a95c`; 329 affected tests PASS on v2 (193 Core + 1 Chat + 135 UI); compatible choices/files and v1/v4, supported effort retained per DESIGN |
-| 3 | B4 model and effort pickers | integrated `d727e87`; 140 affected tests PASS on v2, including Recent/rail keyboard regression; D-109 preserves the read-only header |
+| 3 | B4 model and effort pickers | integrated `d727e87`; 140 offscreen tests PASS. Native model panel crashes; candidate `5263f1e` still FAIL, warm follow-up active. D-109 header stays read-only |
 | 3 | D1 Codex sessions · D2 Codex reader and deletion | queued after P0 |
-| 3 | B5a Home/project/draft · B5b session surfaces | B5a starting from `d727e87`; B5b queued |
+| 3 | B5a Home/project/draft · B5b session surfaces | B5a `786511e` in review (345 UI run FAIL test-state collision, affected serialized12 PASS); B5b running from `5263f1e` |
 | 3 | B5c Settings, sheets, palette, menus and About | integrated `7f77000`; 97 affected tests PASS (one corpus measurement skipped), six controlled theme renders; native/window/energy remain pooled |
 | 4 | E1 opencode · E2 agy · E3 pi · F1 send · F2 Changes → session · G1 Remora backends · H1 usage · I1 names | queued |
 | 5 | Z the gate, the optimizer, the release | planner |
 
 ## Open notes for the planner
+
+- **Native pool opened (28 Oct):** window cell `check-20261028T223242-27601.log` is FAIL: one obsolete sidebar-label expectation among33 UI tests (other32 and2 terminal raster/draw tests pass). Separately the actual model panel crashes. Exact signed-app driver reproduces it before and after the first candidate; intrinsic-only sizing is insufficient. Follow-up/controller candidate and scoped rechecks are pending. `evidence/r9/idle-pool-20261028/REPORT.md` records the CUA post-crash unflagged relaunch/default Dev WAL incident and guarded harness; do not claim user-data invariance for that incident. Subsequent drivers verify default metadata unchanged.
 
 - **B4 accepted (28 Oct):** `d727e87` combines the original picker slice and planner-found Recent/rail navigation fix. Integrated-tree check `check-20261028T222811-26551.log` passes 140 tests (7 Core + 133 UI) in the 11 intended suites. Native/physical keyboard/VoiceOver/energy remain named pool items; no new whole-pool repeat. Report: `evidence/r9/b4/REPORT.md`.
 
