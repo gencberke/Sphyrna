@@ -24,8 +24,8 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | Wave | Slice | Status |
 | --- | --- | --- |
 | 0 | B0 the reference in Ink v4 | integrated `5ba94f1` (approved by `@user`, D-106, with the planner's fixes: Activity marks, the two pickers) |
-| 0 | P0 Codex spike | queued: needs `@user`'s word on Q13 and a signed-in isolated Codex home |
-| 0 | P1 opencode, agy, pi spike | queued: needs Q13 and isolated profiles |
+| 0 | P0 Codex spike | ready under D-108: ≤15 short isolated turns; existing auth file is present in `~/.loom-dev/codex-home`, login validity not yet verified |
+| 0 | P1 opencode, agy, pi spike | real-turn permission D-108 (≤5 each); prepare isolated profiles, user signs in when needed |
 | 1 | A1 project reorder | integrated `075cd7d` (after review: rows are direct list children again, `SidebarPagingTests`; the released gap holds until the order lands); a by-hand drag check waits for the gate |
 | 1 | C1 harness catalogue | integrated `59e300e` (with the planner's fix: opencode has no doctor until P1) |
 | 1 | B1 v4 tokens and controls | integrated `fe6f102` + `a81e2c0` (tokens, six button roles at four sizes, the focus halo, three elevations); its rest is closed by B1b |
@@ -43,6 +43,8 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 5 | Z the gate, the optimizer, the release | planner |
 
 ## Open notes for the planner
+
+- **Continuous resume and test budget (D-108, 28 Oct):** Mac idle and AC attached; run the accumulated native/window/visual/energy pool at a worthwhile integrated point. Real isolated turns are authorized: Codex ≤15, opencode/agy/pi ≤5 each; record every turn in `evidence/r9/REAL-TURN-BUDGET.md` and provider reports. The user performs any login; no release/install authority was added.
 
 - **C4 paused by @user (28 Oct):** checkpoint `ed11c72` + functional-wire restoration `b3d9828`, clean in `wt/r9-c4`.
   No active process/check. Last combined affected run (`check-20261028T142550-98156.log`) passed 116 Core + 1 Chat;

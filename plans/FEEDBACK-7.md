@@ -159,3 +159,5 @@ effort become two pickers. Q7–Q13 are still open.
 | Q11 | The closing `@optimizer` review (D-06) before 1.8.0 ships | Yes, on Opus 5.5 `max` or `gpt-6-astra` `xhigh` |
 | Q12 | The app file and the executable become `Sphyrna` (D-103 Q4: "with 1.8.0 after a migration check"); the bundle id and the data folder stay | Yes, after the migration check in I1 |
 | Q13 | Short real turns of `codex`, `opencode`, `agy` and `pi` for the spikes and the acceptance checks, as short real-Claude turns already are (DEVELOPMENT §4 allows Claude only). Each runs in an isolated profile that `@user` signs in to once; the CLIs' own logins are never handled by an agent | Yes, short turns, counted in each report |
+
+**Q13 resolved, 28 Oct (D-108):** explicitly authorized for this continuation, at most 15 short Codex turns and 5 each for opencode, agy and pi; isolated profiles only, user-owned login, every turn counted. The idle Mac/power-adapter confirmation also permits the planner’s accumulated window/visual/energy pool.

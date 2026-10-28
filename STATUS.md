@@ -1,10 +1,11 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-28, 21:27 +03.
+- **Updated:** 2026-10-28, 21:34 +03.
 - **State:** `waiting for implementation`. @user resumed continuous iteration and declared the Mac idle for testing.
   The same C4 agent resumes `wt/r9-c4` at `b3d9828`; independent B5c runs from `4bebd8e`. The planner owns review,
   integration and the pooled idle gate. Two slices at most; all builds stay serialized.
-  Window, visual, energy and pooled checks are authorized while idle; real non-Claude CLI turns still follow Q13/isolation.
+  Window, visual, energy and pooled checks are authorized while idle; AC power verified. D-108 grants real isolated turns:
+  Codex ≤15, opencode/agy/pi ≤5 each; count in the shared budget ledger. User handles any required isolated login.
 - **Where we left off:** C4 checkpoint `b3d9828` on `slice/r9-c4` (WIP `ed11c72` plus restored functional wire code), clean.
   Last broad affected run: 116 Core + 1 Chat passed; 130 UI ran with one old-file fixture failure. That fixture was corrected
   but not rerun. V4 non-Claude wire routing was added later and is unverified. Never treat this checkpoint as PASS/integrated.
@@ -91,14 +92,14 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
      The same `c4_core` agent is running from its BRIEF.md and PAUSED.md. First obtain failing-first v4 wire
      evidence, restore the functional code, rerun the corrected legacy fixture and affected combined suites including
      v2/v3 control routing. Then review the diff/evidence before integration; B4 waits for accepted C4. No full-pool repeat.
-     P0/P1 still need explicit real-CLI permission and isolated sign-ins.
+     D-108 grants P0/P1 real-turn permission; verify the isolated profiles and count turns before their actual runs.
   2. Carry B1b's layout-bound control migrations to B5 (its report); do not reopen the shared family to change a surface layout.
   3. Use the newly authorized idle window for the accumulated native visual/keyboard/VoiceOver, inspector/working-indicator
      and energy checks at a worthwhile pooled point. All builds remain serialized. The earlier corrected off-screen pool
      is done; do not repeat it merely because a scoped fix landed. No install/release authority was added.
 - **`@user`:**
   1. Optional answers/objections to Q8–Q12 of [FEEDBACK-7](plans/FEEDBACK-7.md#decisions-open); silent items take their
-     documented defaults at slice start. Q13 needs actual real-CLI permission and isolated sign-ins before P0/P1.
+     documented defaults at slice start. Q13 is authorized by D-108; isolated sign-ins remain user-owned when needed.
   2. Optional: object to the small calls taken at review (B1 and C2b's "Decisions taken" in their reports), such as hiding,
      not disabling, the sidebar's New session row when Claude cannot start.
   3. Still open from before: the push of `v1.6.0`–`v1.7.2` and the GitHub release; the Trash folders of 22, 25, 26 and 28 Oct.
