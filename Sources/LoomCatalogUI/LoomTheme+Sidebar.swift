@@ -1,9 +1,7 @@
 import LoomCore
 import SwiftUI
 
-/// The sidebar in Ink (DESIGN §2 items 1, 3, 4 and 5, §6 Rows and Project colour; A1 and A2 of the reference): the header row,
-/// the search door, the Home and New session rows, the list's heading, the project head, the session line and the activity card,
-/// and the footer. Colours, hairlines and text tones are the shared tokens; the pill is `LoomTheme.Highlight`.
+/// Ink v4's sidebar (DESIGN §0.5): the search door, nav, headings, project heads, cards and retained footer.
 extension LoomTheme {
     enum Sidebar {
         // MARK: Header (52 pt): the window buttons' clearance and the sidebar toggle
@@ -11,15 +9,16 @@ extension LoomTheme {
         /// The toggle sits at the trailing end, as in the reference.
         static let headerTrailing: CGFloat = 12
 
-        // MARK: The search door (30 pt, radius 8, a hairline box)
+        // MARK: The search door (32 pt, radius 8)
 
-        static let doorHeight = InkHeight.field
+        static let doorHeight = InkHeight.standard
         static let doorRadius = InkRadius.row
         /// The door's distance from the sidebar's edges, and below it.
-        static let doorInset: CGFloat = 12
+        static let doorInset: CGFloat = 10
+        static let doorTop: CGFloat = 10
         static let doorBottom: CGFloat = 8
-        static let doorPaddingLeading: CGFloat = 8
-        static let doorPaddingTrailing: CGFloat = 6
+        static let doorPaddingLeading: CGFloat = 10
+        static let doorPaddingTrailing: CGFloat = 8
         static let doorSpacing: CGFloat = 8
         static let doorGlyph = Font.system(size: 13)
         static let doorLabel = InkType.body.font
@@ -38,21 +37,20 @@ extension LoomTheme {
 
         // MARK: The list's heading: the view's name and its action, and the view picker (RESCUE C3)
 
-        static let headingInset: CGFloat = 16
-        static let headingTop: CGFloat = 16
-        /// 8 under the label in both views (the reference's `side-sec`); the first project head adds `firstHeadTop`.
-        static let headingBottom: CGFloat = 8
-        static let headingLabel = InkType.label
-        static let switchGap: CGFloat = 4
-        /// The heading's action and the picker's icons: chrome buttons a size under the toolbar's.
-        static let headingButton = CGSize(width: 22, height: 20)
-        static let headingGlyph = Font.system(size: 11.5, weight: .medium)
-        static let headingActionGap: CGFloat = 4
+        static let headingInset: CGFloat = 18
+        static let headingTrailing: CGFloat = 8
+        static let headingTop: CGFloat = 6
+        static let headingBottom: CGFloat = 2
+        static let headingLabel = Font.system(size: 12, weight: .medium)
+        /// The heading's action and view toggle use the small icon-button size.
+        static let headingButton = CGSize(width: 24, height: 24)
+        static let headingGlyph = Font.system(size: 14)
+        static let headingActionGap: CGFloat = 2
 
         // MARK: A project head (28 pt): its mark, its name, the attention dot; chevron, + and ⋯ on hover
 
-        /// The head's content starts 14 pt in, so the mark's centre sits over the sessions' status column.
-        static let headLeading: CGFloat = 14
+        /// The head's mark begins 10 pt from the list's edge.
+        static let headLeading: CGFloat = 10
         static let headTrailing: CGFloat = 4
         static let headSpacing: CGFloat = 6
         /// The gap above a project head (and the "Sessions" head) that follows a group: the reference's `.pgroup` pads 8 below
@@ -73,18 +71,31 @@ extension LoomTheme {
         static let firstHeadTop: CGFloat = 2
         /// The attention dot at rest sits this far from the head's trailing edge; with the controls shown it sits just before them.
         static let headDotTrailing: CGFloat = 12
-        static let headName = Font.system(size: 12.5, weight: .medium)
+        static let headNameSize: CGFloat = 13
+        static let headName = Font.system(size: headNameSize, weight: .medium)
 
-        // MARK: A session row (project view, 28 pt) and an activity card (radius 10)
+        // MARK: Draft rows and session cards
 
         static let lineRowHeight = InkHeight.sidebarRow
         /// The list stacks its rows, heads and cards with no gap (the reference's `.alist`, `.pgroup`).
         static let listSpacing: CGFloat = 0
-        /// An activity card pads 5 above and 6 below (`.scard`).
-        static let cardTop: CGFloat = 5
-        static let cardBottom: CGFloat = 6
-        /// A session row's, an activity card's and a draft row's leading inset: it puts the status column's centre 22 pt
-        /// from the list's edge, where the subagent branches leave it (`Branches.column`). The trailing inset is `Space.cardH`.
+        /// Cards pad 10 vertically and 12 horizontally; both views use the same geometry.
+        static let cardTop: CGFloat = 10
+        static let cardBottom: CGFloat = 10
+        static let cardInset: CGFloat = 12
+        static let cardTopHeight: CGFloat = 18
+        static let cardTitleHeight: CGFloat = 20
+        static let cardMetaHeight: CGFloat = 16
+        static let cardMarkSide: CGFloat = ProjectMarkStyle.Size.chip.side
+        static let cardMarkGap: CGFloat = 5
+        static let cardStatusSpacing: CGFloat = 4
+        static let cardStatusFont = Font.system(size: 10.5)
+        static var cardSelectedFill: Color { Surface.raised2 }
+        /// The tree's fixed column is shifted to the centre of the card's leading mark.
+        static var cardBranchOffset: CGFloat {
+            cardInset + cardMarkSide / 2 - Branches.column - Branches.lineWidth / 2
+        }
+        /// Activity section headings' leading inset.
         static let rowLeading: CGFloat = 16
         static let lineTitle = InkType.body.font
         static let lineTitleSelected = Font.system(size: 13, weight: .medium)
@@ -97,20 +108,8 @@ extension LoomTheme {
         static let metaMonoFont = InkType.meta.font
         static let metaGlyph = Font.system(size: 10)
         static let metaSpacing: CGFloat = 4
-        /// The harness mark's box on a card is the mark's own 12 pt: one leading edge at 20 after the status column, with the
-        /// title and the lines under it (FB6-2).
-        static var markSlot: CGFloat { Layout.harnessMarkRow }
-        /// Where the name on a card's top line starts, after the mark: the status slot, the mark and two gaps (40). The title
-        /// and the lines under it start at the mark's own edge (`cardTextIndent`).
-        static var titleIndent: CGFloat {
-            Layout.indicatorSlot.width + Layout.harnessMarkRow + 2 * Space.cardSpacing
-        }
-        /// Lines 2 and 3 of a card start under the mark, on one leading edge with it: the status slot and one gap (20), so the
-        /// title and the lines under it share the mark's left edge instead of the name's (FB6-2).
-        static var cardTextIndent: CGFloat { Layout.indicatorSlot.width + Space.cardSpacing }
-
         /// Section headings (Drafts, Active, the days): 11.5 medium tertiary, the count in mono, 6 apart. They start on the
-        /// status column's left edge (`rowLeading` inside the list's inset), pad 12 above (none for the list's first) and 5 below.
+        /// `rowLeading` inside the list's inset, pad 12 above (none for the list's first) and 5 below.
         static let sectionFont = Font.system(size: 11.5, weight: .medium)
         static let sectionCountFont = InkType.meta.font
         static let activityHeadingTop: CGFloat = 12
@@ -153,12 +152,5 @@ extension LoomTheme.ProjectColor {
     /// The selected session's edge: 34 %, 75 % under Increase Contrast.
     static func selectionEdgeStyle(_ tone: ProjectTone) -> LoomTheme.ContrastStyle {
         edge(tone, opacity: selectionEdge, increasedOpacity: selectionEdgeIncreased)
-    }
-}
-
-extension View {
-    /// Draws a text in one of Ink's roles: its face, its tracking and, for the label, capitals.
-    func sidebarType(_ style: LoomTheme.InkStyle) -> some View {
-        font(style.font).tracking(style.trackingPoints).textCase(style.capitals ? .uppercase : nil)
     }
 }

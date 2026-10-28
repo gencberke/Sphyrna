@@ -88,17 +88,16 @@ struct SidebarInkLayoutTests {
         #expect(SidebarListHeading.action(of: .projects) == .addProject && SidebarListHeading.action(of: .activity) == .newSession)
         #expect(SidebarListHeading.Action.addProject.title == "Add Project…")
         #expect(SidebarListHeading.options == [.activity, .projects])
-        #expect(Set(SidebarListHeading.options.map(SidebarListHeading.symbol(of:))).count == 2, "an icon each")
     }
 
     @Test func theRowsAreInksHeightsAndRadii() {
         #expect(LoomTheme.Sidebar.homeRowHeight == 28 && LoomTheme.Sidebar.lineRowHeight == 28)
+        #expect(LoomTheme.Sidebar.headLeading == 10 && LoomTheme.Sidebar.headNameSize == 13)
         #expect(LoomTheme.Highlight.radiusCompact == 8 && LoomTheme.Highlight.radius == 10, "rows 8, activity cards 10")
-        #expect(LoomTheme.Sidebar.doorHeight == 30 && LoomTheme.Sidebar.doorRadius == 8)
+        #expect(LoomTheme.Sidebar.doorHeight == 32 && LoomTheme.Sidebar.doorRadius == 8)
         #expect(LoomTheme.Sidebar.footerHeight == 46)
         #expect(LoomTheme.Sidebar.chipMeter == CGSize(width: 40, height: 4))
-        // The title and the lines under it start under the mark, on one edge: the status slot and one gap, 20 in all (FB6-2).
-        #expect(LoomTheme.Sidebar.cardTextIndent == 20)
+        #expect(LoomTheme.Sidebar.cardInset == 12)
     }
 
     // MARK: The fixes from the lunch pairs (I3f)
@@ -112,8 +111,8 @@ struct SidebarInkLayoutTests {
         #expect(ActivityHeading.top(for: .firstUnlessDrafts, hasDrafts: false) == 0)
         #expect(ActivityHeading.top(for: .firstUnlessDrafts, hasDrafts: true) == 12, "under the Drafts it is a later heading")
         #expect(ActivityHeading.top(for: .later, hasDrafts: false) == 12)
-        // 8 under the label in both views; the first project head adds 2, the heads that follow a group 10.
-        #expect(S.headingBottom == 8)
+        // The heading has 6 above and 2 below; the first project head adds 2, later heads 10.
+        #expect(S.headingTop == 6 && S.headingBottom == 2)
         #expect(ProjectHeader.topGap(isFirst: true) == 2 && ProjectHeader.topGap(isFirst: false) == 10)
     }
 
@@ -131,20 +130,19 @@ struct SidebarInkLayoutTests {
         #expect(LoomTheme.Sidebar.homeGlyphColumn == 16)
     }
 
-    @Test func theListStacksItsEntriesAndTheCardsPadFiveAndSix() {
+    @Test func theListStacksItsEntriesAndTheCardsPadTenAndTwelve() {
         typealias S = LoomTheme.Sidebar
         #expect(S.listSpacing == 0)
-        #expect(S.cardTop == 5 && S.cardBottom == 6)
-        // The trunk of a card's line still starts 7 pt under the status mark's centre, read from the card's own padding.
-        let markCentre = S.cardTop + LoomTheme.Layout.indicatorSlot.height / 2
-        #expect(LoomTheme.Branches.cardTrunkTop == markCentre + 7)
+        #expect(S.cardTop == 10 && S.cardBottom == 10 && S.cardInset == 12)
+        // The branch's stroked centre aligns with the leading mark in both views.
+        #expect(LoomTheme.Branches.column + LoomTheme.Branches.lineWidth / 2 + S.cardBranchOffset
+                == S.cardInset + S.cardMarkSide / 2)
     }
 
-    @Test func theHarnessMarkKeepsItsTwelvePointsAndTheLinesStartUnderIt() {
+    @Test func theCardUsesFourteenPointTopMarksAndTwelvePointTrailingHarnessMarks() {
         typealias S = LoomTheme.Sidebar
-        #expect(S.markSlot == LoomTheme.Layout.harnessMarkRow && S.markSlot == 12)
-        // The name after the mark on the top line (40); the title and the lines under it at the mark's own edge (20).
-        #expect(S.titleIndent == 40 && S.cardTextIndent == 20)
+        #expect(S.cardMarkSide == 14 && LoomTheme.Layout.harnessMarkRow == 12)
+        #expect(S.cardTopHeight == 18 && S.cardTitleHeight == 20 && S.cardMetaHeight == 16)
     }
 
     @Test func aReasonLineDrawsItsCommandInMono() {

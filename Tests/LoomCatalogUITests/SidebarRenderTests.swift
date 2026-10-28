@@ -369,7 +369,7 @@ struct SidebarRenderTests {
 
         // The Active card names the reason after its state; a card in a day section does not.
         let active = try #require(label(hosted, hasPrefix: "Card 12, "))
-        #expect(active.label == "Card 12, Claude, Needs approval, Asks to run: git push origin fix/webhook-sig")
+        #expect(active.label == "Card 12, Claude, Needs you, Needs approval, Asks to run: git push origin fix/webhook-sig")
         let day = try #require(label(hosted, hasPrefix: "Card 11, "))
         #expect(day.label == "Card 11, Claude, Idle")
 
@@ -387,7 +387,7 @@ struct SidebarRenderTests {
         #expect(home.element.accessibilityPerformPress?() == true)
         #expect(model.destination == .home)
 
-        // The minute tick redraws the time labels, never a card, with the reason on screen.
+        // The minute tick redraws the 29 activity-age labels, never a card. The waiting card shows its status instead.
         model.setWindowVisible(true)
         #expect(await waitUntil { hosted.gate.requested.count == 1 })
         try await settle(hosted)
@@ -395,8 +395,9 @@ struct SidebarRenderTests {
         hosted.clock.set(local(10, 12, 1))
         hosted.gate.release()
         #expect(await waitUntil { model.now == local(10, 12, 1) })
-        try await settle(hosted, until: { SidebarRenderProbe.timeLabelTotal == 30 })
+        try await settle(hosted, until: { SidebarRenderProbe.timeLabelTotal == 29 })
         #expect(SidebarRenderProbe.cardTotal == 0, "card bodies evaluated by a minute tick: \(SidebarRenderProbe.cardTotal)")
+        #expect(SidebarRenderProbe.timeLabelTotal == 29)
     }
 
     /// RESCUE C3: both views draw the three-layer card (top line, title, bottom row), the same height.

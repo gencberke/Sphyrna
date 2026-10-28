@@ -114,14 +114,17 @@ struct SubagentTreeTests {
         #expect(SubagentBranches(depths: [1, 1, 1]).height == 72)
     }
 
-    @Test func theBranchesLeaveTheStatusColumnTheRowsAndHeadsDraw() {
-        // The tree has no inset of its own, so the session rows (and the project head's mark above them) must centre
-        // their status column on the first branch's line; an activity card's line starts 7 pt under its mark.
+    @Test func theBranchesLeaveTheSessionMarkColumn() {
+        // The card and its tree share the mark's centre. The project head's larger mark sits one point to its left.
         let column = LoomTheme.Branches.column
-        #expect(LoomTheme.Sidebar.rowLeading + LoomTheme.Layout.indicatorSlot.width / 2 == column)
-        #expect(LoomTheme.Sidebar.headLeading + LoomTheme.ProjectMarkStyle.Size.head.side / 2 == column)
+        let markCentre = LoomTheme.Sidebar.cardInset + LoomTheme.Sidebar.cardMarkSide / 2
+        let headCentre = LoomTheme.Sidebar.headLeading + LoomTheme.ProjectMarkStyle.Size.head.side / 2
+        #expect(headCentre == markCentre - 1)
+        #expect(SubagentBranches.x(depth: 1) + LoomTheme.Branches.lineWidth / 2 + LoomTheme.Sidebar.cardBranchOffset
+                == markCentre)
         let trunk = SubagentTrunkShape().path(in: CGRect(x: 0, y: 0, width: 260, height: 60)).boundingRect
         #expect(trunk.minX == column + 0.5 && trunk.minY == LoomTheme.Sidebar.cardTop + 8 + 7 && trunk.maxY == 60)
+        #expect(trunk.minX + LoomTheme.Sidebar.cardBranchOffset == markCentre)
     }
 
     @Test func eachRowHangsOnABranchAndTheLastOneEnds() {

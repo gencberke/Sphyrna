@@ -191,9 +191,8 @@ struct HighlightTests {
             ("Inspector.sectionGap", LoomTheme.Inspector.sectionGap), ("Inspector.sectionTitleGap", LoomTheme.Inspector.sectionTitleGap),
             ("Inspector.agentIndent", LoomTheme.Inspector.agentIndent),
             ("Sidebar.homeRowInset", LoomTheme.Sidebar.homeRowInset), ("Sidebar.homeRowSpacing", LoomTheme.Sidebar.homeRowSpacing),
-            ("Control.badgePaddingH", LoomTheme.Control.badgePaddingH), ("Sidebar.doorInset", LoomTheme.Sidebar.doorInset),
+            ("Control.badgePaddingH", LoomTheme.Control.badgePaddingH),
             ("Sidebar.doorBottom", LoomTheme.Sidebar.doorBottom), ("Sidebar.doorSpacing", LoomTheme.Sidebar.doorSpacing),
-            ("Sidebar.headingInset", LoomTheme.Sidebar.headingInset),
             ("Sidebar.headTrailing", LoomTheme.Sidebar.headTrailing), ("Sidebar.headerTrailing", LoomTheme.Sidebar.headerTrailing),
             ("Sidebar.metaSpacing", LoomTheme.Sidebar.metaSpacing),
             ("Chat.columnPadding", LoomTheme.Chat.columnPadding), ("Chat.workRowPaddingH", LoomTheme.Chat.workRowPaddingH),
@@ -211,6 +210,8 @@ struct HighlightTests {
         for (name, value) in moved {
             #expect(value.truncatingRemainder(dividingBy: 4) == 0 || value == 2, "\(name) is \(value)")
         }
+        // The v4 reference sets the search and heading insets optically at 10 and 18 pt.
+        #expect(LoomTheme.Sidebar.doorInset == 10 && LoomTheme.Sidebar.headingInset == 18)
     }
 
     @Test func theShellGeometryIsInks() {

@@ -49,7 +49,7 @@ struct ShellSeamsTests {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let model = model(at: root)
-        #expect(model.sidebarAppearance == .standard, "the canvas, opaque (D-81)")
+        #expect(model.sidebarAppearance == SidebarAppearance(fill: .raised), "the lifted sidebar, opaque")
 
         model.setSidebarFill(.raised)
         model.setSidebarOpacity(.sixtyFive)
@@ -71,18 +71,18 @@ struct ShellSeamsTests {
         #expect(again.sidebarAppearance == SidebarAppearance(fill: .canvas, opacity: .eighty))
     }
 
-    /// DESIGN §2 item 2 (FB6-6, D-81): the sidebar is Canvas at Solid for a fresh or missing preference, and a stored choice
+    /// DESIGN §0.5: the sidebar is Raised at Solid for a fresh or missing preference, and a stored choice
     /// is kept. A user who chose Glass or Transparent keeps the look they had, as Canvas at 80 %; the two newer keys win.
-    @Test func aFreshOrMissingSidebarPreferenceIsCanvasAtSolidAndAStoredChoiceIsKept() throws {
-        #expect(UIPreferences().sidebarFill == .canvas && UIPreferences().sidebarOpacity == .solid)
+    @Test func aFreshOrMissingSidebarPreferenceIsRaisedAtSolidAndAStoredChoiceIsKept() throws {
+        #expect(UIPreferences().sidebarFill == .raised && UIPreferences().sidebarOpacity == .solid)
         let freshPreferences = try JSONDecoder().decode(UIPreferences.self, from: Data("{}".utf8))
-        #expect(freshPreferences.sidebarFill == .canvas && freshPreferences.sidebarOpacity == .solid)
+        #expect(freshPreferences.sidebarFill == .raised && freshPreferences.sidebarOpacity == .solid)
         let oddPreferences = try JSONDecoder().decode(UIPreferences.self, from: Data(#"{"sidebarStyle": "frosted"}"#.utf8))
         #expect(oddPreferences.sidebarFill == .canvas && oddPreferences.sidebarOpacity == .solid)
 
         let stored = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: stored) }
-        #expect(model(at: stored).sidebarAppearance == .standard, "no file at all")
+        #expect(model(at: stored).sidebarAppearance == SidebarAppearance(fill: .raised), "no file at all")
         try Data(#"{"sidebarStyle": "glass"}"#.utf8).write(to: stored.appendingPathComponent("ui-preferences.json"))
         #expect(model(at: stored).sidebarAppearance == SidebarAppearance(opacity: .eighty),
                 "a stored Glass reads as Canvas at 80 %")
@@ -120,7 +120,7 @@ struct ShellSeamsTests {
                 && again == preferences)
 
         let old = try JSONDecoder().decode(UIPreferences.self, from: Data("{}".utf8))
-        #expect(old.sidebarFill == .canvas && old.sidebarOpacity == .solid && old.launchView == .lastSession
+        #expect(old.sidebarFill == .raised && old.sidebarOpacity == .solid && old.launchView == .lastSession
                 && old.inspectorOpen.isEmpty)
         let odd = try JSONDecoder().decode(
             UIPreferences.self,

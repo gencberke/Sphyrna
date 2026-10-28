@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The sidebar's search field is the command palette's door (DESIGN §2 item 3, V2-PLAN §14): a 30 pt hairline box holding the
+/// The sidebar's search field is the command palette's door (DESIGN §0.5): a 32 pt field holding the
 /// search glyph, "Search" and ⌘K in mono at its trailing end. A click runs what ⌘K runs. It filters nothing itself: the palette
 /// finds a session by its title, provider and project, and by its text.
 struct SearchDoor: View {
@@ -53,13 +53,13 @@ private struct SearchDoorStyle: ButtonStyle {
         var body: some View {
             let shape = RoundedRectangle(cornerRadius: LoomTheme.Sidebar.doorRadius)
             // Increase Contrast already draws the raised edge; the stronger step would be weaker than it.
-            let edge: AnyShapeStyle = hovering && contrast != .increased
-                ? AnyShapeStyle(LoomTheme.Surface.strongerHairline) : AnyShapeStyle(LoomTheme.Surface.strongEdgeStyle)
+            let edge: AnyShapeStyle = contrast == .increased ? AnyShapeStyle(LoomTheme.Surface.strongEdgeStyle)
+                : hovering ? AnyShapeStyle(LoomTheme.Surface.strongerHairline) : AnyShapeStyle(LoomTheme.Surface.inputEdge)
             configuration.label
                 .padding(.leading, LoomTheme.Sidebar.doorPaddingLeading)
                 .padding(.trailing, LoomTheme.Sidebar.doorPaddingTrailing)
-                .frame(height: LoomTheme.Sidebar.doorHeight)
-                .background(shape.fill(configuration.isPressed ? LoomTheme.Highlight.pressed : .clear))
+                .frame(maxWidth: .infinity).frame(height: LoomTheme.Sidebar.doorHeight)
+                .background(shape.fill(configuration.isPressed ? LoomTheme.Highlight.pressed : LoomTheme.Surface.inputFill))
                 .overlay(shape.strokeBorder(edge, lineWidth: LoomTheme.Line.hairline))
                 .controlFocusRing(
                     visible: ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled),

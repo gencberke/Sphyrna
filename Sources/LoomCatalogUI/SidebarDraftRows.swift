@@ -32,7 +32,6 @@ struct DraftRow: View {
         let title = Self.title(of: draft)
         let project = model.draftProject(draft.projectID)?.name
         HStack(spacing: LoomTheme.Space.cardSpacing) {
-            Color.clear.frame(width: LoomTheme.Layout.indicatorSlot.width, height: LoomTheme.Layout.indicatorSlot.height)
             Button { model.showDraft(id: draft.id) } label: {
                 HStack(spacing: LoomTheme.Space.cardSpacing) {
                     Text(title)
@@ -56,7 +55,7 @@ struct DraftRow: View {
                 .accessibilityLabel("Discard draft")
             }
         }
-        .padding(.leading, LoomTheme.Sidebar.rowLeading).padding(.trailing, LoomTheme.Space.cardH)
+        .padding(.horizontal, LoomTheme.Sidebar.cardInset)
         .frame(height: LoomTheme.Sidebar.lineRowHeight)
         .rowPill(selected: selected, radius: LoomTheme.Highlight.radiusCompact, key: "sidebar-draft:\(draft.id)")
         .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radiusCompact))

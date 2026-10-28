@@ -107,9 +107,11 @@ struct RowButtonStyle: ButtonStyle {
     var key: String?
     /// The selected session's project tone (a session row or card only; nil is the neutral selected fill).
     var tint: ProjectTone?
+    /// Session cards use the sidebar's neutral raised surface; other row families keep their own selection.
+    var sidebarCard = false
 
     func makeBody(configuration: Configuration) -> some View {
-        Row(configuration: configuration, selected: selected, radius: radius, key: key, tint: tint)
+        Row(configuration: configuration, selected: selected, radius: radius, key: key, tint: tint, sidebarCard: sidebarCard)
     }
 
     private struct Row: View {
@@ -118,6 +120,7 @@ struct RowButtonStyle: ButtonStyle {
         let radius: CGFloat?
         let key: String?
         let tint: ProjectTone?
+        let sidebarCard: Bool
         @State private var hovering = false
         @Environment(\.isEnabled) private var enabled
         @Environment(\.isFocused) private var focused
@@ -129,7 +132,13 @@ struct RowButtonStyle: ButtonStyle {
                     selected: selected, hovering: hovering || LookEvidence.forcesHover(key),
                     pressed: configuration.isPressed, enabled: enabled)
                 configuration.label
-                    .background(RowHighlight(state: state, radius: radius, tint: tint))
+                    .background {
+                        if sidebarCard {
+                            SidebarCardHighlight(state: state, radius: radius)
+                        } else {
+                            RowHighlight(state: state, radius: radius, tint: tint)
+                        }
+                    }
                     .controlFocusRing(visible: ring, radius: radius)
                     .onHover { hovering = $0 }
             } else {
@@ -140,6 +149,28 @@ struct RowButtonStyle: ButtonStyle {
                     .padding(-LoomTheme.Space.rowFocusOutset)
             }
         }
+    }
+}
+
+/// The sidebar card alone uses v4's raised neutral selection at elevation 2.
+private struct SidebarCardHighlight: View {
+    let state: HighlightState
+    let radius: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: radius)
+        let selected = state == .selected
+        let fill = selected ? LoomTheme.Sidebar.cardSelectedFill
+            : contrast == .increased ? state.fill.opacity(LoomTheme.Highlight.increasedFillScale) : state.fill
+        let edge = selected ? AnyShapeStyle(LoomTheme.Surface.strongEdgeStyle) : AnyShapeStyle(LoomTheme.Surface.hairlineStyle)
+        shape.fill(fill)
+            .depth(selected ? LoomTheme.Elevation.lift : LoomTheme.Elevation.card)
+            .overlay(shape.strokeBorder(edge, lineWidth: LoomTheme.Line.hairline)
+                .opacity(state.drawsStroke(for: contrast) ? 1 : 0))
+            .animation(LoomTheme.Motion.animation(.selection, reduceMotion: reduceMotion), value: state)
+            .allowsHitTesting(false).accessibilityHidden(true)
     }
 }
 

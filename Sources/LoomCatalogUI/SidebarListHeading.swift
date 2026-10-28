@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// The list's heading (DESIGN §2 item 3, RESCUE C3): the current view's name once, beside it that view's own action (Add Project in
-/// Projects, New Session in Activity), and at the trailing end the view picker, a separate compact control of two icon buttons.
-/// A click on an icon switches the view, as ⌘2 and ⌘1 do. To assistive technologies the picker is a two-option control.
+/// The list's heading: the current view's name, then the view toggle and its action at the trailing end.
+/// To assistive technologies the toggle is a two-option control, as the keyboard's ⌘1 and ⌘2 are.
 struct SidebarListHeading: View {
     let model: CatalogModel
 
@@ -14,15 +13,7 @@ struct SidebarListHeading: View {
         }
     }
 
-    /// The picker's icon for a view.
-    static func symbol(of mode: CatalogViewMode) -> String {
-        switch mode {
-        case .projects: "folder"
-        case .activity: "clock"
-        }
-    }
-
-    /// The view's own action beside its name.
+    /// The view's own action.
     enum Action: Equatable {
         case addProject
         case newSession
@@ -58,10 +49,12 @@ struct SidebarListHeading: View {
         let action = Self.action(of: mode)
         HStack(spacing: LoomTheme.Sidebar.headingActionGap) {
             Text(Self.name(of: mode))
-                .sidebarType(LoomTheme.Sidebar.headingLabel)
-                .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                .font(LoomTheme.Sidebar.headingLabel)
+                .foregroundStyle(LoomTheme.Text.secondaryStyle)
                 .lineLimit(1)
                 .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: LoomTheme.Space.headerSpacing)
+            ViewPicker(model: model)
             if Self.isOffered(action, on: model) {
                 Button { Self.perform(action, on: model) } label: {
                     Image(systemName: action.symbol).font(LoomTheme.Sidebar.headingGlyph)
@@ -73,10 +66,9 @@ struct SidebarListHeading: View {
                 .accessibilityLabel(action.title)
                 .accessibilityIdentifier("sidebar-heading-action")
             }
-            Spacer(minLength: LoomTheme.Space.headerSpacing)
-            ViewPicker(model: model)
         }
-        .padding(.horizontal, LoomTheme.Sidebar.headingInset)
+        .padding(.leading, LoomTheme.Sidebar.headingInset)
+        .padding(.trailing, LoomTheme.Sidebar.headingTrailing)
         .padding(.top, LoomTheme.Sidebar.headingTop)
         .padding(.bottom, LoomTheme.Sidebar.headingBottom)
     }
@@ -105,23 +97,18 @@ struct SidebarListHeading: View {
     }
 }
 
-/// The view picker: an icon button per view, the chosen one drawn selected. It reads the view mode and nothing else.
+/// One toggle changes the view; the accessible representation keeps the two-option picker.
 struct ViewPicker: View {
     let model: CatalogModel
 
     var body: some View {
         let mode = model.viewMode
-        HStack(spacing: LoomTheme.Sidebar.switchGap) {
-            ForEach(SidebarListHeading.options, id: \.self) { option in
-                Button { model.setViewMode(option) } label: {
-                    Image(systemName: SidebarListHeading.symbol(of: option)).font(LoomTheme.Sidebar.headingGlyph)
-                }
-                .buttonStyle(ChromeButtonStyle(selected: mode == option, size: LoomTheme.Sidebar.headingButton,
-                                               key: "sidebar-view-\(option)"))
-                .focusEffectDisabled()
-                .help(option == .projects ? "Group by project (⌘2)" : "Sort by recent activity (⌘1)")
-            }
+        Button { model.setViewMode(mode == .projects ? .activity : .projects) } label: {
+            Image(systemName: mode == .projects ? "list.bullet" : "sidebar.left").font(LoomTheme.Sidebar.headingGlyph)
         }
+        .buttonStyle(ChromeButtonStyle(size: LoomTheme.Sidebar.headingButton, key: "sidebar-view-toggle"))
+        .focusEffectDisabled()
+        .help(mode == .projects ? "Show activity (⌘1)" : "Show projects (⌘2)")
         .accessibilityRepresentation {
             Picker(SidebarListHeading.switchLabel, selection: Binding(
                 get: { model.viewMode }, set: { model.setViewMode($0) })

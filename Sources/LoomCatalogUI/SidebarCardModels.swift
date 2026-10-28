@@ -70,13 +70,10 @@ extension CatalogModel {
 struct CardModelLabel: View {
     let row: SessionRowModel
     let model: CatalogModel
-    /// From the mark to the name: the title's column on the top line, the meta gap on the bottom row.
-    var spacing: CGFloat = LoomTheme.Sidebar.metaSpacing
-
     var body: some View {
         let provider = row.record.session.provider
-        HStack(spacing: spacing) {
-            HarnessMark(provider: provider)
+        HStack(spacing: LoomTheme.Sidebar.cardMarkGap) {
+            HarnessMark(provider: provider, size: LoomTheme.Sidebar.cardMarkSide)
             if let name = model.cardModels.name(of: row.id, catalog: model.modelCatalog) {
                 Text(name).font(LoomTheme.Sidebar.metaFont).lineLimit(1)
             }

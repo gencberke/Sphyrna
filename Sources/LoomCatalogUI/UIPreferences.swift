@@ -212,8 +212,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     /// existed reads as on. (Open at login is not a preference: the system holds it.)
     public var notifyApprovals: Bool
     /// Settings → Theme → Sidebar (FB6-6, D-57): the fill (Canvas, Raised, Deep) and the opacity (Solid, 90, 80, 65 %). A file
-    /// written before the setting existed, or by 1.7.0, reads as Canvas at Solid (D-81), except a stored `transparent` or
-    /// `glass`, which reads as Canvas at 80 %.
+    /// written before the setting existed uses Raised at Solid. A stored 1.7.0 style preserves its Canvas fill and opacity.
     public var sidebarFill: SidebarFill
     public var sidebarOpacity: SidebarOpacity
     /// What the window opens on. A file written before the setting existed reads as the last session.
@@ -307,7 +306,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
                 sidebarCollapsed: Bool = false, terminalFontSize: Double = UIPreferences.defaultTerminalFontSize,
                 openTabs: [UUID] = [], windowFrame: WindowFrame? = nil, projectColors: Bool = true,
                 showInMenuBar: Bool = true, notifyApprovals: Bool = true,
-                sidebarFill: SidebarFill = .canvas, sidebarOpacity: SidebarOpacity = .solid,
+                sidebarFill: SidebarFill = .raised, sidebarOpacity: SidebarOpacity = .solid,
                 launchView: LaunchView = .lastSession, inspectorOpen: [UUID] = [],
                 inspectorWidths: InspectorWidths = InspectorWidths(), searchSessionText: Bool = true,
                 newSessionFace: SessionFace = ChatFreeze.readFace(nil),
@@ -340,7 +339,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         // Settings → Theme → Sidebar (FB6-6): the two newer keys win. A file from 1.6.x or 1.7.0 holds one `sidebarStyle` word
         // instead, and keeps the look it had: Solid stays Canvas at Solid, Transparent (or Glass) stays Canvas at 80 %.
-        let legacySidebar = SidebarAppearance.legacy((try? container.decodeIfPresent(String.self, forKey: .sidebarStyle)) ?? nil)
+        let legacyStyle = (try? container.decodeIfPresent(String.self, forKey: .sidebarStyle)) ?? nil
+        let legacySidebar = SidebarAppearance.legacy(legacyStyle)
         // Unknown or missing keys fall back to defaults.
         self.init(
             viewMode: (try? container.decodeIfPresent(CatalogViewMode.self, forKey: .viewMode)) ?? .activity,
@@ -359,7 +359,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
             projectColors: (try? container.decodeIfPresent(Bool.self, forKey: .projectColors)) ?? true,
             showInMenuBar: (try? container.decodeIfPresent(Bool.self, forKey: .showInMenuBar)) ?? true,
             notifyApprovals: (try? container.decodeIfPresent(Bool.self, forKey: .notifyApprovals)) ?? true,
-            sidebarFill: (try? container.decodeIfPresent(SidebarFill.self, forKey: .sidebarFill)) ?? legacySidebar.fill,
+            sidebarFill: (try? container.decodeIfPresent(SidebarFill.self, forKey: .sidebarFill))
+                ?? (legacyStyle == nil ? .raised : legacySidebar.fill),
             sidebarOpacity: (try? container.decodeIfPresent(SidebarOpacity.self, forKey: .sidebarOpacity)) ?? legacySidebar.opacity,
             launchView: (try? container.decodeIfPresent(LaunchView.self, forKey: .launchView)) ?? .lastSession,
             inspectorOpen: ((try? container.decodeIfPresent([Lossy<UUID>].self, forKey: .inspectorOpen)) ?? nil)?

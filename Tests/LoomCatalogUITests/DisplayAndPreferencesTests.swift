@@ -243,7 +243,7 @@ struct DisplayAndPreferencesTests {
         #expect(loaded.current.openTabs == [first, second])
         #expect(loaded.current.viewMode == .projects && loaded.current.sidebarWidth == 340)
         #expect(loaded.current.projectColors == false && loaded.current.notifyApprovals == false)
-        #expect(loaded.current.sidebarFill == .canvas && loaded.current.sidebarOpacity == .solid)
+        #expect(loaded.current.sidebarFill == .raised && loaded.current.sidebarOpacity == .solid)
         #expect(loaded.current.inspectorOpen.isEmpty)
         #expect(loaded.current.launchView == .lastSession)
     }

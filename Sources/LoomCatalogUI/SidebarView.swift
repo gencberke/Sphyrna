@@ -2,6 +2,11 @@ import AppKit
 import LoomCore
 import SwiftUI
 
+extension EnvironmentValues {
+    /// The list viewport, used by the status leaf to stop a clock once its row scrolls out of view.
+    @Entry var sidebarViewportSize: CGSize = .zero
+}
+
 public struct SidebarView: View {
     let model: CatalogModel
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -15,7 +20,7 @@ public struct SidebarView: View {
     public var body: some View {
         VStack(spacing: 0) {
             SidebarHeader(model: model)
-            SearchDoor(model: model)
+            SearchDoor(model: model).padding(.top, LoomTheme.Sidebar.doorTop)
             HomeRow(model: model)
             NewSessionRow(model: model)
             SidebarListHeading(model: model)
@@ -207,6 +212,7 @@ struct SidebarList: View {
                     }
                 }
             }
+            .environment(\.sidebarViewportSize, viewport.size)
         }
         .coordinateSpace(.named(ProjectReorderModel.viewportSpace))
         .onGeometryChange(for: CGSize.self) { $0.size } action: { reorder.viewportSize = $0 }
@@ -262,8 +268,8 @@ struct ActivityList: View {
     }
 }
 
-/// A heading of the activity list (Drafts, Active or a day): 11.5 medium tertiary, the count in mono 6 apart. It starts on the
-/// status column's left edge, pads 12 above and 5 below, and the list's first heading pads nothing above.
+/// A heading of the activity list (Drafts, Active or a day): 11.5 medium tertiary, the count in mono 6 apart.
+/// It pads 12 above and 5 below, and the list's first heading pads nothing above.
 struct ActivityHeading: View {
     /// Where the heading stands in the list.
     enum Position {
@@ -579,16 +585,18 @@ struct SessionListEntry: View {
         VStack(alignment: .leading, spacing: 0) {
             SessionCardView(row: row, model: model)
                 .overlay {
-                    // A card is taller than a 28 pt row: its line leaves the status mark inside it (DESIGN §4).
                     if !subagents.isEmpty {
+                        // The connector starts below the card's content, on the leading mark's centre line.
                         SubagentTrunkShape()
                             .stroke(LoomTheme.Surface.tree, style: StrokeStyle(lineWidth: LoomTheme.Branches.lineWidth))
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
+                            .mask(alignment: .bottom) { Rectangle().frame(height: LoomTheme.Sidebar.cardBottom) }
+                            .offset(x: LoomTheme.Sidebar.cardBranchOffset)
+                            .allowsHitTesting(false).accessibilityHidden(true)
                     }
                 }
             if !subagents.isEmpty {
                 SubagentTreeView(sessionID: row.id, records: subagents, model: model, waiting: SubagentWaiting.ids(in: row.live))
+                    .offset(x: LoomTheme.Sidebar.cardBranchOffset)
             }
         }
     }
@@ -599,9 +607,6 @@ struct SessionListEntry: View {
 struct CardTimeLabel: View {
     let row: SessionRowModel
     let model: CatalogModel
-    /// A selected row on its project's tint reads the time in secondary: tertiary is not promised on a tint.
-    var onTint = false
-
     static func text(for row: SessionRowModel, deleting: Bool, now: Date) -> String {
         deleting ? "Deleting…" : RelativeTime.string(from: row.record.lastActivityAt, to: now)
     }
@@ -610,17 +615,115 @@ struct CardTimeLabel: View {
         let _ = SidebarRenderProbe.timeLabel(row.id)
         Text(Self.text(for: row, deleting: model.isDeleting(row.id), now: model.now))
             .font(LoomTheme.Sidebar.timeFont)
-            .foregroundStyle(onTint ? LoomTheme.Text.secondaryStyle : LoomTheme.Text.tertiaryStyle)
+            .foregroundStyle(LoomTheme.Text.tertiaryStyle)
             .help(row.activityTooltip)
     }
 }
 
-/// The harness's mark on a card or a row: 12 pt, one leading edge with the title and the lines under it at 20 (FB6-2).
+/// The harness's mark: 14 pt on a card's top line, 12 pt at the bottom.
 struct HarnessMark: View {
     let provider: ManagedSession.Provider
+    var size: CGFloat = LoomTheme.Layout.harnessMarkRow
 
     var body: some View {
-        ProviderIcon(provider: provider)
+        ProviderIcon(provider: provider, size: size)
+    }
+}
+
+/// The status at the trailing end of a card's first line. Specific exceptional states keep their precise words.
+struct CardStatus: View {
+    let row: SessionRowModel
+    let model: CatalogModel
+    let indicator: SessionIndicator
+    @Environment(\.indicatorsAnimate) private var indicatorsAnimate
+    @Environment(\.sidebarViewportSize) private var viewportSize
+    @State private var visible = false
+
+    static func word(_ indicator: SessionIndicator) -> String? {
+        switch indicator {
+        case .working: "Working"
+        case .waitingForApproval, .waitingForInput: "Needs you"
+        case .failed: "Failed"
+        case .stopUnverified: "Stop not verified"
+        case .problem: "Problem"
+        case .identityUnclear: "Identity unclear"
+        case .unknown: "State unknown"
+        case .unviewedCompletion: "Finished"
+        case .ready, .idle, .stale, .ended: nil
+        }
+    }
+
+    /// VoiceOver hears the same broad status and the specific reason for a wait.
+    static func accessibilityStatus(_ indicator: SessionIndicator) -> String? {
+        guard let word = word(indicator) else { return indicator.label }
+        guard let detail = indicator.label, detail != word else { return word }
+        return "\(word), \(detail)"
+    }
+
+    private var textColor: Color {
+        switch indicator {
+        case .working: LoomTheme.Text.primary
+        case .waitingForApproval, .waitingForInput, .identityUnclear: LoomTheme.Status.attentionLight
+        case .failed, .stopUnverified, .problem: LoomTheme.Status.failureLight
+        case .unviewedCompletion: LoomTheme.Status.unviewedLight
+        default: LoomTheme.Text.secondary
+        }
+    }
+
+    var body: some View {
+        let viewport = viewportSize
+        let viewportSpace = ProjectReorderModel.viewportSpace
+        HStack(spacing: LoomTheme.Sidebar.cardStatusSpacing) {
+            if model.isDeleting(row.id) {
+                CardTimeLabel(row: row, model: model)
+            } else if let word = Self.word(indicator) {
+                IndicatorView(indicator: indicator)
+                    .environment(\.indicatorsAnimate, indicatorsAnimate && visible)
+                Text(word).font(LoomTheme.Sidebar.cardStatusFont).foregroundStyle(textColor)
+                if indicator == .working, let start = row.live?.turnStartedAt {
+                    CardWorkingElapsed(id: row.id, start: start, visible: visible)
+                }
+            } else {
+                CardTimeLabel(row: row, model: model)
+            }
+        }
+        // Only the intersection Boolean changes: scrolling never propagates geometry into the card or the list.
+        .onGeometryChange(for: Bool.self) { proxy in
+            guard viewport.width > 0, viewport.height > 0 else { return false }
+            return proxy.frame(in: .named(viewportSpace)).intersects(CGRect(origin: .zero, size: viewport))
+        } action: { visible = $0 }
+        .accessibilityHidden(true)
+    }
+}
+
+/// Only this leaf updates on the second: invisible rows, inactive windows and collapsed sidebars do not run a clock.
+struct CardWorkingElapsed: View {
+    let id: UUID
+    let start: Date
+    let visible: Bool
+    @Environment(\.indicatorsAnimate) private var indicatorsAnimate
+    @State private var now = Date()
+
+    private struct TickKey: Equatable {
+        let start: Date
+        let active: Bool
+    }
+
+    var body: some View {
+        let _ = SidebarRenderProbe.timeLabel(id)
+        let key = TickKey(start: start, active: visible && indicatorsAnimate)
+        Text(SubagentTreeContent.duration(from: start, to: now))
+            .font(LoomTheme.Sidebar.timeFont)
+            .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            .task(id: key) {
+                guard key.active else { return }
+                now = Date()
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(1))
+                    guard !Task.isCancelled else { return }
+                    now = Date()
+                }
+            }
     }
 }
 
@@ -665,19 +768,15 @@ struct SessionCardView: View {
         let title = model.title(of: row, repeatsProject: Self.repeatsProject(mode: mode))
         let projectName = model.projectName(for: row.record)
         let origin = model.origin(of: row)
-        // The selected row takes its project's tint; no tone (None, no project, colours off) keeps the neutral fill.
-        let tone = model.projectTone(forProject: row.record.projectID)
-        let onTint = selected && tone != nil
-        // The reason is read from the row's own property: only this card depends on it.
-        // Only a card of the Active section says it; `inActiveSection` is held per row, like the selection.
-        let reasonLine = row.inActiveSection ? SessionReasonLine(row.reason) : nil
+        // The activity view can show the reason; only this row observes it.
+        let reasonLine = mode == .activity ? SessionReasonLine(row.reason) : nil
         // A click in the list never scrolls it (the card is already under the pointer).
         Button { model.selectFromList(row.id) } label: {
-            cardLabel(title: title, indicator: indicator, selected: selected, mode: mode, projectName: projectName,
-                      origin: origin, reasonLine: reasonLine, onTint: onTint)
+            cardLabel(title: title, indicator: indicator, mode: mode, projectName: projectName,
+                      origin: origin, reasonLine: reasonLine)
         }
         .buttonStyle(RowButtonStyle(selected: selected, radius: LoomTheme.Highlight.radius,
-                                    key: "sidebar-card:\(row.id)", tint: tone))
+                                    key: "sidebar-card:\(row.id)", sidebarCard: true))
         .focusEffectDisabled()
         // Resting on the row peeks at its last ask and answer, in its tooltip.
         .modifier(SidebarPeekHover(record: row.record, model: model))
@@ -698,45 +797,42 @@ struct SessionCardView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Self.accessibilityLabel(
-            title: title, provider: row.record.session.provider, status: indicator.label,
+            title: title, provider: row.record.session.provider, status: CardStatus.accessibilityStatus(indicator),
             reason: reasonLine?.text, origin: origin, pinned: row.record.pinned))
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 
-    // MARK: The card, in three layers (RESCUE C3)
+    // MARK: The card (Ink v4)
 
-    /// Top: the status column, then in the activity view the project (its colour mark while project colours are on) and in the
-    /// project view the harness's mark and the model, then the time. Middle: the title, and only in the Active section the reason
-    /// under it. Bottom: the branch (or the origin) and the pin, and in the activity view the harness's mark and the model at the
-    /// trailing end. Every line after the status column starts at the same indent.
+    /// Project or harness and model at the top, the status at the trailing end; title and optional activity reason below;
+    /// branch (or origin) and the harness at the bottom. No status column precedes the title.
     @ViewBuilder
-    private func cardLabel(title: String, indicator: SessionIndicator, selected: Bool, mode: CatalogViewMode,
-                           projectName: String?, origin: SessionOrigin?, reasonLine: SessionReasonLine?,
-                           onTint: Bool) -> some View {
-        let quiet = onTint ? LoomTheme.Text.secondaryStyle : LoomTheme.Text.tertiaryStyle
-        VStack(alignment: .leading, spacing: LoomTheme.Space.cardLineSpacing) {
-            HStack(spacing: LoomTheme.Space.cardSpacing) {
-                IndicatorView(indicator: indicator)
+    private func cardLabel(title: String, indicator: SessionIndicator, mode: CatalogViewMode,
+                           projectName: String?, origin: SessionOrigin?, reasonLine: SessionReasonLine?) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: LoomTheme.Sidebar.cardStatusSpacing) {
                 Group {
                     if mode == .activity {
                         projectLine(name: SessionCardView.projectLabel(mode: mode, name: projectName))
                     } else {
-                        CardModelLabel(row: row, model: model, spacing: LoomTheme.Space.cardSpacing)
+                        CardModelLabel(row: row, model: model)
                     }
                 }
-                .foregroundStyle(quiet)
-                Spacer(minLength: LoomTheme.Space.headerSpacing)
-                CardTimeLabel(row: row, model: model, onTint: onTint)
+                .foregroundStyle(LoomTheme.Text.secondaryStyle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                CardStatus(row: row, model: model, indicator: indicator)
+                    .fixedSize(horizontal: true, vertical: false)
             }
-            titleText(title, indicator: indicator, selected: selected)
-                .padding(.leading, LoomTheme.Sidebar.cardTextIndent)
+            .frame(height: LoomTheme.Sidebar.cardTopHeight)
+            titleText(title, indicator: indicator)
+                .frame(maxWidth: .infinity, minHeight: LoomTheme.Sidebar.cardTitleHeight, alignment: .leading)
             if let reasonLine {
                 // What the session waits for or did last: its own line under the title (D-69), so the card is one line taller
                 // while it needs the user. A command is mono.
                 reasonText(reasonLine)
                     .foregroundStyle(LoomTheme.Text.secondaryStyle).lineLimit(1)
                     .truncationMode(.tail)
-                    .padding(.leading, LoomTheme.Sidebar.cardTextIndent)
+                    .frame(height: LoomTheme.Sidebar.cardMetaHeight, alignment: .leading)
                     .help(reasonLine.help)
             }
             HStack(spacing: LoomTheme.Sidebar.metaSpacing) {
@@ -746,31 +842,28 @@ struct SessionCardView: View {
                         .help(Self.pinnedGlyphHelp(cleanupReviewOffered: model.cleanupReview != nil))
                 }
                 Spacer(minLength: LoomTheme.Space.headerSpacing)
-                if mode == .activity { CardModelLabel(row: row, model: model) }
+                HarnessMark(provider: row.record.session.provider)
             }
-            .foregroundStyle(quiet)
-            .padding(.leading, LoomTheme.Sidebar.cardTextIndent)
+            .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            .frame(height: LoomTheme.Sidebar.cardMetaHeight)
         }
-        .padding(.leading, LoomTheme.Sidebar.rowLeading).padding(.trailing, LoomTheme.Space.cardH)
+        .padding(.horizontal, LoomTheme.Sidebar.cardInset)
         .padding(.top, LoomTheme.Sidebar.cardTop).padding(.bottom, LoomTheme.Sidebar.cardBottom)
         .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radius))
     }
 
-    /// The activity card's top line: the project's colour mark (while project colours are on) and its name; nothing for a
-    /// session without a project.
+    /// A projectless session gets a neutral tray and a name rather than an empty leading area.
     @ViewBuilder
     private func projectLine(name: String?) -> some View {
-        HStack(spacing: LoomTheme.Space.cardSpacing) {
+        HStack(spacing: LoomTheme.Sidebar.cardMarkGap) {
             if let name {
-                // The mark stands in the harness's column, so the name starts where the title does.
-                Group {
-                    if model.projectColorsEnabled {
-                        ProjectMarkView(name: name, tone: model.projectTone(forProject: row.record.projectID), size: .card)
-                    }
-                }
-                .frame(width: LoomTheme.Sidebar.markSlot, alignment: .leading)
-                Text(name).font(LoomTheme.Sidebar.metaFont).lineLimit(1)
+                ProjectMarkView(name: name, tone: model.projectTone(forProject: row.record.projectID), size: .chip)
+            } else {
+                Image(systemName: "tray").font(LoomTheme.Sidebar.metaFont)
+                    .frame(width: LoomTheme.Sidebar.cardMarkSide)
+                    .accessibilityHidden(true)
             }
+            Text(name ?? "No project").font(LoomTheme.Sidebar.metaFont).lineLimit(1)
         }
     }
 
@@ -793,11 +886,11 @@ struct SessionCardView: View {
         }
     }
 
-    private func titleText(_ title: String, indicator: SessionIndicator, selected: Bool) -> some View {
+    private func titleText(_ title: String, indicator: SessionIndicator) -> some View {
         Text(title)
-            .font(selected ? LoomTheme.Sidebar.lineTitleSelected : LoomTheme.Sidebar.lineTitle)
+            .font(LoomTheme.Sidebar.lineTitleSelected)
             .foregroundStyle(indicator == .stale ? LoomTheme.Text.secondary : LoomTheme.Text.primary)
-            .lineLimit(1).truncationMode(.tail)
+            .lineLimit(2).truncationMode(.tail).fixedSize(horizontal: false, vertical: true)
     }
 
     private func reasonText(_ line: SessionReasonLine) -> some View {
