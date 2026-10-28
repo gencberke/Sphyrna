@@ -1,9 +1,9 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-28, 21:58 +03.
-- **State:** `waiting for implementation`. C4/B5c are accepted; B4 runs in its slice and the planner runs P0 evidence (D-108).
+- **Updated:** 2026-10-28, 22:31 +03.
+- **State:** `waiting for implementation`. C4/B5c are accepted; B4 is accepted; B5a is starting and the planner runs P0 evidence/native pool (D-108).
   @user requested continuous iteration and an idle test window; AC power is verified. No pause is active.
-- **Where we left off:** C4 `049a95c` passes the integrated-tree **329 tests** (193 Core + 1 Chat + 135 UI), including v1/v4,
+- **Where we left off:** B4 `d727e87` passes **140 affected tests** including Recent/rail keyboard navigation. C4 `049a95c` passes the integrated-tree **329 tests** (193 Core + 1 Chat + 135 UI), including v1/v4,
   mode/default provenance, old-reader migration, per-harness ownership and the session-service seam. B5c `7f77000` passes
   **97 tests** on top (seven intended suites; one corpus measurement skipped). Physical/native/energy gates remain pooled.
   Codex ≤15 and opencode/agy/pi ≤5 short isolated turns under D-108; count in `evidence/r9/REAL-TURN-BUDGET.md`.
@@ -27,6 +27,7 @@
 | B2 | integrated (`497a962`, `6601d5c`) | v4 cards/search/headings, neutral selection, mark-aligned subagents, viewport-gated working time; scoped off-screen checks pass |
 | C3 | integrated (`365b2d2`, `175f0e2`) | five Connections rows, Home actions, all-id preferences/assets, fresh PATH and serialized health recheck, pending guard and blocked reasons; scoped checks pass |
 | C4 | integrated (`049a95c`) | neutral draft/preset/open choices, compatible files, per-harness memory, cached validation and safe v1/v4 routing; 329 affected tests pass |
+| B4 | integrated (`d727e87`) | separate model/effort pickers, cached search, bounded Recent, coherent rail/keyboard navigation; 140 affected tests pass |
 | B5c | integrated (`7f77000`) | palette activity/scope and outline Clear Memory; existing v4 Settings/menu controls verified; 97 affected tests pass |
 | B3 | integrated (`26acb6c`) | 26 pt full-window status bar, cached limits/popover, bounded working menu, shared awake setting and sidebar Settings/Help; 185 affected tests pass |
 
@@ -44,7 +45,7 @@ after scoped fixes (D-90). No remaining failure from that pool is open.
 
 B1b's earlier full attempt (`check-20261028T090651-12245.log`) remains recorded as interrupted, not passed. The corrected pool
 above closes its pending off-screen run; the shown-window inspector/visual/VoiceOver/energy gates still need an idle Mac.
-No real CLI/model turn, package, install or shown-window check ran in this round.
+Those daytime slices ran no real CLI/model turn, package, install or shown-window check. This resumed continuation has now completed two short isolated Codex turns under D-108; native checks are next.
 
 Reports: `~/Library/Caches/loom-v2/evidence/r9/b2/REPORT.md`, `c3/REPORT.md`, and `b2-c3/REPORT.md` (integration, pooled fixes,
 asset-stage proof and cleanup). Reference frames/marks remain shared; project-head type now matches the 13 pt native token
@@ -60,8 +61,8 @@ as every check used it (swift-png 4.5.2).
 
 | Worktree | Branch | State |
 | --- | --- | --- |
-| `~/Library/Caches/loom-v2/wt/v2` | `v2` | Code checkpoints `049a95c` + `7f77000`; C4/B5c accepted with affected checks |
-| `~/Library/Caches/loom-v2/wt/r9-b4` | `slice/r9-b4` | B4 from `d7f7444`; model/effort picker UI; scratch `build/r9-b4` |
+| `~/Library/Caches/loom-v2/wt/v2` | `v2` | Code checkpoint `d727e87`; C4/B5c/B4 accepted with affected checks |
+| `~/Library/Caches/loom-v2/wt/r9-b5a` | `slice/r9-b5a` | B5a Home/project/draft surfaces from integrated B4; scratch `build/r9-b5a` |
 | `~/Documents/github/loom-dev` | `swarm/1` | The docs mirror (its changes are `v2`'s docs copied over, by design); never build or commit here |
 | `~/Documents/github/loom` | `main` | The public release tree, a separate repository |
 
@@ -72,9 +73,7 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
 ## 3. File locks
 
 - **`@planner`:** canonical records; no implementer edits docs.
-- **B4 (active):** new model/effort picker views/state/theme, header/draft chip adapters, narrow InkOpenState seam and UI tests.
-  No Core/engine, Settings/palette, canonical-doc or probe changes. D-109 resolves the delegated header UX: preserve
-  read-only model/context; the active pair belongs to the draft. Exact scope: `evidence/r9/b4/BRIEF.md`.
+- **B5a (starting):** Home/project/draft presentation and their theme/tests only; exact scope in `evidence/r9/b5a/BRIEF.md`. No picker internals, Core, Settings, session header/inspector, canonical docs or probes.
 - **P0 (@planner):** `evidence/r9/p0/` only; isolated Codex ≤15 short turns, shared budget ledger, no product edits.
   Native test queue: `evidence/r9/idle-pool-20261028/QUEUE.md`.
 - **1.8.0:** each brief's write set. Shared by region: `CatalogModel.swift` (C4, D1, F1); `SidebarView.swift` (B2, B3);
@@ -83,7 +82,7 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
 ## 4. Next actions by role
 
 - **`@planner`:**
-  1. Review B4 as it proceeds: two shared model/effort pickers, keyboard-only selection and availability-aware rows. In parallel
+  1. Review B5a Home/project/draft v4 surfaces as they proceed; B4 is integrated and its slice is eligible for D-107 cleanup. In parallel
      run P0 under D-108; verify the isolated login without handling it, count every real turn. Never attach to/stop a pre-existing daemon.
      Review/integrate each slice and keep builds serialized; no repeated all-target pool for a scoped change.
   2. Carry B1b's layout-bound control migrations to B5 (its report); do not reopen the shared family to change a surface layout.
@@ -97,6 +96,5 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
      not disabling, the sidebar's New session row when Claude cannot start.
   3. Still open from before: the push of `v1.6.0`–`v1.7.2` and the GitHub release; the Trash folders of 22, 25, 26 and 28 Oct.
 - **`@implementer-core`:** C4 complete. D1 waits for P0's verified modes/hooks/ownership/launch evidence.
-- **`@implementer-ink` B4 (warm `b3_ink`):** implement from `evidence/r9/b4/BRIEF.md` in `wt/r9-b4`; per-slice offscreen
-  checks only, planner owns the idle pool. Preserve the read-only header policy (D-109); complete the draft pair. B5a/b follow separately.
+- **`@implementer-ink` B5a (warm `b3_ink`):** implement from `evidence/r9/b5a/BRIEF.md` in `wt/r9-b5a`; narrow offscreen checks only, planner owns the idle pool. Preserve B4's pickers and the read-only header policy (D-109); B5b follows separately.
 - **`@optimizer`:** at the 1.8.0 gate (plans/1.8.0/README.md §4).

@@ -24,7 +24,7 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | Wave | Slice | Status |
 | --- | --- | --- |
 | 0 | B0 the reference in Ink v4 | integrated `5ba94f1` (approved by `@user`, D-106, with the planner's fixes: Activity marks, the two pickers) |
-| 0 | P0 Codex spike | running, planner-owned `evidence/r9/p0/`; D-108 ≤15 isolated turns, auth-file presence confirmed, login validity/behavior pending |
+| 0 | P0 Codex spike | running, planner-owned `evidence/r9/p0/`; D-108 ≤15 isolated turns, read-only probe/login verified; T1/T2 completed, hook/tool events and no-daemon process observed |
 | 0 | P1 opencode, agy, pi spike | real-turn permission D-108 (≤5 each); prepare isolated profiles, user signs in when needed |
 | 1 | A1 project reorder | integrated `075cd7d` (after review: rows are direct list children again, `SidebarPagingTests`; the released gap holds until the order lands); a by-hand drag check waits for the gate |
 | 1 | C1 harness catalogue | integrated `59e300e` (with the planner's fix: opencode has no doctor until P1) |
@@ -37,13 +37,16 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 2 | C3 Connections and Home connect cards | integrated `365b2d2` + `175f0e2`, parent seams `425878a`, `c84572b`, `1d4326d`; 9 core + 76 UI scoped tests pass; pooled guard/expectation fixes closed by `8e6fbf7` (112 affected tests PASS) |
 | 2 | B3 status bar | integrated `26acb6c`; full-width 26 pt bar, cached limits/popover, bounded working menu, shared awake setting and sidebar utilities; 185 affected tests PASS; Q7's documented Yes default applied |
 | 3 | C4 neutral draft | integrated `049a95c`; 329 affected tests PASS on v2 (193 Core + 1 Chat + 135 UI); compatible choices/files and v1/v4, supported effort retained per DESIGN |
-| 3 | B4 model and effort pickers | running on `slice/r9-b4` from `d7f7444`; C4 adapters, approved two-picker UI, D-109 preserves the read-only header; active pickers belong to the draft |
-| 3 | D1 Codex sessions · D2 Codex reader and deletion · B5a/b surfaces | queued |
+| 3 | B4 model and effort pickers | integrated `d727e87`; 140 affected tests PASS on v2, including Recent/rail keyboard regression; D-109 preserves the read-only header |
+| 3 | D1 Codex sessions · D2 Codex reader and deletion | queued after P0 |
+| 3 | B5a Home/project/draft · B5b session surfaces | B5a starting from `d727e87`; B5b queued |
 | 3 | B5c Settings, sheets, palette, menus and About | integrated `7f77000`; 97 affected tests PASS (one corpus measurement skipped), six controlled theme renders; native/window/energy remain pooled |
 | 4 | E1 opencode · E2 agy · E3 pi · F1 send · F2 Changes → session · G1 Remora backends · H1 usage · I1 names | queued |
 | 5 | Z the gate, the optimizer, the release | planner |
 
 ## Open notes for the planner
+
+- **B4 accepted (28 Oct):** `d727e87` combines the original picker slice and planner-found Recent/rail navigation fix. Integrated-tree check `check-20261028T222811-26551.log` passes 140 tests (7 Core + 133 UI) in the 11 intended suites. Native/physical keyboard/VoiceOver/energy remain named pool items; no new whole-pool repeat. Report: `evidence/r9/b4/REPORT.md`.
 
 - **B4 header UX (D-109):** @user delegated the cleanest interaction to the planner; retain the read-only current-model/context header, with model/effort selection in the new-session draft. Shared reference headers are reconciled; do not introduce next-start pending state or terminal command injection.
 
@@ -52,9 +55,9 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 - **C4/B5c accepted (28 Oct):** C4 integrated-tree log `check-20261028T213831-12075.log` passes 329 tests; B5c on top
   passes 97 in `check-20261028T214402-14160.log`. The old-file fixture and v4 work left at the daytime pause are now verified.
   Reports/integration records: `evidence/r9/c4/` and `b5c/`. Source-equivalent slice checkpoints and evidence are preserved;
-  clean integrated worktrees/branches/scratch are removed under D-107. B4 can start. The idle pool must cover the native root,
+  clean integrated worktrees/branches/scratch are removed under D-107. B4 is now accepted. The idle pool must cover the native root,
   Settings tab clicks, inspector/working indicators, palette physical edge clicks, visual pairs and energy; offscreen renders
-  and AX presses do not claim those gates. No real turn has been spent yet.
+  and AX presses do not claim those gates. P0 has now spent two short Codex turns; the shared ledger is authoritative.
 
 - **B3 closed (28 Oct):** integrated-tree check passes **185 tests** (7 core + 178 UI), including the shared offscreen root/popover, limit freshness, menu bounds/actions and unrelated-hook redraw regression: `check-20261028T125618-89179.log`. Report: `~/Library/Caches/loom-v2/evidence/r9/b3/INTEGRATION.md`. Worktree/patch-equivalent branch and 1.7 GB scratch removed; evidence retained. No new whole-pool run or shown-window/real-CLI check (D-90). Next: C4's per-harness draft/store/open choices, then B4's model/effort controls and B5's surface migrations.
 
