@@ -112,10 +112,8 @@ enum NewSessionLayout {
     static let chipSpacing: CGFloat = LoomTheme.Composer.chipGap
 }
 
-/// Mode and model chips and Send: the bar of D-58 without a ring (no session yet) and without +, whose menus need a
-/// session's commands. The chips and their popovers are the live composer's (`ComposerPickers`, D-63; the one model chip, D-75),
-/// opening below their chips in the window's host (`InkOpeners`). Which one is open is `InkOpenState`'s, so the evidence can
-/// open it.
+/// Mode, model and effort chips and Send: the draft's bar has no session ring or command menu. The draft's separate model and
+/// effort pickers open in the window's host; `InkOpenState` also lets evidence open them.
 private struct ComposerBar: View {
     let model: CatalogModel
     let projectID: UUID?
@@ -126,9 +124,12 @@ private struct ComposerBar: View {
     var body: some View {
         let resolved = model.resolvedStart(for: projectID)
         ComposerBarFrame {
-            modeChip(resolved)
+            if let descriptor = HarnessCatalogue.descriptor(for: resolved.harness), !descriptor.modes.isEmpty,
+               HarnessLaunchChoices(harness: resolved.harness).claudeChoices != nil {
+                modeChip(resolved)
+            }
         } trailing: {
-            modelChip(resolved)
+            DraftModelPickers(model: model, projectID: projectID, restoreFocus: restoreFocus)
             SendButton(model: model, projectID: projectID)
         }
         // A popover does not outlive its page: coming back to it finds it shut.
@@ -148,26 +149,6 @@ private struct ComposerBar: View {
             isOpen: openState.draftBinding(.mode, projectID: projectID)) { mode in
             model.setDraftMode(.value(mode.rawValue), projectID: projectID)
         }
-    }
-
-    private func modelChip(_ resolved: ResolvedStart) -> some View {
-        let draft = model.newSession.draft(for: projectID)
-        let catalog = model.modelCatalog
-        let picker = ComposerModelPicker(
-            modelTitle: resolved.modelTitle(in: catalog), effortTitle: resolved.effortTitle,
-            rows: catalog.claudeModels.map { ComposerBarText.ModelRow(value: $0.id, title: $0.title) },
-            chosenModel: resolved.model.value, levels: NewSessionModels.effortLevels, chosenLevel: resolved.effort.value,
-            canResetEffort: (draft?.effortPick ?? .inherit) != .inherit,
-            resetHelp: "Back to the effort this project starts with",
-            // A build that cannot start Codex shows its group off, with the build's own words (DESIGN §8).
-            codexNote: model.newSessionUnavailableReason(.codex) ?? ComposerModelNotes.inNewSession,
-            codexModels: catalog.models(for: .codex))
-        return ComposerModelChip(
-            picker: picker, identifier: "draft-model", help: "Model and effort of the new session",
-            onDraft: true, restoreFocus: restoreFocus, isOpen: openState.draftBinding(.model, projectID: projectID),
-            onPickModel: { value in model.setDraftModel(value.map { .value($0) } ?? .claudeDefault, projectID: projectID) },
-            onPickEffort: { model.setDraftEffort(.value($0), projectID: projectID) },
-            onResetEffort: { model.setDraftEffort(.inherit, projectID: projectID) })
     }
 }
 

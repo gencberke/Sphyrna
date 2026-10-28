@@ -11,7 +11,7 @@ final class InkOpenState {
 
     /// A popover of the draft page.
     enum DraftPopover: Equatable, Sendable {
-        case mode, model
+        case mode, model, effort
         /// The branch or worktree name, from its segment.
         case branchName(BranchKind)
     }
@@ -54,12 +54,13 @@ final class InkOpenState {
 /// Opens the draft page's popovers and the project menu for the development evidence (DEVELOPMENT §5: `draft-popover` and
 /// `project-menu`). It only sets the same flags a click sets.
 public enum InkEvidence {
-    /// `kind`: `model`, `mode`, `branch` (the name popover of the chosen new-branch or new-worktree segment, else New branch) or
+    /// `kind`: `model`, `effort`, `mode`, `branch` (the name popover of the chosen new-branch or new-worktree segment, else New branch) or
     /// `off`. False when `kind` is none of those.
     @MainActor public static func draftPopover(projectID: UUID?, kind: String, model: CatalogModel) -> Bool {
         let state = InkOpenState.shared
         switch kind {
         case "model": state.draft = .init(projectID: projectID, popover: .model)
+        case "effort": state.draft = .init(projectID: projectID, popover: .effort)
         case "mode": state.draft = .init(projectID: projectID, popover: .mode)
         case "branch":
             let chosen = (model.newSession.draft(for: projectID) ?? SessionDraft(projectID: projectID)).branchKind

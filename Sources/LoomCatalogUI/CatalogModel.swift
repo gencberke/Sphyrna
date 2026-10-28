@@ -333,6 +333,8 @@ public final class CatalogModel {
     /// The composer's model lists (D-99): one catalogue for the app, made at install with the connect switch and handed here
     /// (`AppDelegate+Harness`). A model built without the app (a test) has its own. Views read it through their model.
     @ObservationIgnored public var modelCatalog = ModelCatalog()
+    /// The bounded in-memory recents shared by this model's pickers.
+    @ObservationIgnored let modelPickerState = ModelPickerState()
     /// Which CLIs were found on the PATH at the last read (`HarnessAvailabilityReader`, off the main actor; no CLI runs). Nil until a
     /// read has answered. Observed: the lists that show a harness redraw when a reading lands (C2B).
     public internal(set) var harnessAvailability: [HarnessID: HarnessAvailability]?
