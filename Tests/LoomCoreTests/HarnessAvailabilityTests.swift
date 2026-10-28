@@ -86,4 +86,41 @@ struct HarnessAvailabilityTests {
         #expect(rows.first { $0.id == .agy }?.state == .on)
         #expect(rows.first { $0.id == .claude }?.state == .notFound)
     }
+
+    private actor EnvironmentSource {
+        var environment: [String: String]
+        var reads = 0
+        init(_ environment: [String: String]) { self.environment = environment }
+        func set(_ environment: [String: String]) { self.environment = environment }
+        func read() -> LaunchEnvironment.Resolution {
+            reads += 1
+            return LaunchEnvironment.Resolution(environment: environment)
+        }
+    }
+
+    @Test func explicitRecheckFindsAnInstallInANewShellPathDirectory() async throws {
+        let missing = try path(with: [])
+        let installed = try path(with: ["agy"])
+        defer {
+            try? FileManager.default.removeItem(at: missing.folder)
+            try? FileManager.default.removeItem(at: installed.folder)
+        }
+        let source = EnvironmentSource(missing.environment)
+        let supervisor = try ProcessSupervisor(ledger: OwnershipLedger())
+        let toolchains = SystemProviderToolchains(supervisor: supervisor, origin: .development,
+                                                 environmentSource: { await source.read() })
+        let reader = HarnessAvailabilityReader(toolchains: toolchains)
+        let connections = HarnessConnections()
+        #expect(try await reader.read(connections).first { $0.id == .agy }?.isFound == false)
+        await source.set(installed.environment)
+        #expect(try await reader.read(connections).first { $0.id == .agy }?.isFound == false)
+        #expect(await source.reads == 1, "Normal reads reuse the captured shell environment")
+        let checked = try await reader.read(connections, refreshEnvironment: true)
+        #expect(checked.first { $0.id == .agy }?.isFound == true, "Check Again recaptures the shell PATH")
+        #expect(await source.reads == 2)
+        #expect(try await reader.read(connections).first { $0.id == .agy }?.isFound == true)
+        #expect(await source.reads == 2, "Normal reads reuse the new environment after the explicit check")
+        #expect(await toolchains.resolutionCount == 0, "Availability never probes or runs a CLI")
+        _ = await supervisor.shutdown()
+    }
 }

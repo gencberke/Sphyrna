@@ -56,19 +56,22 @@ public struct HarnessAvailability: Equatable, Sendable {
 /// Reads the catalogue's availability from the terminal environment the toolchain resolver already holds (one login shell,
 /// cached after it succeeds): a PATH lookup per harness, no CLI run.
 public struct HarnessAvailabilityReader: Sendable {
-    private let environment: @Sendable () async throws -> [String: String]
+    private let environment: @Sendable (Bool) async throws -> [String: String]
 
     public init(environment: @escaping @Sendable () async throws -> [String: String]) {
-        self.environment = environment
+        self.environment = { _ in try await environment() }
     }
 
     /// The app's reader: `SystemProviderToolchains.terminalEnvironment()`, the same cached environment sessions resolve
     /// their toolchain in, so a harness installed somewhere the login shell knows is found without a second shell.
     public init(toolchains: SystemProviderToolchains) {
-        self.init(environment: { try await toolchains.terminalEnvironment().environment })
+        self.environment = { refresh in
+            if refresh { return try await toolchains.refreshTerminalEnvironment().environment }
+            return try await toolchains.terminalEnvironment().environment
+        }
     }
 
-    public func read(_ connections: HarnessConnections) async throws -> [HarnessAvailability] {
-        HarnessAvailability.all(in: try await environment(), connections: connections)
+    public func read(_ connections: HarnessConnections, refreshEnvironment: Bool = false) async throws -> [HarnessAvailability] {
+        HarnessAvailability.all(in: try await environment(refreshEnvironment), connections: connections)
     }
 }

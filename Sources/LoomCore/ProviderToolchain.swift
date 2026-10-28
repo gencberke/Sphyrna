@@ -205,6 +205,14 @@ public actor SystemProviderToolchains {
         environmentTask = nil
     }
 
+    /// An explicit Check Again recaptures PATH after an installation changed the shell's setup. Normal reads stay cached;
+    /// concurrent asks join the same in-flight shell. No CLI is probed until a caller actually asks for its toolchain.
+    public func refreshTerminalEnvironment() async throws -> LaunchEnvironment.Resolution {
+        environment = nil
+        resolved.removeAll()
+        return try await terminalEnvironment()
+    }
+
     /// Forgets what was resolved for a provider (a launch failed): the next ask resolves again.
     public func invalidate(_ provider: ManagedSession.Provider) {
         resolved[provider] = nil

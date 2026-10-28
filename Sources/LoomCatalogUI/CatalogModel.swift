@@ -1839,18 +1839,20 @@ public final class CatalogModel {
 
     /// Looks the CLIs up on the terminal environment's PATH, off the main actor (no CLI runs). Asked at launch (the install), when a
     /// connect switch changes and on Check Again (`force`), and on app activation, which asks at most once a minute.
-    public func refreshHarnessAvailability(force: Bool = false) {
-        guard let reader = availabilityReader else { return }
+    @discardableResult
+    public func refreshHarnessAvailability(force: Bool = false, refreshEnvironment: Bool = false) -> Task<Void, Never>? {
+        guard let reader = availabilityReader else { return nil }
         let now = currentDate()
-        if !force, let last = availabilityReadAt, now.timeIntervalSince(last) < Self.availabilityInterval { return }
+        if !force, let last = availabilityReadAt, now.timeIntervalSince(last) < Self.availabilityInterval { return availabilityTask }
         availabilityReadAt = now
         let connections = harnessConnections ?? HarnessConnections()
         availabilityTask?.cancel()
         availabilityTask = Task { [weak self] in
-            guard let read = try? await reader.read(connections), !Task.isCancelled, let self else { return }
+            guard let read = try? await reader.read(connections, refreshEnvironment: refreshEnvironment), !Task.isCancelled, let self else { return }
             let next = Dictionary(uniqueKeysWithValues: read.map { ($0.id, $0) })
             if self.harnessAvailability != next { self.harnessAvailability = next }
         }
+        return availabilityTask
     }
 
     private static let availabilityInterval: TimeInterval = 60
