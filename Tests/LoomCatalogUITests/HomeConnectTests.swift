@@ -81,6 +81,7 @@ struct HomeConnectTests {
         #expect(HomeConnect.noticeText(notice.attention) == "Claude · Not found on this Mac. Sessions already listed stay readable.")
         let asks = rig.codex.asks
         model.recheckHarnesses()
+        #expect(await inspectorWaitUntil { !model.harnessRecheckInProgress })
         await rig.model.settle()
         #expect(rig.codex.asks == asks + 1 && rig.claude.asks == 0)
     }

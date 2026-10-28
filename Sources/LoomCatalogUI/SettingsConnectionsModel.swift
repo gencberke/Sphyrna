@@ -66,14 +66,21 @@ public final class HarnessHealthModel {
             return
         }
         guard tasks[provider] == nil || force else { return }
+        _ = startCheck(provider, force: force, afterCurrent: false)
+    }
+
+    private func startCheck(_ provider: ManagedSession.Provider, force: Bool, afterCurrent: Bool) -> Task<Void, Never> {
         checking.insert(provider)
         generation[provider, default: 0] += 1
         let mine = generation[provider]
-        // A forced ask while one runs joins that run (the checker shares it); only the newest ask delivers.
-        tasks[provider] = Task { [checker] in
-            let health = await checker.check(provider, force: force)
+        let task = Task { [checker] in
+            let health: HarnessHealth
+            if afterCurrent { health = await checker.checkAgain(provider) }
+            else { health = await checker.check(provider, force: force) }
             if self.generation[provider] == mine { self.finish(provider, health) }
         }
+        tasks[provider] = task
+        return task
     }
 
     private func finish(_ provider: ManagedSession.Provider, _ health: HarnessHealth) {
@@ -91,8 +98,12 @@ public final class HarnessHealthModel {
         for provider in Self.providers { check(provider, force: force) }
     }
 
-    /// "Check Again": asks now, whatever the floor says.
-    public func checkAgain(_ provider: ManagedSession.Provider) { check(provider, force: true) }
+    /// "Check Again": waits for any older health and probe asks, then asks now past the floor.
+    @discardableResult
+    public func checkAgain(_ provider: ManagedSession.Provider) -> Task<Void, Never>? {
+        guard connections.isConnected(provider) else { check(provider, force: true); return nil }
+        return startCheck(provider, force: true, afterCurrent: true)
+    }
 
     /// The Connections page opened.
     public func pageOpened() { checkAll() }

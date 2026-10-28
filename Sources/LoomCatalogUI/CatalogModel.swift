@@ -336,6 +336,8 @@ public final class CatalogModel {
     /// Which CLIs were found on the PATH at the last read (`HarnessAvailabilityReader`, off the main actor; no CLI runs). Nil until a
     /// read has answered. Observed: the lists that show a harness redraw when a reading lands (C2B).
     public internal(set) var harnessAvailability: [HarnessID: HarnessAvailability]?
+    /// An explicit Check Again is refreshing PATH and provider health.
+    var harnessRecheckInProgress = false
     /// The reader the app installs once the runtime exists (its terminal environment is the runtime's toolchains').
     @ObservationIgnored var availabilityReader: HarnessAvailabilityReader?
     @ObservationIgnored private var availabilityReadAt: Date?

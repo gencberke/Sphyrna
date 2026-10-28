@@ -7,11 +7,8 @@ extension CatalogModel {
     /// Hands the model its health object, once, at install.
     public func installHarnessHealth(_ health: HarnessHealthModel?) { harnessHealth = health }
 
-    /// "Check Again" on Home: every connected harness, asked now whatever the floor says, and the CLIs looked for again (C2B).
-    func recheckHarnesses() {
-        harnessHealth?.checkAll(force: true)
-        refreshHarnessAvailability(force: true)
-    }
+    /// "Check Again" on Home: capture the shell PATH first, then check every connected provider past its floor.
+    func recheckHarnesses() { recheck(providers: HarnessHealthModel.providers) }
 
     /// Opens Settings on the Connections page.
     func showConnections() { onShowSettings?(.connections) }
@@ -39,9 +36,24 @@ extension CatalogModel {
         }
     }
 
-    /// Rechecks provider health where supported and always repeats the PATH lookup.
+    /// Rechecks the shell PATH first, then provider health where supported.
     func recheckHarness(_ id: HarnessID) {
-        if let provider = HarnessCatalogue.descriptor(for: id)?.provider { harnessHealth?.checkAgain(provider) }
-        refreshHarnessAvailability(force: true)
+        let providers = HarnessCatalogue.descriptor(for: id)?.provider.map { [$0] } ?? []
+        recheck(providers: providers)
     }
+
+    /// One explicit recheck at a time. The indicator stays on through the PATH read and the provider checks it starts.
+    private func recheck(providers: [ManagedSession.Provider]) {
+        guard !harnessRecheckInProgress else { return }
+        harnessRecheckInProgress = true
+        let pathRead = refreshHarnessAvailability(force: true, refreshEnvironment: true)
+        let health = harnessHealth
+        Task { [weak self] in
+            if let pathRead { await pathRead.value }
+            let checks = providers.compactMap { health?.checkAgain($0) }
+            for check in checks { await check.value }
+            self?.harnessRecheckInProgress = false
+        }
+    }
+
 }

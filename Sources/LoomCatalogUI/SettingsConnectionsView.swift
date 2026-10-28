@@ -120,8 +120,10 @@ private struct ConnectionDetail: View {
     }
 
     private var checkButton: some View {
-        Button("Check Again") { model.recheckHarness(row.id) }
+        let checking = model.harnessRecheckInProgress || (row.descriptor.provider.map { health.isChecking($0) } ?? false)
+        return Button(checking ? "Checking…" : "Check Again") { model.recheckHarness(row.id) }
             .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
+            .disabled(checking)
             .accessibilityLabel("Check \(row.name) again")
             .accessibilityIdentifier("connection-check-again")
     }

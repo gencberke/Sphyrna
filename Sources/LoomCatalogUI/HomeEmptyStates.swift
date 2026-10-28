@@ -28,7 +28,7 @@ struct HomeCheckAgainButton: View {
     @Environment(\.indicatorsAnimate) private var indicatorsAnimate
 
     var body: some View {
-        let checking = !(model.harnessHealth?.checking.isEmpty ?? true)
+        let checking = model.harnessRecheckInProgress || !(model.harnessHealth?.checking.isEmpty ?? true)
         Button { model.recheckHarnesses() } label: {
             HStack(spacing: LoomTheme.Home.projectGap) {
                 if checking {
