@@ -1,9 +1,9 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-29, 00:13 +03.
-- **State:** `waiting for implementation`. B4's native crash is fixed and accepted; B5a's connected117-test check passes. B5b and P0's owned-remote evidence review are active.
+- **Updated:** 2026-10-29, 00:35 +03.
+- **State:** `waiting for implementation`. B4 and all three B5 presentation slices are integrated; the combined UI/native/energy pool and P0 evidence review are active.
   @user requested continuous iteration and an idle test window; AC power is verified. No pause is active.
-- **Where we left off:** B4 explicit-size fix `0c8a0b2` passes actual signed-app model/effort opening in Ink/Paper, search/Return/Escape and focus restoration in one PID. The guarded run closed cleanly and default Dev metadata stayed unchanged. B5a `e618124` brings Home/project/draft into shared v4 controls. C4 `049a95c` passed 329 affected tests; B5c `7f77000` passed 97. Physical/native/energy gates remain named pool items.
+- **Where we left off:** B4 explicit-size fix `0c8a0b2` passes actual signed-app model/effort opening in Ink/Paper, search/Return/Escape and focus restoration in one PID. The guarded run closed cleanly and default Dev metadata stayed unchanged. B5a `e618124` brings Home/project/draft into shared v4 controls (117 connected tests PASS). B5b `339929d` brings the session/inspector/Agents surfaces into v4 (156 connected tests PASS). Its first-screen RSS is higher; strict baseline timing equivalence remains unproved and in the native performance pool. C4 `049a95c` passed 329 affected tests; B5c `7f77000` passed 97. Physical/native/energy gates remain named pool items.
   Codex ≤15 and opencode/agy/pi ≤5 short isolated turns under D-108; current spending/reservations are in `evidence/r9/REAL-TURN-BUDGET.md`.
 - **Installed:** Sphyrna 1.7.2 (build 10702) in `/Applications/Loom.app`. The CLIs on this Mac: Claude Code 2.1.311,
   Codex 0.164.0, opencode 2.1.4, agy 1.4.5, pi 0.85.1.
@@ -27,6 +27,7 @@
 | C4 | integrated (`049a95c`) | neutral draft/preset/open choices, compatible files, per-harness memory, cached validation and safe v1/v4 routing; 329 affected tests pass |
 | B4 | integrated (`d727e87`, native fix `0c8a0b2`) | separate cached pickers and keyboard navigation; 140 original +47 fix tests pass; actual guarded window/keyboard gate passes |
 | B5a | integrated (`e618124`) | shared Home/project/draft controls and typography; connected 9 Core +108 UI tests pass |
+| B5b | integrated (`339929d`) | header/tabs/cards, cached tool groups and activity-gated Changes clock/spinners; 156 connected tests pass; native/performance limits in report |
 | B5c | integrated (`7f77000`) | palette activity/scope and outline Clear Memory; existing v4 Settings/menu controls verified; 97 affected tests pass |
 | B3 | integrated (`26acb6c`) | 26 pt full-window status bar, cached limits/popover, bounded working menu, shared awake setting and sidebar Settings/Help; 185 affected tests pass |
 
@@ -44,7 +45,7 @@ after scoped fixes (D-90). No remaining failure from that pool is open.
 
 B1b's earlier full attempt (`check-20261028T090651-12245.log`) remains recorded as interrupted, not passed. The corrected pool
 above closes its pending off-screen run; the shown-window inspector/visual/VoiceOver/energy gates still need an idle Mac.
-Those daytime slices ran no real CLI/model turn, package, install or shown-window check. This resumed continuation has submitted four isolated Codex user turns; T4 observed active/idle and post-persistence join, with approval unproved. Vendor automatic model activity is recorded separately. The budget ledger is authoritative.
+Those daytime slices ran no real CLI/model turn, package, install or shown-window check. This resumed continuation has submitted six isolated Codex user turns. T5/T6 verify exact-action approval/resolution and queued delivery on the owned remote route. One auxiliary turn is conservatively held for T4's unmeasured ephemeral activity. The vendor delete leaves shared history and a zero-byte capability file; D2 must respect that boundary. The budget ledger is authoritative.
 
 Reports: `~/Library/Caches/loom-v2/evidence/r9/b2/REPORT.md`, `c3/REPORT.md`, and `b2-c3/REPORT.md` (integration, pooled fixes,
 asset-stage proof and cleanup). Reference frames/marks remain shared; project-head type now matches the 13 pt native token
@@ -60,8 +61,7 @@ as every check used it (swift-png 4.5.2).
 
 | Worktree | Branch | State |
 | --- | --- | --- |
-| `~/Library/Caches/loom-v2/wt/v2` | `v2` | Code checkpoint `e618124`; B4 native gate PASS, B5a connected 117 tests PASS |
-| `~/Library/Caches/loom-v2/wt/r9-b5b` | `slice/r9-b5b` | B5b session surfaces from `5263f1e`; scratch `build/r9-b5b` |
+| `~/Library/Caches/loom-v2/wt/v2` | `v2` | Code checkpoint `339929d`; all B5 code integrated; native visual/energy pool next |
 | `~/Documents/github/loom-dev` | `swarm/1` | The docs mirror (its changes are `v2`'s docs copied over, by design); never build or commit here |
 | `~/Documents/github/loom` | `main` | The public release tree, a separate repository |
 
@@ -72,8 +72,7 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
 ## 3. File locks
 
 - **`@planner`:** canonical records; no implementer edits docs.
-- **B5b (active, warm `c3_ink`):** header/tabs/inspector/Agents/Changes/edges presentation + associated theme/tests only. `SubagentTranscriptView.swift` is included; absent tool duration stays omitted. No picker/Home/draft/engine changes; exact scope `evidence/r9/b5b/BRIEF.md`.
-- **P0 (warm `c4_core`, parent-owned budget):** `evidence/r9/p0/remote-t4/` only; T4 sent once (4 total user turns spent), no further turn without parent reservation; no product edits.
+- **P0 (warm `c4_core`, parent-owned budget):** `evidence/r9/p0/` only; T5/T6 complete (6 total user turns +1 auxiliary held), no further turn without parent reservation; no product edits.
   Native test queue/report: `evidence/r9/idle-pool-20261028/`. Original35-test window cell stays FAIL; obsolete sidebar label corrected with11 scoped tests PASS (`0391807`). B4 original/first/second native candidates failed; explicit geometry `0c8a0b2` now passes the signed guarded driver and actual keyboard actions. See `b4-native-fix/NATIVE-INTEGRATION.md`. The earlier CUA unflagged relaunch touched default Dev WAL/SHM; contents remain unverified, no rollback guessed. Subsequent guarded drivers preserve default metadata.
 - **1.8.0:** each brief's write set. Shared by region: `CatalogModel.swift` (C4, D1, F1); `SidebarView.swift` (B2, B3);
   Settings files (C3, B5c, G1). `Package.swift` belongs to I1 alone.
@@ -81,7 +80,7 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
 ## 4. Next actions by role
 
 - **`@planner`:**
-  1. Review B5b; B5a's connected 117 tests pass and its clean/source-equivalent slice worktree, branch and scratch are removed (recovery evidence retained). P0 zero-turn owned remote receives TUI-created thread identity, but resume before first turn fails no-rollout. T4 confirms active/idle and post-persistence join; approval remains unproved, automatic vendor model activity needs review. Verify the full report before D1. Never attach to/stop a pre-existing daemon.
+  1. Run the accumulated native visual/physical/energy pool on the integrated B5 candidate. B5a/B5b connected checks pass and their clean/source-equivalent slice worktrees, branches and scratch are removed (recovery evidence retained). P0 zero-turn owned remote receives TUI-created thread identity, but resume before first turn fails no-rollout. T5/T6 now confirm exact TUI approval/resolution, waiting flags, and queued delivery after the first turn. Review the final report before D1; production active-join retry/containment and remaining launch/no-tools questions are not yet closed. Never attach to/stop a pre-existing daemon.
      Review/integrate each slice and keep builds serialized; no repeated all-target pool for a scoped change.
   2. Carry B1b's layout-bound control migrations to B5 (its report); do not reopen the shared family to change a surface layout.
   3. Use the newly authorized idle window for the accumulated native visual/keyboard/VoiceOver, inspector/working-indicator
@@ -93,7 +92,7 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
   2. Optional: object to the small calls taken at review (B1 and C2b's "Decisions taken" in their reports), such as hiding,
      not disabling, the sidebar's New session row when Claude cannot start.
   3. Still open from before: the push of `v1.6.0`–`v1.7.2` and the GitHub release; the Trash folders of 22, 25, 26 and 28 Oct.
-- **`@implementer-core` warm `c4_core`:** Finish P0 T4 owned-remote approval/persisted-resume report and cleanup under its one-turn Brief. No production edits. D1 waits for verified modes/ownership/launch evidence.
+- **`@implementer-core` warm `c4_core`:** Finish P0 T5/T6 approval/queue report and cleanup under its two-input Brief. No production edits. D1 waits for verified modes/ownership/launch evidence.
 - **`@implementer-ink` warm `b3_ink`:** B4 native fix and B5a accepted; no further edits, parent owns cleanup and remaining native pool.
-- **`@implementer-ink` warm `c3_ink`:** B5b from `evidence/r9/b5b/BRIEF.md` in `wt/r9-b5b`; narrow offscreen checks only. Preserve D-109 and the bounded transcript feed. No invented tool duration.
+- **`@implementer-ink` warm `c3_ink`:** B5b is integrated and its worktree removed; no further edits. Parent owns the actual native/performance checks. Unknown duration stays omitted.
 - **`@optimizer`:** at the 1.8.0 gate (plans/1.8.0/README.md §4).

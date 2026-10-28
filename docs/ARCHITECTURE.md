@@ -724,6 +724,8 @@ This section maps every UI surface, control, accessibility identifier, keyboard 
 
 ### 11.5 Detail Pane, Header, Tab Strip, Banners, Ended Screen & Record
 
+- **Ink v4 shell (B5b):** header Stop/actions and tabs use 28 pt shared sizes. Resting tabs suppress the legacy ProjectTabStyle wash; selected/hovered tabs retain its project tint on the shared raised/hover surfaces. HeaderModelSegment adds the harness mark to its read-only current values. OpenRequestBox and ChangesNote use activity-gated Braille; ChangesBranchReading creates its one-second TimelineView only while indicatorsAnimate is true. No route or lifecycle policy changes.
+
 - **Files & Types:**
   - `Sources/LoomCatalogUI/DetailView.swift` (`DetailView`, `DetailContent`, `DetailPageChrome`, `ShowSidebarButton`, `AccentButtonStyle`), `DetailRoute.swift` (`DetailRoute`), `Destination.swift` (`Destination`)
   - `Sources/LoomCatalogUI/SessionHeaderViews.swift` (`DetailHeader`, `SessionHeaderRow`, `HeaderFlow`, `HeaderFlowPlan`, `StatePill`, `StatePillStyle`, `ProjectBranchChip`, `SessionHeaderChip`, `HeaderInspectorToggle`, `HeaderControlGroup`, `HeaderSegmentStyle`), `HeaderModelSegment.swift` (`HeaderModelSegment`, `SessionLaunchModels`), `DraftHeaderLine.swift` (`DraftHeaderLine`)
@@ -744,6 +746,8 @@ This section maps every UI surface, control, accessibility identifier, keyboard 
   - `DetailPageChrome` (Home and Project page have no header row): when sidebar is collapsed, an overlay holds traffic-light clearance + `ShowSidebarButton` + "Preparing…" notice (omitted on Project page), and `detailLeadingClearance` (128 pt, or 54 pt in full screen) indents content in the top 52 pt. Banners on these pages get 52 pt top padding (`DetailPageChrome.bannerTop`).
 
 ### 11.6 Inspector (Overview, Changes, Agents, Side)
+
+- **B5b presentation:** OverviewSection supplies raised-1 cards/Label headings/hairlines; OverviewRunValue preserves spoken value order while separating reading names from machine version/effort. SubagentTranscriptModel caches TranscriptLines only on bounded batch/status changes; consecutive calls/results share a disclosure with stable first-call identity, failures expand it and the final Result stays last. Entries have no call IDs/duration: grouping balances stream order, preserves orphan output and omits elapsed tool time. The existing 512 KiB tail +16 KiB head reader and 400-entry ring remain unchanged. Visible-row cold Markdown parsing still occurs in the existing cached renderer on the main actor. The offscreen 8 MiB report records higher first-screen RSS primarily after host creation; strict latency equivalence is unproved and remains a named native-performance check, not a passed claim.
 
 - **Files & Types:**
   - `Sources/LoomCatalogUI/InspectorContainer.swift` (`detailInspector(model:)`, `InspectorPlacement`, `InspectorTabBar`, `InspectorTabStyle`), `InspectorState.swift` (`InspectorState`, `InspectorTab`), `LoomTheme+Inspector.swift` (`LoomTheme.Inspector`, `inspectorOverlays`)

@@ -7,8 +7,8 @@ import SwiftUI
 // `LoomTheme.ProjectColor`'s; whether anything is drawn is decided by `CatalogModel.projectTone(forProject:)`, `projectMark(of:)` and
 // `headerProjectMark(of:)`, which answer no tone while the setting is off. There is no stripe in Ink.
 
-/// How a session tab is tinted by its project (DESIGN §6 Project colour): a wash of the tone on every tab, 6 % at rest, 11 %
-/// under the pointer and 16 % on the open tab, which also gets a 1 pt edge of the tone at 42 % in place of the hairline.
+/// Project tint values for a session tab (DESIGN §6): the v4 tab draws the 11 % hover wash or 16 % selected wash,
+/// with a 1 pt project edge on selection. The tab suppresses the legacy resting wash and stays flat at rest.
 /// No tone, no tint: the tab keeps the neutral fills.
 struct ProjectTabStyle: Equatable {
     /// The wash in Dark; `washColor` is what the tab draws (the tone's own value in each appearance).

@@ -154,6 +154,7 @@ Deletion is an end-to-end state machine persisted in the `deletions` table (`req
   - **Model/context is read-only (D-109):** the header reports this session’s current model/context (or an identified launch choice before a reading). Model and effort selection belongs to the new-session draft. It stores no hidden next-start choice and sends no terminal command.
   - Left: sidebar toggle (when collapsed), `13 pt` harness mark, session title (double-click or `⋯ → Rename` opens Rename sheet), and `22 pt` **State Pill** immediately after the title (`D-74`).
   - Right: model segment (on terminal/record routes), tinted **Project + Branch chip** (clicking opens Project page), Inspector toggle (`⌥⌘B`), and the **`Stop` + `⋯` control group** (ended sessions show `⋯` only).
+- **Ink v4 session presentation (B5b):** Stop/actions and session tabs are 28 pt; resting tabs are transparent, selected tabs use the raised surface and existing project tint. The model/context readout remains read-only. Overview sections use raised cards with Label headings and hairlines.
 - **Session tab strip (`36 pt`, shown when `≥ 2` tabs are open):** Clicking a session opens a transient tab; double-clicking or `Pin Tab` pins it; `⌥⌘W` closes the active tab; verified Stop closes the stopped session's tab (`D-54`). At most 8 tabs are pinned; a ninth evicts the oldest idle one, and is refused with a notice when all 8 are running or need you.
 - **Drag and drop on tabs (W3-b):**
   - A session is a drag source from a sidebar row (both views), a Home row and a tab (`SessionDrag`: its id under `local.loom.desktop.session-reference` and the title as plain text; no path, no file, nothing another app could use to reach the session).
@@ -306,6 +307,8 @@ Deletion is an end-to-end state machine persisted in the `deletions` table (`req
 
 ### 8.4 Inspector: `Agents` Tab (`V09`, `V23`, [D-78](DECISIONS.md))
 - Lists running and finished subagents in a card (`12.5 pt` still running mark (first frame; only a session's own spinner animates, 1.7.1) or `7 pt` waiting dot, type, description, elapsed time). Clicking a subagent widens the inspector to the review width (`556 pt` by default) and opens its live or historical subagent transcript in two voices (prose in SF Pro, tool calls and `⎿` results in SF Mono, ending in `"Result"` or `"Waiting for you"` with `"Show the request"`).
+
+- **Grouped transcript (1.8.0 B5b):** Markdown prose and tables reuse the existing renderer; consecutive tool calls/results fold into one disclosure, errors open it, and the final prose is last under Result. The bounded 400-entry presentation is cached when the feed or status changes. A group says "Ran N tools" only after observed results balance calls in stream order; an outstanding group shows a neutral count. The current entries carry no call IDs or duration, so no identity match or elapsed tool time is invented; unmatched output remains visible, including at the ring boundary.
 
 ### 8.5 Quick Question (`⌘;`, `V22a`)
 - Available on a running Chat-face session (`⌘;` or Command Palette `"Ask a quick question"`). Opens a floating popover card above the composer and sends Claude's `side_question` control request over the parent's cached context (`120 s` timeout, no tools, zero writes to transcript, history, queue, or usage index). `↵` asks, `Esc` closes and discards.

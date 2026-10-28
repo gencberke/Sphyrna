@@ -24,7 +24,7 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | Wave | Slice | Status |
 | --- | --- | --- |
 | 0 | B0 the reference in Ink v4 | integrated `5ba94f1` (approved by `@user`, D-106, with the planner's fixes: Activity marks, the two pickers) |
-| 0 | P0 Codex spike | running, planner-owned `evidence/r9/p0/`; D-108 ≤15 isolated user turns, 4 spent; read-only probe/login, direct TUI/hooks/OSC/resume observed. Owned remote identity/active/idle/post-persistence join verified; pre-first-turn resume fails no-rollout, approval and vendor auto-title cost need review |
+| 0 | P0 Codex spike | running, planner-owned `evidence/r9/p0/`; D-108 ≤15 isolated turns, 6 user inputs +1 auxiliary held; read-only probe/login, direct TUI/hooks/OSC/resume observed. Owned remote identity/active/idle/post-persistence join verified; pre-first-turn resume fails no-rollout, T5/T6 approval/resolution and queued delivery verified; final report/remaining mode and no-tools questions pending |
 | 0 | P1 opencode, agy, pi spike | real-turn permission D-108 (≤5 each); prepare isolated profiles, user signs in when needed |
 | 1 | A1 project reorder | integrated `075cd7d` (after review: rows are direct list children again, `SidebarPagingTests`; the released gap holds until the order lands); a by-hand drag check waits for the gate |
 | 1 | C1 harness catalogue | integrated `59e300e` (with the planner's fix: opencode has no doctor until P1) |
@@ -39,12 +39,14 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 3 | C4 neutral draft | integrated `049a95c`; 329 affected tests PASS on v2 (193 Core + 1 Chat + 135 UI); compatible choices/files and v1/v4, supported effort retained per DESIGN |
 | 3 | B4 model and effort pickers | integrated `d727e87`; 140 offscreen tests PASS. Native fix `0c8a0b2` passes 47 affected tests and actual signed-app/keyboard gate. D-109 header stays read-only |
 | 3 | D1 Codex sessions · D2 Codex reader and deletion | queued after P0 |
-| 3 | B5a Home/project/draft · B5b session surfaces | B5a integrated `e618124`, connected 9 Core +108 UI tests PASS (slice 345 UI run FAIL test-state collision, affected serialized 12 PASS); B5b running from `5263f1e` |
+| 3 | B5a Home/project/draft · B5b session surfaces | B5a integrated `e618124`, connected 9 Core +108 UI tests PASS (slice 345 UI run FAIL test-state collision, affected serialized 12 PASS); B5b integrated `339929d`, connected156 tests PASS; first-screen RSS/timing limits and native gates remain named |
 | 3 | B5c Settings, sheets, palette, menus and About | integrated `7f77000`; 97 affected tests PASS (one corpus measurement skipped), six controlled theme renders; native/window/energy remain pooled |
 | 4 | E1 opencode · E2 agy · E3 pi · F1 send · F2 Changes → session · G1 Remora backends · H1 usage · I1 names | queued |
 | 5 | Z the gate, the optimizer, the release | planner |
 
 ## Open notes for the planner
+
+- **B5b source accepted (29 Oct):** `339929d` passed156 connected UI tests, `check-20261029T003031-71745.log`, on top of B5a/B4 fixes. Slice226 affected tests passed. Repeated8 MiB timings overlap (base median99.12ms, current102.87ms with151.71ms outlier); strict equivalence is unproved. RSS is consistently5.6–6.0MB higher, mostly after host creation in a single diagnostic; denser visible prose supports a rendering contribution but exact cause is unproved. Preserve this named performance limit for the native pool/closing review. Evidence `evidence/r9/b5b/REPORT.md`; clean source-equivalent worktree/branch/scratch removed after bundle verification.
 
 - **Native pool (28–29 Oct):** original window cell `check-20261028T223242-27601.log` remains FAIL (one obsolete sidebar label among33 UI, other32 +2 terminal tests pass). Scoped sidebar correction `0391807` passes11 tests in `check-20261028T233518-51608.log`. B4 intrinsic-only/controller candidates failed natively; explicit dimensions `0c8a0b2` pass actual guarded Ink/Paper panels, search/Return/Escape/focus with process absent/default metadata unchanged after close. See `b4-native-fix/NATIVE-INTEGRATION.md`. The pool REPORT preserves the earlier CUA post-crash unflagged relaunch/default Dev WAL incident; contents invariance cannot be claimed for it. Physical edges, drag/fullscreen, real VoiceOver and energy remain named pending cells.
 
@@ -59,7 +61,7 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
   Reports/integration records: `evidence/r9/c4/` and `b5c/`. Source-equivalent slice checkpoints and evidence are preserved;
   clean integrated worktrees/branches/scratch are removed under D-107. B4 is now accepted. The idle pool must cover the native root,
   Settings tab clicks, inspector/working indicators, palette physical edge clicks, visual pairs and energy; offscreen renders
-  and AX presses do not claim those gates. P0 has submitted four short Codex user turns; vendor automatic model activity is recorded separately; the shared ledger is authoritative.
+  and AX presses do not claim those gates. P0 has submitted six short Codex user inputs and holds one extra conservatively for unmeasured auxiliary activity; the shared ledger is authoritative.
 
 - **B3 closed (28 Oct):** integrated-tree check passes **185 tests** (7 core + 178 UI), including the shared offscreen root/popover, limit freshness, menu bounds/actions and unrelated-hook redraw regression: `check-20261028T125618-89179.log`. Report: `~/Library/Caches/loom-v2/evidence/r9/b3/INTEGRATION.md`. Worktree/patch-equivalent branch and 1.7 GB scratch removed; evidence retained. No new whole-pool run or shown-window/real-CLI check (D-90). Next: C4's per-harness draft/store/open choices, then B4's model/effort controls and B5's surface migrations.
 
