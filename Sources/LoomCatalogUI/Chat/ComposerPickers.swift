@@ -194,7 +194,7 @@ struct ComposerModeChip: View {
                         isOpen = false
                         reset()
                     }
-                    .buttonStyle(.plain).font(LoomTheme.Composer.pickSubtitleFont).foregroundStyle(LoomTheme.OnPopover.accent)
+                    .buttonStyle(ControlButtonStyle(kind: .link, size: .small))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, LoomTheme.Composer.pickInset + LoomTheme.Composer.pickRowInsetH)
                     .padding(.vertical, LoomTheme.Composer.pickRowPaddingV)

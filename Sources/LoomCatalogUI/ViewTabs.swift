@@ -68,7 +68,6 @@ private struct ViewTabStyle: ButtonStyle {
         let key: String
         @State private var hovering = false
         @Environment(\.isFocused) private var focused
-        @Environment(\.colorSchemeContrast) private var contrast
 
         var body: some View {
             let ring = ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled)
@@ -80,12 +79,7 @@ private struct ViewTabStyle: ButtonStyle {
                     Rectangle().fill(LoomTheme.Accent.base).frame(height: LoomTheme.ViewTabs.underline)
                         .opacity(selected ? 1 : 0).accessibilityHidden(true)
                 }
-                .overlay {
-                    RoundedRectangle(cornerRadius: LoomTheme.InkRadius.key)
-                        .strokeBorder(ring ? LoomTheme.Surface.focusRing : .clear, lineWidth: LoomTheme.Line.focusRing(for: contrast))
-                        .padding(.vertical, LoomTheme.ViewTabs.focusInset)
-                        .padding(.horizontal, -LoomTheme.ViewTabs.focusOutset)
-                }
+                .controlFocusRing(visible: ring, radius: LoomTheme.InkRadius.key)
                 .onHover { hovering = $0 }
         }
     }

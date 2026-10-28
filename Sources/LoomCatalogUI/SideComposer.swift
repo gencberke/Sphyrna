@@ -151,11 +151,11 @@ private struct SideComposerBar: View {
             .accessibilityIdentifier("side-model")
             Spacer(minLength: 0)
             if let open {
-                Toggle(SideText.allowEdits, isOn: Binding(
+                InkSwitch(title: SideText.allowEdits, isOn: Binding(
                     get: { live?.allowsEdits ?? false },
                     set: { value in Task { await model.setSideAllowsEdits(value, chat: open.id, in: row.id) } }
-                ))
-                .toggleStyle(ControlSwitchStyle())
+                ), showsLabel: true)
+                .padding(.horizontal, LoomTheme.Side.barLabelPadding)
                 // The permission is the running process's: a closed side chat starts again with edits off.
                 .disabled(live?.isRunning != true)
                 .help(SideText.allowEditsHelp).accessibilityHint(SideText.allowEditsHelp)
@@ -172,47 +172,5 @@ private struct SideComposerBar: View {
         }
         .padding(.horizontal, LoomTheme.Side.barInset)
         .frame(height: LoomTheme.Side.barHeight)
-    }
-}
-
-/// The control family's switch (DESIGN §6 Controls): 28 × 16, the stronger hairline as the track and the accent when on, a white
-/// 12 pt knob. The label comes first, 6 before the track. Keyboard: Space, as for any button.
-struct ControlSwitchStyle: ToggleStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        Styled(configuration: configuration)
-    }
-
-    private struct Styled: View {
-        let configuration: ToggleStyleConfiguration
-        @Environment(\.isEnabled) private var enabled
-        @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-        var body: some View {
-            Button { configuration.isOn.toggle() } label: {
-                HStack(spacing: LoomTheme.Side.switchGap) {
-                    configuration.label.font(LoomTheme.Side.barFont).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                    track
-                }
-                .padding(.horizontal, LoomTheme.Side.barLabelPadding)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
-            .accessibilityValue(configuration.isOn ? "on" : "off")
-            .accessibilityAddTraits(.isToggle)
-        }
-
-        private var track: some View {
-            Capsule().fill(configuration.isOn ? LoomTheme.Side.switchOnFill : LoomTheme.Side.switchOffFill)
-                .frame(width: LoomTheme.Side.switchWidth, height: LoomTheme.Side.switchHeight)
-                .overlay(alignment: .leading) {
-                    Circle().fill(LoomTheme.Side.switchKnobFill)
-                        .frame(width: LoomTheme.Side.switchKnob, height: LoomTheme.Side.switchKnob)
-                        .offset(x: LoomTheme.Side.switchInset
-                            + (configuration.isOn ? LoomTheme.Side.switchWidth - LoomTheme.Side.switchKnob - 2 * LoomTheme.Side.switchInset : 0))
-                }
-                .animation(reduceMotion ? nil : .easeOut(duration: LoomTheme.Highlight.fadeDuration), value: configuration.isOn)
-                .accessibilityHidden(true)
-        }
     }
 }

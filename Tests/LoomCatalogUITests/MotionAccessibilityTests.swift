@@ -36,9 +36,9 @@ struct MotionAccessibilityTests {
         #expect(lifted.luminance < LoomTheme.Text.primaryRGB.luminance)
     }
 
-    @Test func focusRingIsThickerUnderIncreaseContrast() {
-        #expect(LoomTheme.Line.focusRing(for: .standard) == LoomTheme.Line.focusRing)
-        #expect(LoomTheme.Line.focusRing(for: .increased) > LoomTheme.Line.focusRing)
+    @Test func focusHaloIsStrongerUnderIncreaseContrast() {
+        #expect(LoomTheme.Control.focusHalo == 3)
+        #expect(LoomTheme.Control.focusHaloIncreasedOpacity > LoomTheme.Control.focusHaloOpacity)
     }
 
     @Test func aContrastStyleResolvesAgainstTheEnvironment() {

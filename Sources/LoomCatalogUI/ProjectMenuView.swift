@@ -320,8 +320,6 @@ struct ProjectSwatchButton: View {
     /// The keyboard's cursor is on this swatch.
     let focused: Bool
     let action: () -> Void
-    @Environment(\.colorSchemeContrast) private var contrast
-
     private typealias H = LoomTheme.Host
 
     var body: some View {
@@ -348,13 +346,11 @@ struct ProjectSwatchButton: View {
                             .padding(-H.swatchCurrentRing)
                     }
                 }
-                if focused {
-                    RoundedRectangle(cornerRadius: H.swatchRadius + LoomTheme.Line.focusRingOffset)
-                        .strokeBorder(LoomTheme.Surface.focusRing, lineWidth: LoomTheme.Line.focusRing(for: contrast))
-                        .padding(-(H.swatchCurrentRing + LoomTheme.Line.focusRingOffset))
-                }
             }
             .frame(width: H.swatchSide, height: H.swatchSide)
+            .padding(H.swatchCurrentRing)
+            .controlFocusRing(visible: focused, radius: H.swatchRadius + H.swatchCurrentRing)
+            .padding(-H.swatchCurrentRing)
             // It answers over 24 × 24 while drawn at 18 × 18.
             .contentShape(Rectangle().inset(by: -(H.swatchHit - H.swatchSide) / 2))
         }

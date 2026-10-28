@@ -137,7 +137,8 @@ private struct JournalLine: View {
             Button(action: remove) {
                 Image(systemName: "xmark").font(M.removeGlyph).frame(width: M.removeSide, height: M.removeSide)
             }
-            .buttonStyle(RemoveButtonStyle())
+            .buttonStyle(ChromeButtonStyle(size: CGSize(width: M.removeSide, height: M.removeSide)))
+            .focusEffectDisabled()
             .opacity(lit ? 1 : 0)
             .frame(width: M.lineRemoveColumn, alignment: .leading)
             .accessibilityLabel("Remove this line")
@@ -147,25 +148,6 @@ private struct JournalLine: View {
         .background(RoundedRectangle(cornerRadius: M.lineRadius).fill(lit ? LoomTheme.Surface.hover : Color.clear))
         .onHover { hovering = $0 }
         .accessibilityElement(children: .contain)
-    }
-}
-
-/// The × of a line: tertiary, the hover fill and primary text under the pointer.
-private struct RemoveButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View { Face(configuration: configuration) }
-
-    private struct Face: View {
-        let configuration: ButtonStyle.Configuration
-        @State private var hovering = false
-
-        var body: some View {
-            let shape = RoundedRectangle(cornerRadius: LoomTheme.MemorySheet.removeRadius)
-            configuration.label
-                .foregroundStyle(hovering || configuration.isPressed ? LoomTheme.Text.primary : LoomTheme.Text.tertiary)
-                .background(shape.fill(configuration.isPressed ? LoomTheme.Surface.pressed : (hovering ? LoomTheme.Surface.hover : .clear)))
-                .contentShape(shape)
-                .onHover { hovering = $0 }
-        }
     }
 }
 

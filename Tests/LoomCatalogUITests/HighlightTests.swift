@@ -191,7 +191,7 @@ struct HighlightTests {
             ("Inspector.sectionGap", LoomTheme.Inspector.sectionGap), ("Inspector.sectionTitleGap", LoomTheme.Inspector.sectionTitleGap),
             ("Inspector.agentIndent", LoomTheme.Inspector.agentIndent),
             ("Sidebar.homeRowInset", LoomTheme.Sidebar.homeRowInset), ("Sidebar.homeRowSpacing", LoomTheme.Sidebar.homeRowSpacing),
-            ("Sidebar.badgePadding", LoomTheme.Sidebar.badgePadding), ("Sidebar.doorInset", LoomTheme.Sidebar.doorInset),
+            ("Control.badgePaddingH", LoomTheme.Control.badgePaddingH), ("Sidebar.doorInset", LoomTheme.Sidebar.doorInset),
             ("Sidebar.doorBottom", LoomTheme.Sidebar.doorBottom), ("Sidebar.doorSpacing", LoomTheme.Sidebar.doorSpacing),
             ("Sidebar.headingInset", LoomTheme.Sidebar.headingInset),
             ("Sidebar.headTrailing", LoomTheme.Sidebar.headTrailing), ("Sidebar.headerTrailing", LoomTheme.Sidebar.headerTrailing),

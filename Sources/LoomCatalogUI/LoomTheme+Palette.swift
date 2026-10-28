@@ -77,8 +77,6 @@ extension LoomTheme {
         static let leadingExtra: CGFloat = 4
         static let keyGap: CGFloat = 6
         static let scope = InkStyle(size: 11, mono: true)
-        static let capSide: CGFloat = 16
-        static let capPaddingH: CGFloat = 3
         static let capRadius: CGFloat = 4
         static let head = InkStyle(size: 12)
         static let answerPaddingH: CGFloat = 18

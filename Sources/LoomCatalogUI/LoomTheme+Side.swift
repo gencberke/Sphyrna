@@ -79,14 +79,6 @@ extension LoomTheme {
         static let barLabelPadding: CGFloat = 6
         static let barMarkSize: CGFloat = Layout.harnessMarkRow
         static let controlSide: CGFloat = 24
-        /// The switch (DESIGN §6 Controls): 28 × 16, a 12 pt knob 2 in, accent when on.
-        static let switchWidth: CGFloat = 28
-        static let switchHeight: CGFloat = 16
-        static let switchKnob: CGFloat = 12
-        static let switchInset: CGFloat = 2
         static let switchGap: CGFloat = 6
-        static let switchOffFill = Surface.strongerHairline
-        static let switchOnFill = Accent.base
-        static let switchKnobFill = Color.white
     }
 }

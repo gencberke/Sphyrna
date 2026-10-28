@@ -198,10 +198,9 @@ private struct UsageChipButtonStyle: ButtonStyle {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(height: LoomTheme.Sidebar.chipHeight(lines: lines))
                 .background(RowHighlight(state: state, radius: LoomTheme.Highlight.radiusControl))
-                .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
-                    .strokeBorder(ChromeButtonStyle.showsFocusRing(
-                        focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled)
-                        ? LoomTheme.Surface.focusRing : .clear, lineWidth: LoomTheme.Line.focusRing))
+                .controlFocusRing(
+                    visible: ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled),
+                    radius: LoomTheme.Radius.control)
                 .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Radius.control))
                 .onHover { hovering = $0 }
         }

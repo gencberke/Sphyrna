@@ -39,16 +39,11 @@ struct ChangesScopeBar: View {
 
     var body: some View {
         HStack(spacing: LoomTheme.Changes.segmentSpacing) {
-            ForEach(ChangesScope.allCases, id: \.self) { scope in
-                Button(scope.title) { model.setChangesScope(scope, for: sessionID) }
-                    .buttonStyle(SegmentButtonStyle(selected: scope == selected, key: "changes-scope:\(scope.rawValue)"))
-                    .focusEffectDisabled()
-                    .accessibilityAddTraits(scope == selected ? .isSelected : [])
-            }
+            InkSegmented(values: ChangesScope.allCases, title: \.title, selection: selected,
+                         key: { "changes-scope:\($0.rawValue)" },
+                         onSelect: { model.setChangesScope($0, for: sessionID) })
             Spacer(minLength: 0)
         }
-        .padding(LoomTheme.Changes.segmentPadding)
-        .background(RoundedRectangle(cornerRadius: LoomTheme.Radius.search).fill(LoomTheme.Surface.control))
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Changes scope")
@@ -308,7 +303,7 @@ private struct ChangesFooter: View {
                         .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.primary)
                     Spacer(minLength: LoomTheme.Changes.controlGap)
                     Button("Discard") { model.discardChangeComments(in: sessionID) }
-                        .buttonStyle(SettingsButtonStyle()).disabled(sending)
+                        .buttonStyle(ControlButtonStyle(kind: .secondary)).disabled(sending)
                     Button("Send to Claude") { Task { await model.sendChangeComments(for: sessionID) } }
                         .buttonStyle(ControlButtonStyle(kind: .default))
                         .disabled(availability != .ready || sending)

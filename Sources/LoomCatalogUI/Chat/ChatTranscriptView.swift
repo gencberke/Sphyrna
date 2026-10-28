@@ -145,9 +145,7 @@ struct ChatViewChip: View {
             HStack(spacing: compact ? 5 : 7) {
                 Image(systemName: "eye").font(LoomTheme.Chat.linkSymbol)
                 if !compact { Text(mode.title) }
-                Text("\u{2303}O").font(LoomTheme.Chat.keyCap)
-                    .padding(.horizontal, 4)
-                    .background(RoundedRectangle(cornerRadius: LoomTheme.InkRadius.key).fill(LoomTheme.Surface.hoverTone.color))
+                KeyChip(text: "\u{2303}O")
             }
             .font(LoomTheme.Chat.viewChip)
             .foregroundStyle(hovering ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))

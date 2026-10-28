@@ -21,7 +21,7 @@ struct SearchDoor: View {
                     .accessibilityHidden(true)
                 Text(Self.title).font(LoomTheme.Sidebar.doorLabel)
                 Spacer(minLength: LoomTheme.Sidebar.doorSpacing)
-                SidebarKeyCap(text: Self.keyHint)
+                KeyChip(text: Self.keyHint)
             }
             .foregroundStyle(LoomTheme.Text.tertiaryStyle)
         }
@@ -34,20 +34,6 @@ struct SearchDoor: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("sidebar-search")
         .help("Search sessions, projects and commands (\(Self.keyHint))")
-    }
-}
-
-/// A key's cap: mono, tertiary, a strong hairline around it.
-struct SidebarKeyCap: View {
-    let text: String
-
-    var body: some View {
-        Text(text).font(LoomTheme.Sidebar.keyCapFont)
-            .foregroundStyle(LoomTheme.Text.tertiaryStyle)
-            .padding(.horizontal, LoomTheme.Sidebar.keyCapPaddingH)
-            .overlay(RoundedRectangle(cornerRadius: LoomTheme.Sidebar.keyCapRadius)
-                .strokeBorder(LoomTheme.Surface.strongEdgeStyle, lineWidth: LoomTheme.Line.hairline))
-            .accessibilityHidden(true)
     }
 }
 

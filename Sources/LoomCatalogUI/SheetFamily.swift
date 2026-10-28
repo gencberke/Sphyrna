@@ -166,9 +166,9 @@ private struct SheetButton: View {
             .accessibilityIdentifier("sheet-\(action.id)")
         switch action.tint {
         case .plain: button.buttonStyle(ControlButtonStyle(kind: .secondary, size: .page))
-        case .filled: button.buttonStyle(ControlButtonStyle(kind: .default, size: .page))
-        case .accent, .tone: button.buttonStyle(ControlButtonStyle(kind: .outline, size: .page))
-        case .failure: button.buttonStyle(ControlButtonStyle(kind: .destructive, size: .page))
+        case .filled: button.buttonStyle(ControlButtonStyle(kind: .default, size: .large))
+        case .accent, .tone: button.buttonStyle(ControlButtonStyle(kind: .outline, size: .large))
+        case .failure: button.buttonStyle(ControlButtonStyle(kind: .destructive, size: .large))
         }
     }
 }

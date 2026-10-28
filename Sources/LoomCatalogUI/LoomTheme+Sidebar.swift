@@ -24,11 +24,6 @@ extension LoomTheme {
         static let doorGlyph = Font.system(size: 13)
         static let doorLabel = InkType.body.font
 
-        /// The key cap: ⌘K in mono at the door's trailing end.
-        static let keyCapFont = InkStyle(size: 10.5, mono: true).font
-        static let keyCapPaddingH: CGFloat = 4
-        static let keyCapRadius = InkRadius.key
-
         // MARK: Home and New session (28 pt, radius 8)
 
         static let homeRowHeight = InkHeight.sidebarRow
@@ -40,12 +35,6 @@ extension LoomTheme {
         static let newSessionGlyph = Font.system(size: 15)
         /// The glyph column, so Home and New session start their words at the same place.
         static let homeGlyphColumn: CGFloat = 16
-
-        /// The count of what needs the user: the attention wash behind the attention text, in mono, 18 wide at least, 17 high.
-        static let badgeMinWidth: CGFloat = 18
-        static let badgeHeight: CGFloat = 17
-        static let badgePadding: CGFloat = 4
-        static let badgeFont = InkStyle(size: 10.5, weight: .semibold, mono: true).font
 
         // MARK: The list's heading: the view's name and its action, and the view picker (RESCUE C3)
 

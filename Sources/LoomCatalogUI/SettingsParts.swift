@@ -171,9 +171,7 @@ struct SettingsSwitch: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        Toggle(title, isOn: $isOn)
-            .labelsHidden().toggleStyle(InkSwitchStyle())
-            .accessibilityLabel(title)
+        InkSwitch(title: title, isOn: $isOn)
     }
 }
 

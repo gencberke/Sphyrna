@@ -72,7 +72,7 @@ struct PinnedInkTests {
         #expect(LoomTheme.QuickQuestion.radius == 12, "the popover family; the reference's 14 gives way to DESIGN")
         #expect(LoomTheme.QuickQuestion.fill == LoomTheme.Surface.popover)
         #expect(LoomTheme.Side.composerRadius == 12 && LoomTheme.Side.composerFill == LoomTheme.Surface.raised1)
-        #expect(LoomTheme.Side.switchWidth == 28 && LoomTheme.Side.switchHeight == 16 && LoomTheme.Side.switchKnob == 12)
+        #expect(LoomTheme.Control.switchSize == CGSize(width: 32, height: 18) && LoomTheme.Control.switchThumb == 14)
         #expect(LoomTheme.Side.controlSide == 24, "the side bar's ⋯ is the reference's 24 pt icon button")
     }
 

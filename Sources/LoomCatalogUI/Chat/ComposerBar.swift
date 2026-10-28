@@ -67,7 +67,6 @@ struct ComposerChipStyle: ButtonStyle {
         @State private var hovering = false
         @Environment(\.isEnabled) private var enabled
         @Environment(\.isFocused) private var focused
-        @Environment(\.colorSchemeContrast) private var contrast
 
         var body: some View {
             let _ = SidebarRenderProbe.pill(key)
@@ -77,8 +76,7 @@ struct ComposerChipStyle: ButtonStyle {
             configuration.label
                 .foregroundStyle(tint.map { AnyShapeStyle($0) } ?? (lit ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle)))
                 .background(RowHighlight(state: state, radius: LoomTheme.Composer.chipRadius))
-                .overlay(RoundedRectangle(cornerRadius: LoomTheme.Composer.chipRadius)
-                    .strokeBorder(ring ? LoomTheme.Surface.focusRing : .clear, lineWidth: LoomTheme.Line.focusRing(for: contrast)))
+                .controlFocusRing(visible: ring, radius: LoomTheme.Composer.chipRadius)
                 .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Composer.chipRadius))
                 .onHover { hovering = $0 }
         }
@@ -353,7 +351,7 @@ struct ComposerPlusChip: View {
                     .frame(width: LoomTheme.Composer.menuIconSlot)
                 Text(item.title).font(LoomTheme.Composer.modelNameFont).foregroundStyle(LoomTheme.Text.primary)
                 Spacer(minLength: LoomTheme.Space.detailMinSpacer)
-                SidebarKeyCap(text: item.shortcut)
+                KeyChip(text: item.shortcut)
             }
             .padding(.horizontal, LoomTheme.Composer.modelRowPaddingH)
             .frame(height: LoomTheme.Composer.modelRowHeight)

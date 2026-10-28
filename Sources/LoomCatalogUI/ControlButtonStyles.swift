@@ -12,9 +12,11 @@ struct ControlButtonStyle: ButtonStyle {
     var size: LoomTheme.Control.Size = .regular
     /// Names the button for the evidence run's `hover:` command.
     var key: String?
+    /// A card can own the keyboard cursor for a row of buttons instead of using the system focus.
+    var focusOverride: Bool?
 
     func makeBody(configuration: Configuration) -> some View {
-        Styled(configuration: configuration, kind: kind, size: size, key: key)
+        Styled(configuration: configuration, kind: kind, size: size, key: key, focusOverride: focusOverride)
     }
 
     /// The label's colour for a kind, hovered or not.
@@ -33,6 +35,7 @@ struct ControlButtonStyle: ButtonStyle {
         let kind: Kind
         let size: LoomTheme.Control.Size
         let key: String?
+        let focusOverride: Bool?
         @State private var hovering = false
         @Environment(\.isEnabled) private var enabled
         @Environment(\.isFocused) private var focused
@@ -50,9 +53,16 @@ struct ControlButtonStyle: ButtonStyle {
                 .frame(height: size.height)
                 .background(shape.fill(base(active: active, pressed: pressed)).overlay(shape.fill(layer(active: active, pressed: pressed))))
                 .overlay(shape.strokeBorder(edge(active: active), lineWidth: LoomTheme.Line.hairline))
+                .overlay(alignment: .bottom) {
+                    if kind == .link && active {
+                        Rectangle().fill(LoomTheme.Accent.high).frame(height: LoomTheme.Line.hairline)
+                            .padding(.horizontal, size.paddingH).padding(.bottom, LoomTheme.Control.linkUnderlineBottom)
+                            .accessibilityHidden(true)
+                    }
+                }
                 .depth(kind == .outline ? LoomTheme.Elevation.lift : LoomTheme.Elevation.card)
                 .controlFocusRing(
-                    visible: ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled),
+                    visible: focusOverride ?? ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled),
                     radius: size.radius)
                 .contentShape(shape)
                 .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)

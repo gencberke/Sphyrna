@@ -127,12 +127,14 @@ private struct BranchNamePopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: LoomTheme.Draft.popoverGap) {
-            TextField(kind == .newWorktree ? "Worktree name" : "Branch name", text: $name, prompt: Text(suggestion))
-                .textFieldStyle(.roundedBorder).font(LoomTheme.TypeScale.mono)
-                .focused($focused)
-                .onSubmit { commit(); close() }
-                .onChange(of: name) { _, value in commit(value) }
-                .accessibilityIdentifier("draft-branch-name")
+            InkField(focused: focused, hasError: DraftWords.nameReason(model.draftBranchName(draft)) != nil) {
+                TextField(kind == .newWorktree ? "Worktree name" : "Branch name", text: $name, prompt: Text(suggestion))
+                    .font(LoomTheme.TypeScale.mono)
+                    .focused($focused)
+                    .onSubmit { commit(); close() }
+                    .onChange(of: name) { _, value in commit(value) }
+                    .accessibilityIdentifier("draft-branch-name")
+            }
             if let reason = DraftWords.nameReason(model.draftBranchName(draft)) {
                 Text(reason).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.OnPopover.failure)
             }

@@ -7,17 +7,18 @@ import SwiftUI
 
 private typealias R = LoomTheme.Remora
 
-/// A link in the reference's style: secondary text, underlined.
+/// An inline action uses the control family's link role.
 struct HomeRemoraLink: View {
     let title: String
     let identifier: String
+    var kind: ControlButtonStyle.Kind = .link
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(title).underline().foregroundStyle(LoomTheme.Text.secondaryStyle)
+            Text(title)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ControlButtonStyle(kind: kind, size: .small))
         .accessibilityIdentifier(identifier)
     }
 }

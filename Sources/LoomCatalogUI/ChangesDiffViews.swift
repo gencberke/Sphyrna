@@ -255,12 +255,13 @@ struct ChangesCommentBox: View {
                 Spacer(minLength: 0)
                 if !editing, let saved {
                     Button("Edit") { model.beginChangeComment(at: anchor, in: sessionID) }
+                        .buttonStyle(ControlButtonStyle(kind: .ghost, size: .small))
                     Button("Remove") { model.removeChangeComment(at: anchor, in: sessionID) }
+                        .buttonStyle(ControlButtonStyle(kind: .ghost, size: .small))
                         .accessibilityLabel("Remove comment on \(saved.displayPath)")
                 }
             }
             .foregroundStyle(LoomTheme.Text.secondaryStyle)
-            .buttonStyle(.plain)
             if editing {
                 TextField("Comment for Claude", text: Binding(get: { session.composingText }, set: { session.composingText = $0 }),
                           axis: .vertical)
@@ -271,7 +272,7 @@ struct ChangesCommentBox: View {
                     .accessibilityLabel("Comment on \(title)")
                 HStack(spacing: LoomTheme.Changes.commentGap) {
                     Spacer(minLength: 0)
-                    Button("Cancel") { model.cancelChangeComment(in: sessionID) }.buttonStyle(SettingsButtonStyle())
+                    Button("Cancel") { model.cancelChangeComment(in: sessionID) }.buttonStyle(ControlButtonStyle(kind: .ghost))
                     Button("Add comment") { model.saveChangeComment(in: sessionID) }.buttonStyle(ControlButtonStyle(kind: .default))
                         .disabled(session.composingText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
@@ -302,7 +303,7 @@ struct ChangesOpenInEditor: View {
 
     var body: some View {
         Button("Open in editor") { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
-            .buttonStyle(.plain).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            .buttonStyle(ControlButtonStyle(kind: .link, size: .small))
             .disabled(!FileManager.default.fileExists(atPath: path))
             .accessibilityLabel("Open \((path as NSString).lastPathComponent) in editor")
     }
@@ -319,7 +320,7 @@ struct ChangesNote: View {
         HStack(spacing: LoomTheme.Changes.stateGap) {
             if busy { ProgressView().controlSize(.small) }
             Text(verbatim: text).font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
-            if let retry { Button("Try Again", action: retry).buttonStyle(.plain).font(LoomTheme.Typography.small) }
+            if let retry { Button("Try Again", action: retry).buttonStyle(ControlButtonStyle(kind: .link, size: .small)) }
             if let openPath { ChangesOpenInEditor(path: openPath) }
             Spacer(minLength: 0)
         }

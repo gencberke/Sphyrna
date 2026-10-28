@@ -133,7 +133,7 @@ struct NewSessionRow: View {
                 Text(Self.title).font(LoomTheme.Sidebar.lineTitle)
                     .foregroundStyle(primary ? LoomTheme.Text.primary : LoomTheme.Text.secondary)
                 Spacer(minLength: LoomTheme.Space.headerSpacing)
-                SidebarKeyCap(text: Self.keyHint)
+                KeyChip(text: Self.keyHint)
             }
             .padding(.horizontal, LoomTheme.Sidebar.homeRowInset)
             .frame(height: LoomTheme.Sidebar.homeRowHeight)
@@ -157,11 +157,7 @@ struct HomeCountBadge: View {
     let count: Int
 
     var body: some View {
-        Text("\(count)").font(LoomTheme.Sidebar.badgeFont)
-            .foregroundStyle(LoomTheme.Status.attentionLight)
-            .padding(.horizontal, LoomTheme.Sidebar.badgePadding)
-            .frame(minWidth: LoomTheme.Sidebar.badgeMinWidth, minHeight: LoomTheme.Sidebar.badgeHeight)
-            .background(Capsule().fill(LoomTheme.Status.attentionWash))
+        InkBadge(text: "\(count)", kind: .status(fill: LoomTheme.Status.attentionWash, text: LoomTheme.Status.attentionLight))
             .accessibilityHidden(true)
     }
 }

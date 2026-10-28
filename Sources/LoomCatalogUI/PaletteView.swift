@@ -147,7 +147,7 @@ struct PalettePanel: View {
                     }
                     ForEach(palette.groups) { group in
                         Text(group.title)
-                            .font(LoomTheme.Typography.dayHeading)
+                            .inspectorType(LoomTheme.InkType.label)
                             .foregroundStyle(LoomTheme.Text.secondary)
                             .padding(.horizontal, PaletteMetrics.rowInset)
                             .padding(.bottom, 4)
@@ -223,7 +223,11 @@ struct PalettePanel: View {
 
     private func hint(_ key: String, _ label: String) -> some View {
         HStack(spacing: 5) {
-            Text(key).foregroundStyle(LoomTheme.Text.primary)
+            if key == "esc" && label == "close" {
+                Text(key).foregroundStyle(LoomTheme.Text.primary)
+            } else {
+                KeyChip(text: key, isDecorative: false)
+            }
             Text(label)
         }
         .accessibilityElement(children: .combine)
@@ -278,10 +282,14 @@ struct PaletteRow: View {
             }
             Spacer(minLength: 8)
             if let trailing = item.trailing, !trailing.isEmpty {
-                Text(trailing)
-                    .font(LoomTheme.Typography.small)
-                    .foregroundStyle(secondary)
-                    .lineLimit(1)
+                if case .action = item.target {
+                    KeyChip(text: trailing, isDecorative: false)
+                } else {
+                    Text(trailing)
+                        .font(LoomTheme.Typography.small)
+                        .foregroundStyle(secondary)
+                        .lineLimit(1)
+                }
             }
         }
         .contentShape(Rectangle())

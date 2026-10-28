@@ -1,113 +1,6 @@
 import SwiftUI
 
-// The control family as Settings draws it (DESIGN §6 Controls; the reference's `.seg`, `.sw`, `.popup`, `.stepper`, `.cbx`, `.lk2`):
-// a segmented control, a switch, a checkbox, a stepper, a menu picker. The older `SegmentButtonStyle` and
-// `SettingsButtonStyle` stay for the Changes tab.
-
-// MARK: Segmented control
-
-/// A 26 pt group on the hover fill with one chosen segment raised. `hover:segment:<title>` holds a segment's hover for a shot.
-struct InkSegmented<Value: Hashable>: View {
-    let values: [Value]
-    let title: (Value) -> String
-    let selection: Value
-    var enabled = true
-    let onSelect: (Value) -> Void
-    @Environment(\.isEnabled) private var environmentEnabled
-
-    private typealias S = LoomTheme.Settings
-
-    var body: some View {
-        HStack(spacing: S.segmentGap) {
-            ForEach(values, id: \.self) { value in
-                InkSegment(title: title(value), chosen: value == selection, key: "segment:\(title(value))") { onSelect(value) }
-            }
-        }
-        .padding(S.segmentPadding)
-        .background(RoundedRectangle(cornerRadius: S.segmentGroupRadius).fill(LoomTheme.Surface.hover))
-        .frame(height: S.segmentGroupHeight)
-        .fixedSize()
-        .disabled(!enabled)
-        .opacity(enabled && environmentEnabled ? 1 : LoomTheme.Opacity.disabled)
-        .accessibilityElement(children: .contain)
-    }
-}
-
-private struct InkSegment: View {
-    let title: String
-    let chosen: Bool
-    let key: String
-    let action: () -> Void
-    @State private var hovering = false
-    @Environment(\.isEnabled) private var enabled
-    @Environment(\.isFocused) private var focused
-
-    private typealias S = LoomTheme.Settings
-
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: S.segmentRadius)
-        let lit = enabled && (hovering || LookEvidence.forcesHover(key))
-        Button(action: action) {
-            Text(title).projectType(S.segmentFont).lineLimit(1)
-                .foregroundStyle(chosen || lit ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
-                .padding(.horizontal, S.segmentPaddingH)
-                .frame(height: S.segmentHeight)
-                .background {
-                    if chosen {
-                        shape.fill(LoomTheme.Surface.segmentOn)
-                            .depth(LoomTheme.Elevation.lift)
-                            .overlay(shape.strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline))
-                    }
-                }
-                .controlFocusRing(
-                    visible: ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled),
-                    radius: S.segmentRadius)
-                .contentShape(shape)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(chosen ? .isSelected : [])
-    }
-}
-
-// MARK: Switch
-
-/// The switch: 28×16, the accent when on, a 12 pt knob. For VoiceOver it is a native switch (`accessibilityRepresentation`), so it reads
-/// as one with its value. Hide the toggle's label (`labelsHidden`): the style draws no text.
-struct InkSwitchStyle: ToggleStyle {
-    func makeBody(configuration: Configuration) -> some View { Track(configuration: configuration) }
-
-    private struct Track: View {
-        let configuration: ToggleStyleConfiguration
-        @Environment(\.isEnabled) private var enabled
-        @Environment(\.isFocused) private var focused
-        @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-        private typealias S = LoomTheme.Settings
-
-        var body: some View {
-            let travel = S.switchSize.width - S.switchKnob - 2 * S.switchInset
-            Button { configuration.isOn.toggle() } label: {
-                Capsule().fill(configuration.isOn ? S.switchOnFill : S.switchOffFill)
-                    .frame(width: S.switchSize.width, height: S.switchSize.height)
-                    .overlay(alignment: .leading) {
-                        Circle().fill(S.switchKnobFill)
-                            .frame(width: S.switchKnob, height: S.switchKnob)
-                            .offset(x: S.switchInset + (configuration.isOn ? travel : 0))
-                    }
-                    .animation(reduceMotion ? nil : .easeOut(duration: LoomTheme.Highlight.fadeDuration), value: configuration.isOn)
-                    .controlFocusRing(
-                        visible: ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled),
-                        radius: S.switchSize.height / 2)
-                    .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
-            .accessibilityRepresentation { Toggle(isOn: configuration.$isOn) { configuration.label }.toggleStyle(.switch) }
-        }
-    }
-}
+// Settings-specific checkbox, stepper and menu picker. The switch and segmented control live in the shared Ink family.
 
 // MARK: Checkbox
 
@@ -164,7 +57,7 @@ enum StepperRule {
     }
 }
 
-/// The stepper: − and + around the value in mono, 26 high, a strong-hairline edge. A button at an end of the range is drawn at 38 %
+/// The stepper: − and + around the value in mono, 32 high, a strong-hairline edge. A button at an end of the range is drawn at 38 %
 /// and does nothing. VoiceOver adjusts it up and down.
 struct InkStepper: View {
     let title: String
@@ -191,7 +84,6 @@ struct InkStepper: View {
             stepButton(1, glyph: "plus", help: increaseHelp)
         }
         .frame(height: S.stepperHeight)
-        .clipShape(RoundedRectangle(cornerRadius: S.stepperRadius))
         .overlay(RoundedRectangle(cornerRadius: S.stepperRadius)
             .strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline))
         .fixedSize()
@@ -212,29 +104,10 @@ struct InkStepper: View {
         Button { onChange(StepperRule.stepped(value, by: direction, in: range)) } label: {
             Image(systemName: glyph).font(S.stepperGlyph).frame(width: S.stepperButton, height: S.stepperHeight)
         }
-        .buttonStyle(StepButtonStyle())
+        .buttonStyle(ChromeButtonStyle(size: CGSize(width: S.stepperButton, height: S.stepperHeight)))
+        .focusEffectDisabled()
         .disabled(!StepperRule.canStep(value, by: direction, in: range))
         .help(help)
-    }
-
-    private struct StepButtonStyle: ButtonStyle {
-        func makeBody(configuration: Configuration) -> some View { Step(configuration: configuration) }
-
-        private struct Step: View {
-            let configuration: ButtonStyle.Configuration
-            @State private var hovering = false
-            @Environment(\.isEnabled) private var enabled
-
-            var body: some View {
-                let state = HighlightState.resolve(selected: false, hovering: hovering, pressed: configuration.isPressed, enabled: enabled)
-                configuration.label
-                    .foregroundStyle(state == .none ? LoomTheme.Text.secondary : LoomTheme.Text.primary)
-                    .background(state.fill)
-                    .contentShape(Rectangle())
-                    .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
-                    .onHover { hovering = $0 }
-            }
-        }
     }
 }
 
@@ -264,42 +137,11 @@ struct SettingsPopup<Value: Hashable, Items: View>: View {
             }
         }
         .menuStyle(.button)
-        .buttonStyle(PopupButtonStyle())
+        .buttonStyle(ControlButtonStyle(kind: .secondary, size: .page))
+        .focusEffectDisabled()
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel(title)
         .accessibilityValue(valueText)
-    }
-}
-
-/// The popup's button: 26 high, radius 6, a strong-hairline edge (the stronger one with the hover fill under the pointer).
-private struct PopupButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View { Face(configuration: configuration) }
-
-    private struct Face: View {
-        let configuration: ButtonStyle.Configuration
-        @State private var hovering = false
-        @Environment(\.isEnabled) private var enabled
-        @Environment(\.colorSchemeContrast) private var contrast
-
-        private typealias S = LoomTheme.Settings
-
-        var body: some View {
-            let shape = RoundedRectangle(cornerRadius: S.popupRadius)
-            let active = enabled && (hovering || configuration.isPressed)
-            configuration.label
-                .padding(.leading, S.popupPaddingLeading).padding(.trailing, S.popupPaddingTrailing)
-                .frame(height: S.popupHeight)
-                .background(shape.fill(active ? LoomTheme.Surface.hover : Color.clear))
-                .overlay(shape.strokeBorder(edge(active: active), lineWidth: LoomTheme.Line.hairline))
-                .contentShape(shape)
-                .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
-                .onHover { hovering = $0 }
-        }
-
-        private func edge(active: Bool) -> AnyShapeStyle {
-            if contrast == .increased { return AnyShapeStyle(LoomTheme.Surface.hairlineStyle) }
-            return AnyShapeStyle(active ? LoomTheme.Surface.strongerHairline : LoomTheme.Surface.strongHairline)
-        }
     }
 }

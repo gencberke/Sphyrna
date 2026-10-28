@@ -455,14 +455,6 @@ enum LoomTheme {
 
     enum Line {
         static let hairline: CGFloat = 1
-        /// Sphyrna's focus ring: the accent, 2 pt wide, 2 pt outside the control (`focusRingOffset`); 2.5 under Increase Contrast.
-        static let focusRing: CGFloat = 2
-        static let focusRingOffset: CGFloat = 2
-        /// The focus ring is thicker under Increase Contrast.
-        static let focusRingIncreased: CGFloat = 2.5
-        static func focusRing(for contrast: ColorSchemeContrast) -> CGFloat {
-            contrast == .increased ? focusRingIncreased : focusRing
-        }
         static let indicatorRing: CGFloat = 1.5
     }
 
@@ -545,9 +537,6 @@ enum LoomTheme {
         // Terminal host: the text keeps 16 pt of canvas around it, 20 at the leading edge (DESIGN §6 Terminal framing).
         static let terminalInset: CGFloat = 16
         static let terminalLeadingInset: CGFloat = 20
-        // The older segmented control and text button the Changes tab still draws with (`SegmentButtonStyle`, `SettingsButtonStyle`).
-        // Settings itself is `LoomTheme.Settings` (`LoomTheme+Settings.swift`).
-        static let settingsSegmentH: CGFloat = 12
     }
 
     // MARK: Layout
@@ -576,8 +565,6 @@ enum LoomTheme {
         /// The request box for an agent's "open a session": its label column, and the scroll area of the full message.
         static let requestLabelWidth: CGFloat = 52
         static let requestMessageMaxHeight: CGFloat = 160
-        /// The older segment's and button's height (see `Space.settingsSegmentH`).
-        static let settingsSegmentHeight: CGFloat = 24
         // Indicators.
         static let indicatorSlot = CGSize(width: 12, height: 16)
         /// The failure mark under "Differentiate without color" (the identity proposal's diamond, corner to corner).

@@ -106,6 +106,7 @@ extension LoomTheme {
         static let defaultTextPair = Adaptive(dark: RGB(hex: 0x171717), light: RGB(hex: 0xFAFAFA))
         static let defaultHoverOpacity = 0.9
         static let defaultPressedOpacity = 0.8
+        static let linkUnderlineBottom: CGFloat = 3
 
         /// The destructive button (DESIGN §0.4): the failure red, at 60 % in Ink and solid in Paper, with white text. Under the
         /// pointer it is 74 % in Ink and 90 % in Paper, which keeps the white text at 4.5:1 or more.
@@ -128,12 +129,27 @@ extension LoomTheme {
         /// The shared controls' sizes (DESIGN §0.4): a switch 32 × 18; a field and a segmented control 32 high; a badge 18 high;
         /// a key cap of radius 4.
         static let switchSize = CGSize(width: 32, height: 18)
+        static let switchInset: CGFloat = 2
+        static let switchThumb: CGFloat = 14
+        static let switchLabelGap: CGFloat = 6
+        static var switchOffFill: Color { Surface.muted }
+        static var switchOnFill: Color { Accent.base }
+        static let switchThumbFill = Color.white
         static let segmentedHeight: CGFloat = InkHeight.standard
         static let segmentRadius: CGFloat = 6
+        static let segmentGroupRadius: CGFloat = InkRadius.row
+        static let segmentInset: CGFloat = 2
+        static let segmentGap: CGFloat = 2
+        static let segmentPaddingH: CGFloat = 10
+        static let segmentFont = InkType.button
         static let fieldHeight: CGFloat = InkHeight.standard
         static let fieldRadius: CGFloat = InkRadius.row
+        static let fieldPaddingH: CGFloat = 12
         static let badgeHeight: CGFloat = 18
+        static let badgePaddingH: CGFloat = 4
         static let keyCapRadius: CGFloat = InkRadius.key
+        static let keyCapPaddingH: CGFloat = 4
+        static let keyCapMinSide: CGFloat = 18
 
         /// The glyph of an icon button: 16 pt, in secondary until hovered.
         static let iconGlyph = Font.system(size: 16)

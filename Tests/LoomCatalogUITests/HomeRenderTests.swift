@@ -172,6 +172,8 @@ struct HomeRenderTests {
         let found = Set(identifiers(in: hosting.view))
         // The state is the add-project action beside a new-session action; no start box, no notice.
         #expect(found.contains("home-add-project") && found.contains("home-new-session"))
+        let mainAction = try #require(frame(of: "home-add-project", in: hosting.view))
+        #expect(abs(mainAction.height - 36) <= 0.5, "the empty state's main action is \(mainAction.height) pt")
         #expect(!found.contains("home-start") && !found.contains("home-no-claude") && !found.contains("home-check-again"))
     }
 

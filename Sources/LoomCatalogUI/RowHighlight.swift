@@ -121,8 +121,6 @@ struct RowButtonStyle: ButtonStyle {
         @State private var hovering = false
         @Environment(\.isEnabled) private var enabled
         @Environment(\.isFocused) private var focused
-        @Environment(\.colorSchemeContrast) private var contrast
-
         var body: some View {
             let _ = SidebarRenderProbe.pill(key)
             let ring = ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled)
@@ -132,15 +130,14 @@ struct RowButtonStyle: ButtonStyle {
                     pressed: configuration.isPressed, enabled: enabled)
                 configuration.label
                     .background(RowHighlight(state: state, radius: radius, tint: tint))
-                    .overlay(RoundedRectangle(cornerRadius: radius)
-                        .strokeBorder(ring ? LoomTheme.Surface.focusRing : .clear, lineWidth: LoomTheme.Line.focusRing(for: contrast)))
+                    .controlFocusRing(visible: ring, radius: radius)
                     .onHover { hovering = $0 }
             } else {
                 configuration.label
                     .opacity(configuration.isPressed ? LoomTheme.Opacity.rowPressed : 1)
-                    .overlay(RoundedRectangle(cornerRadius: LoomTheme.Radius.control)
-                        .strokeBorder(ring ? LoomTheme.Surface.focusRing : .clear, lineWidth: LoomTheme.Line.focusRing(for: contrast))
-                        .padding(-LoomTheme.Space.rowFocusOutset))
+                    .padding(LoomTheme.Space.rowFocusOutset)
+                    .controlFocusRing(visible: ring, radius: LoomTheme.Radius.control)
+                    .padding(-LoomTheme.Space.rowFocusOutset)
             }
         }
     }

@@ -34,8 +34,8 @@ struct PaletteRemoraRow: View {
                 Spacer(minLength: P.rowGap)
                 HStack(spacing: P.keyGap) {
                     Text(palette.remoraScope.label).accessibilityIdentifier("palette-remora-scope")
-                    PaletteRemoraKeyCap(key: "⇥")
-                    PaletteRemoraKeyCap(key: "↵")
+                    KeyChip(text: "⇥")
+                    KeyChip(text: "↵")
                 }
                 .font(P.scope.font)
                 .foregroundStyle(LoomTheme.OnPopover.secondary(lit: lit))
@@ -53,19 +53,6 @@ struct PaletteRemoraRow: View {
         .accessibilityHint("Tab changes the scope")
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("palette-remora-ask")
-    }
-}
-
-/// A key's cap, as the reference's `kbd`.
-struct PaletteRemoraKeyCap: View {
-    let key: String
-
-    var body: some View {
-        Text(key)
-            .padding(.horizontal, P.capPaddingH)
-            .frame(minWidth: P.capSide, minHeight: P.capSide)
-            .overlay(RoundedRectangle(cornerRadius: P.capRadius).strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline))
-            .accessibilityHidden(true)
     }
 }
 

@@ -66,7 +66,7 @@ struct SubagentWaitingNotice: View {
             Spacer(minLength: LoomTheme.Space.detailMinSpacer)
             if notice == .chat {
                 Button(Self.showTitle, action: show)
-                    .buttonStyle(.plain).foregroundStyle(LoomTheme.Accent.high)
+                    .buttonStyle(ControlButtonStyle(kind: .link, size: .small))
                     .accessibilityIdentifier("subagent-show-request")
             }
         }

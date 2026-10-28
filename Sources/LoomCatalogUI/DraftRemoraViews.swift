@@ -85,7 +85,7 @@ struct DraftRemoraOriginView: View {
             DraftRemoraSourcesLink(model: model, isOpen: $sourcesOpen, citedSessionIDs: line.citedSessionIDs,
                                    sessionsRead: line.sessionsRead, duration: line.duration)
                 .draftType(D.originDetail)
-            HomeRemoraLink(title: DraftRemoraText.clear, identifier: "draft-remora-clear") {
+            HomeRemoraLink(title: DraftRemoraText.clear, identifier: "draft-remora-clear", kind: .ghost) {
                 if let projectID { model.clearRemoraDraft(projectID: projectID) }
             }
             .draftType(D.originDetail)

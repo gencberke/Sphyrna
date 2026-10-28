@@ -50,55 +50,14 @@ enum PinnedCopy {
 
 // MARK: Buttons
 
-/// The control family's button on a card (26 high, radius 6, 12.5 medium): secondary with a strong-hairline edge, or filled with
-/// the accent. The card's own ring (`isFocused`, moved with ← and →) is the family's focus ring; the button does not read the
-/// system focus, which the card's key region holds for all of its buttons.
+/// The card owns its keyboard cursor, so its buttons provide that focus to the shared control style.
 struct PinnedButtonStyle: ButtonStyle {
     let style: PinnedAction.Style
     let isFocused: Bool
 
     func makeBody(configuration: Configuration) -> some View {
-        Styled(configuration: configuration, accent: style == .accent, isFocused: isFocused)
-    }
-
-    private struct Styled: View {
-        let configuration: ButtonStyle.Configuration
-        let accent: Bool
-        let isFocused: Bool
-        @State private var hovering = false
-        @Environment(\.isEnabled) private var enabled
-        @Environment(\.colorSchemeContrast) private var contrast
-
-        var body: some View {
-            let active = enabled && hovering
-            let pressed = enabled && configuration.isPressed
-            let shape = RoundedRectangle(cornerRadius: LoomTheme.Pinned.buttonRadius)
-            configuration.label
-                .font(LoomTheme.InkType.button.font)
-                .foregroundStyle(accent ? LoomTheme.Control.defaultTextPair.color : LoomTheme.Text.primary)
-                .padding(.horizontal, LoomTheme.Pinned.buttonPaddingH)
-                .frame(height: LoomTheme.Pinned.buttonHeight)
-                .background(shape.fill(fill(active: active, pressed: pressed)))
-                .overlay(shape.strokeBorder(edge(active: active), lineWidth: LoomTheme.Line.hairline))
-                .controlFocusRing(visible: isFocused, radius: LoomTheme.Pinned.buttonRadius)
-                .contentShape(shape)
-                .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
-                .onHover { hovering = $0 }
-        }
-
-        private func fill(active: Bool, pressed: Bool) -> Color {
-            if accent {
-                if pressed { return LoomTheme.Control.defaultFillPair.color.opacity(LoomTheme.Control.defaultPressedOpacity) }
-                return active ? LoomTheme.Control.defaultFillPair.color.opacity(LoomTheme.Control.defaultHoverOpacity) : LoomTheme.Control.defaultFillPair.color
-            }
-            return pressed ? LoomTheme.Surface.pressed : (active ? LoomTheme.Surface.hover : .clear)
-        }
-
-        private func edge(active: Bool) -> AnyShapeStyle {
-            guard !accent else { return AnyShapeStyle(Color.clear) }
-            if contrast == .increased { return AnyShapeStyle(LoomTheme.Surface.hairlineStyle) }
-            return AnyShapeStyle(active ? LoomTheme.Surface.strongerHairline : LoomTheme.Surface.strongHairline)
-        }
+        ControlButtonStyle(kind: style == .accent ? .default : .secondary, focusOverride: isFocused)
+            .makeBody(configuration: configuration)
     }
 }
 

@@ -275,8 +275,7 @@ private struct TranscriptLineView: View {
             }
             if line.kind == .result, hiddenCount > 0 {
                 Button(TranscriptLines.moreLabel(hidden: hiddenCount, expanded: expanded)) { expanded.toggle() }
-                    .buttonStyle(.plain)
-                    .font(Metrics.omitted.font).foregroundStyle(LoomTheme.Inspector.quiet(overlays: overlays))
+                    .buttonStyle(ControlButtonStyle(kind: .link, size: .small))
                     .padding(.top, Metrics.resultLabelGap / 2)
             }
         }

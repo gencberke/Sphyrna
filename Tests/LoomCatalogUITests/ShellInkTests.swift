@@ -41,9 +41,8 @@ struct ShellInkTests {
         #expect(LoomTheme.Control.iconRadius == 8 && LoomTheme.Header.groupHeight == 26 )
         #expect(LoomTheme.Header.groupRadius == 7 && LoomTheme.TabStrip.tabHeight == 26)
         #expect(LoomTheme.Opacity.disabled == 0.38)
-        // Sphyrna's hand-drawn rings keep their 2 pt line; a control's ring is checked in ControlFamilyTests.
-        #expect(LoomTheme.Line.focusRing(for: .standard) == 2 && LoomTheme.Line.focusRingOffset == 2
-                && LoomTheme.Line.focusRing(for: .increased) == 2.5)
+        // Rows and controls use the same accent edge and halo.
+        #expect(LoomTheme.Control.focusEdge == 1 && LoomTheme.Control.focusHalo == 3)
         // The icon button's hit area stays at least 24 x 24.
         #expect(ChromeButtonStyle.hitSize(for: LoomTheme.Layout.chromeButton) == CGSize(width: 28, height: 28))
         #expect(ChromeButtonStyle.hitSize(for: CGSize(width: 20, height: 20)) == CGSize(width: 24, height: 24))

@@ -334,12 +334,17 @@ struct ChatLinkButton: View {
     /// The accessibility identifier is derived from the title (the evidence run and tests find the button by it).
     var identified = true
     let action: () -> Void
-    @State private var hovering = false
 
     var body: some View {
-        Button(action: action) { ChatLinkLabel(title: title, symbol: symbol, chevron: chevron, prominent: prominent, hovering: hovering) }
-            .buttonStyle(.plain)
-            .onHover { hovering = $0 }
+        Button(action: action) {
+            HStack(spacing: LoomTheme.Space.detailSpacing) {
+                if let symbol { Image(systemName: symbol).font(LoomTheme.Chat.linkSymbol) }
+                Text(title)
+                if chevron { Image(systemName: "chevron.right").font(LoomTheme.Chat.chevron).accessibilityHidden(true) }
+            }
+            .lineLimit(1)
+        }
+            .buttonStyle(ControlButtonStyle(kind: prominent ? .link : .ghost, size: .small))
             .modifier(Identified(id: identified ? "chat-row-" + title.lowercased().replacingOccurrences(of: " ", with: "-") : nil))
     }
 

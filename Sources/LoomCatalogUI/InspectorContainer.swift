@@ -143,7 +143,6 @@ private struct InspectorTabStyle: ButtonStyle {
         let key: String
         @State private var hovering = false
         @Environment(\.isFocused) private var focused
-        @Environment(\.colorSchemeContrast) private var contrast
 
         var body: some View {
             let ring = ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled)
@@ -155,12 +154,7 @@ private struct InspectorTabStyle: ButtonStyle {
                     Rectangle().fill(LoomTheme.Accent.base).frame(height: LoomTheme.Inspector.tabUnderline)
                         .opacity(selected ? 1 : 0).accessibilityHidden(true)
                 }
-                .overlay {
-                    RoundedRectangle(cornerRadius: LoomTheme.InkRadius.key)
-                        .strokeBorder(ring ? LoomTheme.Surface.focusRing : .clear, lineWidth: LoomTheme.Line.focusRing(for: contrast))
-                        .padding(.vertical, LoomTheme.Inspector.tabFocusInset)
-                        .padding(.horizontal, -LoomTheme.Inspector.tabFocusOutset)
-                }
+                .controlFocusRing(visible: ring, radius: LoomTheme.InkRadius.key)
                 .onHover { hovering = $0 }
         }
     }

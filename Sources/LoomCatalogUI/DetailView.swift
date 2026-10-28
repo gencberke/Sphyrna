@@ -379,6 +379,7 @@ struct RequestList: View {
 struct RenameSheet: View {
     let model: CatalogModel
     @Bindable var draft: RenameDraft
+    @FocusState private var fieldFocused: Bool
 
     var body: some View {
         InkSheet(
@@ -386,11 +387,13 @@ struct RenameSheet: View {
             actions: [SheetAction(id: "save", title: "Save", tint: .filled, isEnabled: !draft.saving, perform: save)]
         ) {
             VStack(alignment: .leading, spacing: 0) {
-                TextField("Title", text: $draft.text)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit { save() }
-                    .accessibilityLabel("Session title")
-                    .padding(.top, LoomTheme.Sheet.fieldTop)
+                InkField(focused: fieldFocused, hasError: draft.failure != nil) {
+                    TextField("Title", text: $draft.text)
+                        .focused($fieldFocused)
+                        .onSubmit { save() }
+                        .accessibilityLabel("Session title")
+                }
+                .padding(.top, LoomTheme.Sheet.fieldTop)
                 HStack {
                     Text("\(draft.text.count)/\(SessionCatalog.maxTitleLength)")
                         .foregroundStyle(draft.text.count > SessionCatalog.maxTitleLength

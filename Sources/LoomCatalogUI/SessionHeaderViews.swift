@@ -211,7 +211,7 @@ struct HeaderRule: View {
 }
 
 /// A segment of the control group: the hover fill under the pointer and the pressed fill while pressed (DESIGN §6 Header: a
-/// segment's hover is the hover fill), the focus ring inside the segment (the group clips it). The label is primary, or
+/// segment's hover is the hover fill), with the shared focus halo. The label is primary, or
 /// secondary until hovered (`secondaryUntilHovered`, the ⋯ glyph).
 struct HeaderSegmentStyle: ButtonStyle {
     var secondaryUntilHovered = false
@@ -226,7 +226,6 @@ struct HeaderSegmentStyle: ButtonStyle {
         @State private var hovering = false
         @Environment(\.isEnabled) private var enabled
         @Environment(\.isFocused) private var focused
-        @Environment(\.colorSchemeContrast) private var contrast
 
         var body: some View {
             let active = hovering || configuration.isPressed
@@ -236,10 +235,10 @@ struct HeaderSegmentStyle: ButtonStyle {
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(secondaryUntilHovered && !active ? LoomTheme.Text.secondary : LoomTheme.Text.primary)
                 .frame(height: LoomTheme.Header.groupHeight)
-                .background(fill)
-                .overlay(Rectangle().strokeBorder(
-                    ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled)
-                        ? LoomTheme.Surface.focusRing : .clear, lineWidth: LoomTheme.Line.focusRing(for: contrast)))
+                .background(RoundedRectangle(cornerRadius: LoomTheme.Control.iconRadius).fill(fill))
+                .controlFocusRing(
+                    visible: ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled),
+                    radius: LoomTheme.Control.iconRadius)
                 .contentShape(Rectangle())
                 .opacity(enabled ? 1 : LoomTheme.Opacity.disabled)
                 .onHover { hovering = $0 }
@@ -299,7 +298,6 @@ struct HeaderControlGroup<MenuItems: View>: View {
             .accessibilityLabel("Session actions")
         }
         .frame(height: LoomTheme.Header.groupHeight)
-        .clipShape(shape)
         .overlay(shape.strokeBorder(LoomTheme.Surface.strongEdgeStyle, lineWidth: LoomTheme.Line.hairline).allowsHitTesting(false))
         .fixedSize()
     }

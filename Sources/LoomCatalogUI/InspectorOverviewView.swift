@@ -299,21 +299,14 @@ private struct OverviewDivider: View {
 private struct OverviewLink: View {
     let label: String
     let action: () -> Void
-    @State private var hovering = false
-
     var body: some View {
         Button(action: action) {
             HStack(spacing: LoomTheme.Overview.linkGap) {
-                Text("Open").inspectorType(LoomTheme.Overview.link)
+                Text("Open")
                 Image(systemName: "chevron.right").font(LoomTheme.Overview.linkGlyph).accessibilityHidden(true)
             }
-            .foregroundStyle(hovering ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
-            .frame(minHeight: LoomTheme.Layout.minimumHitTarget.height)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .padding(.vertical, -(LoomTheme.Layout.minimumHitTarget.height - LoomTheme.Overview.linkLine) / 2)
-        .onHover { hovering = $0 }
+        .buttonStyle(ControlButtonStyle(kind: .link, size: .small))
         .accessibilityLabel(label)
     }
 }
@@ -404,8 +397,7 @@ private struct OverviewUsageTable: View {
                 .accessibilityElement(children: .combine)
             }
             Button(detailed ? "Hide details" : "Details") { detailed.toggle() }
-                .buttonStyle(.plain).font(LoomTheme.Overview.link.font)
-                .foregroundStyle(LoomTheme.Text.secondaryStyle)
+                .buttonStyle(ControlButtonStyle(kind: .link, size: .small))
                 .padding(.top, LoomTheme.Overview.detailsTop)
                 .accessibilityIdentifier("overview-usage-details")
             if detailed { details }

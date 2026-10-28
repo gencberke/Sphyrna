@@ -372,7 +372,7 @@ struct ComposerModelPopover: View {
         HStack(spacing: LoomTheme.Composer.keysLineGap) {
             ForEach(Array(Self.keys.enumerated()), id: \.offset) { _, item in
                 HStack(spacing: LoomTheme.Composer.hintKeyGap) {
-                    Text(item.key).foregroundStyle(LoomTheme.Text.secondaryStyle).fontWeight(.medium)
+                    KeyChip(text: item.key)
                     Text(item.words)
                 }
             }

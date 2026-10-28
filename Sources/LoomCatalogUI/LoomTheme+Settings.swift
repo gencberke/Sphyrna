@@ -89,48 +89,20 @@ extension LoomTheme {
 
         // MARK: The popup (a menu picker)
 
-        /// A secondary button with the value and two chevrons: 26 high, radius 6, 10 in on the left and 6 on the right, 8 between.
-        static let popupHeight = InkHeight.control
-        static let popupRadius = InkRadius.control
-        static let popupPaddingLeading: CGFloat = 10
-        static let popupPaddingTrailing: CGFloat = 6
+        /// The picker label's value, icon and chevrons inside a shared secondary button.
         static let popupGap: CGFloat = 8
         static let popupFont = InkStyle(size: 12.5)
         static let popupChevron = Font.system(size: 12)
         /// The Mode picker shows the mode's icon (13) in its tone before the value.
         static let popupIcon = Font.system(size: 13)
 
-        // MARK: The segmented control
-
-        /// A 26 group of radius 7 on the hover fill, 2 inside and between; a segment is 22 high with radius 5 and 10 beside its words. The
-        /// chosen one is raised: Segment on, a strong hairline and a 1 pt drop.
-        static let segmentGroupHeight = InkHeight.control
-        static let segmentGroupRadius = InkRadius.group
-        static let segmentPadding: CGFloat = 2
-        static let segmentGap: CGFloat = 2
-        static let segmentHeight: CGFloat = 22
-        static let segmentRadius = InkRadius.groupInner
-        static let segmentPaddingH: CGFloat = 10
-        static let segmentFont = InkStyle(size: 12, weight: .medium)
-
-        // MARK: The switch
-
-        /// 28×16, a 12 pt knob 2 in, the accent when on, the stronger hairline when off; a disabled one is drawn at 38 %.
-        static let switchSize = CGSize(width: 28, height: 16)
-        static let switchKnob: CGFloat = 12
-        static let switchInset: CGFloat = 2
-        static var switchOffFill: Color { Surface.strongerHairline }
-        static var switchOnFill: Color { Accent.base }
-        static let switchKnobFill = Color.white
-
         // MARK: The stepper
 
-        /// 26 high, radius 7, a strong-hairline edge; the buttons are 26 wide with a 12 pt glyph; the value is mono 12, at least 64 wide
-        /// between two hairlines.
-        static let stepperHeight = InkHeight.control
-        static let stepperRadius = InkRadius.group
-        static let stepperButton: CGFloat = 26
-        static let stepperGlyph = Font.system(size: 12, weight: .medium)
+        /// A 32 pt page control with radius 8; its 32 pt buttons have 16 pt glyphs and the mono value is at least 64 wide.
+        static let stepperHeight = InkHeight.standard
+        static let stepperRadius = InkRadius.row
+        static let stepperButton = InkHeight.standard
+        static let stepperGlyph = Control.iconGlyph
         static let stepperValue = InkStyle(size: 12, mono: true)
         static let stepperValueMinWidth: CGFloat = 64
 

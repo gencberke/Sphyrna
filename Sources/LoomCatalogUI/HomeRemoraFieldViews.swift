@@ -148,14 +148,8 @@ struct HomeRemoraFieldBlock: View {
                 RoundedRectangle(cornerRadius: R.stopSquareRadius).frame(width: R.stopSquare, height: R.stopSquare)
                 Text("Stop").homeType(R.stopText)
             }
-            .foregroundStyle(LoomTheme.Text.primary)
-            .padding(.horizontal, R.stopPadding)
-            .frame(height: R.stopHeight)
-            .overlay(RoundedRectangle(cornerRadius: R.stopRadius)
-                .strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline))
-            .contentShape(RoundedRectangle(cornerRadius: R.stopRadius))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
         .help("Stop \u{00B7} esc")
         .accessibilityLabel("Stop")
         .accessibilityIdentifier("home-remora-stop")

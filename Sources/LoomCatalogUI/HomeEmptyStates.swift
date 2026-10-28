@@ -79,7 +79,7 @@ struct HomeEmptyCatalog: View {
             HStack(alignment: .top, spacing: LoomTheme.Home.firstActionsGap) {
                 Button("Add Project…") { model.presentAddProject() }
                     .keyboardShortcut("o", modifiers: .command)
-                    .buttonStyle(ControlButtonStyle(kind: .default))
+                    .buttonStyle(ControlButtonStyle(kind: .default, size: .large))
                     .accessibilityIdentifier("home-add-project")
                 if connect {
                     HomeCheckAgainButton(model: model)

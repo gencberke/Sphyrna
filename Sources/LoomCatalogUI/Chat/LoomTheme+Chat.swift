@@ -98,8 +98,6 @@ extension LoomTheme {
         /// The view chip: 24 pt, radius 6, the canvas at 92 % under it.
         static let viewChipHeight: CGFloat = 24
         static let viewChipFillOpacity = 0.92
-        /// The chip's key cap (\u{2303}O): mono 10, radius 4.
-        static let keyCap = Font.system(size: 10, design: .monospaced)
         static let jumpPillPaddingLeading: CGFloat = 9
         static let jumpPillPaddingTrailing: CGFloat = 12
         /// Below this stream width the view chip shrinks to its glyph and key: the full chip would sit over the
