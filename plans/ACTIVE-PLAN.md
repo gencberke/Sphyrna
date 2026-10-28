@@ -27,7 +27,7 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 0 | P0 Codex spike | bounded investigation complete;7 user inputs +1 auxiliary held; D1 works with API-resume/owned-route changes, F1 queue verified, D2 data boundaries noted, G1 strict no-tools blocked; SPIKE.md in evidence/r9/p0 |
 | 0 | P1 opencode, agy, pi spike | real-turn permission D-108 (≤5 each); prepare isolated profiles, user signs in when needed |
 | 1 | A1 project reorder | integrated `075cd7d` (after review: rows are direct list children again, `SidebarPagingTests`; the released gap holds until the order lands); a by-hand drag check waits for the gate |
-| 3 | A1b project draft row overlap | integrated `f8adc58`,50 connected tests PASS; scoped actual native after-check pending |
+| 3 | A1b project draft row overlap | integrated `f8adc58`,50 connected tests +actual Ink/Paper row/selection PASS; recovery evidence retained, slice tree/scratch removed |
 | 1 | C1 harness catalogue | integrated `59e300e` (with the planner's fix: opencode has no doctor until P1) |
 | 1 | B1 v4 tokens and controls | integrated `fe6f102` + `a81e2c0` (tokens, six button roles at four sizes, the focus halo, three elevations); its rest is closed by B1b |
 | 1 | B1b shared controls and the last buttons | integrated `d2f3305` + `5c1f073`; five controls, remaining roles, Label, 36 pt main actions and 32 pt stepper; focus/AX regression fixed; planner's 7 affected suites PASS (63). Full attempt interrupted; pooled checks below |
@@ -37,9 +37,10 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 2 | B2 sidebar and card | integrated `497a962` + `6601d5c`; off-screen layout/selection, viewport clock, rest render and accessibility checks pass |
 | 2 | C3 Connections and Home connect cards | integrated `365b2d2` + `175f0e2`, parent seams `425878a`, `c84572b`, `1d4326d`; 9 core + 76 UI scoped tests pass; pooled guard/expectation fixes closed by `8e6fbf7` (112 affected tests PASS) |
 | 2 | B3 status bar | integrated `26acb6c`; full-width 26 pt bar, cached limits/popover, bounded working menu, shared awake setting and sidebar utilities; 185 affected tests PASS; Q7's documented Yes default applied |
+| 3 | B3b one bottom bar | integrated `f3d4f01`; Settings/Help move into the global bar and sidebar footer is removed (D-110);93 slice +29 integrated scoped/window tests PASS; actual popup/appearance next |
 | 3 | C4 neutral draft | integrated `049a95c`; 329 affected tests PASS on v2 (193 Core + 1 Chat + 135 UI); compatible choices/files and v1/v4, supported effort retained per DESIGN |
 | 3 | B4 model and effort pickers | integrated `d727e87`; 140 offscreen tests PASS. Native fix `0c8a0b2` passes 47 affected tests and actual signed-app/keyboard gate. D-109 header stays read-only |
-| 3 | D1 Codex sessions · D2 Codex reader and deletion | P0 bounded report ready; T3-priority/Orca harness and cross-provider delegation comparison before D1 implementation (user steering29Oct) |
+| 3 | D1 Codex sessions · D2 Codex reader and deletion | D1 implementation/combined fake checks active inr9-d1; safe neutral starts/resume identity/owned socket lifecycle; parent real acceptance precedes gate acceptance. D2 follows; reference comparison complete |
 | 3 | B5a Home/project/draft · B5b session surfaces | B5a integrated `e618124`, connected 9 Core +108 UI tests PASS (slice 345 UI run FAIL test-state collision, affected serialized 12 PASS); B5b integrated `339929d`, connected156 tests PASS; first-screen RSS/timing limits and native gates remain named |
 | 3 | B5c Settings, sheets, palette, menus and About | integrated `7f77000`; 97 affected tests PASS (one corpus measurement skipped), six controlled theme renders; native/window/energy remain pooled |
 | 4 | F0 cross-harness child contract | planned D-111; stable child identity, readable results/status, follow-ups and completion/attention wake, then F1 transport |

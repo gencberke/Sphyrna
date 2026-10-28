@@ -307,7 +307,7 @@ at 100 %. No window draws the art
 
 ## 2. Elements to keep
 
-> **1.8.0 (B2, B3, C3):** §0.5 is the current sidebar and window status bar: trailing status words, aligned three-line cards, neutral raised selection, 32 pt Search, one view toggle and a Raised fresh default. Settings/Help remain in the sidebar; cached limits move to the 26 pt window-wide strip. Connections and Home follow the five-harness rules below; earlier version snapshots in this section describe the previous layouts.
+> **1.8.0 (B2, B3/B3b, C3):** §0.5 is the current sidebar and window status bar: trailing status words, aligned three-line cards, neutral raised selection, 32 pt Search, one view toggle and a Raised fresh default. Settings/Help and cached limits share the single 26 pt window-wide strip (D-110). Connections and Home follow the five-harness rules below; earlier version snapshots in this section describe the previous layouts.
 
 > **1.7.1 (FB6-1, FB6-2, FB6-6, [D-103](../DECISIONS.md)):** the sidebar draws one plain fill: Canvas (the default), Raised (one step lighter) or Deep (one step darker), at Solid, 90, 80 or 65 % over what is behind the window, with no material and no blur; Reduce Transparency draws Solid. The split view's divider is opaque under its hairline, so the desktop never shows through the 1 pt gap. A card's title, reason line and branch start on one edge under the project (or harness) mark, 20 from the row's inset; the name keeps its place after the mark, whose box is its own 12 pt.
 

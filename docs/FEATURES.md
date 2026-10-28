@@ -138,7 +138,7 @@ The sidebar has two views:
 - **Activity:** Drafts, Active (with a one-line reason) and day buckets.
 
 Each card shows its harness, model, branch and subagent tree, and Peek shows the last ask and answer on hover.
-Settings and Help remain at the sidebar's bottom; the window-wide status bar carries the cached limits (B3, integrated on `v2`).
+Settings, Help and cached limits share the single window-wide status bar; the sidebar list reaches it without a separate footer (B3/B3b, D-110, integrated on `v2`).
 - **Spec:** [SPEC §6.2](../SPEC.md) · **Status:** Live
 - **Orca:** A lifted sidebar plane (`--worktree-sidebar`), search and nav rows with counts, project groups of worktree cards with their agents (status, harness, title, last action, model, time). Tabs reorder with dnd-kit (`components/tab-bar/use-sortable-tab-rename.ts`).
 - **T3 Code:** Thread rows with the project mark and name, the status and elapsed time at the trailing end, the title, then the branch and harness mark (`sidebar/SidebarThreadRow.tsx`). Projects reorder with `@dnd-kit` sortable, vertical axis, inside the scroll view (`Sidebar.tsx:23-25, 2936`).
