@@ -119,14 +119,8 @@ struct DraftPageTests {
         #expect(D.underline(nil) == LoomTheme.Text.tertiaryStyle)
     }
 
-    @Test func theStripIsASegmentedControlAndThePresetsAreSmallChips() {
+    @Test func theKeysAndFolderKeepTheirMachineTextRoles() {
         typealias D = LoomTheme.Draft
-        // The group is 26 high with radius 7 and 2 inside; a segment is 22 high with radius 5.
-        #expect(LoomTheme.InkHeight.control == 26 && LoomTheme.InkRadius.group == 7 && LoomTheme.InkRadius.groupInner == 5)
-        #expect(LoomTheme.InkHeight.control - 2 * D.segmentPadding == LoomTheme.InkHeight.chip)
-        #expect(D.segmentGap == 2 && D.segmentPaddingH == 10)
-        // A preset chip is 26 high with radius 6, 12 secondary words, the canvas at 72 %.
-        #expect(LoomTheme.InkRadius.control == 6 && D.chipText == LoomTheme.InkType.small && D.chipFillOpacity == 0.72)
         #expect(D.keys == LoomTheme.InkType.meta && D.keysGap == 18)
         #expect(D.folder.size == 12 && D.folder.mono)
         // The optical values are not on the 4 pt grid's list; the grid ones are.

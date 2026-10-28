@@ -116,13 +116,15 @@ struct HomeAgeLabel: View {
     var verb: String?
 
     var body: some View {
-        Text(verb.map { "\($0) " + HomeAgeText.ago(from: date, to: model.now) } ?? RelativeTime.string(from: date, to: model.now))
-            .homeType(LoomTheme.Home.rowMeta).foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
+        let lead = Text(verb.map { "\($0) " } ?? "").font(LoomTheme.InkType.caption.font)
+        let time = Text(verb == nil ? RelativeTime.string(from: date, to: model.now) : HomeAgeText.ago(from: date, to: model.now))
+            .font(LoomTheme.Home.rowMeta.font)
+        Text("\(lead)\(time)").foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
     }
 }
 
-/// The project's mark (14) and its name in mono tertiary, after a row's title. A session without a project shows neither.
+/// The project's mark and name after a row's title. A session without a project shows neither.
 struct HomeProjectTag: View {
     let name: String
     let tone: ProjectTone?
@@ -130,7 +132,7 @@ struct HomeProjectTag: View {
     var body: some View {
         HStack(spacing: LoomTheme.Home.projectGap) {
             ProjectMarkView(name: name, tone: tone, size: .chip)
-            Text(name).homeType(LoomTheme.Home.rowMeta).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            Text(name).homeType(LoomTheme.Home.projectName).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 .lineLimit(1).truncationMode(.middle)
         }
     }

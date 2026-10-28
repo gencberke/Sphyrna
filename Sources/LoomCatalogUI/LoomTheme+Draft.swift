@@ -8,9 +8,9 @@ extension LoomTheme {
     enum Draft {
         // MARK: The question
 
-        /// The question: 46 ultralight, tracked −3 %.
+        /// The question: 34 light, tracked −3 %.
         static let question = InkType.display
-        /// The space between "in" and the picker (a word space at 46 pt) and between lines of the two-row question.
+        /// The space between "in" and the picker and between lines of the two-row question.
         static let questionWordGap: CGFloat = 11
         static let questionRowGap: CGFloat = 8
         /// A narrow pane shrinks the first line of the two-row question down to this share instead of wrapping it.
@@ -48,11 +48,16 @@ extension LoomTheme {
         static let keysGap: CGFloat = 18
         static let keyWordsGap: CGFloat = 4
 
+        // MARK: The composer
+
+        static let composerRadius: CGFloat = 16
+        /// An icon-only page button is 32 wide after the shared button's two horizontal insets.
+        static let sendLabelWidth = Control.Size.page.height - 2 * Control.Size.page.paddingH
+
         // MARK: The branch strip
 
-        /// A segment: 12 medium, with a 13 pt glyph 6 from its words.
-        static let segment = InkStyle(size: 12, weight: .medium)
-        static let segmentGlyph = Font.system(size: 13)
+        /// A segment's branch glyph and the gap to its words.
+        static let segmentGlyph = Font.system(size: 14)
         static let segmentGlyphGap: CGFloat = 6
         /// The name a chosen new-branch segment shows after its words.
         static let segmentName = InkStyle(size: 11.5, mono: true)
@@ -60,11 +65,6 @@ extension LoomTheme {
         static let segmentNameMaxWidth: CGFloat = 160
         /// The most a "Stay on <branch>" segment grows before the branch is cut at its end.
         static let segmentStayMaxWidth: CGFloat = 240
-        /// The group is 26 high with 2 inside and 2 between; a segment is 22 high with 10 beside its words.
-        static let segmentPadding: CGFloat = 2
-        static let segmentGap: CGFloat = 2
-        static let segmentPaddingH: CGFloat = 10
-
         // MARK: The popover of a new choice's name
 
         static let popoverPadding: CGFloat = 12
@@ -72,15 +72,11 @@ extension LoomTheme {
 
         // MARK: Presets
 
-        /// A chip: 26 high, radius 6, 11 beside its words, the canvas at 72 % under a strong-hairline edge.
-        static let chipText = InkType.small
-        static let chipPaddingH: CGFloat = 11
-        static let chipFillOpacity = 0.72
         static let chipMaxWidth: CGFloat = 280
         /// The "Presets" label sits 4 more from the first chip.
         static let labelExtraGap: CGFloat = 4
         /// The quiet line that says where mode and model came from.
-        static let note = InkType.meta
+        static let note = InkType.caption
 
         // MARK: Remora's brief (§8, D-80; the reference's `.nrow` and `.ndraft`)
 
@@ -90,13 +86,13 @@ extension LoomTheme {
         static let remoraText = InkStyle(size: 12.5)
         static let remoraMeta = InkType.meta
         /// The line above the composer: 22 under the folder line and 8 above the card, 18 in from the card's edges, "Remora's
-        /// draft" in 11.5 medium secondary, then mono 11 tertiary, 10 between its pieces.
+        /// draft" in 11.5 medium secondary, then a tertiary caption, 10 between its pieces.
         static let originTop: CGFloat = 22
         static let originComposerGap: CGFloat = 8
         static let originInset: CGFloat = 18
         static let originGap: CGFloat = 10
         static let originTitle = InkStyle(size: 11.5, weight: .medium)
-        static let originDetail = InkType.meta
+        static let originDetail = InkType.caption
     }
 }
 

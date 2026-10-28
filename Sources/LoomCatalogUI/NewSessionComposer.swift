@@ -2,9 +2,8 @@ import AppKit
 import LoomCore
 import SwiftUI
 
-/// The draft's composer in the look of D-58 (design/v2-new-session-preview.html, N1): a card with the text
-/// and a bar with the permission mode as plain text with a shield, the
-/// model, and a round Send. Mode and model come from `NewSessionDefaults` and a pick overrides them.
+/// The draft's composer: a raised v4 card with text, permission mode, model, effort and Send.
+/// Mode and model come from `NewSessionDefaults` and a pick overrides them.
 ///
 /// It is the session's own composer at draft time (D-59): the text field, the keys and the bar's pieces are the
 /// ones the live composer uses (`ComposerTextEditor`, `ComposerKeys`, `ComposerBar`); what differs is what the keys
@@ -41,7 +40,8 @@ struct NewSessionComposer: View {
     }
 
     private var card: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let shape = RoundedRectangle(cornerRadius: LoomTheme.Draft.composerRadius)
+        return VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .topLeading) {
                 if draft.text.isEmpty {
                     Text("Describe the work, or add a skill with /")
@@ -59,7 +59,8 @@ struct NewSessionComposer: View {
             .opacity(sending ? LoomTheme.Opacity.disabled : 1)
             ComposerBar(model: model, projectID: projectID, restoreFocus: { host.focusEditor() })
         }
-        .composerCard()
+        .background { shape.fill(LoomTheme.Surface.raised2).depth(LoomTheme.Elevation.lift) }
+        .overlay { shape.strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline).allowsHitTesting(false) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("draft-composer-card")
     }
@@ -152,17 +153,22 @@ private struct ComposerBar: View {
     }
 }
 
-/// The round Send button: light when the draft can start, dim when there is nothing to send.
+/// The neutral default action says what Return does; it is disabled while the draft cannot start.
 private struct SendButton: View {
     let model: CatalogModel
     let projectID: UUID?
 
     var body: some View {
         let enabled = model.canSendDraft(projectID: projectID)
-        ComposerSendButton(
-            look: enabled ? .send : .disabled, label: "Start session",
-            help: DraftWords.sendHelp(enabled: enabled),
-            identifier: "draft-send") { _ in model.sendDraft(projectID: projectID) }
+        Button { model.sendDraft(projectID: projectID) } label: {
+            Image(systemName: "arrow.up").font(LoomTheme.Control.iconGlyph).fixedSize()
+                .frame(width: LoomTheme.Draft.sendLabelWidth)
+        }
+        .buttonStyle(ControlButtonStyle(kind: .default, size: .page))
+        .disabled(!enabled)
+        .help(DraftWords.sendHelp(enabled: enabled))
+        .accessibilityLabel("Start session")
+        .accessibilityIdentifier("draft-send")
     }
 }
 

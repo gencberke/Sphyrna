@@ -7,18 +7,13 @@ import SwiftUI
 
 private typealias R = LoomTheme.Remora
 
-/// The field's surface: raised 2, radius 15, the composer's ring and its shadow (level 2, the composer card at the field's radius).
+/// The field's raised surface, hairline and level-2 shadow at the existing radius.
 private struct HomeRemoraFieldSurface: ViewModifier {
-    @Environment(\.colorScheme) private var scheme
-
     func body(content: Content) -> some View {
-        let depth = LoomTheme.Composer.depth[LoomTheme.Appearance(scheme)]
         let shape = RoundedRectangle(cornerRadius: R.fieldRadius)
         content
             .background { shape.fill(LoomTheme.Composer.fill).depth(LoomTheme.Composer.depth) }
-            .overlay {
-                if let ring = depth.ring { shape.strokeBorder(ring.color, lineWidth: LoomTheme.Line.hairline).allowsHitTesting(false) }
-            }
+            .overlay { shape.strokeBorder(LoomTheme.Surface.hairlineStyle, lineWidth: LoomTheme.Line.hairline).allowsHitTesting(false) }
     }
 }
 
@@ -103,12 +98,12 @@ struct HomeRemoraFieldBlock: View {
         let isOpen = ui.binding(.scope)
         return Button { isOpen.wrappedValue.toggle() } label: {
             HStack(spacing: R.scopeGap) {
-                Text(scopeTitle).homeType(R.scopeText).lineLimit(1)
+                Text(scopeTitle).lineLimit(1)
                 Image(systemName: "chevron.down").font(R.scopeChevronGlyph.font)
                     .foregroundStyle(LoomTheme.Text.tertiaryStyle).accessibilityHidden(true)
             }
         }
-        .buttonStyle(ComposerChipStyle())
+        .buttonStyle(ControlButtonStyle(kind: .ghost, size: .regular))
         .fixedSize()
         .accessibilityLabel("Scope: \(scopeTitle)")
         .accessibilityHint("Opens a menu")
@@ -131,12 +126,10 @@ struct HomeRemoraFieldBlock: View {
     private var sendButton: some View {
         let question = ui.text.trimmingCharacters(in: .whitespacesAndNewlines)
         return Button { HomeRemoraCalls.ask(model, ui: ui, question) } label: {
-            Image(systemName: "arrow.up").font(R.sendGlyph.font)
-                .foregroundStyle(LoomTheme.Composer.sendOnDiscGlyph)
-                .frame(width: R.sendSide, height: R.sendSide)
-                .background(Circle().fill(question.isEmpty ? LoomTheme.Composer.sendOffFill : LoomTheme.Composer.sendReadyFill))
+            Image(systemName: "arrow.up").font(LoomTheme.Control.iconGlyph).fixedSize()
+                .frame(width: LoomTheme.Home.sendLabelWidth)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ControlButtonStyle(kind: .default, size: .page))
         .disabled(question.isEmpty)
         .accessibilityLabel("Ask")
         .accessibilityIdentifier("home-remora-send")
@@ -150,7 +143,7 @@ struct HomeRemoraFieldBlock: View {
             }
         }
         .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
-        .help("Stop \u{00B7} esc")
+        .help("Stop")
         .accessibilityLabel("Stop")
         .accessibilityIdentifier("home-remora-stop")
     }
@@ -249,7 +242,7 @@ private struct HomeRemoraAnswerCard: View {
                 if text.isEmpty {
                     HStack(spacing: R.readingGap) {
                         BrailleSpinner(animating: indicatorsAnimate).frame(width: LoomTheme.Layout.indicatorSlot.width).accessibilityHidden(true)
-                        Text(HomeRemoraText.readingLine(reading)).homeType(R.working).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                        Text(HomeRemoraText.readingLine(reading)).homeType(LoomTheme.InkType.small).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                     }
                     .padding(.top, R.workingTop)
                     .accessibilityElement(children: .combine)
@@ -271,7 +264,7 @@ private struct HomeRemoraAnswerCard: View {
                 .accessibilityIdentifier("home-remora-failure")
             case .stopped(let text):
                 if !text.isEmpty { answerText(text) }
-                Text(HomeRemoraText.stoppedQuestion).homeType(R.working).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                Text(HomeRemoraText.stoppedQuestion).homeType(LoomTheme.InkType.small).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                     .padding(.top, R.stoppedTop)
                     .accessibilityIdentifier("home-remora-stopped")
             case .answered(let facts):
@@ -309,11 +302,11 @@ private struct HomeRemoraAnswerCard: View {
             Text(asked.question).homeType(R.askedQuestion).foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
             Spacer(minLength: 0)
             Button { ui.answerClosed = true } label: {
-                Image(systemName: "xmark").font(R.closeGlyph.font).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                    .frame(width: R.closeSide, height: R.closeSide)
-                    .contentShape(Rectangle())
+                Image(systemName: "xmark")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(ChromeButtonStyle(size: LoomTheme.Home.smallIconSize))
+            .focusEffectDisabled()
+            .help("Close answer")
             .accessibilityLabel("Close answer")
             .accessibilityIdentifier("home-remora-close-answer")
         }
@@ -350,10 +343,9 @@ private struct HomeRemoraAnswerCard: View {
     private func foot(_ facts: HomeRemoraAnswerFacts) -> some View {
         let sources = ui.binding(.answerSources)
         return HStack(spacing: R.footGap) {
-            Text(HomeRemoraText.footer(facts.footer, duration: facts.duration)).homeType(R.foot).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            Text(HomeRemoraText.footer(facts.footer, duration: facts.duration)).homeType(LoomTheme.InkType.caption).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 .accessibilityIdentifier("home-remora-answer-footer")
             HomeRemoraLink(title: HomeRemoraText.sources, identifier: "home-remora-answer-sources") { sources.wrappedValue.toggle() }
-                .homeType(R.footLink)
                 .inkPopover(isPresented: sources, id: "home-remora-answer-sources", label: "Read for this answer", side: .above,
                             alignment: .leading, content: {
                     HomeRemoraSourcesView(model: model, reads: reads, label: HomeRemoraText.sourcesLabel(brief: false),
@@ -381,16 +373,12 @@ enum HomeRemoraAnswerChips {
     }
 }
 
-/// A session chip: the project's mark, the title and when, tinted with the project's tone; a click opens the session (`open` when
-/// given: the palette closes first).
+/// A session chip: the project mark, title and time in the shared outline control; the palette closes before opening its session.
 struct HomeRemoraChip: View {
     let model: CatalogModel
     let session: HomeRemoraSession
     var open: (@MainActor () -> Void)? = nil
-    @State private var hovering = false
-
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: R.chipRadius)
         Button { if let open { open() } else { model.select(session.id) } } label: {
             HStack(spacing: R.chipGap) {
                 if let name = session.projectName { ProjectMarkView(name: name, tone: session.tone, size: .chip) }
@@ -400,24 +388,10 @@ struct HomeRemoraChip: View {
                 Image(systemName: "arrow.up.right").font(R.arrowGlyph.font)
                     .foregroundStyle(LoomTheme.Text.tertiaryStyle).accessibilityHidden(true)
             }
-            .padding(.leading, R.chipPaddingLeading).padding(.trailing, R.chipPaddingTrailing)
-            .frame(height: R.chipHeight)
-            .background(shape.fill(fill))
-            .overlay(shape.strokeBorder(edge, lineWidth: LoomTheme.Line.hairline))
-            .contentShape(shape)
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
+        .buttonStyle(ControlButtonStyle(kind: .outline, size: .regular))
         .accessibilityLabel("Open \(session.title)")
         .accessibilityIdentifier("home-remora-chip")
-    }
-
-    private var fill: Color {
-        session.tone.map { LoomTheme.Remora.chipFillTone($0, hovering: hovering).color } ?? (hovering ? LoomTheme.Surface.hover : .clear)
-    }
-
-    private var edge: Color {
-        session.tone.map { LoomTheme.Remora.chipEdgeTone($0).color } ?? LoomTheme.Surface.strongHairline
     }
 }
 
@@ -438,7 +412,7 @@ struct HomeRemoraEarlier: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RowButtonStyle(radius: LoomTheme.InkRadius.row))
         .accessibilityLabel("Earlier question: \(earlier.question)")
         .accessibilityHint("Brings the question back to the field")
         .accessibilityIdentifier("home-remora-earlier")

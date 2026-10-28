@@ -114,7 +114,7 @@ struct ProjectPageInkPureTests {
         let page = LoomTheme.ProjectPage.self
         #expect(page.cardRadius == 12 && page.cardPadding == 16 && page.sideColumn == 300 && page.columnGap == 20)
         #expect(page.blockGap == 14 && page.statGap == 8 && page.presetHeight == 28 && page.presetBleed == 8)
-        #expect(page.cardTitle.size == 13 && page.cardTitle.weight == .semibold && page.cardNote.size == 11 && page.cardNote.mono)
+        #expect(page.cardTitle.size == 13 && page.cardTitle.weight == .semibold && page.cardNote.size == 11 && !page.cardNote.mono)
         #expect(page.statFigure.size == 18 && page.statFigure.weight == .semibold && page.statLabel.size == 11.5)
         #expect(ProjectUsageText.line(loading: true, failed: false) == "Reading usage\u{2026}")
         #expect(ProjectUsageText.line(loading: false, failed: true) == "Could not read this project's usage.")

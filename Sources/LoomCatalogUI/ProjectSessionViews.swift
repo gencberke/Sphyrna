@@ -313,11 +313,7 @@ private struct ProjectPresetRow: View {
                     .lineLimit(1).truncationMode(.tail)
                 Spacer(minLength: 0)
                 if preset.projectID == nil {
-                    Text("all").projectType(LoomTheme.ProjectPage.presetAll).foregroundStyle(LoomTheme.Text.tertiaryStyle)
-                        .padding(.horizontal, LoomTheme.ProjectPage.presetAllPadding)
-                        .overlay(RoundedRectangle(cornerRadius: LoomTheme.ProjectPage.presetAllRadius)
-                            .strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline))
-                        .fixedSize()
+                    InkBadge(text: "all", kind: .outline).fixedSize().accessibilityHidden(true)
                 }
                 if let alias = preset.model {
                     HStack(spacing: LoomTheme.ProjectPage.presetModelGap) {

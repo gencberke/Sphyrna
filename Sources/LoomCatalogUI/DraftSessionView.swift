@@ -170,7 +170,7 @@ struct Headline: View {
     }
 }
 
-/// The keys under the composer (DESIGN §8 Keys): mono 11 tertiary, the key in secondary 500, 18 apart, centred.
+/// The keys under the composer: shortcuts in mono, their descriptions in the caption face.
 struct DraftKeysLine: View {
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -186,14 +186,14 @@ struct DraftKeysLine: View {
         let keys = ForEach(DraftWords.keys, id: \.self) { hint in
             let (key, words) = ComposerHints.split(hint)
             HStack(spacing: LoomTheme.Draft.keyWordsGap) {
-                Text(key).foregroundStyle(LoomTheme.Text.secondaryStyle).fontWeight(.medium)
-                Text(words)
+                Text(key).draftType(LoomTheme.Draft.keys).foregroundStyle(LoomTheme.Text.secondaryStyle).fontWeight(.medium)
+                Text(words).draftType(LoomTheme.InkType.caption)
             }
         }
         return Group {
             if vertical { VStack(spacing: spacing) { keys } } else { HStack(spacing: spacing) { keys } }
         }
-        .draftType(LoomTheme.Draft.keys).foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1).fixedSize()
+        .foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1).fixedSize()
         .frame(maxWidth: .infinity)
     }
 }

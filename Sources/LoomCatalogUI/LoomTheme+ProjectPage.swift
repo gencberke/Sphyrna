@@ -87,11 +87,11 @@ extension LoomTheme {
 
         // MARK: The side cards
 
-        /// A card: raised 1, radius 12, a hairline edge and the card's depth, 16 padded. The title is header type, the note mono 11.
+        /// A card: raised 1, radius 12, a hairline edge and the card's depth, 16 padded. The title is header type, the note a caption.
         static let cardPadding: CGFloat = 16
         static let cardRadius = InkRadius.card
         static let cardTitle = InkType.header
-        static let cardNote = InkType.meta
+        static let cardNote = InkType.caption
         /// Where a card's content starts under its title: the presets 10, the figures 12, a line of text 8.
         static let presetsTop: CGFloat = 10
         static let figuresTop: CGFloat = 12
@@ -110,9 +110,6 @@ extension LoomTheme {
         static let presetName = InkType.body
         static let presetModel = InkType.meta
         static let presetModelGap: CGFloat = 5
-        static let presetAll = InkStyle(size: 10, mono: true)
-        static let presetAllPadding: CGFloat = 4
-        static let presetAllRadius = InkRadius.key
 
         /// Past 7 days: three equal columns 8 apart; a figure (18 semibold, tabular digits) over a label (11.5 secondary), 1 under it.
         static let statGap: CGFloat = 8

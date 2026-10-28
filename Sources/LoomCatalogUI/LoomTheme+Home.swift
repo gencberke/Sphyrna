@@ -60,6 +60,7 @@ extension LoomTheme {
         static let rowActionsGap: CGFloat = 8
         static let rowTitle = InkStyle(size: 13, weight: .medium)
         static let rowMeta = InkType.meta
+        static let projectName = InkType.caption
         static let reason = InkType.small
         static let reasonMono = InkType.metaLarge
 
@@ -80,7 +81,7 @@ extension LoomTheme {
 
         // MARK: Side cards
 
-        /// A block of the side column pads 16; its title and note sit on one line, 4 above the content.
+        /// A block of the side column pads 16; its title and caption sit on one line, 4 above the content.
         static let sideCardPadding: CGFloat = 16
         static let sideHeadGap: CGFloat = 4
         /// A plan window's block is 14 under the one above it (and under the heading's 4).
@@ -93,7 +94,7 @@ extension LoomTheme {
         /// Today's line is 8 under the heading.
         static let todayTop: CGFloat = 8
         static let sideTitle = InkType.header
-        static let sideNote = InkType.meta
+        static let sideNote = InkType.caption
         static let today = InkStyle(size: 12.5)
         static let todayGap: CGFloat = 4
 
@@ -131,7 +132,7 @@ extension LoomTheme {
         // MARK: Connect your agents
 
         /// The first run's cards: one per harness, 10 apart, 480 wide, 14 inside; the mark (13), the name over its headline, and a
-        /// word for the state at the trailing edge (mono 11). The cards sit 18 under the text.
+        /// word for the state at the trailing edge (caption 11). The cards sit 18 under the text.
         static let connectWidth: CGFloat = 480
         static let connectGap: CGFloat = 10
         static let connectPadding: CGFloat = 14
@@ -139,8 +140,12 @@ extension LoomTheme {
         static let connectCardsTop: CGFloat = 18
         static let connectName = InkType.header
         static let connectHeadline = InkType.small
-        static let connectWord = InkType.meta
+        static let connectWord = InkType.caption
         static let connectSetupTop: CGFloat = 12
+
+        // Remora's icon-only actions use the shared control dimensions.
+        static let sendLabelWidth = Control.Size.page.height - 2 * Control.Size.page.paddingH
+        static let smallIconSize = CGSize(width: InkHeight.xs, height: InkHeight.xs)
     }
 }
 

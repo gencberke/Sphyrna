@@ -44,7 +44,7 @@ private struct InkSegment: View {
     }
 }
 
-private struct InkSegmentStyle: ButtonStyle {
+struct InkSegmentStyle: ButtonStyle {
     let chosen: Bool
     let key: String
 

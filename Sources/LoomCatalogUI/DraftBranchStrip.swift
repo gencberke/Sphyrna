@@ -15,7 +15,7 @@ struct BranchStrip: View {
             hasProject: projectID != nil, branch: model.newSession.branch(for: projectID), chosen: draft.branchKind,
             name: model.draftBranchName(draft))
         let spot = InkOpeners.placement(.branchName, onDraft: true) ?? InkOpeners.Spot(side: .below, alignment: .leading)
-        HStack(spacing: LoomTheme.Draft.segmentGap) {
+        HStack(spacing: LoomTheme.Control.segmentGap) {
             ForEach(segments, id: \.kind) { segment in
                 StripSegment(segment: segment) { choose(segment.kind) }
                     .inkPopover(isPresented: open(segment.kind), id: "draft-branch-name", label: branchPopoverLabel(segment.kind),
@@ -24,9 +24,9 @@ struct BranchStrip: View {
                     }
             }
         }
-        .padding(LoomTheme.Draft.segmentPadding)
-        .background(RoundedRectangle(cornerRadius: LoomTheme.InkRadius.group).fill(LoomTheme.Surface.control))
-        .frame(height: LoomTheme.InkHeight.control)
+        .padding(LoomTheme.Control.segmentInset)
+        .background(RoundedRectangle(cornerRadius: LoomTheme.Control.segmentGroupRadius).fill(LoomTheme.Surface.muted))
+        .frame(height: LoomTheme.Control.segmentedHeight)
         .fixedSize()
         .disabled(projectID == nil)
         .accessibilityElement(children: .contain)
@@ -49,20 +49,17 @@ struct BranchStrip: View {
     private func branchPopoverLabel(_ kind: BranchKind) -> String { kind == .newWorktree ? "Worktree name" : "Branch name" }
 }
 
-/// One segment: 22 high inside the group's 2, radius 5. The chosen one is raised (Segment on, a strong hairline and a 1 pt drop).
+/// A shared segment with the branch-specific label, disabled reason and popover anchor.
 private struct StripSegment: View {
     let segment: DraftWords.Segment
     let action: () -> Void
-    @State private var hovering = false
     @Environment(\.isEnabled) private var enabled
-    @Environment(\.isFocused) private var focused
 
     private typealias D = LoomTheme.Draft
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: LoomTheme.InkRadius.groupInner)
         let on = enabled && segment.isEnabled
-        Button(action: action) {
+        return Button(action: action) {
             HStack(spacing: D.segmentGlyphGap) {
                 if segment.showsGlyph { Image(systemName: "arrow.triangle.branch").font(D.segmentGlyph) }
                 Text(segment.title).lineLimit(1).truncationMode(.tail)
@@ -75,27 +72,11 @@ private struct StripSegment: View {
                         .padding(.leading, D.segmentNameGap - D.segmentGlyphGap)
                 }
             }
-            .draftType(D.segment)
-            .foregroundStyle(segment.isChosen || (hovering && on) ? AnyShapeStyle(LoomTheme.Text.primary)
-                             : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
-            .padding(.horizontal, D.segmentPaddingH)
-            .frame(height: LoomTheme.InkHeight.control - 2 * D.segmentPadding)
-            .background {
-                if segment.isChosen {
-                    shape.fill(LoomTheme.Surface.segmentOn)
-                        .depth(LoomTheme.Elevation.lift)
-                        .overlay(shape.strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline))
-                }
-            }
-            .controlFocusRing(
-                visible: ChromeButtonStyle.showsFocusRing(focused: focused, keyboardNavigation: KeyboardNavigation.shared.isEnabled),
-                radius: LoomTheme.InkRadius.groupInner)
-            .contentShape(shape)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(InkSegmentStyle(chosen: segment.isChosen, key: identifier))
+        .focusEffectDisabled()
         .disabled(!segment.isEnabled)
         .opacity(on ? 1 : LoomTheme.Opacity.disabled)
-        .onHover { hovering = $0 }
         .help(segment.reason ?? segment.help)
         .accessibilityLabel(segment.accessibilityLabel)
         .accessibilityValue(segment.reason ?? "")

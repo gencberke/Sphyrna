@@ -111,7 +111,7 @@ struct HomeRemoraTileView: View {
     private func head(_ session: HomeRemoraSession) -> some View {
         HStack(spacing: R.tileHeadGap) {
             if let name = session.projectName { ProjectMarkView(name: name, tone: session.tone, size: .chip) }
-            Text(session.projectName ?? "").homeType(R.tileHead).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            Text(session.projectName ?? "").homeType(LoomTheme.Home.projectName).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 .lineLimit(1).truncationMode(.middle)
             Spacer(minLength: 0)
             Text(timeLabel(session)).homeType(R.tileHead).foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
@@ -212,12 +212,12 @@ struct HomeRemoraFurtherLine: View {
                     .foregroundStyle(LoomTheme.Text.tertiaryStyle).frame(width: R.chevron, height: R.chevron).accessibilityHidden(true)
                 if let name = session.projectName { ProjectMarkView(name: name, tone: session.tone, size: .chip) }
                 Text(session.projectName ?? "").homeType(R.quiet).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                Text(session.title).homeType(R.quietMeta).foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
+                Text(session.title).homeType(LoomTheme.InkType.caption).foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
                 Spacer(minLength: 0)
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RowButtonStyle(radius: LoomTheme.InkRadius.row))
         .accessibilityLabel("\(session.projectName ?? "Project"), \(session.title)")
         .accessibilityIdentifier("home-remora-further")
     }
@@ -234,7 +234,7 @@ struct HomeRemoraQuietLine: View {
                 .foregroundStyle(LoomTheme.Text.tertiaryStyle).frame(width: R.chevron, height: R.chevron).accessibilityHidden(true)
             ProjectMarkView(name: quiet.project.name, tone: quiet.project.tone, size: .chip)
             Text(quiet.project.name).homeType(R.quiet).foregroundStyle(LoomTheme.Text.secondaryStyle)
-            Text(HomeRemoraText.quietSince(quiet.since, now: now)).homeType(R.quietMeta).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            Text(HomeRemoraText.quietSince(quiet.since, now: now)).homeType(LoomTheme.InkType.caption).foregroundStyle(LoomTheme.Text.tertiaryStyle)
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
@@ -305,11 +305,10 @@ struct HomeRemoraFooter: View {
     var body: some View {
         let sources = ui.binding(.sources)
         HStack(spacing: R.footGap) {
-            Text(HomeRemoraText.footer(brief.footer, duration: brief.duration)).homeType(R.foot)
+            Text(HomeRemoraText.footer(brief.footer, duration: brief.duration)).homeType(LoomTheme.InkType.caption)
                 .foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 .accessibilityIdentifier("home-remora-footer")
             HomeRemoraLink(title: HomeRemoraText.sources, identifier: "home-remora-sources") { sources.wrappedValue.toggle() }
-                .homeType(R.footLink)
                 .inkPopover(isPresented: sources, id: "home-remora-sources", label: "Read for this brief", side: .above, alignment: .leading,
                             content: {
                     HomeRemoraSourcesView(model: model, reads: reads, label: HomeRemoraText.sourcesLabel(brief: true),
@@ -317,7 +316,7 @@ struct HomeRemoraFooter: View {
                                           close: { sources.wrappedValue = false })
                 })
             if let openMemory {
-                HomeRemoraLink(title: HomeRemoraText.memory, identifier: "home-remora-memory") { openMemory() }.homeType(R.footLink)
+                HomeRemoraLink(title: HomeRemoraText.memory, identifier: "home-remora-memory") { openMemory() }
             }
             Spacer(minLength: 0)
         }
@@ -459,7 +458,7 @@ private struct HomeRemoraFoldLine: View {
                     tick.frame(width: R.foldTick).accessibilityHidden(true)
                     HStack(spacing: R.tileHeadGap) {
                         if let name = session.projectName { ProjectMarkView(name: name, tone: session.tone, size: .chip) }
-                        Text(session.projectName ?? "").homeType(R.foldMeta).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                        Text(session.projectName ?? "").homeType(LoomTheme.Home.projectName).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                             .lineLimit(1).truncationMode(.tail)
                     }
                     .frame(width: R.foldProject, alignment: .leading)
@@ -471,7 +470,7 @@ private struct HomeRemoraFoldLine: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RowButtonStyle(radius: LoomTheme.InkRadius.row))
             .accessibilityLabel("\(session.projectName ?? "Project"), \(session.title), \(pickedUp ? "picked up" : "not picked up")")
             trailing
         }

@@ -117,7 +117,7 @@ private struct HomeRemoraHeading: View {
                 .padding(.trailing, R.headingFaceGap)
                 .accessibilityHidden(true)
                 .accessibilityIdentifier("home-remora-face")
-            Text(HomeRemoraText.heading).homeType(R.heading).foregroundStyle(LoomTheme.Text.primary)
+            Text(HomeRemoraText.heading).homeType(LoomTheme.InkType.statement).foregroundStyle(LoomTheme.Text.primary)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("home-remora-heading")
             Text(when).homeType(R.when).foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
@@ -138,7 +138,7 @@ private struct HomeRemoraHeading: View {
         return Button { isOpen.wrappedValue.toggle() } label: { Image(systemName: "ellipsis") }
             .buttonStyle(ChromeButtonStyle(selected: isOpen.wrappedValue))
             .fixedSize()
-            .help("Catch Me Up, Memory…, Settings…")
+            .help("Remora actions")
             .accessibilityLabel("Remora actions")
             .accessibilityHint("Opens a menu")
             .accessibilityIdentifier("home-remora-more")
@@ -189,7 +189,7 @@ private struct HomeRemoraSentence: View {
                     HStack(spacing: R.readingGap) {
                         BrailleSpinner(animating: indicatorsAnimate).frame(width: LoomTheme.Layout.indicatorSlot.width)
                             .accessibilityHidden(true)
-                        Text(HomeRemoraText.readingLine(remora.reading)).homeType(R.readingLine).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                        Text(HomeRemoraText.readingLine(remora.reading)).homeType(LoomTheme.InkType.small).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                     }
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("home-remora-reading")
