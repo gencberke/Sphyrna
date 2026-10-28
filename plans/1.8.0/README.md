@@ -27,9 +27,9 @@ What does not change: the contracts of SPEC §1–§5 and §12.
 
 ## 2. How the work runs
 
-- **Who** ([D-107](../../DECISIONS.md)). The planner (the main session) starts each implementer in its own session: a Claude
-  Haiku 5.5 `implementer` subagent at max effort, given one brief from [briefs/](briefs/) and [COMMON.md](COMMON.md). `@user` may
-  start any agent with the same brief. The planner reviews every slice's diff and logs, integrates it onto `v2`, and keeps the
+- **Who** ([D-107](../../DECISIONS.md)). The planner (the main session) starts each implementer, or `@user` does: Claude
+  Opus 5.5 / `medium` (an `implementer` subagent) or `gpt-6.1-terra` / `max` (AGENTS §3.1), given one brief from
+  [briefs/](briefs/) and [COMMON.md](COMMON.md). Another model runs only on `@user`'s word for that session. The planner reviews every slice's diff and logs, integrates it onto `v2`, and keeps the
   docs. A slice is not accepted until the planner has reviewed it.
 - **The brief.** Each brief is self-contained for a capable but not top-tier model: the goal, what to read, the write set, the
   approach, done-when, the checks and the report. Every brief also follows [COMMON.md](COMMON.md). A brief whose write set turns

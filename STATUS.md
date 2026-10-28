@@ -52,7 +52,8 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
 ## 4. Next actions by role
 
 - **`@planner`:**
-  1. Start B1b ([brief](plans/1.8.0/briefs/B1b.md)) as one Haiku implementer.
+  1. Start B1b ([brief](plans/1.8.0/briefs/B1b.md)) as one implementer (AGENTS §3.1's models, or the one `@user` names for
+     the session).
   2. Beside it, the reference's consistency pass (ACTIVE-PLAN "Open notes"): one frame rule for every app window, then redraw
      the windows that break it.
   3. After B1b: B2 and C3 side by side (disjoint), then B3; C4 after them; the rest in the plan's order, two at most at once.
