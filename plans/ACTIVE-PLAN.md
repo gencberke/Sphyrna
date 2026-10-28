@@ -37,13 +37,15 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 2 | C3 Connections and Home connect cards | integrated `365b2d2` + `175f0e2`, parent seams `425878a`, `c84572b`, `1d4326d`; 9 core + 76 UI scoped tests pass; pooled guard/expectation fixes closed by `8e6fbf7` (112 affected tests PASS) |
 | 2 | B3 status bar | integrated `26acb6c`; full-width 26 pt bar, cached limits/popover, bounded working menu, shared awake setting and sidebar utilities; 185 affected tests PASS; Q7's documented Yes default applied |
 | 3 | C4 neutral draft | integrated `049a95c`; 329 affected tests PASS on v2 (193 Core + 1 Chat + 135 UI); compatible choices/files and v1/v4, supported effort retained per DESIGN |
-| 3 | B4 model and effort pickers | running on `slice/r9-b4` from `d7f7444`; C4 adapters, approved two-picker UI, header mutation policy awaiting @user while draft work proceeds |
+| 3 | B4 model and effort pickers | running on `slice/r9-b4` from `d7f7444`; C4 adapters, approved two-picker UI, D-109 preserves the read-only header; active pickers belong to the draft |
 | 3 | D1 Codex sessions · D2 Codex reader and deletion · B5a/b surfaces | queued |
 | 3 | B5c Settings, sheets, palette, menus and About | integrated `7f77000`; 97 affected tests PASS (one corpus measurement skipped), six controlled theme renders; native/window/energy remain pooled |
 | 4 | E1 opencode · E2 agy · E3 pi · F1 send · F2 Changes → session · G1 Remora backends · H1 usage · I1 names | queued |
 | 5 | Z the gate, the optimizer, the release | planner |
 
 ## Open notes for the planner
+
+- **B4 header UX (D-109):** @user delegated the cleanest interaction to the planner; retain the read-only current-model/context header, with model/effort selection in the new-session draft. Shared reference headers are reconciled; do not introduce next-start pending state or terminal command injection.
 
 - **Continuous resume and test budget (D-108, 28 Oct):** Mac idle and AC attached; run the accumulated native/window/visual/energy pool at a worthwhile integrated point. Real isolated turns are authorized: Codex ≤15, opencode/agy/pi ≤5 each; record every turn in `evidence/r9/REAL-TURN-BUDGET.md` and provider reports. The user performs any login; no release/install authority was added.
 

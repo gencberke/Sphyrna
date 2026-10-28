@@ -151,6 +151,7 @@ Deletion is an end-to-end state machine persisted in the `deletions` table (`req
 
 ### 6.3 Detail Header & Session Tabs ([D-33](DECISIONS.md), [D-53](DECISIONS.md), [D-74](DECISIONS.md))
 - **Detail header (`52 pt`, shown on sessions only; Home and Project page have no header row):**
+  - **Model/context is read-only (D-109):** the header reports this session’s current model/context (or an identified launch choice before a reading). Model and effort selection belongs to the new-session draft. It stores no hidden next-start choice and sends no terminal command.
   - Left: sidebar toggle (when collapsed), `13 pt` harness mark, session title (double-click or `⋯ → Rename` opens Rename sheet), and `22 pt` **State Pill** immediately after the title (`D-74`).
   - Right: model segment (on terminal/record routes), tinted **Project + Branch chip** (clicking opens Project page), Inspector toggle (`⌥⌘B`), and the **`Stop` + `⋯` control group** (ended sessions show `⋯` only).
 - **Session tab strip (`36 pt`, shown when `≥ 2` tabs are open):** Clicking a session opens a transient tab; double-clicking or `Pin Tab` pins it; `⌥⌘W` closes the active tab; verified Stop closes the stopped session's tab (`D-54`). At most 8 tabs are pinned; a ninth evicts the oldest idle one, and is refused with a notice when all 8 are running or need you.

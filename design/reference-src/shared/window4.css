@@ -6,9 +6,8 @@
 :is(.win,.appwin)[data-frame=app] .dhead .end{gap:6px;flex:none}
 .dhead .chip.proj{max-width:210px;min-width:0}
 .dhead .chip.proj .br{overflow:hidden;text-overflow:ellipsis}
-.dhead .ref-choice{width:auto;display:inline-flex;align-items:center;gap:5px;padding:0 6px;font:12px var(--ui);color:var(--fg-2)}
-.dhead .ref-choice .hm,.dhead .ref-choice svg{width:12px;height:12px}
-.dhead .ref-choice svg:last-child{width:10px;height:10px;color:var(--fg-3)}
+.dhead .session-model-readout{display:inline-flex;align-items:center;gap:5px;padding:0 6px;font:12px var(--ui);color:var(--fg-2);white-space:nowrap}
+.dhead .session-model-readout .hm{width:12px;height:12px}
 .ref-home-note{font:11.5px var(--ui);color:var(--fg-3)}
 .ref-pagehead{flex:none}
 .term{background:#0A0A0A;color:#D4D4D8}

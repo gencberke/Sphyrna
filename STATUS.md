@@ -73,8 +73,8 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
 
 - **`@planner`:** canonical records; no implementer edits docs.
 - **B4 (active):** new model/effort picker views/state/theme, header/draft chip adapters, narrow InkOpenState seam and UI tests.
-  No Core/engine, Settings/palette, canonical-doc or probe changes. Header apply policy is awaiting @user's asynchronous
-  choice; draft work continues. Exact scope: `evidence/r9/b4/BRIEF.md`.
+  No Core/engine, Settings/palette, canonical-doc or probe changes. D-109 resolves the delegated header UX: preserve
+  read-only model/context; the active pair belongs to the draft. Exact scope: `evidence/r9/b4/BRIEF.md`.
 - **P0 (@planner):** `evidence/r9/p0/` only; isolated Codex ≤15 short turns, shared budget ledger, no product edits.
   Native test queue: `evidence/r9/idle-pool-20261028/QUEUE.md`.
 - **1.8.0:** each brief's write set. Shared by region: `CatalogModel.swift` (C4, D1, F1); `SidebarView.swift` (B2, B3);
@@ -98,5 +98,5 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
   3. Still open from before: the push of `v1.6.0`–`v1.7.2` and the GitHub release; the Trash folders of 22, 25, 26 and 28 Oct.
 - **`@implementer-core`:** C4 complete. D1 waits for P0's verified modes/hooks/ownership/launch evidence.
 - **`@implementer-ink` B4 (warm `b3_ink`):** implement from `evidence/r9/b4/BRIEF.md` in `wt/r9-b4`; per-slice offscreen
-  checks only, planner owns the idle pool. Continue draft work while header policy awaits @user. B5a/b follow separately.
+  checks only, planner owns the idle pool. Preserve the read-only header policy (D-109); complete the draft pair. B5a/b follow separately.
 - **`@optimizer`:** at the 1.8.0 gate (plans/1.8.0/README.md §4).

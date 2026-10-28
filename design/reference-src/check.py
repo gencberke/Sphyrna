@@ -59,7 +59,10 @@ def check():
                 assert not any(n.has('chat') for n in nodes), f'{label}: frozen Chat face in a live window'
                 for head in (n for n in nodes if n.has('dhead') and not n.has('bare') and not n.has('ref-pagehead')):
                     assert 'data-session-header' in head.attrs, f'{label}: session header bypasses the shared part'
-                    assert sum(n.has('ref-choice') for n in head.all()) == 2, f'{label}: separate model and effort controls'
+                    models = [n for n in head.all() if n.has('session-model-readout')]
+                    assert len(models) == 1 and models[0].tag == 'span', f'{label}: one read-only current-model readout'
+                    assert not any(n.has('ref-choice') for n in head.all()), f'{label}: draft pickers do not belong in the session header'
+                    assert not any(n.tag == 'button' for n in models[0].all()), f'{label}: current-model readout cannot imply mutation'
                     tabs = [n for n in nodes if 'data-session-tabs' in n.attrs]
                     assert len(tabs) == 1 and tabs[0].parent is head.parent, f'{label}: tabs must span the whole pane above the inspector'
             elif kind == 'settings':

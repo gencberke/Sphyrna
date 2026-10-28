@@ -220,6 +220,9 @@ One spinner (the braille spinner) for every in-flight state.
 
 #### The model and the effort (FB6-7, FB6-8, B4)
 
+The two pickers belong to the new-session draft. The session header remains a read-only current-model/context display
+(D-109, planner resolution delegated by @user); it has no future-setting menu or mutation affordance.
+
 Two pickers side by side, as reference chapter 06 draws them (D-106: "model-effort seçicileri ayırmak"). They replace the one
 panel with an effort step that this page proposed first.
 
