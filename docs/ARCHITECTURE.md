@@ -830,7 +830,7 @@ This section maps every UI surface, control, accessibility identifier, keyboard 
 
 - **Files & Types:**
   - `Sources/LoomCatalogUI/SettingsWindowConfiguration.swift` (`SettingsWindowConfiguration.makeWindow(content:background:)`: the one Settings window's shape (680×520, transparent title bar over an empty unified toolbar, not movable by its background, closing it dismisses the sheet open over Settings); the app's window controller and `SettingsWindowTests` / `SettingsWindowClickTests` build the same window, so the tests click in the real one)
-  - `Sources/LoomCatalogUI/SettingsView.swift` (`SettingsWindowController`, `SettingsBand` (drawn with `zIndex(1)`, over the page), `SettingsPage`, `SettingsCard`, `SettingsGroup`, `SettingsLabel`, `SettingsRow`, `FullAccessRule`, `SegmentButtonStyle`, `SettingsButtonStyle`), `SettingsControls.swift` (`InkSegmented`, `InkSwitchStyle`, `InkCheckboxStyle`, `InkStepper`, `SettingsPopup`, `SettingsLinkButtonStyle`), `LoomTheme+Settings.swift`
+  - `Sources/LoomCatalogUI/SettingsView.swift` (`SettingsWindowController`, `SettingsBand` (drawn with `zIndex(1)`, over the page), `SettingsPage`, `SettingsCard`, `SettingsGroup`, `SettingsLabel`, `SettingsRow`, `FullAccessRule`), `SettingsControls.swift` (`InkCheckboxStyle`, `InkStepper`, `SettingsPopup`), `LoomTheme+Settings.swift`. The switch and segments live in the shared family below; the old `SegmentButtonStyle`, `SettingsButtonStyle`, popup/stepper styles and link style are removed.
   - **General's System card:** `SystemSettingsCard` in `SettingsView.swift`: Show in menu bar, Notify when a session needs approval, Notify when a long turn finishes (`SystemIntegration.setNotifyLongTurns`), Open at login, and Keep Mac awake (`InkSegmented` over `KeepAwakeSetting`, `SystemIntegration.setKeepAwake`); both new settings live in `UIPreferences` (`keepAwake`, `notifyLongTurns`; an older file reads Off).
   - **Theme:** `ThemeSettings.swift` (`ThemeSettings`, `ToneRow`)
   - **Connections (D-98):** `SettingsConnectionsView.swift` (`ConnectionsSettings`, `ConnectionsPage`, `ConnectionRow`, `ConnectionDetail`, `ConnectionDeepCheck`), `SettingsConnectionsContent.swift` (`ConnectionsContent.Row` / `Detail`, the words as plain values), `SettingsConnectionsSetup.swift` (`HarnessSetupBlock`), `SettingsConnectionsModel.swift` (`HarnessHealthModel`), and `LoomTheme.Connect` in `LoomTheme+Settings.swift` (the status dot's colours per state, the setup field, Deep Check's output, `tabsReserve`). The seventh tab sits after General (`SettingsSection.connections`); `SettingsBand.tabsWidth(of:)` and `tabsRoom` let a test check that seven tabs fit (445 of 488 pt)
@@ -857,6 +857,12 @@ This section maps every UI surface, control, accessibility identifier, keyboard 
 
 ### 11.15 Design Tokens & Evidence Snapshot Keys
 
+- **Shared v4 controls:** `InkField.swift` (32 pt field decoration; the caller owns its binding/focus/submit),
+  `InkSwitch.swift` (`InkSwitch`, `InkSwitchStyle`: 32×18 track, 24 pt hit area, native accessibility toggle),
+  `InkSegmented.swift` (32 pt track, chosen segment at elevation 2), `InkBadge.swift` (18 pt caption badge),
+  `KeyChip.swift` (SF Mono 11; decorative unless a spoken palette hint opts in). `LoomTheme.Control` in `LoomTheme+Shell.swift`
+  owns their tokens and the shared `controlFocusRing`; `ControlButtonStyles.swift` owns the six button roles and four sizes.
+  `SheetFamily.swift` uses 36 pt main actions while preserving its existing Return/Escape rules. Settings' stepper is 32 pt.
 - **Theme Files (`Sources/LoomCatalogUI/LoomTheme*.swift`):**
   - `LoomTheme.swift` + `+Appearance`, `+Surfaces`, `+Palette`, `+Highlight`, `+Depth`, `+Scale`, `+Shape`, `+Shell`, `+Status`, `+Tree`, `+Hosts`, `+Canvas`, `+Edges`, `+Sheets`, `+Settings`, `+RemoraSettings`, `+Sidebar`, `+Inspector`, `+Overview`, `+ViewTabs`, `+ProjectPage`, `+Changes`, `+Side`, `+Home`, `+Draft`, `+ContextPace`, `+Remora` (`L3b Home`, staged in `wt/ink-remora-home`), and `Chat/LoomTheme+Chat`, `+Composer`, `+Pinned`, `+QuickQuestion`, `+Rewind`.
 - **Snapshot JSON Keys (`state-<label>.json` from `snapshot:<label>`):**
@@ -899,6 +905,12 @@ Read these invariants before modifying UI, concurrency, terminal, or runtime cod
    - With `clipsToBounds` off (AppKit's default since macOS 14), a view's `visibleRect` in a scroll view can be the clip view's whole visible area, even when the view is scrolled out or laid out to zero. Intersect it with `bounds` before reading it as on screen (`ArtLayerView.clockInput`, `ArtVisibilityTests`).
 9. **Settings Tabs Need the Band Above the Page and a Window That Is Not Movable by Its Background (`SettingsWindowConfiguration`, `SettingsWindowClickTests`):**
    - With `isMovableByWindowBackground` on, AppKit takes a mouse-down on SwiftUI's drawn controls as the start of a window drag, so the section tabs and the pages' controls never saw their clicks (1.6.0). The window is not movable by its background any more (its title strip still moves it). That was not enough: the page's scroll view reaches up under the title strip and took the tabs' clicks, so `SettingsBand` carries `zIndex(1)` over the page. Only a click in a **shown** window sees either fault (the evidence and the other tests switch tabs through `navigation.section`, and a synthesised click does not reach SwiftUI in a window that was never shown); `aClickOnATabSwitchesItAndAPageControlAnswersItsClick` is a window test (`--windows --idle`) and fails on the 1.6.0 shape. The window's shape lives in `SettingsWindowConfiguration` so the app and the test build the same window.
+
+**Focus overlays and accessibility bounds (B1b):** An opacity-hidden padded focus overlay still expands SwiftUI's accessibility
+frames. `controlFocusRing` constructs its shapes only while visible. Inspector and view tabs also construct their inset/outset
+clear overlay only during focus; the visible halo fits vertically inside the tab bar. Offscreen regressions in
+`ControlFamilyTests`, `InspectorResizeTests` and `InspectorTabBarTests` cover ordinary button bounds, a 648 pt inspector/resize
+handle, and the 300×36 unfocused view-tab bar. An overlay's `.accessibilityHidden(true)` alone does not prevent this expansion.
 
 ### 12.2 Chat Stream, Table View & Layout Invariants
 

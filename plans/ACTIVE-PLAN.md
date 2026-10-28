@@ -28,9 +28,9 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 0 | P1 opencode, agy, pi spike | queued: needs Q13 and isolated profiles |
 | 1 | A1 project reorder | integrated `075cd7d` (after review: rows are direct list children again, `SidebarPagingTests`; the released gap holds until the order lands); a by-hand drag check waits for the gate |
 | 1 | C1 harness catalogue | integrated `59e300e` (with the planner's fix: opencode has no doctor until P1) |
-| 1 | B1 v4 tokens and controls | integrated `fe6f102` + `a81e2c0` (tokens, six button roles at four sizes, the focus halo, three elevations); its rest is B1b |
-| 1 | B1b shared controls and the last buttons | ready, next (field, switch, segmented, badge, key chip; the last styles in the six roles; one focus ring; 36 for a sheet's main action; Label) |
-| 1 | B0b the rest of the reference in v4 | integrated `bdaad69` (two runs; the planner's fixes: the sheet's subject class, the Destructive note, Settings' Connections tab); a consistency pass is open (below) |
+| 1 | B1 v4 tokens and controls | integrated `fe6f102` + `a81e2c0` (tokens, six button roles at four sizes, the focus halo, three elevations); its rest is closed by B1b |
+| 1 | B1b shared controls and the last buttons | integrated `d2f3305` + `5c1f073`; five controls, remaining roles, Label, 36 pt main actions and 32 pt stepper; focus/AX regression fixed; planner's 7 affected suites PASS (63). Full attempt interrupted; pooled checks below |
+| 1 | B0b the rest of the reference in v4 | integrated `bdaad69`; consistency pass closed by `fca9e2a` + `2d10f93` (shared complete parts, frame/crop rule, Connections and About) |
 | 2 | C2 catalogue consumers | integrated `608266d` (one probe outcome, limits from the probe, efforts on the entries, no Peek singleton) |
 | 2 | C2b the catalogue reaches every list | integrated `175f653` (no `ModelCatalog.shared`; availability on `CatalogModel`; one startable rule; File, Dock, Home, sidebar and menu bar follow the switch and the CLI); its follow-ups are in C3's brief |
 | 2 | C3 Connections · B2 sidebar and card · B3 status bar | queued |
@@ -40,12 +40,13 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 
 ## Open notes for the planner
 
-- **The reference needs a consistency pass** (`@user`, 28 Oct: windows that show part of the screen in one chapter must show
-  the same part in the others). Found so far: the v4 chapter draws five windows with the sidebar but only three with the status
-  bar; window heights and crops differ between chapters for the same kind of window; the edges' first launch repeats one note
-  (H1, H2); About still says 1.6.0. Before B5 starts, set one frame rule (an app window always shows the title row, the sidebar
-  or not by a stated reason, and the 26 pt status bar; a crop is labelled as a crop) and redraw the windows that break it.
-  Small enough for the planner or one short slice after B1b.
+- **Reference consistency is closed** (28 Oct): shared session chrome, terminal, Overview, Connections, Settings tabs and
+  About; one complete-app frame rule and labelled crops (DESIGN §1). Source guard, Ink/Paper geometry and browser flows pass;
+  evidence is in `~/Library/Caches/loom-v2/evidence/r9/reference-consistency/REPORT.md`.
+- **B1b's validation pool:** its full `--tests` attempt was interrupted after the window skip-list gap was found. The checker
+  now excludes the whole `WindowEventTests` namespace (`bb8889b`). The harness timeout passes in a scoped retry; the confirmed
+  invisible-halo/inspector regression is fixed and checked off screen. Rerun the corrected full off-screen set at the pool and
+  the actual inspector resize/window test in the authorized idle window; keep the partial log marked incomplete.
 - **The by-hand checks waiting for the gate:** A1's drag in the dev app (lift, slide, landing, Escape); the v4 look in
   evidence-mode screenshots after B1b (Home, a session with the inspector, Settings, a sheet; Ink and Paper).
 
