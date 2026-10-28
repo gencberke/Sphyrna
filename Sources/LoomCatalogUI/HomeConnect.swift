@@ -55,7 +55,7 @@ enum HomeConnect {
     /// Claude and Codex always appear on onboarding; the other harnesses only when found. An unsupported build never asks
     /// for its setup, and a deliberate off choice does not raise the notice over an existing catalog.
     static func plan(rows: [ConnectionsContent.HarnessRow]) -> Plan {
-        let visible = rows.filter { $0.id == .claude || $0.id == .codex || $0.canSwitch }
+        let visible = rows.filter { $0.descriptor.showsOnboardingWhenMissing || $0.canSwitch }
         let cards = visible.map(card(for:))
         let attention = cards.filter { needsSetup($0.row) }
         let offNeedsOnboarding = cards.contains { $0.row.buildSupportsSessions && $0.row.availability == .off }

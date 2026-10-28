@@ -41,7 +41,8 @@ public enum HarnessCatalogue {
         capabilities: HarnessCapabilities.intrinsic(ofHarness: HarnessID.claude),
         onWhenFound: true,
         startable: true,
-        provider: .claude)
+        provider: .claude,
+        showsOnboardingWhenMissing: true)
 
     private static let codex = HarnessDescriptor(
         id: .codex,
@@ -62,7 +63,9 @@ public enum HarnessCatalogue {
         capabilities: HarnessCapabilities.intrinsic(ofHarness: HarnessID.codex),
         onWhenFound: true,
         startable: true,
-        provider: .codex)
+        provider: .codex,
+        markRendering: .template,
+        showsOnboardingWhenMissing: true)
 
     /// opencode 2.2.0 (2.1.4 when P1 was planned). Install lines and the profile variable are to confirm; `opencode auth
     /// login` is its own `auth --help`'s. It has no doctor yet: `opencode debug config` prints the whole resolved config,
@@ -81,7 +84,8 @@ public enum HarnessCatalogue {
         profileFolder: ".config/opencode",
         capabilities: HarnessCapabilities.intrinsic(ofHarness: HarnessID.opencode),
         onWhenFound: false,
-        startable: false)
+        startable: false,
+        markRendering: .luminanceMask)
 
     /// agy (Antigravity CLI) 1.4.5. Its `--help` lists no install or sign-in subcommand and no doctor; the profile folder
     /// is to confirm. It becomes startable through E2.
@@ -95,10 +99,11 @@ public enum HarnessCatalogue {
         profileFolder: ".gemini/antigravity-cli",
         capabilities: HarnessCapabilities.intrinsic(ofHarness: HarnessID.agy),
         onWhenFound: false,
-        startable: false)
+        startable: false,
+        markRendering: .template)
 
     /// pi 0.85.1. Its `--help` lists no sign-in or doctor command and no profile variable; `pi auth check` needs a
-    /// provider or a model, so it is not a doctor. The mark asset is still to draw (FB6-13 item 7). It becomes startable
+    /// provider or a model, so it is not a doctor. Its mark follows the reference's boxed π glyph (C3). It becomes startable
     /// through E3.
     private static let pi = HarnessDescriptor(
         id: .pi,
@@ -111,5 +116,6 @@ public enum HarnessCatalogue {
         profileFolder: ".pi/agent",
         capabilities: HarnessCapabilities.intrinsic(ofHarness: HarnessID.pi),
         onWhenFound: false,
-        startable: false)
+        startable: false,
+        markRendering: .boxedText("π"))
 }

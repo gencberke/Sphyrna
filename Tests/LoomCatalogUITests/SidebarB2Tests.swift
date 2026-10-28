@@ -251,9 +251,13 @@ struct SidebarB2Tests {
         gate.visible = true
         try await settle(2)
         SidebarRenderProbe.reset()
+        let observedFrom = ContinuousClock.now
         try await settle()
+        let observed = observedFrom.duration(to: ContinuousClock.now).components
+        let seconds = Double(observed.seconds) + Double(observed.attoseconds) / 1e18
         #expect(SidebarRenderProbe.timeLabelTotal > 0, "a visible working label advances")
-        #expect(SidebarRenderProbe.timeLabelTotal <= 2, "the label advances at most once per second")
+        #expect(SidebarRenderProbe.timeLabelTotal <= Int(ceil(seconds)),
+                "At most one update per second in the actual \(seconds)s window, including a partial boundary")
         #expect(SidebarRenderProbe.cardTotal == 0, "the timer never rebuilds the card")
 
         // Leaving the viewport cancels the task, even while the window remains active.

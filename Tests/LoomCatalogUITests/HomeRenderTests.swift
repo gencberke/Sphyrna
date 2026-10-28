@@ -251,6 +251,8 @@ struct HomeRenderTests {
                                  events: SessionEventHub(),
                                  preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
         let rig = ConnectionsTests.Rig(claude: nil, claudeFound: false, codex: nil, codexFound: false)
+        var copied: String?
+        rig.model.copyToPasteboard = { copied = $0 }
         model.installHarnessHealth(rig.model)
         rig.model.checkAll()
         await rig.model.settle()
@@ -264,10 +266,16 @@ struct HomeRenderTests {
         let found = Set(identifiers(in: hosting.view))
         #expect(found.contains("home-connect") && found.contains("home-connect-claude") && found.contains("home-connect-codex"))
         #expect(found.contains("home-check-again") && found.contains("home-add-project"))
-        #expect(found.contains("setup-copy-claude") && found.contains("setup-open-terminal-claude"), "the command, with Copy and Open Terminal")
+        let copy = try #require(accessibilityElements(in: hosting.view).first {
+            $0.accessibilityIdentifier?() == "home-connect-action-claude"
+        })
+        #expect(copy.accessibilityPerformPress?() == true)
+        #expect(copied == HarnessCatalogue.descriptor(for: .claude)?.install?.command)
+        #expect(!found.contains("setup-open-terminal-claude"), "Home has one action; the full setup block is in Settings")
         #expect(!found.contains("home-new-session") && !found.contains("home-start") && !found.contains("home-app-icon"))
         let said = labels(in: hosting.view)
-        #expect(said.contains("Claude, Install, Not found"), "\(said.filter { $0.contains("Claude") })")
+        #expect(said.contains { $0.hasPrefix("Claude,") && $0.contains("Not found on this Mac") },
+                "\(said.filter { $0.contains("Claude") })")
     }
 
     @Test func withSessionsButNoClaudeACompactCardGivesWayToTheOldNotice() async throws {

@@ -32,9 +32,9 @@ enum ProviderImages {
     /// Catalogue-only marks: the existing provider paths above stay unchanged.
     static func image(forHarness id: HarnessID) -> (image: NSImage, template: Bool)? {
         if let provider = id.provider { return image(for: provider) }
-        guard id == .opencode || id == .agy, let descriptor = HarnessCatalogue.descriptor(for: id) else { return nil }
+        guard let descriptor = HarnessCatalogue.descriptor(for: id) else { return nil }
         let name = descriptor.mark
-        let template = id == .agy
+        let template = descriptor.markRendering == .template
         if let cached = cache[name] { return (cached, template) }
         guard let url = Bundle.main.url(forResource: name, withExtension: "png"),
               let image = NSImage(contentsOf: url) else { return nil }
@@ -111,17 +111,21 @@ struct ProviderIcon: View {
         self.size = size
     }
 
+    private var rendering: HarnessDescriptor.MarkRendering {
+        harness.flatMap { HarnessCatalogue.descriptor(for: $0)?.markRendering } ?? .image
+    }
+
     var body: some View {
         Group {
-            if harness == .pi {
+            if case let .boxedText(glyph) = rendering {
                 ZStack {
                     RoundedRectangle(cornerRadius: LoomTheme.Connect.piRadius)
                         .strokeBorder(LoomTheme.Surface.strongerHairline, lineWidth: LoomTheme.Line.hairline)
-                    Text("π").projectType(LoomTheme.Connect.piGlyph).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    Text(glyph).projectType(LoomTheme.Connect.piGlyph).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 }
             } else if let found = harness.flatMap({ ProviderImages.image(forHarness: $0) })
                 ?? provider.flatMap({ ProviderImages.image(for: $0) }) {
-                if harness == .opencode {
+                if rendering == .luminanceMask {
                     OpencodeHarnessMark(image: found.image)
                 } else if found.template {
                     Image(nsImage: found.image).renderingMode(.template).resizable().interpolation(.high)

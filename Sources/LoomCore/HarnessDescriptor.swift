@@ -8,15 +8,23 @@ import Foundation
 /// build's separate answer. A production build still narrows the set through `BuildIdentity.startableProviders` (Codex is
 /// read-only there, D-28, D-69 (5)); opencode, agy and pi are shown, not started, until E1–E3.
 public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
+    /// How the public mark is interpreted, without coupling the catalogue to a UI framework.
+    public enum MarkRendering: Equatable, Sendable {
+        case image, template, luminanceMask, boxedText(String)
+    }
+
     public let id: HarnessID
     /// The name the user reads ("Claude", "Codex", "opencode").
     public let displayName: String
     /// The executable's name on the terminal environment's PATH.
     public let command: String
-    /// The mark's asset name under `assets/harness/`.
+    /// The mark's asset or logical key; a boxed-text rendering needs no file.
     public let mark: String
     /// A second mark file to draw when the first is not in the bundle (Codex's template image).
     public let markFallback: String?
+    public let markRendering: MarkRendering
+    /// The built-in onboarding entries remain visible when missing; optional harnesses appear only when found.
+    public let showsOnboardingWhenMissing: Bool
     /// The vendor's install command, shown and never run. Nil when it is not known yet (agy: P1's spike).
     public let install: HarnessSetupCommand?
     /// The vendor's sign-in command, shown and never run.
@@ -50,13 +58,16 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
         install: HarnessSetupCommand? = nil, signIn: HarnessSetupCommand? = nil, doctorArguments: [String]? = nil,
         docs: URL? = nil, profileVariable: String? = nil, profileFolder: String,
         versions: HarnessVersionTable? = nil, requiresAppServerListen: Bool = false, pinsDefaultProfile: Bool = false,
-        capabilities: HarnessCapabilities, onWhenFound: Bool, startable: Bool, provider: ManagedSession.Provider? = nil
+        capabilities: HarnessCapabilities, onWhenFound: Bool, startable: Bool, provider: ManagedSession.Provider? = nil,
+        markRendering: MarkRendering = .image, showsOnboardingWhenMissing: Bool = false
     ) {
         self.id = id
         self.displayName = displayName
         self.command = command
         self.mark = mark
         self.markFallback = markFallback
+        self.markRendering = markRendering
+        self.showsOnboardingWhenMissing = showsOnboardingWhenMissing
         self.install = install
         self.signIn = signIn
         self.doctorArguments = doctorArguments
