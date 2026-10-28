@@ -105,9 +105,9 @@
 .i4sub em{font:normal 10.5px var(--mono);color:var(--fg-3);margin-left:auto;flex:none}
 .i4day{height:23px;display:flex;align-items:center;gap:8px;padding:0 10px;font:10.5px var(--mono);color:var(--fg-3)}
 .i4day::after{content:"";flex:1;height:1px;background:var(--line)}
-.i4sfoot{margin-top:auto;height:38px;flex:none;display:flex;align-items:center;gap:2px;padding:0 8px;border-top:1px solid var(--line)}
-.i4sfoot .i4ib{width:26px;height:26px}
-.i4sfoot .i4ib svg{width:15px;height:15px}
+.i4utilities{display:flex;align-items:center;gap:2px;flex:none}
+.i4utilities .i4ib{width:24px;height:24px}
+.i4utilities .i4ib svg{width:15px;height:15px}
 /* the status bar: sidebar plane, hairline, caption type */
 .i4status{height:26px;flex:none;display:flex;align-items:center;gap:4px;padding:0 8px;background:var(--sidebar);border-top:1px solid var(--line);font:11px var(--ui);color:var(--fg-2);position:relative;z-index:5;white-space:nowrap}
 .i4status .sp{flex:1}

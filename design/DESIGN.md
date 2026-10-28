@@ -194,14 +194,13 @@ One spinner (the braille spinner) for every in-flight state.
   - The reason line (the Activity view) sits under the title in Small secondary.
   - **Subagents** branch from the mark's column, the line leaving the mark's centre. Their rows are 24, with a still running mark.
 - **Drag:** the project reorder is live (A1): the head lifts and the blocks slide.
-- **The bottom:** Settings and Help are 24 pt ghost icon buttons in a 38 pt utility row. Help opens the app's existing Help
-  menu. The window status bar takes the former usage chip's place; the footer's `+` menu is retired.
+- **The bottom (D-110):** the sidebar list reaches the single window-wide status bar. Settings and Help are24pt ghost icon buttons at that bar's leading end; Help opens the existing app menu. The separate38pt sidebar utility row is removed.
 
 #### The status bar (Q7, B3)
 
 - **The bar:** 26 high along the whole window's bottom, under the sidebar and the content. It is the sidebar plane's colour with
   a hairline on top, in caption type.
-- **The leading side** has one segment per connected harness that reports limits:
+- **The leading side** starts with24pt Settings and Help ghost icons, then one segment per connected harness that reports limits:
   - the segment reads `[mark] ▬▬▭ 4% · 3h 39m   7% · 5d`: the meter is 40 × 4, then each window's remaining share and its time to
     reset;
   - the meter fills by the share left, orange under 20 %, as the plan meters do;
@@ -328,9 +327,9 @@ The window's structure stays; Ink redraws it.
    - The 32 pt Search door opens the palette (`⌘K` / `⌘F`).
    - Home and New session are 28 pt nav rows; Home's attention count matches the Dock badge.
    - The list heading names Projects or Activity and carries the single view toggle and that view's action.
-   - The project or activity list, then Settings and Help in the utility row.
+   - The project or activity list, ending at the shared window-wide status bar.
 4. **Session cards** (§0.5). Both views use the shared three-line card with trailing status, a two-line title, branch and harness mark; selection is neutral raised, and subagents branch from the mark's column. Activity keeps Drafts, Active and day buckets, and Active's reason line. There is no leading status column.
-5. **Bottom utilities and status bar** (§0.5, B3). Settings and Help stay in the sidebar's 38 pt utility row as 24 pt ghost icon buttons. Limits live in the 26 pt strip beneath both panes, with working sessions, Keep Mac Awake and the existing Remora/version state. The former sidebar usage chip and `+` menu are retired.
+5. **Bottom utilities and status bar** (§0.5, B3). Settings and Help are24pt ghost icons at the leading end of the26pt strip beneath both panes (D-110), followed by limits, with working sessions, Keep Mac Awake and the existing Remora/version state. The former sidebar usage chip and `+` menu are retired.
 
    **Settings** (D-81; [the reference](reference.html#settings)) is one 680×520 window that follows the appearance and the tone (`SettingsWindowConfiguration`). Only its close button shows. It is not movable by its background, only by its title strip: AppKit took a mouse-down on SwiftUI's drawn controls as the start of a window drag, and the section tabs and the pages' controls never saw their clicks (1.6.0). The band of tabs also lies above the page (`zIndex`), because the page's scroll view reaches up under the title strip. Closing the window closes the sheet open over it. Its sections are underlined view tabs (§6 Tabs) in the 52 pt title band, where the window's title would be: General, Connections (D-98, 1.6.2), Theme, Usage, Sessions, Remora (§20, D-80) and About. The seven tabs measure 445 pt and the band leaves 488 (the 680 window less 96 at each side, where the close button sits), so they stay centred and none is cut. ⌘, opens it on the section last shown, and the usage chip opens it on Usage.
    - **A section's content** has a 32 inset and scrolls under the band. A group is a card on raised 1 under a section label, 20 apart. A row holds the label in 13, one line of help in 12 secondary and the control at the trailing edge, and is at least 48 high. Inside the card, as the reference draws it (D-88): the rows start 5 below its top and end 6 above its bottom; a row's content starts 32 from the leading edge and ends 24 from the trailing edge; and the rules between rows run from 16 inside the leading edge to 8 inside the trailing edge. A notice from macOS adds an attention line and its button. A menu picker is a secondary button with the value and two chevrons; its menu is the popover.

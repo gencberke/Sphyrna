@@ -103,8 +103,7 @@ function i4sidebar(el) {
       <button class="i4ib" data-open="plus" title="New session">${svg('plus')}</button>
     </div>
     <div class="i4plist">${none ? '<div class="i4none">No projects yet.</div>' : i4projects(o)}</div>
-    <div class="i4alist">${none ? '<div class="i4none">No sessions yet.</div>' : i4activity(o)}</div>
-    <div class="i4sfoot"><button class="i4ib" title="Settings">${svg('gear')}</button><button class="i4ib" title="Help">${svg('question')}</button></div>`;
+    <div class="i4alist">${none ? '<div class="i4none">No sessions yet.</div>' : i4activity(o)}</div>`;
 }
 
 function i4hgroup(p1, r1, p2, r2) {
@@ -114,6 +113,7 @@ function i4hgroup(p1, r1, p2, r2) {
 
 function i4statusbar(el) {
   el.innerHTML = `
+    <span class="i4utilities" aria-label="Utilities"><button class="i4ib" title="Settings">${svg('gear')}</button><button class="i4ib" title="Help">${svg('question')}</button></span>
     <button class="i4sseg" data-usage="claude" title="Claude Code plan limits"><span class="hm claude"></span>${i4hgroup(4, '3h 39m', 38, '5d')}</button>
     <button class="i4sseg" data-usage="codex" title="Codex plan limits"><span class="hm codex"></span>${i4hgroup(61, '2d', 24, '6d')}</button>
     <span class="sp"></span>

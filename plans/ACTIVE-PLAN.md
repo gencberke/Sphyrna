@@ -42,10 +42,13 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 3 | D1 Codex sessions · D2 Codex reader and deletion | P0 bounded report ready; T3-priority/Orca harness and cross-provider delegation comparison before D1 implementation (user steering29Oct) |
 | 3 | B5a Home/project/draft · B5b session surfaces | B5a integrated `e618124`, connected 9 Core +108 UI tests PASS (slice 345 UI run FAIL test-state collision, affected serialized 12 PASS); B5b integrated `339929d`, connected156 tests PASS; first-screen RSS/timing limits and native gates remain named |
 | 3 | B5c Settings, sheets, palette, menus and About | integrated `7f77000`; 97 affected tests PASS (one corpus measurement skipped), six controlled theme renders; native/window/energy remain pooled |
+| 4 | F0 cross-harness child contract | planned D-111; stable child identity, readable results/status, follow-ups and completion/attention wake, then F1 transport |
 | 4 | E1 opencode · E2 agy · E3 pi · F1 send · F2 Changes → session · G1 Remora backends · H1 usage · I1 names | queued |
 | 5 | Z the gate, the optimizer, the release | planner |
 
 ## Open notes for the planner
+
+- **Latest user feedback (D-110/D-111,29Oct):** move Settings/Help into the one window-wide bottom bar (B3b); remove the sidebar footer. Cross-harness children need later result reads, second/third turns, status checks and completion/attention nudges. F0 settles task authority/result/wake semantics before F1; existing context/call/approval safeguards remain explicit.
 
 - **Reference steering (29 Oct):** user highlights T3 Code/Orca harness and cross-provider child-agent messaging, especially Claude→Codex and reverse, and explicitly permits search agents. T3 and Orca are being traced read-only with version/file evidence. This is a comparison for D1/F1/G1; no new orchestration scope/context budget is silently added. Reports under `evidence/r9/reference-harnesses/`.
 

@@ -1,7 +1,7 @@
 # Status (Live Relay Board)
 
 - **Updated:** 2026-10-29, 01:07 +03.
-- **State:** `waiting for review`. A1b source is integrated with50 connected tests PASS; its scoped native after-check and the named energy gates are next. A T3-priority/Orca reference comparison is running before D1 implementation, following the user's steering.
+- **State:** `waiting for review`. A1b is fully accepted:50 connected tests and actual Ink/Paper row/selection checks pass; its tree/scratch are removed. D1 and B3b are the active implementation slices; P1 preparation is held. Reference comparison is complete; D1 implementation is active. Latest user feedback queues B3b: one bottom bar, and F0/F1: multi-round cross-harness child feedback/status/wake.
   @user requested continuous iteration and an idle test window; AC power is verified. No pause is active.
 - **Where we left off:** all B4/B5 presentation code is integrated. Native B5 screenshots found two project drafts overlapping; A1b `f8adc58` fixes per-row geometry while retaining lazy list/typing boundaries. B4 actual picker/keyboard gate passes. B5a117 and B5b156 connected tests pass; B5b's strict first-screen equivalence/RSS tradeoff remains explicitly open.
   P0 is a completed bounded report:7 submitted Codex user inputs plus1 auxiliary held conservatively,7 turns still available. Owned remote identity/status/approval/queue/resume and scoped deletion are evidenced; strict Codex no-tools is blocked. The shared budget ledger and P0 SPIKE.md are authoritative.
@@ -63,7 +63,7 @@ as every check used it (swift-png 4.5.2).
 
 | Worktree | Branch | State |
 | --- | --- | --- |
-| `~/Library/Caches/loom-v2/wt/r9-a1b` | `slice/r9-a1b` | Clean2a150c7 integrated asf8adc58; recovery/cleanup after scoped native check |
+| `~/Library/Caches/loom-v2/wt/r9-d1` | `slice/r9-d1` | Active Codex launch/runtime fromfcb6cc5; build/r9-d1 |
 | `~/Library/Caches/loom-v2/wt/v2` | `v2` | Code checkpoint `f8adc58`; A1b scoped native recheck/energy next |
 | `~/Documents/github/loom-dev` | `swarm/1` | The docs mirror (its changes are `v2`'s docs copied over, by design); never build or commit here |
 | `~/Documents/github/loom` | `main` | The public release tree, a separate repository |
@@ -75,8 +75,9 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
 ## 3. File locks
 
 - **`@planner`:** canonical records; no implementer edits docs.
-- **A1b:** source integrated and checks passed; no worker edits, parent owns native recheck/recovery cleanup.
-- **Reference research (read-only):** warm `c4_core` owns T3's harness/delegation/message/context routes; `orca_cross_agents` owns Orca's corresponding source. Evidence only under `evidence/r9/reference-harnesses/`; no provider calls or code changes. Parent reviews decisive source before D1.
+- **D1 (warm c4_core):** exact `evidence/r9/d1/BRIEF.md`, Codex/neutral launch/runtime, narrow UI start gates and approved LaunchOptions/catalog/fallback seams. No footer/sidebar/coordination-framework edits.
+- **B3b (warm b3_ink):** pending new Brief/tree for Settings/Help in global status bar; SidebarView removal only, footer/status utilities/theme/tests. Parent owns reference/docs. No overlap with D1 UI gates.
+- **Reference/P1 research:** reference reports complete/source-only. P1 preparation stopped without running providers or login; native agy and complete Pi/OpenCode isolation remain unproved. No model turn reserved.
 - **P0:** no active process/spending.7 user inputs +1 auxiliary held; no further real turn without parent reservation. Native queue/report: `evidence/r9/idle-pool-20261028/`. B5 driver closed exit0 with sampled app/run-host/fake PIDs absent and default metadata unchanged; A1b is its scoped visual fix. The earlier CUA unflagged relaunch/default Dev WAL incident remains unverified and is preserved in the report.
 - **1.8.0:** each brief's write set. Shared by region: `CatalogModel.swift` (C4, D1, F1); `SidebarView.swift` (B2, B3);
   Settings files (C3, B5c, G1). `Package.swift` belongs to I1 alone.

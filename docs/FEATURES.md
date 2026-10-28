@@ -62,6 +62,8 @@ Frozen features (Chat and what belongs to it) are listed at the [end](#frozen-no
 
 ---
 
+The29Oct harness/delegation trace uses T3 source `a9b513b50c` and Orca source `1df8501246d` (Orca source1.4.214 versus installed1.4.241). It confirms application-owned cross-provider routes by source; neither live Claude↔Codex direction was executed. Evidence: `~/Library/Caches/loom-v2/evidence/r9/reference-harnesses/REPORT.md` and `orca/REPORT.md`.
+
 ## How the reference round works
 
 For each feature, in this order:
@@ -206,9 +208,9 @@ Inline comments can be added, and a changed file drags out only as `@path` text.
 Running and finished subagents appear in the sidebar tree and in the Agents tab. Each one's live or historical
 transcript reads in two voices.
 - **Spec:** [SPEC §4.2, §8.4](../SPEC.md) · **Status:** Live
-- **Orca:** _to study_
-- **T3 Code:** _to study_
-- **Sphyrna takes:** _open_
+- **Orca:** Native Claude/Codex subagent trackers preserve provider ancestry; cross-provider work instead uses `orchestration.workerStart`, with separate Task/Dispatch/session identity and explicit `worker_done` reporting (`src/main/runtime/rpc/methods/orchestration/worker/local-worker-start.ts`, `src/main/runtime/orchestration/preamble.ts`).
+- **T3 Code:** Same-provider native agents and app-owned delegates are distinct. `delegate_task` validates caller/target model, creates a separate provider child and links bounded results by parent/child/run; duplicate completion is fenced (`apps/server/src/mcp/OrchestratorMcpService.ts`, `apps/server/src/orchestration-v2/Orchestrator.ts`).
+- **Sphyrna takes:** D-111 requires multi-turn cross-harness children: status, readable results, follow-up turns and completion/attention nudges. F0/F1 define the scoped relationship/transport; tiny context, user approvals and verified ownership remain. B5b's native-provider transcript grouping is a separate implemented surface.
 
 ---
 
@@ -253,9 +255,9 @@ Through the Sphyrna plugin and its control socket, an agent can do three things:
 
 No transcript content crosses the channel. Sending into an existing session waits for 1.8.0 (parked).
 - **Spec:** [SPEC §9](../SPEC.md) · **Status:** Live (no `send` yet)
-- **Orca:** Durable mailboxes per run and dispatch. On arrival it types a one-line pointer ("You have 1 orchestration message. Run `orca orchestration check …`") into the target's terminal only when its last observed status is idle; otherwise it waits for the next idle edge, and an explicit check reads the mail (`src/main/runtime/orchestration/mailbox-pointer-delivery.ts:42-50, 190-210`, `mailbox-notification-coordinator.ts`).
-- **T3 Code:** _not studied_
-- **Sphyrna takes:** Orca's delivery with `@user`'s approval of every send: the mailbox, the pointer on Ready, `inbox` (FEEDBACK-7 Q8, F1); Changes' comments through it (F2). Codex 0.164's `codex queue --thread … --message …` is checked by P0 as a Codex route.
+- **Orca:** Durable Task/Dispatch mail, acknowledged batches, process/attempt fencing and idempotent settlement. Terminal delivery uses a Ready-edge pointer; structured mail can queue/steer or awaken an at-rest worker. That wake can consume a model turn (`src/main/runtime/orchestration/structured-mailbox-pointer-delivery.ts`).
+- **T3 Code:** Caller-bound MCP dispatch, stable task/child/run IDs, bounded deduplicated results and coalesced parent delivery; continuation may start another model turn. Its orchestration instructions alone are3280UTF-8bytes plus tools/runtime context (`packages/provider-core/src/server/orchestrationInstructions.ts`, `OrchestratorMcpService.ts`).
+- **Sphyrna takes:** Orca's delivery with `@user`'s approval of every send: the mailbox, the pointer on Ready, `inbox` (FEEDBACK-7 Q8, F1); Changes' comments through it (F2). P0 verified Codex0.164's exact owned-endpoint queue while a turn waited for approval. D-111 adds the multi-round parent/child contract; F0 defines its authority/result/wake semantics before transport work. Reference MCP prompts, profile writes, retention and automatic wake policy are not imported implicitly.
 
 ---
 
