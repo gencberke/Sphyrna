@@ -1,9 +1,10 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-28, 13:13 +03.
-- **State:** `waiting for implementation`. B3 is integrated and verified on `v2`; C4 is the next slice.
-  Q7 took its documented Yes default at B3's start. No implementer or check is in flight.
+- **Updated:** 2026-10-28, 14:06 +03.
+- **State:** `waiting for implementation`. C4 is in flight on `slice/r9-c4` from `2440fa1`; the planner owns review,
+  integration and canonical docs. Q7 took its documented Yes default at B3's start.
 - **Where we left off:** the v4 sidebar/cards, five-harness Connections/Home and full-window status bar are complete on `v2`.
+  C4 now builds per-harness draft/store/open choices, with legacy-file compatibility and unchanged Claude launch behavior.
   The corrected off-screen pool's three failed tests were fixed; B3's combined affected check passes 185 tests (D-90).
 - **Installed:** Sphyrna 1.7.2 (build 10702) in `/Applications/Loom.app`. The CLIs on this Mac: Claude Code 2.1.311,
   Codex 0.164.0, opencode 2.1.4, agy 1.4.5, pi 0.85.1.
@@ -57,6 +58,7 @@ as every check used it (swift-png 4.5.2).
 | Worktree | Branch | State |
 | --- | --- | --- |
 | `~/Library/Caches/loom-v2/wt/v2` | `v2` | Code checkpoint `26acb6c`; B3 integrated; 185 affected tests pass |
+| `~/Library/Caches/loom-v2/wt/r9-c4` | `slice/r9-c4` | C4 from `2440fa1`; scratch `build/r9-c4`; narrow off-screen checks only |
 | `~/Documents/github/loom-dev` | `swarm/1` | The docs mirror (its changes are `v2`'s docs copied over, by design); never build or commit here |
 | `~/Documents/github/loom` | `main` | The public release tree, a separate repository |
 
@@ -67,16 +69,19 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
 ## 3. File locks
 
 - **`@planner`:** canonical records; no implementer edits docs.
-- **Active slice locks:** none. B3's UI/root/cache/working-count regions are released.
+- **C4:** per-harness launch-choice/mode/descriptor types, draft/default/preset/store region, `CatalogModel` draft region,
+  `open` command/wire/coordinator and approval display; minimal Claude/runtime adapters and their tests. No new engine,
+  capability/startability, Chat behavior, probe cadence or visual-panel change. The exact write set is in
+  `~/Library/Caches/loom-v2/evidence/r9/c4/BRIEF.md`. B3's locks are released.
 - **1.8.0:** each brief's write set. Shared by region: `CatalogModel.swift` (C4, D1, F1); `SidebarView.swift` (B2, B3);
   Settings files (C3, B5c, G1). `Package.swift` belongs to I1 alone.
 
 ## 4. Next actions by role
 
 - **`@planner`:**
-  1. Start C4 from current `v2`: per-harness draft choices, persisted presets/last-used migration and `open` validation.
-     Review/integrate it before B4 consumes those types; two slices at most at once. Keep P0/P1 behind explicit real-CLI
-     permission and isolated sign-ins.
+  1. Review C4's draft/store migration, mode/effort validation, optional wire field and unchanged Claude argument evidence;
+     integrate and run the affected combined check before B4 consumes those types. Two slices at most at once. Keep P0/P1
+     behind explicit real-CLI permission and isolated sign-ins.
   2. Carry B1b's layout-bound control migrations to B5 (its report); do not reopen the shared family to change a surface layout.
   3. Carry native visual/keyboard/VoiceOver, inspector/working-indicator window, real-CLI and energy/package checks to the
      authorized idle gate. The corrected off-screen pool is done; do not repeat it merely because a scoped fix landed.
@@ -86,7 +91,7 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
   2. Optional: object to the small calls taken at review (B1 and C2b's "Decisions taken" in their reports), such as hiding,
      not disabling, the sidebar's New session row when Claude cannot start.
   3. Still open from before: the push of `v1.6.0`–`v1.7.2` and the GitHub release; the Trash folders of 22, 25, 26 and 28 Oct.
-- **`@implementer-core` C4:** await the planner's self-contained Brief and fresh slice worktree; use C4 + COMMON, narrow
-  draft/store/open/launch checks. The planner owns canonical docs and the combined check.
+- **`@implementer-core` C4:** implement from `evidence/r9/c4/BRIEF.md` in `wt/r9-c4`; per-harness draft/store/open/launch
+  checks and failing-first evidence, no whole-pool repeat. Report needed seams; the planner owns canonical docs.
 - **`@implementer-ink`:** B3 complete; B4 follows C4, and B5 carries the pending surface/control migrations.
 - **`@optimizer`:** at the 1.8.0 gate (plans/1.8.0/README.md §4).
