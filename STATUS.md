@@ -1,12 +1,10 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-28, 23:20 +03.
-- **State:** `waiting for implementation`. C4/B5c are accepted; B4 native crash follow-up and B5b session surfaces are the two active slices. B5a is ready for review; P0 real runs are held meanwhile.
+- **Updated:** 2026-10-29, 00:13 +03.
+- **State:** `waiting for implementation`. B4's native crash is fixed and accepted; B5a's connected117-test check passes. B5b and P0's owned-remote evidence review are active.
   @user requested continuous iteration and an idle test window; AC power is verified. No pause is active.
-- **Where we left off:** B4 `d727e87` passes **140 affected offscreen tests**, but its shown model panel crashes in a nested NSHostingView constraint cycle. C4 `049a95c` passes the integrated-tree **329 tests** (193 Core + 1 Chat + 135 UI), including v1/v4,
-  mode/default provenance, old-reader migration, per-harness ownership and the session-service seam. B5c `7f77000` passes
-  **97 tests** on top (seven intended suites; one corpus measurement skipped). Physical/native/energy gates remain pooled.
-  Codex ≤15 and opencode/agy/pi ≤5 short isolated turns under D-108; count in `evidence/r9/REAL-TURN-BUDGET.md`.
+- **Where we left off:** B4 explicit-size fix `0c8a0b2` passes actual signed-app model/effort opening in Ink/Paper, search/Return/Escape and focus restoration in one PID. The guarded run closed cleanly and default Dev metadata stayed unchanged. B5a `e618124` brings Home/project/draft into shared v4 controls. C4 `049a95c` passed 329 affected tests; B5c `7f77000` passed 97. Physical/native/energy gates remain named pool items.
+  Codex ≤15 and opencode/agy/pi ≤5 short isolated turns under D-108; current spending/reservations are in `evidence/r9/REAL-TURN-BUDGET.md`.
 - **Installed:** Sphyrna 1.7.2 (build 10702) in `/Applications/Loom.app`. The CLIs on this Mac: Claude Code 2.1.311,
   Codex 0.164.0, opencode 2.1.4, agy 1.4.5, pi 0.85.1.
 - **Public:** `0.4.4` is still the latest GitHub release. The tags `v1.6.0` to `v1.7.2` are local in the loom tree; their push
@@ -27,7 +25,8 @@
 | B2 | integrated (`497a962`, `6601d5c`) | v4 cards/search/headings, neutral selection, mark-aligned subagents, viewport-gated working time; scoped off-screen checks pass |
 | C3 | integrated (`365b2d2`, `175f0e2`) | five Connections rows, Home actions, all-id preferences/assets, fresh PATH and serialized health recheck, pending guard and blocked reasons; scoped checks pass |
 | C4 | integrated (`049a95c`) | neutral draft/preset/open choices, compatible files, per-harness memory, cached validation and safe v1/v4 routing; 329 affected tests pass |
-| B4 | integrated (`d727e87`) | separate model/effort pickers, cached search, bounded Recent, coherent rail/keyboard navigation; 140 affected tests pass |
+| B4 | integrated (`d727e87`, native fix `0c8a0b2`) | separate cached pickers and keyboard navigation; 140 original +47 fix tests pass; actual guarded window/keyboard gate passes |
+| B5a | integrated (`e618124`) | shared Home/project/draft controls and typography; connected 9 Core +108 UI tests pass |
 | B5c | integrated (`7f77000`) | palette activity/scope and outline Clear Memory; existing v4 Settings/menu controls verified; 97 affected tests pass |
 | B3 | integrated (`26acb6c`) | 26 pt full-window status bar, cached limits/popover, bounded working menu, shared awake setting and sidebar Settings/Help; 185 affected tests pass |
 
@@ -45,7 +44,7 @@ after scoped fixes (D-90). No remaining failure from that pool is open.
 
 B1b's earlier full attempt (`check-20261028T090651-12245.log`) remains recorded as interrupted, not passed. The corrected pool
 above closes its pending off-screen run; the shown-window inspector/visual/VoiceOver/energy gates still need an idle Mac.
-Those daytime slices ran no real CLI/model turn, package, install or shown-window check. This resumed continuation has now completed two short isolated Codex turns under D-108; native checks are next.
+Those daytime slices ran no real CLI/model turn, package, install or shown-window check. This resumed continuation has submitted four isolated Codex user turns; T4 observed active/idle and post-persistence join, with approval unproved. Vendor automatic model activity is recorded separately. The budget ledger is authoritative.
 
 Reports: `~/Library/Caches/loom-v2/evidence/r9/b2/REPORT.md`, `c3/REPORT.md`, and `b2-c3/REPORT.md` (integration, pooled fixes,
 asset-stage proof and cleanup). Reference frames/marks remain shared; project-head type now matches the 13 pt native token
@@ -61,8 +60,7 @@ as every check used it (swift-png 4.5.2).
 
 | Worktree | Branch | State |
 | --- | --- | --- |
-| `~/Library/Caches/loom-v2/wt/v2` | `v2` | Code checkpoint `5263f1e`; B4 native candidate still FAIL, follow-up active |
-| `~/Library/Caches/loom-v2/wt/r9-b5a` | `slice/r9-b5a` | B5a ready at `786511e`; warm owner follows up B4 native crash; scratch `build/r9-b5a` |
+| `~/Library/Caches/loom-v2/wt/v2` | `v2` | Code checkpoint `e618124`; B4 native gate PASS, B5a connected 117 tests PASS |
 | `~/Library/Caches/loom-v2/wt/r9-b5b` | `slice/r9-b5b` | B5b session surfaces from `5263f1e`; scratch `build/r9-b5b` |
 | `~/Documents/github/loom-dev` | `swarm/1` | The docs mirror (its changes are `v2`'s docs copied over, by design); never build or commit here |
 | `~/Documents/github/loom` | `main` | The public release tree, a separate repository |
@@ -74,17 +72,16 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
 ## 3. File locks
 
 - **`@planner`:** canonical records; no implementer edits docs.
-- **B5a (ready, B4 native follow-up active):** Home/project/draft presentation and their theme/tests only; exact scope in `evidence/r9/b5a/BRIEF.md`. No Core, Settings, session header/inspector, canonical docs or probes. The same warm owner has a separate narrow B4 native-fix lock on ModelPickerAccessibility/necessary panel-chip seam and a new WindowEventTests.ModelPickerWindowTests. Commit the fix separately. Shared InkSegmentStyle access-modifier reuse and HomeRemoraChip neutral-28 migration (including palette reuse) are approved technical seams.
 - **B5b (active, warm `c3_ink`):** header/tabs/inspector/Agents/Changes/edges presentation + associated theme/tests only. `SubagentTranscriptView.swift` is included; absent tool duration stays omitted. No picker/Home/draft/engine changes; exact scope `evidence/r9/b5b/BRIEF.md`.
-- **P0 (@planner):** `evidence/r9/p0/` only; isolated Codex ≤15 short turns, shared budget ledger, no product edits.
-  Native test queue/report: `evidence/r9/idle-pool-20261028/`. Window cell FAIL1 obsolete label (other32UI+2terminal passed); model-panel native crash is a separate blocker. Read REPORT before CUA: its post-crash observation relaunched the test package without flags and touched default Dev WAL/SHM; no data rollback attempted. A command-channel-only driver independently reproduces the native crash with default metadata unchanged; candidate5263f1e passes40 hosted tests but still crashes natively; next controller-backed candidate is in progress. The before/after command-channel drivers preserve default metadata.
+- **P0 (warm `c4_core`, parent-owned budget):** `evidence/r9/p0/remote-t4/` only; T4 sent once (4 total user turns spent), no further turn without parent reservation; no product edits.
+  Native test queue/report: `evidence/r9/idle-pool-20261028/`. Original35-test window cell stays FAIL; obsolete sidebar label corrected with11 scoped tests PASS (`0391807`). B4 original/first/second native candidates failed; explicit geometry `0c8a0b2` now passes the signed guarded driver and actual keyboard actions. See `b4-native-fix/NATIVE-INTEGRATION.md`. The earlier CUA unflagged relaunch touched default Dev WAL/SHM; contents remain unverified, no rollback guessed. Subsequent guarded drivers preserve default metadata.
 - **1.8.0:** each brief's write set. Shared by region: `CatalogModel.swift` (C4, D1, F1); `SidebarView.swift` (B2, B3);
   Settings files (C3, B5c, G1). `Package.swift` belongs to I1 alone.
 
 ## 4. Next actions by role
 
 - **`@planner`:**
-  1. Resolve the B4 native crash with the same warm owner; use the exact before/after signed-app driver in `evidence/r9/b4-native-fix/` and guarded launch package, never automatic CUA observation after a crashed PID. Review B5a `786511e` and B5b. P0 real runs resume after one UI slice frees; verify the isolated login without handling it, count every real turn. Never attach to/stop a pre-existing daemon.
+  1. Review B5b; B5a's connected 117 tests pass and its clean/source-equivalent slice worktree, branch and scratch are removed (recovery evidence retained). P0 zero-turn owned remote receives TUI-created thread identity, but resume before first turn fails no-rollout. T4 confirms active/idle and post-persistence join; approval remains unproved, automatic vendor model activity needs review. Verify the full report before D1. Never attach to/stop a pre-existing daemon.
      Review/integrate each slice and keep builds serialized; no repeated all-target pool for a scoped change.
   2. Carry B1b's layout-bound control migrations to B5 (its report); do not reopen the shared family to change a surface layout.
   3. Use the newly authorized idle window for the accumulated native visual/keyboard/VoiceOver, inspector/working-indicator
@@ -96,7 +93,7 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
   2. Optional: object to the small calls taken at review (B1 and C2b's "Decisions taken" in their reports), such as hiding,
      not disabling, the sidebar's New session row when Claude cannot start.
   3. Still open from before: the push of `v1.6.0`–`v1.7.2` and the GitHub release; the Trash folders of 22, 25, 26 and 28 Oct.
-- **`@implementer-core`:** C4 complete. D1 waits for P0's verified modes/hooks/ownership/launch evidence.
-- **`@implementer-ink` warm `b3_ink`:** prioritize the scoped B4 native follow-up in `wt/r9-b5a` and keep commits separate from completed B5a. Parent owns actual app proof.
+- **`@implementer-core` warm `c4_core`:** Finish P0 T4 owned-remote approval/persisted-resume report and cleanup under its one-turn Brief. No production edits. D1 waits for verified modes/ownership/launch evidence.
+- **`@implementer-ink` warm `b3_ink`:** B4 native fix and B5a accepted; no further edits, parent owns cleanup and remaining native pool.
 - **`@implementer-ink` warm `c3_ink`:** B5b from `evidence/r9/b5b/BRIEF.md` in `wt/r9-b5b`; narrow offscreen checks only. Preserve D-109 and the bounded transcript feed. No invented tool duration.
 - **`@optimizer`:** at the 1.8.0 gate (plans/1.8.0/README.md §4).
