@@ -1,15 +1,12 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-28, 21:34 +03.
-- **State:** `waiting for implementation`. @user resumed continuous iteration and declared the Mac idle for testing.
-  The same C4 agent resumes `wt/r9-c4` at `b3d9828`; independent B5c runs from `4bebd8e`. The planner owns review,
-  integration and the pooled idle gate. Two slices at most; all builds stay serialized.
-  Window, visual, energy and pooled checks are authorized while idle; AC power verified. D-108 grants real isolated turns:
-  Codex ≤15, opencode/agy/pi ≤5 each; count in the shared budget ledger. User handles any required isolated login.
-- **Where we left off:** C4 checkpoint `b3d9828` on `slice/r9-c4` (WIP `ed11c72` plus restored functional wire code), clean.
-  Last broad affected run: 116 Core + 1 Chat passed; 130 UI ran with one old-file fixture failure. That fixture was corrected
-  but not rerun. V4 non-Claude wire routing was added later and is unverified. Never treat this checkpoint as PASS/integrated.
-  Resume details: `~/Library/Caches/loom-v2/evidence/r9/c4/PAUSED.md`; the original Brief and logs remain beside it.
+- **Updated:** 2026-10-28, 21:48 +03.
+- **State:** `waiting for implementation`. C4 and B5c are accepted on `v2`; B4 is next, with P0 now authorized (D-108).
+  @user requested continuous iteration and an idle test window; AC power is verified. No pause is active.
+- **Where we left off:** C4 `049a95c` passes the integrated-tree **329 tests** (193 Core + 1 Chat + 135 UI), including v1/v4,
+  mode/default provenance, old-reader migration, per-harness ownership and the session-service seam. B5c `7f77000` passes
+  **97 tests** on top (seven intended suites; one corpus measurement skipped). Physical/native/energy gates remain pooled.
+  Codex ≤15 and opencode/agy/pi ≤5 short isolated turns under D-108; count in `evidence/r9/REAL-TURN-BUDGET.md`.
 - **Installed:** Sphyrna 1.7.2 (build 10702) in `/Applications/Loom.app`. The CLIs on this Mac: Claude Code 2.1.311,
   Codex 0.164.0, opencode 2.1.4, agy 1.4.5, pi 0.85.1.
 - **Public:** `0.4.4` is still the latest GitHub release. The tags `v1.6.0` to `v1.7.2` are local in the loom tree; their push
@@ -29,6 +26,8 @@
 | C2, C2b | integrated (`608266d`, `175f653`) | One probe outcome; limits from the probe; efforts on the models; the catalogue on `CatalogModel`; every new-session list follows the switch and the CLI |
 | B2 | integrated (`497a962`, `6601d5c`) | v4 cards/search/headings, neutral selection, mark-aligned subagents, viewport-gated working time; scoped off-screen checks pass |
 | C3 | integrated (`365b2d2`, `175f0e2`) | five Connections rows, Home actions, all-id preferences/assets, fresh PATH and serialized health recheck, pending guard and blocked reasons; scoped checks pass |
+| C4 | integrated (`049a95c`) | neutral draft/preset/open choices, compatible files, per-harness memory, cached validation and safe v1/v4 routing; 329 affected tests pass |
+| B5c | integrated (`7f77000`) | palette activity/scope and outline Clear Memory; existing v4 Settings/menu controls verified; 97 affected tests pass |
 | B3 | integrated (`26acb6c`) | 26 pt full-window status bar, cached limits/popover, bounded working menu, shared awake setting and sidebar Settings/Help; 185 affected tests pass |
 
 B3's integrated-tree check passes **185 tests** (7 core + 178 UI): `check-20261028T125618-89179.log`.
@@ -61,9 +60,7 @@ as every check used it (swift-png 4.5.2).
 
 | Worktree | Branch | State |
 | --- | --- | --- |
-| `~/Library/Caches/loom-v2/wt/v2` | `v2` | Code checkpoint `26acb6c`; B3 integrated; 185 affected tests pass |
-| `~/Library/Caches/loom-v2/wt/r9-c4` | `slice/r9-c4` | resumed at `b3d9828` from `2440fa1`; final wire/legacy checks in flight; NOT integrated |
-| `~/Library/Caches/loom-v2/wt/r9-b5c` | `slice/r9-b5c` | B5c from `4bebd8e`; scratch `build/r9-b5c`; Settings/sheets/palette/menu look only |
+| `~/Library/Caches/loom-v2/wt/v2` | `v2` | Code checkpoints `049a95c` + `7f77000`; C4/B5c accepted with affected checks |
 | `~/Documents/github/loom-dev` | `swarm/1` | The docs mirror (its changes are `v2`'s docs copied over, by design); never build or commit here |
 | `~/Documents/github/loom` | `main` | The public release tree, a separate repository |
 
@@ -74,25 +71,16 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
 ## 3. File locks
 
 - **`@planner`:** canonical records; no implementer edits docs.
-- **C4 (active writer):** per-harness launch-choice/mode/descriptor types, draft/default/preset/store region, `CatalogModel` draft region,
-  `open` command/wire/coordinator and approval display; minimal Claude/runtime adapters, cached AppDelegate callbacks
-  and their tests. No new engine,
-  capability/startability, Chat behavior, probe cadence or visual-panel change. The exact write set is in
-  `~/Library/Caches/loom-v2/evidence/r9/c4/BRIEF.md`. B3's locks are released.
-- **B5c (active writer):** Settings except Connections, sheets, palette and menu presentation, own Settings/Sheets/Palette/
-  RemoraSettings theme tokens and narrow UI tests. No shared-control, Core, draft/header/model-picker, OpenRequestView,
-  Connections, InkOpenState or runtime changes. Exact write set: `evidence/r9/b5c/BRIEF.md`.
+- **Active slice locks:** none until B4 starts. C4 and B5c regions are released; canonical docs remain planner-owned.
 - **1.8.0:** each brief's write set. Shared by region: `CatalogModel.swift` (C4, D1, F1); `SidebarView.swift` (B2, B3);
   Settings files (C3, B5c, G1). `Package.swift` belongs to I1 alone.
 
 ## 4. Next actions by role
 
 - **`@planner`:**
-  1. Review the resumed C4 slice in existing `wt/r9-c4` / `slice/r9-c4`; do not recreate it.
-     The same `c4_core` agent is running from its BRIEF.md and PAUSED.md. First obtain failing-first v4 wire
-     evidence, restore the functional code, rerun the corrected legacy fixture and affected combined suites including
-     v2/v3 control routing. Then review the diff/evidence before integration; B4 waits for accepted C4. No full-pool repeat.
-     D-108 grants P0/P1 real-turn permission; verify the isolated profiles and count turns before their actual runs.
+  1. Start B4 from current v2: two shared model/effort pickers, keyboard-only selection and availability-aware rows. In parallel
+     the planner can run P0 under D-108 once the active-slice count permits; verify its isolated login, count every real turn.
+     Review/integrate each slice and keep builds serialized; no repeated all-target pool for a scoped change.
   2. Carry B1b's layout-bound control migrations to B5 (its report); do not reopen the shared family to change a surface layout.
   3. Use the newly authorized idle window for the accumulated native visual/keyboard/VoiceOver, inspector/working-indicator
      and energy checks at a worthwhile pooled point. All builds remain serialized. The earlier corrected off-screen pool
@@ -103,9 +91,6 @@ the day it is integrated. Build scratch: `build/v2`, plus `build/r9-<id>` while 
   2. Optional: object to the small calls taken at review (B1 and C2b's "Decisions taken" in their reports), such as hiding,
      not disabling, the sidebar's New session row when Claude cannot start.
   3. Still open from before: the push of `v1.6.0`–`v1.7.2` and the GitHub release; the Trash folders of 22, 25, 26 and 28 Oct.
-- **`@implementer-core` C4:** resumed at `b3d9828`; finish PAUSED.md's v4 and corrected-fixture checks, then final
-  REPORT.md/DIFF.patch. Narrow off-screen checks only; the planner handles the idle pool and integration.
-- **`@implementer-ink` B5c (warm `c3_ink` agent):** implement Settings/sheets/palette/menus from `evidence/r9/b5c/BRIEF.md`;
-  narrow off-screen checks/render probes, native screenshots and interaction go to the planner's pooled gate.
-- **B4:** starts after accepted C4; B5a/b retain their separate surface/control migrations.
+- **`@implementer-core`:** C4 complete. D1 waits for P0's verified modes/hooks/ownership/launch evidence.
+- **`@implementer-ink`:** C4/B5c complete. Start B4 from its self-contained Brief; B5a/b retain their separate migrations.
 - **`@optimizer`:** at the 1.8.0 gate (plans/1.8.0/README.md §4).

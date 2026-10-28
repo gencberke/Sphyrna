@@ -163,7 +163,7 @@ transcripts, within fixed read limits, and it offers Ask Remora when the query r
 A draft starts no process. A project can hold several drafts. The branch strip offers stay, new branch or new worktree,
 and there are project presets and the model and mode pick. The git work on first send is bounded and rolls back if the
 start fails.
-- **Spec:** [SPEC §6.5](../SPEC.md) · **Status:** Live (Claude)
+- **Spec:** [SPEC §6.5](../SPEC.md) · **Status:** Live (Claude); C4 neutral choices, per-harness memory and compatible files implemented on `v2`. B4 supplies the two-picker UI; other first-message engines remain D1/E work.
 - **Orca:** _to study_
 - **T3 Code:** _to study_
 - **Sphyrna takes:** _open_

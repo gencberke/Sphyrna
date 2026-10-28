@@ -36,9 +36,9 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 2 | B2 sidebar and card | integrated `497a962` + `6601d5c`; off-screen layout/selection, viewport clock, rest render and accessibility checks pass |
 | 2 | C3 Connections and Home connect cards | integrated `365b2d2` + `175f0e2`, parent seams `425878a`, `c84572b`, `1d4326d`; 9 core + 76 UI scoped tests pass; pooled guard/expectation fixes closed by `8e6fbf7` (112 affected tests PASS) |
 | 2 | B3 status bar | integrated `26acb6c`; full-width 26 pt bar, cached limits/popover, bounded working menu, shared awake setting and sidebar utilities; 185 affected tests PASS; Q7's documented Yes default applied |
-| 3 | C4 neutral draft | resumed from WIP `b3d9828` on `slice/r9-c4` from `2440fa1`; final v4/legacy affected checks in flight; NOT integrated |
+| 3 | C4 neutral draft | integrated `049a95c`; 329 affected tests PASS on v2 (193 Core + 1 Chat + 135 UI); compatible choices/files and v1/v4, supported effort retained per DESIGN |
 | 3 | B4 model and effort pickers · D1 Codex sessions · D2 Codex reader and deletion · B5a/b surfaces | queued |
-| 3 | B5c Settings, sheets, palette, menus and About | running on `slice/r9-b5c` from `4bebd8e`; disjoint from C4; narrow off-screen checks, planner owns idle visual/window pool |
+| 3 | B5c Settings, sheets, palette, menus and About | integrated `7f77000`; 97 affected tests PASS (one corpus measurement skipped), six controlled theme renders; native/window/energy remain pooled |
 | 4 | E1 opencode · E2 agy · E3 pi · F1 send · F2 Changes → session · G1 Remora backends · H1 usage · I1 names | queued |
 | 5 | Z the gate, the optimizer, the release | planner |
 
@@ -46,13 +46,12 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 
 - **Continuous resume and test budget (D-108, 28 Oct):** Mac idle and AC attached; run the accumulated native/window/visual/energy pool at a worthwhile integrated point. Real isolated turns are authorized: Codex ≤15, opencode/agy/pi ≤5 each; record every turn in `evidence/r9/REAL-TURN-BUDGET.md` and provider reports. The user performs any login; no release/install authority was added.
 
-- **C4 paused by @user (28 Oct):** checkpoint `ed11c72` + functional-wire restoration `b3d9828`, clean in `wt/r9-c4`.
-  No active process/check. Last combined affected run (`check-20261028T142550-98156.log`) passed 116 Core + 1 Chat;
-  130 UI ran with one simulated old-file fixture failure. Its correction and the later v4 wire changes are **not rerun**.
-  The earlier 35 Core + 19 UI PASS predates those changes. Read `~/Library/Caches/loom-v2/evidence/r9/c4/PAUSED.md`
-  and BRIEF.md on resume; reuse the same slice/agent, get v4 failing-first evidence and final affected checks before review
-  and integration. **Resumed by @user:** continue iterations; Mac idle for the planner's accumulated window/visual/energy
-  pool. Reuse the same worktree/branch/scratch and agent. B4 waits for accepted C4.
+- **C4/B5c accepted (28 Oct):** C4 integrated-tree log `check-20261028T213831-12075.log` passes 329 tests; B5c on top
+  passes 97 in `check-20261028T214402-14160.log`. The old-file fixture and v4 work left at the daytime pause are now verified.
+  Reports/integration records: `evidence/r9/c4/` and `b5c/`. Source-equivalent slice checkpoints and evidence are preserved;
+  clean integrated worktrees/branches/scratch are removed under D-107. B4 can start. The idle pool must cover the native root,
+  Settings tab clicks, inspector/working indicators, palette physical edge clicks, visual pairs and energy; offscreen renders
+  and AX presses do not claim those gates. No real turn has been spent yet.
 
 - **B3 closed (28 Oct):** integrated-tree check passes **185 tests** (7 core + 178 UI), including the shared offscreen root/popover, limit freshness, menu bounds/actions and unrelated-hook redraw regression: `check-20261028T125618-89179.log`. Report: `~/Library/Caches/loom-v2/evidence/r9/b3/INTEGRATION.md`. Worktree/patch-equivalent branch and 1.7 GB scratch removed; evidence retained. No new whole-pool run or shown-window/real-CLI check (D-90). Next: C4's per-harness draft/store/open choices, then B4's model/effort controls and B5's surface migrations.
 

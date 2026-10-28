@@ -255,6 +255,11 @@ panel with an effort step that this page proposed first.
 
 #### Elsewhere (B5a–c)
 
+B5c keeps Settings' existing shared underlined band and controls. The palette's transcript search uses the common Braille
+spinner, gated by the active window; Remora's scope is reading text, with mono reserved for its shortcut chips. Clear Working
+Memory is an outline confirmation, like Full Access and retention; it keeps its explicit action and inert Return. Delete
+keeps the destructive role. Native NSMenus retain their platform treatment.
+
 Every other surface takes the components above, and nothing else changes in its layout unless a slice names it:
 - Home, the project page and the draft page (B5a);
 - the header, the tabs, the inspector, the ended line, banners and the open request's card (B5b);
