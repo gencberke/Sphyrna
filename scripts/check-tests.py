@@ -102,8 +102,12 @@ def test_files(root):
 
 
 def own_thread_spans(code):
-    """The spans of `onOwnThread(…) { … }` closures: blocking is their purpose."""
+    """The spans of `onOwnThread(…) { … }` closures and of `Thread { … }` bodies: they run on threads of their own, where
+    blocking is their purpose."""
     spans = []
+    for m in re.finditer(r'(?<![\w.])Thread\s*(\{|\(block:\s*\{)', code):
+        brace = m.end() - 1
+        spans.append((brace, swift.closing_brace(code, brace)))
     for start in swift.call_sites('onOwnThread', code):
         paren = code.index('(', start)
         after = swift.closing_paren(code, paren) + 1
@@ -348,7 +352,8 @@ PLANTED = {
     'pool-block': ('func f() async { usleep(10); let s = DispatchSemaphore(value: 0); s.wait() }\n'
                    'func g() async throws { try await onOwnThread("x") { usleep(5); p.waitUntilExit() } }\n'
                    'func h() async { await gate.wait() }\nfunc sleep(until date: Date) async throws {}\n'
-                   'func i() { while lock.withLock({ n }) < 1 { usleep(10_000) }; _ = pipe.readDataToEndOfFile() }\n', 4),
+                   'func i() { while lock.withLock({ n }) < 1 { usleep(10_000) }; _ = pipe.readDataToEndOfFile() }\n'
+                   'let t = Thread { _ = done.wait(timeout: .now() + 5); Thread.sleep(forTimeInterval: 1) }\n', 4),
     'detached-block': ('func f() async { Task.detached { _ = try client.exchange(request) } }\n'
                        'func g() async { Task.detached { await model.wait() } }\n', 1),
     'sleep': ('func f() async throws {\n    try await Task.sleep(for: .milliseconds(5))\n'
