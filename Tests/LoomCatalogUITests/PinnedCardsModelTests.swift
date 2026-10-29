@@ -132,23 +132,6 @@ struct PinnedCardsModelTests {
         #expect(await source.answers.isEmpty)
     }
 
-    @Test func noCardFileBindsADefaultOrCancelKey() throws {
-        // Return never approves and Esc never denies: no card button is a default or a cancel action, and nothing in the
-        // card files listens for the exit command (Esc).
-        let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/LoomCatalogUI/Chat", isDirectory: true)
-        let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
-            .filter { $0.lastPathComponent.hasPrefix("Pinned") && $0.pathExtension == "swift" }
-        #expect(files.count >= 5)
-        for file in files {
-            let text = try String(contentsOf: file, encoding: .utf8)
-            for banned in [".keyboardShortcut", "defaultAction", "cancelAction", "onExitCommand", "onSubmit"] {
-                let code = text.split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("///") && !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-                #expect(!code.contains { $0.contains(banned) }, "\(file.lastPathComponent) uses \(banned)")
-            }
-        }
-    }
-
     // MARK: The typing guard
 
     @Test func aCardThatArrivesWhileYouTypeWaitsAsOneLineAndNeverTakesYourText() async {

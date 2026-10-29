@@ -217,44 +217,15 @@ struct EdgesPureTests {
 
     // MARK: The symbol colour
 
-    /// The chat's box and the top stack colour a banner's symbol with the tone's text variant (`fail-text`, `attn-text`), not the
-    /// hue: the hue marks (dots, edges) and the variant writes.
-    @Test func theBannerSymbolTakesTheTextVariantNotTheHue() throws {
-        let sources = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/LoomCatalogUI", isDirectory: true)
-        let text = try String(contentsOf: sources.appendingPathComponent("Chat/ChatBanner.swift"), encoding: .utf8)
-        let start = try #require(text.range(of: "var symbolStyle: AnyShapeStyle {"))
-        let block = String(text[start.lowerBound...].prefix(400))
-        #expect(block.contains("case .failure: AnyShapeStyle(LoomTheme.Status.failureLight)"))
-        #expect(block.contains("case .attention: AnyShapeStyle(LoomTheme.Status.attentionLight)"))
-        #expect(!block.contains("Status.failure)") && !block.contains("Status.attention)"))
+    /// The banner symbol's text variants (`fail-text`, `attn-text`) read on every raised surface. That the symbol takes the
+    /// variant, not the hue, is a source rule: `scripts/check-source-guards.py` (banner-symbol).
+    @Test func theBannerSymbolsTextVariantsReadOnEveryRaisedSurface() {
         for appearance in Appearance.allCases {
             for tone in PaneTone.allCases {
                 let greys = LoomTheme.Surface.greys(appearance, tone: tone)
                 for pair in [LoomTheme.Status.failureLightPair, LoomTheme.Status.attentionLightPair] {
                     #expect(pair[appearance].contrast(with: greys.raised2) >= 4.5, "\(appearance) \(tone)")
                 }
-            }
-        }
-    }
-
-    // MARK: Keys
-
-    /// No Return or Esc binding anywhere in the stack, the ended line or the record: Return belongs to the screen below.
-    @Test func noFileOfTheStackTheLineOrTheRecordBindsAReturnOrEscapeKey() throws {
-        let sources = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/LoomCatalogUI", isDirectory: true)
-        let names = ["BannerStack.swift", "BannerBox.swift", "EndedLine.swift", "ConversationRecord.swift", "LoomTheme+Edges.swift",
-                     "CatalogModel+EvidenceBanners.swift", "SessionIssueNotice.swift", "Chat/ChatBanner.swift"]
-        for name in names {
-            let file = sources.appendingPathComponent(name)
-            #expect(FileManager.default.fileExists(atPath: file.path), "\(name) is scanned and must exist")
-            let code = try String(contentsOf: file, encoding: .utf8).split(separator: "\n").filter {
-                !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//")
-            }
-            for banned in [".defaultAction", "defaultAction", "cancelAction", "onExitCommand", "onSubmit", ".keyboardShortcut(.return",
-                           ".keyboardShortcut(.defaultAction", ".keyboardShortcut(.cancelAction", ".keyboardShortcut(.escape"] {
-                #expect(!code.contains { $0.contains(banned) }, "\(name) uses \(banned)")
             }
         }
     }

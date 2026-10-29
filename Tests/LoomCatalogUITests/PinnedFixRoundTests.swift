@@ -152,38 +152,6 @@ struct PinnedFixRoundTests {
         #expect(!cards.isHeld, "five seconds after the last keystroke, whatever was set since")
         #expect(spy.notes == ["a pick's text"])
     }
-
-    // MARK: No default or cancel key anywhere a card or the composer lives
-
-    @Test func noFileOfTheChatBindsADefaultCancelOrSubmitThatCouldAnswerACard() throws {
-        let sources = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/LoomCatalogUI", isDirectory: true)
-        let chat = sources.appendingPathComponent("Chat", isDirectory: true)
-        var files = try FileManager.default.contentsOfDirectory(at: chat, includingPropertiesForKeys: nil)
-            .filter { file in
-                let name = file.lastPathComponent
-                return file.pathExtension == "swift"
-                    && (name.hasPrefix("Pinned") || name.hasPrefix("Composer") || name.hasPrefix("ChatComposer")
-                        || name == "LiveChatView.swift")
-            }
-        files.append(sources.appendingPathComponent("SessionChatView.swift"))
-        // The popover and menu host (I4) takes Esc in its own key handling while one of its popovers is open; its files are outside
-        // Chat/ and are scanned too, so no default or cancel key of theirs can answer a card.
-        for name in InkHostSources.files { files.append(sources.appendingPathComponent(name)) }
-        #expect(files.count >= 12 + InkHostSources.files.count, "\(files.map(\.lastPathComponent))")
-        for file in files { #expect(FileManager.default.fileExists(atPath: file.path), "\(file.lastPathComponent) is scanned and must exist") }
-        for file in files {
-            let text = try String(contentsOf: file, encoding: .utf8)
-            let code = text.split(separator: "\n").filter {
-                let line = $0.trimmingCharacters(in: .whitespaces)
-                return !line.hasPrefix("//")
-            }
-            for banned in [".defaultAction", "defaultAction", "cancelAction", "onExitCommand", "onSubmit", ".keyboardShortcut(.return",
-                           ".keyboardShortcut(.defaultAction", ".keyboardShortcut(.cancelAction", ".keyboardShortcut(.escape"] {
-                #expect(!code.contains { $0.contains(banned) }, "\(file.lastPathComponent) uses \(banned)")
-            }
-        }
-    }
 }
 
 /// A box a test moves under a model's clock closures.

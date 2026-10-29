@@ -6,11 +6,6 @@ import SwiftUI
 import Testing
 @testable import LoomCatalogUI
 
-/// The files of the popover and menu host, which `PinnedFixRoundTests` scans for a default or cancel key along with the composer's.
-enum InkHostSources {
-    static let files = ["InkHost.swift", "InkHostPlacement.swift", "InkOpenState.swift", "ProjectMenuView.swift", "LoomTheme+Hosts.swift"]
-}
-
 // MARK: Pure
 
 /// The host's rules that need no view: where a popover sits against its control, where each opener opens, which keys the host reads,

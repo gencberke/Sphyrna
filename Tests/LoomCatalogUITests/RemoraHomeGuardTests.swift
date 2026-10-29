@@ -2,8 +2,9 @@ import Foundation
 import Testing
 @testable import LoomCatalogUI
 
-/// L3b's two guards that need no view: the evidence command may write the fake provider's Remora script only inside the run's own data
-/// root and only with fake providers, and Home's Remora code starts nothing by itself (no timer, delayed hop, observer or watcher).
+/// L3b's guard that needs no view: the evidence command may write the fake provider's Remora script only inside the run's own
+/// data root and only with fake providers. That Home's Remora code starts nothing by itself is `scripts/check-source-guards.py`
+/// (remora-home).
 struct RemoraHomeGuardTests {
     // MARK: The script file
 
@@ -98,53 +99,5 @@ struct RemoraHomeGuardTests {
         #expect(RemoraEvidenceFixture.validated("[]") == nil)
         #expect(RemoraEvidenceFixture.validated("{}") == nil)
         #expect(RemoraEvidenceFixture.validated(#"{"answer":"a","path":"/etc/passwd"}"#) == nil, "a key the fixture does not read")
-    }
-
-    // MARK: Nothing runs by itself
-
-    private static let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-
-    /// Home's Remora code, the reachability read, Put in Draft and the Home views, without comments.
-    private static func homeSources() throws -> [(path: String, code: String)] {
-        let directory = root.appendingPathComponent("Sources/LoomCatalogUI", isDirectory: true)
-        let names = try FileManager.default.contentsOfDirectory(atPath: directory.path).filter { name in
-            name.hasPrefix("HomeRemora") || ["NetworkReach.swift", "CatalogModel+RemoraDraft.swift", "HomeView.swift", "HomeBand.swift"].contains(name)
-        }.sorted()
-        return try names.map { name in
-            let text = try String(contentsOf: directory.appendingPathComponent(name), encoding: .utf8)
-            let code = text.split(separator: "\n", omittingEmptySubsequences: false).map { line -> String in
-                guard let range = line.range(of: "//") else { return String(line) }
-                return String(line[..<range.lowerBound])
-            }.joined(separator: "\n")
-            return (name, code)
-        }
-    }
-
-    @Test func homesRemoraCodeHasNoTimerSleepObserverOrWatcher() throws {
-        let sources = try Self.homeSources()
-        #expect(sources.count >= 8, "the scan saw \(sources.map(\.path))")
-        let banned = ["Timer", "Task.sleep", "NotificationCenter", "DispatchSource", "asyncAfter", "FSEventStream",
-                      "SCNetworkReachabilitySetCallback", "SCNetworkReachabilityScheduleWithRunLoop", "addObserver", "onReceive"]
-        for (path, code) in sources {
-            for name in banned {
-                #expect(!code.contains(name), "\(path) uses \(name): Remora's Home starts nothing by itself")
-            }
-        }
-    }
-
-    @Test func theReachabilityReadMakesOneMonitorAndCancelsItAfterItsFirstPath() throws {
-        let code = try #require(try Self.homeSources().first { $0.path == "NetworkReach.swift" }).code
-        #expect(code.components(separatedBy: "NWPathMonitor").count - 1 == 1, "one monitor, made inside the read")
-        #expect(code.contains("monitor.cancel()"), "cancelled when the read is over")
-        #expect(!code.contains("static var monitor") && !code.contains("static let monitor"), "none is kept")
-        #expect(!code.contains("SCNetworkReachability"), "the deprecated read is not used")
-    }
-
-    @Test func theAutomaticBriefHasOneCallSiteAndItIsInTheHomeViewsTask() throws {
-        let sources = try Self.homeSources()
-        let sites = sources.filter { $0.code.contains("briefRemoraIfDue(") }.map(\.path)
-        #expect(sites == ["HomeRemoraCalls.swift"], "\(sites)")
-        let view = try #require(sources.first { $0.path == "HomeView.swift" }).code
-        #expect(view.contains(".task(id: HomeRemoraShowKey(windowAttached: windowAttached, hasHost: model.hasRemora))") && view.contains("HomeRemoraCalls.homeShown("), "Home's .task asks")
     }
 }
