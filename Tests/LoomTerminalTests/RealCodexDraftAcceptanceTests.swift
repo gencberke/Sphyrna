@@ -117,9 +117,12 @@ private final class RealAcceptanceScreen: TerminalOutputSink, TerminalDelegate, 
     private var inputFailed = false
     private var trustedPaths: [String] = []
     private var watchdog: Task<Void, Never>?
+    private var frontendTimeout: TimeInterval = 45
+    private var screenChecks: [String: Bool] = [:]
 
-    func configureFrontend(work: URL) {
+    func configureFrontend(work: URL, diagnosticOnly: Bool) {
         lock.withLock {
+            frontendTimeout = diagnosticOnly ? 15 : 45
             trustedPaths = [work.path, work.resolvingSymlinksInPath().path,
                             work.path.replacingOccurrences(of: "/private/tmp/", with: "/tmp/")]
         }
@@ -133,7 +136,7 @@ private final class RealAcceptanceScreen: TerminalOutputSink, TerminalDelegate, 
                 self?.lock.withLock { self?.inputFailed = true }
             }
             watchdog = Task {
-                do { try await Task.sleep(for: .seconds(45)) } catch { return }
+                do { try await Task.sleep(for: .seconds(frontendTimeout)) } catch { return }
                 await timedOut()
             }
             let result = pendingReplies
@@ -145,7 +148,7 @@ private final class RealAcceptanceScreen: TerminalOutputSink, TerminalDelegate, 
 
     func identityArrived() { lock.withLock { watchdog?.cancel(); watchdog = nil } }
     func finish() { lock.withLock { watchdog?.cancel(); watchdog = nil; input?.close(reason: "Acceptance finished"); input = nil } }
-    func frontendEvidence() -> (replies: Int, trusted: Bool) { lock.withLock { (frontendReplies, trustAccepted) } }
+    func frontendEvidence() -> (replies: Int, trusted: Bool, checks: [String: Bool]) { lock.withLock { (frontendReplies, trustAccepted, screenChecks) } }
 
     func send(source: SwiftTerm.Terminal, data: ArraySlice<UInt8>) {
         // Called synchronously by the same product VT parser that answers a
@@ -162,6 +165,11 @@ private final class RealAcceptanceScreen: TerminalOutputSink, TerminalDelegate, 
             engine.feed(byteArray: Array(data))
             let text = (0..<engine.rows).compactMap { engine.getLine(row: $0)?.translateToString(trimRight: true) }
                 .joined(separator: "\n").lowercased()
+            let checks = ["ordinaryPrompt": text.contains("trust this folder?"), "trustChoice": text.contains("trust and continue"),
+                "cancelChoice": text.contains("quit"), "exactOwnedPath": trustedPaths.contains { text.contains($0.lowercased()) },
+                "ownedBasename": trustedPaths.contains { text.contains(URL(fileURLWithPath: $0).lastPathComponent.lowercased()) },
+                "repositoryRootWarning": text.contains("repository root"), "inputFailed": inputFailed]
+            for (key, value) in checks { screenChecks[key] = screenChecks[key] == true || value }
             if !trustAccepted, text.contains("trust this folder?"), text.contains("trust and continue"), text.contains("quit"),
                trustedPaths.contains(where: { text.contains($0.lowercased()) }) {
                 trustAccepted = true
@@ -265,6 +273,7 @@ private struct RealAcceptanceEvidence: Encodable {
     var terminalByteCount = 0
     var frontendRepliesQueued = 0
     var trustChoiceQueued = false
+    var frontendScreenChecks: [String: Bool] = [:]
     var fixtureExtraMode = "hostile"
     var errorSignals: [String] = []
     var kind = "first-prompt-acceptance"
@@ -321,7 +330,7 @@ struct RealCodexDraftAcceptanceTests {
             let value = try RealAcceptanceInputs.read()
             inputs = value
             let frontend = ProcessInfo.processInfo.environment["LOOM_ACC_REAL_CODEX_FRONTEND"] == "1"
-            if frontend { screen.configureFrontend(work: value.work) }
+            if frontend { screen.configureFrontend(work: value.work, diagnosticOnly: diagnosticOnly) }
             let marker = value.work.appendingPathComponent("p0-d1-real-acceptance.txt")
             var markerInfo = stat()
             try requireAcceptance(lstat(marker.path, &markerInfo) != 0 && errno == ENOENT, "marker-preexists")
@@ -547,6 +556,7 @@ struct RealCodexDraftAcceptanceTests {
         let frontend = screen.frontendEvidence()
         result.frontendRepliesQueued = frontend.replies
         result.trustChoiceQueued = frontend.trusted
+        result.frontendScreenChecks = frontend.checks
         if let bundleRoot, result.quitResult == "verified", result.cleanup != "failed-or-unknown" {
             RunScopeLauncher.removeOwnedBundle(in: bundleRoot)
         }
