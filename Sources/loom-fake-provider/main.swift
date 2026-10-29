@@ -129,6 +129,7 @@ struct FakeClaude {
     let settings: [String: Any]
     let environment = ProcessInfo.processInfo.environment
     var promptCount = 0
+    var currentPrompt: String?
     let registryStartedAt = Date()
     /// Like Claude: `--effort` or `/effort` hold for this process only. Once set, each reply is
     /// recorded in the profile's transcript with its effort, as Claude records it.
@@ -277,6 +278,7 @@ struct FakeClaude {
             "cwd": FileManager.default.currentDirectoryPath,
         ]
         payload.merge(fields) { _, new in new }
+        if event == "UserPromptSubmit", payload["prompt"] == nil, let currentPrompt { payload["prompt"] = currentPrompt }
         guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
         let process = Process()
         if environment["LOOM_FAKE_HOLD_STOP_HOOK"] == "1" {
@@ -308,7 +310,7 @@ struct FakeClaude {
         out("Resume this session with:\r\nclaude --resume \(id)\r\n")
     }
 
-    mutating func run(resume: Bool) {
+    mutating func run(resume: Bool, firstMessage: String? = nil) {
         if altScreen {
             out("\u{1B}[?1049h\u{1B}[2J\u{1B}[H")
             out("ALT-SCREEN-DRAWN \(id)\r\n")
@@ -337,8 +339,14 @@ struct FakeClaude {
         hook("SessionStart", ["source": resume ? "resume" : "startup"])
         out("FAKE-CLAUDE READY \(id) cwd=\(FileManager.default.currentDirectoryPath) "
             + "profile=\(environment["CLAUDE_CONFIG_DIR"] ?? "default") effort=\(effort ?? "default")\r\n> ")
-        while let line = readLine() {
-            switch line.split(separator: " ").first.map(String.init) ?? "" {
+        if let firstMessage { handle(firstMessage) }
+        while let line = readLine() { handle(line) }
+    }
+
+    private mutating func handle(_ line: String) {
+        currentPrompt = line
+        defer { currentPrompt = nil }
+        switch line.split(separator: " ").first.map(String.init) ?? "" {
             case "/exit":
                 hook("SessionEnd", ["reason": "prompt_input_exit"])
                 if altScreen { leaveAltScreen() } else { out("bye\r\n") }
@@ -422,23 +430,23 @@ struct FakeClaude {
                 out("echo: \(line)\r\n")
                 recordReply()
                 hook("Stop", ["last_assistant_message": "echo \(line)"])
-            }
-            out("> ")
         }
+        out("> ")
     }
 }
 
 switch role {
 case "claude":
+    let firstMessage = arguments.firstIndex(of: "--").flatMap { $0 + 1 < arguments.count ? arguments[$0 + 1] : nil }
     let settingsText = take("--settings") ?? "{}"
     let settings = (try? JSONSerialization.jsonObject(with: Data(settingsText.utf8))) as? [String: Any] ?? [:]
     let effort = take("--effort")
     if let resumeID = take("--resume") {
         var claude = FakeClaude(id: resumeID, settings: settings, effort: effort)
-        claude.run(resume: true)
+        claude.run(resume: true, firstMessage: firstMessage)
     } else {
         var claude = FakeClaude(id: take("--session-id") ?? UUID().uuidString.lowercased(), settings: settings, effort: effort)
-        claude.run(resume: false)
+        claude.run(resume: false, firstMessage: firstMessage)
     }
 case "codex-server":
     if let stateDirectory, let bytes = try? JSONSerialization.data(withJSONObject: Array(CommandLine.arguments.dropFirst())),
