@@ -115,7 +115,8 @@ public struct RunScopeLauncher: Sendable {
     }
 
     public func launch() async throws -> RunScope {
-        try await Task.detached { try self.launchBlocking() }.value
+        // The handshake polls its listener until the deadline: never on the cooperative pool (`onOwnThread`).
+        try await onOwnThread("loom.run-scope") { try self.launchBlocking() }
     }
 
     /// Writes a minimal background-only bundle around a built host executable.
