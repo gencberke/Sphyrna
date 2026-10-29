@@ -113,7 +113,9 @@ struct SessionServiceFaceTableTests {
         let request = OpenSessionWireRequest(
             authenticationToken: hooks.authenticationToken, sessionID: requester, managedRunID: run,
             title: "Opened by an agent", project: nil, message: "Do the next thing.")
-        let reply = Task.detached { try OpenSessionClient.exchange(request, socketPath: control) }
+        let reply = Task {
+            try await onOwnThread("open-session exchange") { try OpenSessionClient.exchange(request, socketPath: control) }
+        }
         #expect(await waitUntil { fixture.model.openRequests.count == 1 })
         let asked = try #require(fixture.model.openRequests.first)
         fixture.model.approveOpenRequest(asked.id)

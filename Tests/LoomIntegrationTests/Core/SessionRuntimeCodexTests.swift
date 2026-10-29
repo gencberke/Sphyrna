@@ -32,21 +32,20 @@ private actor RuntimeCodexSetupGate {
 }
 
 /// Uses the existing ownership-sampling test boundary after provider prepare.
-/// The bounded pause lets the real fixture TUI submit one late turn before
-/// the supervisor signals it; no production timing hook is added.
+/// The pause (the supervisor actor frozen until the test releases it) lets the
+/// real fixture TUI submit one late turn before the supervisor signals it; no
+/// production timing hook is added.
 private final class RuntimeCodexLateTurnGate: @unchecked Sendable {
     private let lock = NSLock()
-    private let semaphore = DispatchSemaphore(value: 0)
-    private var entered = false
-    var hasEntered: Bool { lock.withLock { entered } }
-    func pauseOnce() throws {
-        let first = lock.withLock { if entered { return false }; entered = true; return true }
+    private let gate = ActorFreezeGate()
+    private var reached = false
+    var hasEntered: Bool { gate.entered }
+    func pauseOnce() {
+        let first = lock.withLock { if reached { return false }; reached = true; return true }
         guard first else { return }
-        guard semaphore.wait(timeout: .now() + 5) == .success else {
-            throw LoomError.message("late-turn test gate timed out")
-        }
+        gate.hold()
     }
-    func release() { semaphore.signal() }
+    func release() { gate.release() }
 }
 
 /// CP5 C for Codex: the production runtime, the per-conversation app-server managers, the
@@ -814,7 +813,7 @@ struct SessionRuntimeCodexTests {
         #expect(await SessionRuntimeRig.waitUntil { joinLog(context).contains("joined \(thread)") })
         let gate = RuntimeCodexLateTurnGate()
         defer { gate.release() }
-        await context.supervisor.setOwnershipSamplingFailpointForTesting { try gate.pauseOnce() }
+        await context.supervisor.setOwnershipSamplingFailpointForTesting { gate.pauseOnce() }
         let stopping = Task { try await context.runtime.stopConversation(sessionID: launch.sessionID) }
         try #require(await SessionRuntimeRig.waitUntil(2) { gate.hasEntered })
         try await screen.send("work 60000")
@@ -1639,7 +1638,7 @@ struct SessionRuntimeCodexTests {
         server.arguments = ["app-server", "--listen", "unix://\(socket)"]
         server.standardOutput = FileHandle.nullDevice
         try server.run()
-        defer { server.terminateAndAwaitExit() }
+        defer { server.signalForTeardown() }
         var client: CodexAppServerClient?
         let ready = await SessionRuntimeRig.waitUntil(5) {
             client = try? await CodexAppServerClient.connect(socketPath: socket, clientVersion: "test", timeout: 1)
@@ -1655,6 +1654,7 @@ struct SessionRuntimeCodexTests {
         await connected.close()
         // Before the fix this took about 20 x 125 ms on average (>2 s).
         #expect(elapsed < .milliseconds(500), "20 round trips took \(elapsed)")
+        await server.terminateAndAwaitExit()
     }
 }
 

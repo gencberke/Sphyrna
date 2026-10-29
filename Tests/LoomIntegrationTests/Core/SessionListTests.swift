@@ -98,16 +98,16 @@ private final class ListRig: @unchecked Sendable {
 
     func send(_ request: SessionListWireRequest) async throws -> SessionListReply {
         let path = socketPath
-        return try await Task.detached { try OpenSessionClient.exchange(request, socketPath: path) }.value
+        return try await onOwnThread("session-list exchange") { try OpenSessionClient.exchange(request, socketPath: path) }
     }
 
     func run(_ arguments: [String], environment: [String: String]? = nil) async -> (code: Int32, out: ListOutput) {
         let out = ListOutput()
         let env = environment ?? self.environment
-        let code = await Task.detached {
+        let code = await onTestThread("open-session command") {
             OpenSessionCommand.run(arguments: arguments, environment: env, readStandardInput: { Data() },
                                    output: out.output, replyTimeout: 10)
-        }.value
+        }
         return (code, out)
     }
 }
@@ -367,9 +367,9 @@ struct SessionListTests {
         // Version 2 with another command, and a version nobody knows.
         let path = rig.socketPath
         for body in [#"{"version":2,"command":"frobnicate"}"#, #"{"version":3}"#, "not json"] {
-            let reply = try await Task.detached {
+            let reply = try await onOwnThread("open-session exchange") {
                 try OpenSessionClient.exchange(raw: Data(body.utf8), socketPath: path)
-            }.value
+            }
             #expect(reply.status == .invalid && reply.detail == "the request is malformed", "\(body)")
         }
     }
@@ -382,12 +382,21 @@ struct SessionListTests {
             OpenSessionWireRequest(authenticationToken: token ?? rig.token, sessionID: rig.requester.id,
                                    managedRunID: rig.runID, title: "Fix", project: project, message: "go")
         }
-        let unknown = try await Task.detached { try OpenSessionClient.exchange(open("nope"), socketPath: path) }.value
+        let unknownRequest = open("nope")
+        let unknown = try await onOwnThread("open-session exchange") {
+            try OpenSessionClient.exchange(unknownRequest, socketPath: path)
+        }
         #expect(unknown.status == .invalid && unknown.line.hasPrefix("error: no Sphyrna project"))
-        let wrong = try await Task.detached { try OpenSessionClient.exchange(open(nil, token: "x"), socketPath: path) }.value
+        let wrongRequest = open(nil, token: "x")
+        let wrong = try await onOwnThread("open-session exchange") {
+            try OpenSessionClient.exchange(wrongRequest, socketPath: path)
+        }
         #expect(wrong.status == .unavailable)
 
-        let pending = Task.detached { try OpenSessionClient.exchange(open(nil), socketPath: path) }
+        let pendingRequest = open(nil)
+        let pending = Task {
+            try await onOwnThread("open-session exchange") { try OpenSessionClient.exchange(pendingRequest, socketPath: path) }
+        }
         var entries: [OpenSessionRequest] = []
         for _ in 0..<500 where entries.isEmpty {
             entries = await rig.coordinator.snapshot()
@@ -407,23 +416,14 @@ struct SessionListTests {
         defer { rig.cleanup() }
         let ids = try await fill(rig)
         let helper = Products.directory.appendingPathComponent("loom-hook")
-        let environment = rig.environment
-        let result = try await Task.detached {
-            let process = Process()
-            process.executableURL = helper
-            process.arguments = ["sessions", "--project", "alpha"]
-            process.environment = environment
-            let output = Pipe(), error = Pipe()
-            process.standardOutput = output
-            process.standardError = error
-            process.standardInput = Pipe()
-            try process.run()
-            let out = output.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            return (process.terminationStatus, String(decoding: out, as: UTF8.self))
-        }.value
-        #expect(result.0 == 0)
-        let lines = result.1.components(separatedBy: "\n").filter { !$0.isEmpty }
+        let process = Process()
+        process.executableURL = helper
+        process.arguments = ["sessions", "--project", "alpha"]
+        process.environment = rig.environment
+        process.standardInput = Pipe()
+        let result = try await runToEnd(process)
+        #expect(result.status == 0)
+        let lines = result.outputText.components(separatedBy: "\n").filter { !$0.isEmpty }
         #expect(lines.count == 3 && lines[1].hasPrefix(ids.a2.uuidString.lowercased()) && lines[2].hasPrefix(ids.a1.uuidString.lowercased()))
     }
 }

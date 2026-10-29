@@ -44,18 +44,8 @@ struct SideChatForkOnRealCLITests {
         SHA256.hash(data: try Data(contentsOf: url)).map { String(format: "%02x", $0) }.joined()
     }
 
-    fileprivate static func capture(_ executable: String, _ arguments: [String], environment: [String: String]) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.environment = environment
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return String(decoding: data, as: UTF8.self)
+    fileprivate static func capture(_ executable: String, _ arguments: [String], environment: [String: String]) async throws -> String {
+        try await runToEnd(executable, arguments, environment: environment).outputText
     }
 
     @Test func v22bForkRefusesWritesAnswersReadsAndLeavesTheParentByteIdentical() async throws {
@@ -71,9 +61,9 @@ struct SideChatForkOnRealCLITests {
                                  "LOGNAME": NSUserName(), "LANG": "en_US.UTF-8"]
         launchEnvironment["TMPDIR"] = env["TMPDIR"]
         let toolEnvironment = launchEnvironment
-        let capabilities = ProviderCapabilities(
-            version: try Self.capture(claude, ["--version"], environment: child).trimmingCharacters(in: .whitespacesAndNewlines),
-            help: try Self.capture(claude, ["--help"], environment: child))
+        let version = try await Self.capture(claude, ["--version"], environment: child)
+        let help = try await Self.capture(claude, ["--help"], environment: child)
+        let capabilities = ProviderCapabilities(version: version.trimmingCharacters(in: .whitespacesAndNewlines), help: help)
         #expect(capabilities.supportsForkSession)
 
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-v22b-real-\(UUID())", isDirectory: true)
@@ -190,7 +180,7 @@ struct SideChatForkOnRealCLITests {
         #expect(work.path.hasPrefix("/private/tmp/loom-real/") && !work.path.hasPrefix(NSHomeDirectory()))
         let existing = (try? FileManager.default.contentsOfDirectory(atPath: work.path)) ?? []
         try #require(existing.filter { $0 != ".claude" }.isEmpty, "the work folder is not new")
-        let rig = try ForkRig(config: config, work: work)
+        let rig = try await ForkRig(config: config, work: work)
         var current: ForkRig.Running?
         do {
             try await Self.relaunchScenario(rig: rig, work: work, config: config, current: &current)
@@ -356,7 +346,7 @@ private struct ForkRig {
     let binaries: URL
     let socketDirectories: [URL]
 
-    init(config: URL, work: URL) throws {
+    init(config: URL, work: URL) async throws {
         let env = ProcessInfo.processInfo.environment
         self.config = config
         self.work = work
@@ -367,10 +357,9 @@ private struct ForkRig {
                                  "LOGNAME": NSUserName(), "LANG": "en_US.UTF-8"]
         launchEnvironment["TMPDIR"] = env["TMPDIR"]
         toolEnvironment = launchEnvironment
-        capabilities = ProviderCapabilities(
-            version: try SideChatForkOnRealCLITests.capture(claude, ["--version"], environment: child)
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-            help: try SideChatForkOnRealCLITests.capture(claude, ["--help"], environment: child))
+        let version = try await SideChatForkOnRealCLITests.capture(claude, ["--version"], environment: child)
+        let help = try await SideChatForkOnRealCLITests.capture(claude, ["--help"], environment: child)
+        capabilities = ProviderCapabilities(version: version.trimmingCharacters(in: .whitespacesAndNewlines), help: help)
         root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-v22b-real-\(UUID())", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         binaries = Bundle(for: ForkAnchor.self).bundleURL.deletingLastPathComponent()

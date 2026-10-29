@@ -170,7 +170,7 @@ struct RealClaudeAcceptanceTests {
 
     @Test func a5StopTaskShapes() async throws {
         try await AccRig.run("a5-stop-task") { rig in
-            let before = Self.processes(matching: "sleep 60")
+            let before = await Self.processes(matching: "sleep 60")
             let sink = ChatPipeSink()
             let id = UUID()
             let launched = try await rig.runtime.startChatConversation(
@@ -212,8 +212,8 @@ struct RealClaudeAcceptanceTests {
             let started = await rig.wait(120) { log.taskID() != nil }
             rig.log("A5 background task seen \(started); records: \(log.kindsSeen())")
             let taskID = try #require(log.taskID())
-            _ = await rig.wait(30) { Self.processes(matching: "sleep 60").count > before.count }
-            let running = Self.processes(matching: "sleep 60")
+            _ = await rig.wait(30) { await Self.processes(matching: "sleep 60").count > before.count }
+            let running = await Self.processes(matching: "sleep 60")
             rig.log("A5 sleep 60 processes before \(before.count), running now \(running.count)")
             let sent = OutgoingControlRequest.other(subtype: "stop_task", fields: ["task_id": .string(taskID)])
             let line = ControlWire.requestLine(id: "acc-stop-task", sent)
@@ -225,9 +225,10 @@ struct RealClaudeAcceptanceTests {
             } catch {
                 rig.log("A5 stop_task response: error \(error)")
             }
-            let ended = await rig.wait(20) { Self.processes(matching: "sleep 60").count <= before.count }
+            let ended = await rig.wait(20) { await Self.processes(matching: "sleep 60").count <= before.count }
             try await Task.sleep(for: .seconds(2))
-            rig.log("A5 after stop_task: sleep 60 processes \(Self.processes(matching: "sleep 60").count) (ended \(ended)); records after the request: \(log.afterStopKinds())")
+            let left = await Self.processes(matching: "sleep 60").count
+            rig.log("A5 after stop_task: sleep 60 processes \(left) (ended \(ended)); records after the request: \(log.afterStopKinds())")
             #expect(ended)
             #expect(await rig.wait(60) { log.resultCount() >= 1 })
         }
@@ -729,18 +730,10 @@ struct RealClaudeAcceptanceTests {
         }
     }
 
-    static func processes(matching text: String) -> [Int32] {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        process.arguments = ["-f", "--", text]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return [] }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+    static func processes(matching text: String) async -> [Int32] {
+        guard let found = try? await runToEnd("/usr/bin/pgrep", ["-f", "--", text]) else { return [] }
         let own = getpid()
-        return String(decoding: data, as: UTF8.self).split(separator: "\n").compactMap { Int32($0) }.filter { $0 != own }
+        return found.outputText.split(separator: "\n").compactMap { Int32($0) }.filter { $0 != own }
     }
 }
 
@@ -908,9 +901,9 @@ private final class AccRig: Sendable {
                                  "LOGNAME": NSUserName(), "LANG": "en_US.UTF-8"]
         launchEnvironment["TMPDIR"] = env["TMPDIR"]
         let toolEnvironment = launchEnvironment
-        let capabilities = ProviderCapabilities(
-            version: try capture(claude, ["--version"], environment: child).trimmingCharacters(in: .whitespacesAndNewlines),
-            help: try capture(claude, ["--help"], environment: child))
+        let version = try await capture(claude, ["--version"], environment: child)
+        let help = try await capture(claude, ["--help"], environment: child)
+        let capabilities = ProviderCapabilities(version: version.trimmingCharacters(in: .whitespacesAndNewlines), help: help)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-acc-\(UUID())", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let socketDirectory = URL(fileURLWithPath: "/tmp/la-\(UUID().uuidString.prefix(8))", isDirectory: true)
@@ -938,18 +931,8 @@ private final class AccRig: Sendable {
                       socketDirectory: socketDirectory, name: name, evidence: evidence)
     }
 
-    private static func capture(_ executable: String, _ arguments: [String], environment: [String: String]) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.environment = environment
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return String(decoding: data, as: UTF8.self)
+    private static func capture(_ executable: String, _ arguments: [String], environment: [String: String]) async throws -> String {
+        try await runToEnd(executable, arguments, environment: environment).outputText
     }
 
     func cleanup() {

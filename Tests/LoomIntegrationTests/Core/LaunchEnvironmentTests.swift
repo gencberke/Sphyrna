@@ -2,6 +2,7 @@ import Darwin
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 @Suite(.timeLimit(.minutes(1)))
 struct LaunchEnvironmentTests {
@@ -22,7 +23,7 @@ struct LaunchEnvironmentTests {
          "LANG": "C", "LC_ALL": "C", "LC_CTYPE": "C", "LC_MESSAGES": "C"]
     }
 
-    @Test func cleanInteractiveLoginEnvironmentReachesChild() throws {
+    @Test func cleanInteractiveLoginEnvironmentReachesChild() async throws {
         let directory = try fixture("""
             [[ -o interactive ]] || exit 41
             [[ -o login ]] || exit 42
@@ -38,12 +39,9 @@ struct LaunchEnvironmentTests {
         child.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         child.arguments = ["-0"]
         child.environment = LaunchEnvironment.make(base: resolved.environment, runID: run, sessionID: session)
-        let output = Pipe()
-        child.standardOutput = output
-        try child.run()
-        let bytes = output.fileHandleForReading.readDataToEndOfFile()
-        child.waitUntilExit()
-        #expect(child.terminationStatus == 0)
+        let result = try await runToEnd(child)
+        let bytes = result.output
+        #expect(result.status == 0)
         let environment = Dictionary(uniqueKeysWithValues: bytes.split(separator: 0).map { entry in
             let parts = String(decoding: entry, as: UTF8.self).split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
             return (String(parts[0]), String(parts[1]))
@@ -129,7 +127,7 @@ struct LaunchEnvironmentTests {
         #expect(large.warnings[0].count <= 2048)
     }
 
-    @Test func exitBeforeEnvironmentFailsAndStopsItsChild() throws {
+    @Test func exitBeforeEnvironmentFailsAndStopsItsChild() async throws {
         let directory = try fixture("/bin/sleep 20 &\necho $! > \"$ZDOTDIR/sleeper.pid\"\nexit 1\n")
         defer { try? FileManager.default.removeItem(at: directory) }
         #expect(throws: (any Error).self) {
@@ -137,8 +135,7 @@ struct LaunchEnvironmentTests {
         }
         let text = try String(contentsOf: directory.appendingPathComponent("sleeper.pid"), encoding: .utf8)
         let pid = try #require(Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)))
-        let deadline = ProcessInfo.processInfo.systemUptime + 1
-        while kill(pid, 0) == 0, ProcessInfo.processInfo.systemUptime < deadline { usleep(5_000) }
+        await waitFor("the startup's child is gone", within: .seconds(1)) { kill(pid, 0) != 0 }
         #expect(kill(pid, 0) == -1 && errno == ESRCH)
     }
 
@@ -160,7 +157,7 @@ struct LaunchEnvironmentTests {
         }
     }
 
-    @Test func hungStartupTimesOutAndStopsItsChild() throws {
+    @Test func hungStartupTimesOutAndStopsItsChild() async throws {
         let directory = try fixture("/bin/sleep 20 &\necho $! > \"$ZDOTDIR/sleeper.pid\"\nwait\n")
         defer { try? FileManager.default.removeItem(at: directory) }
         let started = ProcessInfo.processInfo.systemUptime
@@ -177,8 +174,7 @@ struct LaunchEnvironmentTests {
         let text = try String(contentsOf: directory.appendingPathComponent("sleeper.pid"), encoding: .utf8)
         let pid = try #require(Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)))
         // Allow launchd to reap the orphan after the bootstrap process group is killed.
-        let deadline = ProcessInfo.processInfo.systemUptime + 1
-        while kill(pid, 0) == 0, ProcessInfo.processInfo.systemUptime < deadline { usleep(5_000) }
+        await waitFor("the startup's child is gone", within: .seconds(1)) { kill(pid, 0) != 0 }
         #expect(kill(pid, 0) == -1 && errno == ESRCH)
     }
 

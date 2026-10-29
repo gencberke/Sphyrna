@@ -182,9 +182,9 @@ struct OpenSessionTests {
         let rig = try await OpenRig.make()
         defer { rig.cleanup() }
         let path = rig.socketPath
-        let garbage = try await Task.detached {
+        let garbage = try await onOwnThread("open-session exchange") {
             try OpenSessionClient.exchange(raw: Data("not json".utf8), socketPath: path)
-        }.value
+        }
         #expect(garbage.status == .invalid)
 
         // Past the 64 KiB cap by one byte: Loom refuses, whatever the client checked.
@@ -306,7 +306,11 @@ struct OpenSessionTests {
         object["ticketKey"] = "TEST-9"
         let data = try JSONSerialization.data(withJSONObject: object)
         let path = rig.socketPath
-        let asked = Task.detached { try OpenSessionClient.exchange(raw: data, socketPath: path, replyTimeout: 10) }
+        let asked = Task {
+            try await onOwnThread("open-session exchange") {
+                try OpenSessionClient.exchange(raw: data, socketPath: path, replyTimeout: 10)
+            }
+        }
         let entry = try #require(await rig.waitForEntries(1).first)
         #expect(entry.phase == .waiting && entry.title == "TEST-9 - create hello.txt")
         try await rig.coordinator.deny(entry.id)

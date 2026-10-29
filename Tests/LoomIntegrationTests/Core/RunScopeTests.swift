@@ -173,7 +173,7 @@ struct RunScopeTests {
         outside.executableURL = URL(fileURLWithPath: "/bin/sleep")
         outside.arguments = ["30"]
         try outside.run()
-        defer { outside.terminateAndAwaitExit(signal: SIGTERM) }
+        defer { outside.signalForTeardown(SIGTERM) }
         let outsideIdentity = try identity(outside.processIdentifier)
 
         let supervisor = try ProcessSupervisor(scopeLauncher: try launcher())
@@ -189,6 +189,7 @@ struct RunScopeTests {
         #expect(try liveMembers(coalition).isEmpty)
         #expect(try live(outsideIdentity))
         #expect(!report.signals.contains { $0.identity == outsideIdentity })
+        await outside.terminateAndAwaitExit(signal: SIGTERM)
     }
 
     @Test func unavailableHostFailsLaunchWithoutAGhostRun() async throws {
@@ -358,11 +359,11 @@ struct RunScopeTests {
     /// In a run scope the host reaps the environment shell as soon as it exits, so a shell that is done before the job
     /// registers it is gone from the process table: the capture is finished, not failed ("Environment shell identity
     /// unavailable"). Without a scope the shell stays a zombie until it is collected, so a missing record is an error there.
-    @Test func aShellThatEndedBeforeItWasRegisteredIsNoErrorInAScopeAndIsOneWithout() throws {
+    @Test func aShellThatEndedBeforeItWasRegisteredIsNoErrorInAScopeAndIsOneWithout() async throws {
         let child = Process()
         child.executableURL = URL(fileURLWithPath: "/usr/bin/true")
         try child.run()
-        child.waitUntilExit()
+        _ = await exitStatus(of: child)
         let gone = child.processIdentifier
         #expect(ProcessTable.record(pid: gone) == nil)
         try EnvironmentResolutionJob(runID: UUID(), observes: false).register(pid: gone)
@@ -420,10 +421,10 @@ struct RunScopeTests {
         return script.path
     }
 
-    private func makeBranchRepository(in root: URL) throws -> URL {
+    private func makeBranchRepository(in root: URL) async throws -> URL {
         let repo = root.appendingPathComponent("repo", isDirectory: true)
         try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
-        func git(_ arguments: String...) throws {
+        func git(_ arguments: String...) async throws {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
             process.arguments = ["-C", repo.path, "-c", "commit.gpgsign=false"] + arguments
@@ -433,14 +434,13 @@ struct RunScopeTests {
             process.standardOutput = FileHandle.nullDevice
             process.standardError = FileHandle.nullDevice
             try process.run()
-            process.waitUntilExit()
-            if process.terminationStatus != 0 { throw LoomError.message("git \(arguments) failed") }
+            if await exitStatus(of: process) != 0 { throw LoomError.message("git \(arguments) failed") }
         }
-        try git("init", "-q", "-b", "main")
+        try await git("init", "-q", "-b", "main")
         try "1\n2\n".write(to: repo.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
-        try git("add", "-A")
-        try git("commit", "-q", "-m", "base")
-        try git("checkout", "-q", "-b", "feature")
+        try await git("add", "-A")
+        try await git("commit", "-q", "-m", "base")
+        try await git("checkout", "-q", "-b", "feature")
         try "1\ntwo\n".write(to: repo.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
         try "new\n".write(to: repo.appendingPathComponent("new.txt"), atomically: true, encoding: .utf8)
         return repo
@@ -450,7 +450,7 @@ struct RunScopeTests {
     /// handshake and a ledger write apiece). The calls of one read share one scope, which is released when the read returns.
     @Test func aBranchListAndAFilesDiffEachOpenExactlyOneRunScopeAndLeaveNoneOpen() async throws {
         let root = scratch.folder("loom-git-scope")
-        let repo = try makeBranchRepository(in: root)
+        let repo = try await makeBranchRepository(in: root)
         let supervisor = try ProcessSupervisor(scopeLauncher: try launcher())
         let reader = GitChanges.live(supervisor: supervisor, executable: try isolatedGit(in: root.appendingPathComponent("bin")))
 
@@ -548,7 +548,20 @@ struct RunScopeTests {
         }
         guard spawned == 0 else { throw LoomError.system("tracee spawn", spawned) }
         var capturedIdentity: ProcessIdentity?
-        defer { cleanupOutsideTracee(pid: outsidePID, identity: capturedIdentity) }
+        var cleaned = false
+        defer {
+            if !cleaned {
+                // An early exit: a `defer` cannot await. The signal goes now, and a thread of its own reaps the tracee.
+                let pid = outsidePID, birth = signalOutsideTracee(pid: outsidePID, identity: capturedIdentity)
+                Thread {
+                    for _ in 0..<200 {
+                        let look = Self.reapOutsideTracee(pid: pid, birth: birth)
+                        if look.reaped || look.failure != nil { return }
+                        usleep(10_000)
+                    }
+                }.start()
+            }
+        }
         capturedIdentity = try identity(outsidePID)
         let outsideIdentity = try #require(capturedIdentity)
         try await Task.sleep(for: .milliseconds(200))
@@ -570,34 +583,44 @@ struct RunScopeTests {
         #expect(try live(outsideIdentity))
         #expect((await supervisor.shutdown()).succeeded)
         #expect(try live(outsideIdentity))
+        cleaned = true
+        await cleanupOutsideTracee(pid: outsidePID, identity: capturedIdentity)
     }
 
-    private func cleanupOutsideTracee(pid: Int32, identity captured: ProcessIdentity?) {
-        // Only this spawned child's birth identity authorizes a signal. Reaping
-        // is nonblocking and does not depend on Foundation's ptrace bookkeeping.
+    // Only this spawned child's birth identity authorizes a signal. Reaping
+    // is nonblocking and does not depend on Foundation's ptrace bookkeeping.
+    private func signalOutsideTracee(pid: Int32, identity captured: ProcessIdentity?) -> ProcessIdentity? {
         let birth = captured ?? (try? identity(pid))
         if let birth {
             do { try ProcessTable.signal(birth, SIGKILL) }
             catch { Issue.record("Outside tracee cleanup signal failed: \(error)") }
         }
-        let deadline = ProcessInfo.processInfo.systemUptime + 2
-        repeat {
-            var status: Int32 = 0
-            let result = waitpid(pid, &status, WNOHANG)
-            // A ptrace stop/continue status is not a reaped exit status.
-            if result == pid && status & 0x7f != 0x7f { return }
-            if result == -1 && errno == ECHILD {
-                if let records = try? ProcessTable.snapshot(),
-                   !records.contains(where: { $0.identity.pid == pid && (birth == nil || $0.identity == birth) }) {
-                    return
-                }
-            } else if result == -1 && errno != EINTR {
-                Issue.record("Outside tracee waitpid failed: \(errno)")
-                return
-            }
-            usleep(10_000)
-        } while ProcessInfo.processInfo.systemUptime < deadline
-        Issue.record("Outside tracee fixture was not reaped within two seconds")
+        return birth
+    }
+
+    /// One nonblocking look: the tracee is reaped (or gone from the table), or `waitpid` failed with `failure`.
+    private static func reapOutsideTracee(pid: Int32, birth: ProcessIdentity?) -> (reaped: Bool, failure: Int32?) {
+        var status: Int32 = 0
+        let result = waitpid(pid, &status, WNOHANG)
+        // A ptrace stop/continue status is not a reaped exit status.
+        if result == pid && status & 0x7f != 0x7f { return (true, nil) }
+        if result == -1 && errno == ECHILD {
+            guard let records = try? ProcessTable.snapshot() else { return (false, nil) }
+            return (!records.contains(where: { $0.identity.pid == pid && (birth == nil || $0.identity == birth) }), nil)
+        }
+        if result == -1 && errno != EINTR { return (false, errno) }
+        return (false, nil)
+    }
+
+    private func cleanupOutsideTracee(pid: Int32, identity captured: ProcessIdentity?) async {
+        let birth = signalOutsideTracee(pid: pid, identity: captured)
+        var failure: Int32?
+        await waitFor("the outside tracee fixture to be reaped", within: .seconds(2)) {
+            let look = Self.reapOutsideTracee(pid: pid, birth: birth)
+            failure = look.failure
+            return look.reaped || look.failure != nil
+        }
+        if let failure { Issue.record("Outside tracee waitpid failed: \(failure)") }
     }
 
     /// SR1-F15: a host that never connects fails within the handshake deadline.
@@ -677,7 +700,7 @@ struct RunScopeTests {
                 return pid
             }
         )
-        child.waitUntilExit()
+        _ = await exitStatus(of: child)
         close(slave)
         await #expect(throws: (any Error).self) { _ = try await transport.finish(outputDrainSeconds: 0) }
         #expect(exits.withLock { $0 }.isEmpty)

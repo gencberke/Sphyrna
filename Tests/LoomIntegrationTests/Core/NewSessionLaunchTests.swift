@@ -170,12 +170,12 @@ struct GitWorkspaceTests {
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hook.path)
     }
 
+    /// Signals the hook's sleepers from a `defer`, which cannot await: nothing waits on `pkill`, and Foundation reaps it.
     private static func killSleepers(_ marker: String) {
         let kill = Process()
         kill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
         kill.arguments = ["-f", "sleep \(marker)"]
         try? kill.run()
-        kill.waitUntilExit()
     }
 
     @Test func aHookThatLeavesABackgroundChildHoldingThePipeDoesNotHangTheCall() async throws {

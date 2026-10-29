@@ -65,7 +65,7 @@ private struct OpenCodeTUIBridgeFixture {
     }
     func authenticate(_ fd: Int32, generation: Int) async throws {
         try send(fd, [hello(generation)])
-        let bytes = try await Task.detached { try readTUIFrame(fd, timeout: 2) }.value
+        let bytes = try await onOwnThread("tui frame read") { try readTUIFrame(fd, timeout: 2) }
         let welcome = try #require(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
         let nonce = try #require(welcome["nonce"] as? String)
         #expect(welcome["type"] as? String == "welcome")
@@ -203,7 +203,7 @@ private func readTUIFrame(_ fd: Int32, timeout: TimeInterval = 1) throws -> Data
                 try await client.firstInput(sessionID: "ses_one", messageID: "msg_one", roundID: round,
                                             text: "approved", bridge: fixture.bridge, admission: gate, timeout: 2)
             }
-            let bytes = try? await Task.detached { try readTUIFrame(fd) }.value
+            let bytes = try? await onOwnThread("tui frame read") { try readTUIFrame(fd) }
             #expect(bytes != nil, "An authorized input must reach the authenticated TUI socket")
             if let bytes {
                 let frame = try #require(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
@@ -269,7 +269,7 @@ private func readTUIFrame(_ fd: Int32, timeout: TimeInterval = 1) throws -> Data
                     try await client.firstInput(sessionID: "ses_one", messageID: "msg_one", roundID: round,
                                                 text: "approved", bridge: fixture.bridge, admission: gate, timeout: 2)
                 }
-                let bytes = try await Task.detached { try readTUIFrame(fd, timeout: 2) }.value
+                let bytes = try await onOwnThread("tui frame read") { try readTUIFrame(fd, timeout: 2) }
                 let command = try #require(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
                 var reply: [String: Any] = ["version": 1, "type": "receipt", "generation": 3,
                     "requestID": try #require(command["requestID"] as? String), "appSessionID": fixture.app.uuidString,
@@ -334,7 +334,7 @@ private func readTUIFrame(_ fd: Int32, timeout: TimeInterval = 1) throws -> Data
                     try await client.firstInput(sessionID: "ses_one", messageID: "msg_one", roundID: round,
                                                 text: "approved", bridge: fixture.bridge, admission: gate, timeout: 2)
                 }
-                let firstBytes = try await Task.detached { try readTUIFrame(fd, timeout: 2) }.value
+                let firstBytes = try await onOwnThread("tui frame read") { try readTUIFrame(fd, timeout: 2) }
                 let firstFrame = try #require(JSONSerialization.jsonObject(with: firstBytes) as? [String: Any])
                 if intervening {
                     #expect(fixture.feed.receive(OpenCodeEvent(id: "evt_human", type: "session.inbox.enqueued",
@@ -361,7 +361,7 @@ private func readTUIFrame(_ fd: Int32, timeout: TimeInterval = 1) throws -> Data
                         try await client.firstInput(sessionID: "ses_one", messageID: "msg_one", roundID: round,
                                                     text: "approved", bridge: fixture.bridge, admission: gate, timeout: 2)
                     }
-                    let retryBytes = try? await Task.detached { try readTUIFrame(fd, timeout: 1) }.value
+                    let retryBytes = try? await onOwnThread("tui frame read") { try readTUIFrame(fd, timeout: 1) }
                     #expect(retryBytes != nil, "A definite non-dispatch must allow the same approved input to retry")
                     if let retryBytes {
                         let retryFrame = try #require(JSONSerialization.jsonObject(with: retryBytes) as? [String: Any])

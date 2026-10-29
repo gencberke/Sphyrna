@@ -29,10 +29,8 @@ struct ProcessSupervisorScopePrivacyTests {
         outsider.standardOutput = FileHandle.nullDevice
         outsider.standardError = FileHandle.nullDevice
         try outsider.run()
-        defer {
-            if outsider.isRunning { outsider.terminate() }
-            outsider.waitUntilExit()
-        }
+        // A `defer` cannot await: on an early exit it only signals, and Foundation reaps; the end of the test awaits it.
+        defer { if outsider.isRunning { outsider.terminate() } }
         do {
             let launch = try await context.runtime.startConversation(provider: .claude, projectID: nil)
             let snapshot = try ProcessTable.snapshot()
@@ -52,5 +50,7 @@ struct ProcessSupervisorScopePrivacyTests {
             throw error
         }
         #expect((await context.runtime.shutdown()).succeeded)
+        if outsider.isRunning { outsider.terminate() }
+        _ = await exitStatus(of: outsider)
     }
 }

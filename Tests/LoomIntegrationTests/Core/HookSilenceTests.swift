@@ -7,11 +7,7 @@ private final class Received: @unchecked Sendable {
     private let lock = NSLock()
     private var envelopes: [ClaudeHookEnvelope] = []
     func append(_ envelope: ClaudeHookEnvelope) { lock.withLock { envelopes.append(envelope) } }
-    func count(waiting seconds: Double, for expected: Int) -> Int {
-        let deadline = Date().addingTimeInterval(seconds)
-        while Date() < deadline, lock.withLock({ envelopes.count }) < expected { usleep(10_000) }
-        return lock.withLock { envelopes.count }
-    }
+    var count: Int { lock.withLock { envelopes.count } }
 }
 
 /// G4 of the cost-and-context rule (goal 3 of D-83): Claude adds a hook's standard output to the model's context for some events
@@ -40,20 +36,12 @@ private final class Received: @unchecked Sendable {
     }
 
     /// Runs the real helper the way Claude does (no arguments, the event on standard input) and returns what it printed.
-    private func run(environment: [String: String], input: Data) throws -> (status: Int32, stdout: Data) {
+    private func run(environment: [String: String], input: Data) async throws -> (status: Int32, stdout: Data) {
         let process = Process()
         process.executableURL = Products.directory.appendingPathComponent("loom-hook")
         process.environment = environment
-        let stdin = Pipe(), stdout = Pipe()
-        process.standardInput = stdin
-        process.standardOutput = stdout
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        try stdin.fileHandleForWriting.write(contentsOf: input)
-        try stdin.fileHandleForWriting.close()
-        let printed = stdout.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return (process.terminationStatus, printed)
+        let result = try await runToEnd(process, input: input)
+        return (result.status, result.output)
     }
 
     private func environment(socket: String, token: String) -> [String: String] {
@@ -61,7 +49,7 @@ private final class Received: @unchecked Sendable {
          "LOOM_MANAGED_RUN_ID": UUID().uuidString]
     }
 
-    @Test func theHelperPrintsNothingOnAnyOfTheNineEvents() throws {
+    @Test func theHelperPrintsNothingOnAnyOfTheNineEvents() async throws {
         let root = URL(fileURLWithPath: "/tmp/lh-\(UUID().uuidString.prefix(8))", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let socket = root.appendingPathComponent("events.sock").path
@@ -69,15 +57,16 @@ private final class Received: @unchecked Sendable {
         let server = try ClaudeHookServer(socketPath: socket, authenticationToken: "silence-token", handler: received.append)
         defer { server.stop() }
         for (event, fields) in Self.events {
-            let result = try run(environment: environment(socket: socket, token: "silence-token"),
-                                 input: payload(event, fields))
+            let result = try await run(environment: environment(socket: socket, token: "silence-token"),
+                                       input: payload(event, fields))
             #expect(result.status == 0, "\(event): exit \(result.status)")
             #expect(result.stdout.isEmpty, "\(event) printed \(result.stdout.count) bytes")
         }
-        #expect(received.count(waiting: 2, for: Self.events.count) == Self.events.count, "every event reached the server")
+        await waitFor("every event reached the server", within: .seconds(2)) { received.count >= Self.events.count }
+        #expect(received.count == Self.events.count, "every event reached the server")
     }
 
-    @Test func theHelperPrintsNothingWhenItFails() throws {
+    @Test func theHelperPrintsNothingWhenItFails() async throws {
         let root = URL(fileURLWithPath: "/tmp/lh-\(UUID().uuidString.prefix(8))", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let socket = root.appendingPathComponent("events.sock").path
@@ -104,7 +93,7 @@ private final class Received: @unchecked Sendable {
                              try payload(event, fields)))
         }
         for (label, environment, input) in failures {
-            let result = try run(environment: environment, input: input)
+            let result = try await run(environment: environment, input: input)
             #expect(result.status != 0, "\(label): the failure is the exit code, not text")
             #expect(result.stdout.isEmpty, "\(label) printed \(result.stdout.count) bytes")
         }

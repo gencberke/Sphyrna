@@ -104,7 +104,7 @@ struct UsageModelRealIndexTests {
         writer.executableURL = URL(fileURLWithPath: "/bin/sh")
         writer.arguments = ["-c", "printf '%s\\n' \"$1\" >> \"$2\"", "sh", appended, file.path]
         try writer.run()
-        writer.waitUntilExit()
+        _ = await exitStatus(of: writer)
 
         let deadline = ContinuousClock.now + .seconds(15)
         while usage.chip?.full != "2M today", ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(100)) }

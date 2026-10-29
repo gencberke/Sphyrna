@@ -37,47 +37,52 @@ private final class OpenCodeHTTPFixture: @unchecked Sendable {
     /// One connection, served on a thread of its own: its `poll` waits must not hold a thread of the cooperative pool, which the
     /// tests' clients need. `delay` holds the answer back after the request is read.
     func serve(parts: [String], expectedBody: Int = 0, waitForClose: Bool = false, delay: TimeInterval = 0) -> Task<Data, any Error> {
-        Task { try await onOwnThread("loom.test.opencode-peer") { try self.serveBlocking(parts: parts, expectedBody: expectedBody,
-                                                                                   waitForClose: waitForClose, delay: delay) } }
-    }
-
-    private func serveBlocking(parts: [String], expectedBody: Int, waitForClose: Bool, delay: TimeInterval) throws -> Data {
-        var item = pollfd(fd: self.fd, events: Int16(POLLIN), revents: 0)
-        guard poll(&item, 1, 5000) > 0 else { throw OpenCodeError.timeout }
-        let peer = accept(self.fd, nil, nil)
-        guard peer >= 0 else { throw OpenCodeError.unavailable }
-        defer { Darwin.close(peer) }
-        var yes: Int32 = 1
-        _ = setsockopt(peer, SOL_SOCKET, SO_NOSIGPIPE, &yes, socklen_t(MemoryLayout.size(ofValue: yes)))
-        var request = [UInt8]()
-        var chunk = [UInt8](repeating: 0, count: 4096)
-        while true {
-            var ready = pollfd(fd: peer, events: Int16(POLLIN), revents: 0)
-            guard poll(&ready, 1, 5000) > 0 else { throw OpenCodeError.timeout }
-            let count = Darwin.recv(peer, &chunk, chunk.count, 0)
-            if count == 0 { return Data(request) }
-            guard count > 0 else { throw OpenCodeError.unavailable }
-            request += chunk.prefix(count)
-            guard request.count <= 32 * 1024 else { throw OpenCodeError.responseTooLarge }
-            if let end = Data(request).range(of: Data("\r\n\r\n".utf8)), request.count >= end.upperBound + expectedBody { break }
-        }
-        self.lock.withLock { self.received = true }
-        if delay > 0 { Thread.sleep(forTimeInterval: delay) }
-        if waitForClose {
-            var ready = pollfd(fd: peer, events: Int16(POLLIN), revents: 0)
-            guard poll(&ready, 1, 5000) > 0, Darwin.recv(peer, &chunk, chunk.count, 0) == 0 else { throw OpenCodeError.timeout }
-        } else {
-            for part in parts {
-                let bytes = Array(part.utf8)
-                var offset = 0
-                while offset < bytes.count {
-                    let count = bytes.withUnsafeBytes { Darwin.send(peer, $0.baseAddress!.advanced(by: offset), bytes.count - offset, 0) }
+        Task {
+            try await onOwnThread("loom.test.opencode-peer") { [self] () throws -> Data in
+                var item = pollfd(fd: self.fd, events: Int16(POLLIN), revents: 0)
+                guard poll(&item, 1, 5000) > 0 else { throw OpenCodeError.timeout }
+                let peer = accept(self.fd, nil, nil)
+                guard peer >= 0 else { throw OpenCodeError.unavailable }
+                defer { Darwin.close(peer) }
+                var yes: Int32 = 1
+                _ = setsockopt(peer, SOL_SOCKET, SO_NOSIGPIPE, &yes, socklen_t(MemoryLayout.size(ofValue: yes)))
+                var request = [UInt8]()
+                var chunk = [UInt8](repeating: 0, count: 4096)
+                while true {
+                    var ready = pollfd(fd: peer, events: Int16(POLLIN), revents: 0)
+                    guard poll(&ready, 1, 5000) > 0 else { throw OpenCodeError.timeout }
+                    let count = Darwin.recv(peer, &chunk, chunk.count, 0)
+                    if count == 0 { return Data(request) }
                     guard count > 0 else { throw OpenCodeError.unavailable }
-                    offset += count
+                    request += chunk.prefix(count)
+                    guard request.count <= 32 * 1024 else { throw OpenCodeError.responseTooLarge }
+                    if let end = Data(request).range(of: Data("\r\n\r\n".utf8)),
+                       request.count >= end.upperBound + expectedBody { break }
                 }
+                self.lock.withLock { self.received = true }
+                // The slow answer is the point; it stalls this thread only.
+                if delay > 0 { Thread.sleep(forTimeInterval: delay) }
+                if waitForClose {
+                    var ready = pollfd(fd: peer, events: Int16(POLLIN), revents: 0)
+                    guard poll(&ready, 1, 5000) > 0, Darwin.recv(peer, &chunk, chunk.count, 0) == 0 else {
+                        throw OpenCodeError.timeout
+                    }
+                } else {
+                    for part in parts {
+                        let bytes = Array(part.utf8)
+                        var offset = 0
+                        while offset < bytes.count {
+                            let count = bytes.withUnsafeBytes {
+                                Darwin.send(peer, $0.baseAddress!.advanced(by: offset), bytes.count - offset, 0)
+                            }
+                            guard count > 0 else { throw OpenCodeError.unavailable }
+                            offset += count
+                        }
+                    }
+                }
+                return Data(request)
             }
         }
-        return Data(request)
     }
 }
 

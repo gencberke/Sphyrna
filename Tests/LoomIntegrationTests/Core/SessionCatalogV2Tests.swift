@@ -233,7 +233,7 @@ struct SessionCatalogV2Tests {
             """.utf8))
         // Give the tool time to run the statements; then kill it mid-transaction.
         try await Task.sleep(for: .milliseconds(400))
-        process.terminateAndAwaitExit()
+        await process.terminateAndAwaitExit()
 
         let catalog = try SessionCatalog(url: url)
         #expect(try await catalog.sessions().count == 3)

@@ -17,21 +17,6 @@ private actor PeerDeletionGate {
     func release() { released = true; continuation?.resume(); continuation = nil }
 }
 
-private final class PeerDeletionStepGate: @unchecked Sendable {
-    private let condition = NSCondition()
-    private var waiting = false
-    private var released = false
-    var entered: Bool { condition.withLock { waiting } }
-    func hold() {
-        condition.lock(); waiting = true
-        while !released { condition.wait() }
-        condition.unlock()
-    }
-    func release() {
-        condition.lock(); released = true; condition.broadcast(); condition.unlock()
-    }
-}
-
 /// CP4-C: deleting a conversation end to end through the production runtime, driven by the fake
 /// provider and temp trees only. Nothing here reads or writes the real ~/.claude: the Claude
 /// profile is a directory under the test's own root (the toolchain names it explicitly) and tier 2
@@ -574,7 +559,7 @@ struct ConversationDeletionTests {
         }
         let fences = await world.runtime.peerTargetFences
         let originalFence = try #require(fences.acquire(target.sessionID))
-        let stepGate = PeerDeletionStepGate()
+        let stepGate = ActorFreezeGate()
         await world.runtime.setDeletionFailpointForTesting { state, phase in
             if state == .requested && phase == .before { stepGate.hold() }
         }

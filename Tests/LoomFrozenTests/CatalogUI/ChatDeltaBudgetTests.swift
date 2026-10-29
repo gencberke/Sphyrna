@@ -203,9 +203,6 @@ extension ChatHosted {
             func set() { lock.withLock { value = true } }
         }
 
-        /// The main thread does something long (a layout, a big redraw): nothing else runs on it meanwhile.
-        private static func blockTheMainThread(for seconds: Double) { Thread.sleep(forTimeInterval: seconds) }
-
         private static func peakResidentMiB() -> Double {
             var usage = rusage()
             getrusage(RUSAGE_SELF, &usage)
@@ -239,9 +236,16 @@ extension ChatHosted {
                 try handle.close()
             }
             // Blocked for 400 ms, and for as long as the writer needs after that (a slow Mac): every burst lands while it is blocked.
-            Self.blockTheMainThread(for: 0.4)
-            while !written.isSet { Self.blockTheMainThread(for: 0.05) }
-            Self.blockTheMainThread(for: 0.15)
+            // The main thread does something long (a layout, a big redraw): the test lets go of the main actor and a block on the
+            // main queue holds the main thread, so nothing else runs on it meanwhile.
+            await withCheckedContinuation { (blocked: CheckedContinuation<Void, Never>) in
+                DispatchQueue.main.async {
+                    Thread.sleep(forTimeInterval: 0.4)
+                    while !written.isSet { Thread.sleep(forTimeInterval: 0.05) }
+                    Thread.sleep(forTimeInterval: 0.15)
+                    blocked.resume()
+                }
+            }
             try await writer.value
             var quiet = 0
             var last = model.presentation.rebuilds

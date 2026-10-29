@@ -32,12 +32,12 @@ struct UsageTranscriptWatcherTests {
     }
 
     /// `printf` from a separate process, like a Claude session writing its transcript.
-    private func append(_ text: String, to file: URL) throws {
+    private func append(_ text: String, to file: URL) async throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = ["-c", "mkdir -p \"$(dirname \"$2\")\" && printf '%s\\n' \"$1\" >> \"$2\"", "sh", text, file.path]
         try process.run()
-        process.waitUntilExit()
+        _ = await exitStatus(of: process)
     }
 
     private func wait(seconds: Double = 8, until condition: () -> Bool) async -> Bool {
@@ -50,7 +50,7 @@ struct UsageTranscriptWatcherTests {
         let (root, projects) = try temporaryProjects()
         defer { try? FileManager.default.removeItem(at: root) }
         let file = projects.appendingPathComponent("-tmp-proj/sess-1.jsonl")
-        try append("{}", to: file) // before the stream exists: history is not reported
+        try await append("{}", to: file) // before the stream exists: history is not reported
         try await Task.sleep(for: .milliseconds(500))
         let changes = Changes()
         let watcher = UsageTranscriptWatcher(directory: projects, latency: 0.1) { changes.add($0) }
@@ -60,7 +60,7 @@ struct UsageTranscriptWatcherTests {
         try await Task.sleep(for: .seconds(2)) // silence
         #expect(changes.all.isEmpty)
 
-        try append("{\"a\":1}", to: file)
+        try await append("{\"a\":1}", to: file)
         #expect(await wait { changes.paths.contains(file.path) })
         #expect(changes.all.allSatisfy { !$0.needsFullScan })
 
@@ -79,12 +79,12 @@ struct UsageTranscriptWatcherTests {
         defer { watcher.stop() }
         try await Task.sleep(for: .milliseconds(500))
 
-        try append("x", to: projects.appendingPathComponent("-p/notes.txt"))
-        try append("x", to: projects.appendingPathComponent("-p/memory/note.jsonl"))
-        try append("x", to: projects.appendingPathComponent("-p/s1/tool-results/out.jsonl"))
-        try append("x", to: projects.appendingPathComponent("-p/old.jsonl.orphaned-1"))
+        try await append("x", to: projects.appendingPathComponent("-p/notes.txt"))
+        try await append("x", to: projects.appendingPathComponent("-p/memory/note.jsonl"))
+        try await append("x", to: projects.appendingPathComponent("-p/s1/tool-results/out.jsonl"))
+        try await append("x", to: projects.appendingPathComponent("-p/old.jsonl.orphaned-1"))
         let subagent = projects.appendingPathComponent("-p/s1/subagents/agent-7.jsonl")
-        try append("{}", to: subagent)
+        try await append("{}", to: subagent)
         #expect(await wait { changes.paths.contains(subagent.path) })
         try await Task.sleep(for: .seconds(1))
         #expect(changes.paths == [subagent.path])
@@ -100,7 +100,7 @@ struct UsageTranscriptWatcherTests {
         defer { watcher.stop() }
         try await Task.sleep(for: .milliseconds(500))
         let file = projects.appendingPathComponent("-p/s.jsonl")
-        try append("{}", to: file)
+        try await append("{}", to: file)
         #expect(await wait { !changes.all.isEmpty })
         // Either the file itself or a full-scan request (the folder appeared): both lead to a read.
         #expect(changes.paths.contains(file.path) || changes.all.contains { $0.needsFullScan })
@@ -114,7 +114,7 @@ struct UsageTranscriptWatcherTests {
         #expect(watcher.start())
         try await Task.sleep(for: .milliseconds(500))
         watcher.stop()
-        try append("{}", to: projects.appendingPathComponent("-p/s.jsonl"))
+        try await append("{}", to: projects.appendingPathComponent("-p/s.jsonl"))
         try await Task.sleep(for: .seconds(1.5))
         #expect(changes.all.isEmpty)
     }

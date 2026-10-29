@@ -31,12 +31,12 @@ struct OpenSessionCommandTests {
         _ arguments: [String], environment: [String: String], stdin: Data = Data(), timeout: TimeInterval = 10
     ) async -> (code: Int32, out: CommandOutput) {
         let out = CommandOutput()
-        let code = await Task.detached {
+        let code = await onTestThread("open-session command") {
             OpenSessionCommand.run(
                 arguments: arguments, environment: environment, readStandardInput: { stdin },
                 output: out.output, replyTimeout: timeout
             )
-        }.value
+        }
         return (code, out)
     }
 
@@ -237,23 +237,8 @@ struct OpenSessionCommandTests {
         async throws -> (code: Int32, out: String, err: String) {
         let helper = Products.directory
             .appendingPathComponent("loom-hook")
-        return try await Task.detached {
-            let process = Process()
-            process.executableURL = helper
-            process.arguments = arguments
-            process.environment = environment
-            let input = Pipe(), output = Pipe(), error = Pipe()
-            process.standardInput = input
-            process.standardOutput = output
-            process.standardError = error
-            try process.run()
-            try input.fileHandleForWriting.write(contentsOf: stdin)
-            try input.fileHandleForWriting.close()
-            let out = output.fileHandleForReading.readDataToEndOfFile()
-            let err = error.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            return (process.terminationStatus, String(decoding: out, as: UTF8.self), String(decoding: err, as: UTF8.self))
-        }.value
+        let result = try await runToEnd(helper.path, arguments, environment: environment, input: stdin)
+        return (result.status, result.outputText, result.errorText)
     }
 
     @Test func theHelperBinaryAsksOverTheControlSocketAndWithoutArgumentsStaysAHookHelper() async throws {
@@ -360,7 +345,9 @@ struct OpenSessionRuntimeTests {
                 authenticationToken: token, sessionID: requester.sessionID, managedRunID: requester.runID,
                 title: title, project: nil, message: "go", mode: mode
             )
-            return Task.detached { try OpenSessionClient.exchange(request, socketPath: control) }
+            return Task {
+                try await onOwnThread("open-session exchange") { try OpenSessionClient.exchange(request, socketPath: control) }
+            }
         }
         func approveNext() async throws -> RuntimeLaunch {
             #expect(await SessionRuntimeRig.waitUntil { await context.runtime.openRequestSnapshot().count == 1 })
@@ -418,7 +405,9 @@ struct OpenSessionRuntimeTests {
         let request = OpenSessionWireRequest(authenticationToken: hooks.authenticationToken, sessionID: requester.sessionID,
             managedRunID: requester.runID, title: "Codex request", project: nil, message: "go", harness: "codex")
         let socket = try #require(hooks.controlSocketPath)
-        let reply = Task.detached { try OpenSessionClient.exchange(request, socketPath: socket) }
+        let reply = Task {
+            try await onOwnThread("open-session exchange") { try OpenSessionClient.exchange(request, socketPath: socket) }
+        }
         #expect(await SessionRuntimeRig.waitUntil { await context.runtime.openRequestSnapshot().count == 1 })
         let pending = try #require(await context.runtime.openRequestSnapshot().first)
         #expect(pending.choices.harness == .codex && pending.choices.mode == .askBeforeEdits)
@@ -459,7 +448,9 @@ struct OpenSessionRuntimeTests {
                 authenticationToken: token ?? hooks.authenticationToken, sessionID: session ?? asker.sessionID,
                 managedRunID: run ?? asker.runID, title: title, project: nil, message: message
             )
-            return Task.detached { try OpenSessionClient.exchange(request, socketPath: control) }
+            return Task {
+                try await onOwnThread("open-session exchange") { try OpenSessionClient.exchange(request, socketPath: control) }
+            }
         }
 
         // Only the live run, for the card it was launched on, with the run's token.

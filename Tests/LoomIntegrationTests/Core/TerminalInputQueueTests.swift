@@ -3,6 +3,7 @@ import CryptoKit
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 @testable import LoomCoreTestRigs
 
 /// Scripted PTY writer: each call accepts at most the next scripted count
@@ -40,20 +41,15 @@ private final class ErrorLog: @unchecked Sendable {
     var values: [TerminalInputError] { lock.withLock { errors } }
 }
 
+/// A task write held in its permit until `release()`; the permit then refuses it.
 private final class PausedTaskWrite: @unchecked Sendable {
-    private let condition = NSCondition()
-    private var entered = false
-    private var released = false
+    private let gate = ActorFreezeGate()
     func permit() -> Bool {
-        condition.lock()
-        entered = true
-        condition.broadcast()
-        while !released { condition.wait() }
-        condition.unlock()
+        gate.hold()
         return false
     }
-    var isEntered: Bool { condition.withLock { entered } }
-    func release() { condition.withLock { released = true; condition.broadcast() } }
+    var isEntered: Bool { gate.entered }
+    func release() { gate.release() }
 }
 
 private final class PTYOutput: @unchecked Sendable {
