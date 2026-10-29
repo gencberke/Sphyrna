@@ -31,10 +31,10 @@ enum OpenCodeHTTP {
         let cancellation = OpenCodeHTTPLease()
         return try await withTaskCancellationHandler {
             try Task.checkCancellation()
-            let worker = Task.detached(priority: .userInitiated) {
+            // `perform` polls the socket against its deadline: never on the cooperative pool (`onOwnThread`).
+            return try await onOwnThread("loom.opencode-http") {
                 try perform(request, leader: leader, timeout: timeout, lease: lease, cancellation: cancellation)
             }
-            return try await worker.value
         } onCancel: { cancellation.revoke() }
     }
 

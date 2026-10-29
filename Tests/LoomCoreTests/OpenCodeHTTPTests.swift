@@ -32,44 +32,50 @@ private final class OpenCodeHTTPFixture: @unchecked Sendable {
     }
     deinit { Darwin.close(fd) }
 
-    func serve(parts: [String], expectedBody: Int = 0, waitForClose: Bool = false) -> Task<Data, any Error> {
-        Task.detached {
-            var item = pollfd(fd: self.fd, events: Int16(POLLIN), revents: 0)
-            guard poll(&item, 1, 5000) > 0 else { throw OpenCodeError.timeout }
-            let peer = accept(self.fd, nil, nil)
-            guard peer >= 0 else { throw OpenCodeError.unavailable }
-            defer { Darwin.close(peer) }
-            var yes: Int32 = 1
-            _ = setsockopt(peer, SOL_SOCKET, SO_NOSIGPIPE, &yes, socklen_t(MemoryLayout.size(ofValue: yes)))
-            var request = [UInt8]()
-            var chunk = [UInt8](repeating: 0, count: 4096)
-            while true {
-                var ready = pollfd(fd: peer, events: Int16(POLLIN), revents: 0)
-                guard poll(&ready, 1, 5000) > 0 else { throw OpenCodeError.timeout }
-                let count = Darwin.recv(peer, &chunk, chunk.count, 0)
-                if count == 0 { return Data(request) }
-                guard count > 0 else { throw OpenCodeError.unavailable }
-                request += chunk.prefix(count)
-                guard request.count <= 32 * 1024 else { throw OpenCodeError.responseTooLarge }
-                if let end = Data(request).range(of: Data("\r\n\r\n".utf8)), request.count >= end.upperBound + expectedBody { break }
-            }
-            self.lock.withLock { self.received = true }
-            if waitForClose {
-                var ready = pollfd(fd: peer, events: Int16(POLLIN), revents: 0)
-                guard poll(&ready, 1, 5000) > 0, Darwin.recv(peer, &chunk, chunk.count, 0) == 0 else { throw OpenCodeError.timeout }
-            } else {
-                for part in parts {
-                    let bytes = Array(part.utf8)
-                    var offset = 0
-                    while offset < bytes.count {
-                        let count = bytes.withUnsafeBytes { Darwin.send(peer, $0.baseAddress!.advanced(by: offset), bytes.count - offset, 0) }
-                        guard count > 0 else { throw OpenCodeError.unavailable }
-                        offset += count
-                    }
+    /// One connection, served on a thread of its own: its `poll` waits must not hold a thread of the cooperative pool, which the
+    /// tests' clients need. `delay` holds the answer back after the request is read.
+    func serve(parts: [String], expectedBody: Int = 0, waitForClose: Bool = false, delay: TimeInterval = 0) -> Task<Data, any Error> {
+        Task { try await onOwnThread("loom.test.opencode-peer") { try self.serveBlocking(parts: parts, expectedBody: expectedBody,
+                                                                                   waitForClose: waitForClose, delay: delay) } }
+    }
+
+    private func serveBlocking(parts: [String], expectedBody: Int, waitForClose: Bool, delay: TimeInterval) throws -> Data {
+        var item = pollfd(fd: self.fd, events: Int16(POLLIN), revents: 0)
+        guard poll(&item, 1, 5000) > 0 else { throw OpenCodeError.timeout }
+        let peer = accept(self.fd, nil, nil)
+        guard peer >= 0 else { throw OpenCodeError.unavailable }
+        defer { Darwin.close(peer) }
+        var yes: Int32 = 1
+        _ = setsockopt(peer, SOL_SOCKET, SO_NOSIGPIPE, &yes, socklen_t(MemoryLayout.size(ofValue: yes)))
+        var request = [UInt8]()
+        var chunk = [UInt8](repeating: 0, count: 4096)
+        while true {
+            var ready = pollfd(fd: peer, events: Int16(POLLIN), revents: 0)
+            guard poll(&ready, 1, 5000) > 0 else { throw OpenCodeError.timeout }
+            let count = Darwin.recv(peer, &chunk, chunk.count, 0)
+            if count == 0 { return Data(request) }
+            guard count > 0 else { throw OpenCodeError.unavailable }
+            request += chunk.prefix(count)
+            guard request.count <= 32 * 1024 else { throw OpenCodeError.responseTooLarge }
+            if let end = Data(request).range(of: Data("\r\n\r\n".utf8)), request.count >= end.upperBound + expectedBody { break }
+        }
+        self.lock.withLock { self.received = true }
+        if delay > 0 { Thread.sleep(forTimeInterval: delay) }
+        if waitForClose {
+            var ready = pollfd(fd: peer, events: Int16(POLLIN), revents: 0)
+            guard poll(&ready, 1, 5000) > 0, Darwin.recv(peer, &chunk, chunk.count, 0) == 0 else { throw OpenCodeError.timeout }
+        } else {
+            for part in parts {
+                let bytes = Array(part.utf8)
+                var offset = 0
+                while offset < bytes.count {
+                    let count = bytes.withUnsafeBytes { Darwin.send(peer, $0.baseAddress!.advanced(by: offset), bytes.count - offset, 0) }
+                    guard count > 0 else { throw OpenCodeError.unavailable }
+                    offset += count
                 }
             }
-            return Data(request)
         }
+        return Data(request)
     }
 }
 
@@ -149,4 +155,22 @@ private final class OpenCodeHTTPFixture: @unchecked Sendable {
         #expect(count == 0)
     }
 
+    /// A request waits for its answer (`poll` against its deadline) on a thread of its own, not on the cooperative pool. On the
+    /// pool, more slow answers than it has threads queued behind each other: the last requests started only when the first ended.
+    @Test func slowAnswersRunTogetherOffTheCooperativePool() async throws {
+        let owner = try #require(ProcessTable.record(pid: getpid())).identity
+        let servers = try (0..<(ProcessInfo.processInfo.activeProcessorCount + 2)).map { _ in try OpenCodeHTTPFixture() }
+        let peers = servers.map { $0.serve(parts: ["HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}"], delay: 3) }
+        let requests = servers.map { request($0) }
+        let elapsed = try await ContinuousClock().measure {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for request in requests {
+                    group.addTask { _ = try await OpenCodeHTTP.request(request, leader: owner, timeout: 10, lease: .init()) }
+                }
+                try await group.waitForAll()
+            }
+        }
+        for peer in peers { _ = try await peer.value }
+        #expect(elapsed < .seconds(4.5), "\(requests.count) answers held 3 s each took \(elapsed): they queued for pool threads")
+    }
 }
