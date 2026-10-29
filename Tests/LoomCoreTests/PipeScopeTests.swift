@@ -275,7 +275,11 @@ struct PipeScopeTests {
                     return try write()
                 }
             }
-            let reachedGate = await Task.detached { entered.wait(timeout: .now() + 5) == .success }.value
+            let reachedGate = await withCheckedContinuation { continuation in
+                DispatchQueue.global().async {
+                    continuation.resume(returning: entered.wait(timeout: .now() + 5) == .success)
+                }
+            }
             input.cancel()
             proceed.signal()
             #expect(reachedGate)
