@@ -754,7 +754,13 @@ private enum RealCodexApprovalGuard {
         // from allowedKeys. This client negotiates experimentalApi:true, so
         // Codex does not hide those fields for legacy-client compatibility.
         let words = arguments(command)
-        return words == ["/bin/zsh", "-lc", script] || words == ["/bin/zsh", "-c", script]
+        guard let words, words.count == 3, words[0] == "/bin/zsh", ["-lc", "-c"].contains(words[1]) else { return false }
+        if words[2] == script { return true }
+        // The prompt explicitly requests this inner shell; the native exec
+        // tool may wrap that exact command in its own shell. Accept one exact
+        // requested wrapper only, never arbitrary nesting or normalization.
+        let requested = "/bin/zsh -lc \"\(script)\""
+        return words[2] == requested && arguments(requested) == ["/bin/zsh", "-lc", script]
     }
 
     static func diagnostics(_ params: [String: JSONValue], script: String) -> [String: Bool] {
@@ -770,6 +776,7 @@ private enum RealCodexApprovalGuard {
             "loginShell": words.count > 1 && words[1] == "-lc",
             "nonloginShell": words.count > 1 && words[1] == "-c",
             "exactScriptArgument": words.count == 3 && words[2] == script,
+            "exactRequestedWrapperArgument": words.count == 3 && words[2] == "/bin/zsh -lc \"\(script)\"",
             "turnPresent": params["turnId"]?.string != nil,
         ]
     }
@@ -860,5 +867,14 @@ private enum RealCodexApprovalGuard {
         var persistent = params(command: display)
         persistent["availableDecisions"] = .array([.string("acceptForSession")])
         #expect(!RealCodexApprovalGuard.matches(persistent, script: script))
+    }
+
+    @Test func nativeOuterShellPreservesTheExactExplicitRequestedWrapper() {
+        let requested = "/bin/zsh -lc \"\(script)\""
+        let outer = "/bin/zsh -lc '" + requested.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        #expect(RealCodexApprovalGuard.matches(params(command: outer), script: script))
+        let changed = outer.replacingOccurrences(of: "LOOM_D1_REAL_FILE_OK", with: "OTHER_CONTENT")
+        #expect(!RealCodexApprovalGuard.matches(params(command: changed), script: script))
+        #expect(!RealCodexApprovalGuard.matches(params(command: outer + "; touch /tmp/extra"), script: script))
     }
 }
