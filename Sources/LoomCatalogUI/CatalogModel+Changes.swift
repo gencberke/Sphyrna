@@ -2,7 +2,7 @@ import Foundation
 import LoomChat
 import LoomCore
 
-/// The Changes tab on the model (V20): what it reads, when, and how its comments go to Claude.
+/// The Changes tab on the model (V20): what it reads, when, and how its comments go to the session.
 ///
 /// Nothing reads while the tab is closed and nothing polls. `changesTrigger` is nil unless the selected session's
 /// inspector is open on Changes, or on Overview of a session whose edits are read (the Overview lists the last turn's files);
@@ -311,6 +311,8 @@ extension CatalogModel {
     func discardChangeComments(in sessionID: UUID) {
         let session = changes.session(for: sessionID)
         session.discardComments(in: session.scope)
+        session.deliveryWatch?.cancel()
+        session.deliveryWatch = nil
         session.sendStatus = .idle
     }
 
@@ -331,16 +333,52 @@ extension CatalogModel {
     // MARK: Sending
 
     enum ChangesSendAvailability: Equatable {
+        /// The Chat face takes the comments as a message (frozen, D-100): a live Chat session, or a stopped one it owns.
         case ready
-        /// The session is not in the Chat face, so there is no message to send to.
-        case notChat
+        /// The session's live terminal run takes them through its mailbox (F11): the pointer comes on its Ready edge.
+        case terminal
+        /// Nothing takes them now: a stopped terminal session, or a harness without the session channel.
+        case unavailable
     }
 
-    /// Comments go to Claude as a message in the session's Chat: a live Chat session, or a stopped one that the Chat
-    /// face owns (the send resumes it, as the stopped composer does). A terminal-face session shows the diffs only.
+    /// Where the comments can go now. A Chat session as before; a terminal run once the runtime said that run takes
+    /// messages (`refreshChangesReceiver`, which the tab runs for each run).
     func changesSendAvailability(for sessionID: UUID) -> ChangesSendAvailability {
-        guard let row = changesRow(sessionID), capabilities(of: row.record.session.provider).structuredFace else { return .notChat }
-        return liveChatDriver(for: sessionID) != nil || showsStoppedLiveChat(row) ? .ready : .notChat
+        guard let row = changesRow(sessionID) else { return .unavailable }
+        if capabilities(of: row.record.session.provider).structuredFace,
+           liveChatDriver(for: sessionID) != nil || showsStoppedLiveChat(row) { return .ready }
+        guard runEndpoint(of: row) == .terminal, let run = row.live?.runID,
+              changes.session(for: sessionID).messageRun == run else { return .unavailable }
+        return .terminal
+    }
+
+    /// The footer's Send button, nil when it is absent: no comments in the scope, or nothing takes them now. It names the
+    /// harness from the capability table: "Send to Claude", "Send to Codex".
+    func changesSendTitle(for sessionID: UUID) -> String? {
+        let session = changes.session(for: sessionID)
+        guard !session.comments(in: session.scope).isEmpty, let row = changesRow(sessionID),
+              changesSendAvailability(for: sessionID) != .unavailable else { return nil }
+        return "Send to \(capabilities(of: row.record.session.provider).displayName)"
+    }
+
+    /// The footer's note when Send is absent for a stopped session (nil otherwise).
+    func changesSendNote(for sessionID: UUID) -> String? {
+        guard changesSendTitle(for: sessionID) == nil, let row = changesRow(sessionID), !isRunning(row) else { return nil }
+        return "Comments are sent while the session runs"
+    }
+
+    /// Asks the runtime whether the session's live terminal run takes messages, and keeps the answer for that run. The tab
+    /// runs it whenever the run, its native session or its status changes; a stopped session has no run and no button.
+    func refreshChangesReceiver(for sessionID: UUID) async {
+        let session = changes.session(for: sessionID)
+        guard let row = changesRow(sessionID), runEndpoint(of: row) == .terminal, let run = row.live?.runID,
+              let runtime = sessions?.runtime else {
+            session.messageRun = nil
+            return
+        }
+        let accepted = await runtime.userMessageRun(sessionID: sessionID)
+        guard changesRow(sessionID)?.live?.runID == run else { return }
+        session.messageRun = accepted == run ? run : nil
     }
 
     /// The scope as the message names it: "Last turn", "Whole session", "Branch vs main".
@@ -350,25 +388,69 @@ extension CatalogModel {
         return "Branch vs \(base)"
     }
 
-    /// Sends the current scope's comments as one message, the way the composer's Return does (`.next`). Comments clear
-    /// once the send was accepted; a refused send keeps them.
+    /// Sends the current scope's comments as one message; the user's click is the approval. A Chat session takes it the way
+    /// the composer's Return does (`.next`) and the comments clear once it was accepted. A live terminal run gets it in its
+    /// mailbox (F1's path): "Sent · waiting for <title> to be ready", with the comments kept, then "Delivered" once the
+    /// session read it, when exactly the sent comments go (one written meanwhile stays). A refused send keeps them and says why.
     func sendChangeComments(for sessionID: UUID) async {
         let session = changes.session(for: sessionID)
         let comments = orderedChangeComments(for: sessionID)
-        guard !comments.isEmpty, session.sendStatus != .sending, changesSendAvailability(for: sessionID) == .ready else { return }
+        guard !comments.isEmpty, !session.sendStatus.holdsSend else { return }
         let scope = session.scope
-        let text = ChangesMessage.text(scopeName: changesScopeName(for: sessionID), comments: comments)
+        if changesSendAvailability(for: sessionID) == .ready {
+            let text = ChangesMessage.text(scopeName: changesScopeName(for: sessionID), comments: comments)
+            session.sendStatus = .sending
+            do {
+                if let send = changes.sendOverride {
+                    try await send(text, sessionID)
+                } else {
+                    _ = try await sendChatMessage(text, to: sessionID)
+                }
+                session.discardComments(in: scope)
+                session.sendStatus = .idle
+            } catch {
+                session.sendStatus = .failed(Self.userMessage(for: error, context: "The comments could not be sent"))
+            }
+            return
+        }
+        // The runtime decides whether this run takes it; the button's own answer may be a moment old.
+        guard let row = changesRow(sessionID), runEndpoint(of: row) == .terminal, let runtime = sessions?.runtime else { return }
+        let text = ChangesMessage.terminalText(scopeName: changesScopeName(for: sessionID), comments: comments,
+                                               oldestFirst: session.comments(in: scope).map(\.id))
+        let name = title(of: row, repeatsProject: false)
         session.sendStatus = .sending
         do {
-            if let send = changes.sendOverride {
-                try await send(text, sessionID)
-            } else {
-                _ = try await sendChatMessage(text, to: sessionID)
-            }
-            session.discardComments(in: scope)
-            session.sendStatus = .idle
+            let id = try await runtime.sendUserMessage(text, to: sessionID, senderTitle: ChangesMessage.senderTitle)
+            session.sendStatus = .sent(id, title: name)
+            watchChangesDelivery(id, in: sessionID, scope: scope, comments: Set(comments.map(\.id)), runtime: runtime)
         } catch {
             session.sendStatus = .failed(Self.userMessage(for: error, context: "The comments could not be sent"))
+        }
+    }
+
+    /// Follows one terminal send until the session read it: the mailbox says when anything in it changed. On the read, the
+    /// comments that went with it leave the scope, as an accepted Chat send clears them.
+    private func watchChangesDelivery(_ messageID: UUID, in sessionID: UUID, scope: ChangesScope, comments: Set<UUID>,
+                                      runtime: SessionRuntime) {
+        let session = changes.session(for: sessionID)
+        session.deliveryWatch?.cancel()
+        session.deliveryWatch = Task { [weak session] in
+            let updates = await runtime.sessionMailboxUpdates()
+            for await _ in updates {
+                guard let current = session, case let .sent(id, _) = current.sendStatus, id == messageID else { return }
+                switch await runtime.userMessageDelivery(messageID, to: sessionID) {
+                case .read:
+                    if case let .sent(id, _) = current.sendStatus, id == messageID {
+                        current.removeComments(comments, in: scope)
+                        current.sendStatus = .delivered
+                    }
+                    return
+                case .gone:
+                    if case let .sent(id, _) = current.sendStatus, id == messageID { current.sendStatus = .idle }
+                    return
+                case .waiting, nil: continue
+                }
+            }
         }
     }
 }
