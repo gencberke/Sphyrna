@@ -160,7 +160,9 @@ struct InspectorAgents: View {
         let readsFolder = model.agentsFolderIsReadable(row)
         return ScrollView {
             VStack(alignment: .leading, spacing: LoomTheme.Agents.sectionGap) {
-                if content.isEmpty, records != nil, taskParent?.didLoad == true {
+                // The sentence waits for a child-task read that could add rows; with none under way (no interest yet) or none
+                // possible (no task source, a failed read) the native list stands as it is.
+                if content.isEmpty, records != nil, taskParent.map({ $0.didLoad || $0.unavailable }) ?? true {
                     InspectorEmptyState(text: Self.emptyText(isRunning: model.isRunning(row), readsFolder: readsFolder))
                 }
                 if !content.running.isEmpty {

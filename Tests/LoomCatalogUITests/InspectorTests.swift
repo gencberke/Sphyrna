@@ -130,6 +130,34 @@ struct InspectorTests {
         #expect(InspectorAgents.emptyText(isRunning: true).hasPrefix("No subagents."))
     }
 
+    /// With no child-task source (the runtime has not connected one, or its read failed) the empty list still says why it
+    /// is empty, beside the tasks' own state; it waited for a task read that never came and showed nothing.
+    @Test func theEmptyAgentsListSaysWhyWhenTheChildTasksCannotBeRead() async throws {
+        enableAccessibilityTree()
+        let rig = try await InspectorRig.make()
+        defer { rig.cleanup() }
+        rig.model.select(rig.ids[0])
+        rig.model.setWindowVisible(true)
+        let row = try #require(rig.model.selectedRow)
+        let size = NSSize(width: LoomTheme.Rhythm.inspectorWidth, height: 260)
+        let hosting = NSHostingController(rootView: InspectorAgents(model: rig.model, row: row)
+            .frame(width: size.width, height: size.height))
+        hosting.sizingOptions = []
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered,
+                              defer: false)
+        window.contentViewController = hosting
+        window.setContentSize(size)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        func texts() -> [String] {
+            window.contentView?.layoutSubtreeIfNeeded()
+            return accessibilityElements(in: hosting.view).flatMap { [InkAX.label($0), InkAX.value($0) ?? ""] }.filter { !$0.isEmpty }
+        }
+        let sentence = InspectorAgents.emptyText(isRunning: rig.model.isRunning(row), readsFolder: rig.model.agentsFolderIsReadable(row))
+        let shown = await inspectorWaitUntil(3) { texts().contains(sentence) && texts().contains("Child tasks are unavailable.") }
+        #expect(shown, "the sentence and the tasks' state: \(texts())")
+    }
+
     @Test func theAgentsListRunsFirstThenFinishedAndIndentsNestedOnes() {
         let now = inspectorT0.addingTimeInterval(4 * 60 + 5)
         let content = InspectorAgentsContent(records: [
