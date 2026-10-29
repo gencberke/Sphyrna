@@ -97,6 +97,11 @@ extension View {
     func rowPill(selected: Bool = false, radius: CGFloat = LoomTheme.Highlight.radius, key: String? = nil) -> some View {
         modifier(RowPill(selected: selected, radius: radius, key: key))
     }
+
+    /// The card and its child rows share one surface; the buttons inside still own their actions and focus rings.
+    func sidebarCardSurface(selected: Bool, key: String) -> some View {
+        modifier(SidebarCardSurface(selected: selected, key: key))
+    }
 }
 
 /// A row that is a button. With a `radius` it draws the pill (hover, press, selection) and Loom's focus ring on the pill's
@@ -109,9 +114,12 @@ struct RowButtonStyle: ButtonStyle {
     var tint: ProjectTone?
     /// Session cards use the sidebar's neutral raised surface; other row families keep their own selection.
     var sidebarCard = false
+    /// A session entry supplies the card's full surface around this button and its child rows.
+    var externalSidebarSurface = false
 
     func makeBody(configuration: Configuration) -> some View {
-        Row(configuration: configuration, selected: selected, radius: radius, key: key, tint: tint, sidebarCard: sidebarCard)
+        Row(configuration: configuration, selected: selected, radius: radius, key: key, tint: tint, sidebarCard: sidebarCard,
+            externalSidebarSurface: externalSidebarSurface)
     }
 
     private struct Row: View {
@@ -121,6 +129,7 @@ struct RowButtonStyle: ButtonStyle {
         let key: String?
         let tint: ProjectTone?
         let sidebarCard: Bool
+        let externalSidebarSurface: Bool
         @State private var hovering = false
         @Environment(\.isEnabled) private var enabled
         @Environment(\.isFocused) private var focused
@@ -134,7 +143,8 @@ struct RowButtonStyle: ButtonStyle {
                 configuration.label
                     .background {
                         if sidebarCard {
-                            SidebarCardHighlight(state: state, radius: radius)
+                            SidebarCardHighlight(state: externalSidebarSurface && !configuration.isPressed ? .none : state,
+                                                 radius: radius)
                         } else {
                             RowHighlight(state: state, radius: radius, tint: tint)
                         }
@@ -149,6 +159,23 @@ struct RowButtonStyle: ButtonStyle {
                     .padding(-LoomTheme.Space.rowFocusOutset)
             }
         }
+    }
+}
+
+/// A session card's selection and hover include its subagent rows but do not wrap their buttons.
+private struct SidebarCardSurface: ViewModifier {
+    let selected: Bool
+    let key: String
+    @State private var hovering = false
+    @Environment(\.isEnabled) private var enabled
+
+    func body(content: Content) -> some View {
+        let _ = SidebarRenderProbe.pill(key)
+        content
+            .background(SidebarCardHighlight(
+                state: .resolve(selected: selected, hovering: hovering || LookEvidence.forcesHover(key), enabled: enabled),
+                radius: LoomTheme.Highlight.radius))
+            .onHover { hovering = $0 }
     }
 }
 

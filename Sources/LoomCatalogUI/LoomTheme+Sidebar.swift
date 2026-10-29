@@ -1,7 +1,7 @@
 import LoomCore
 import SwiftUI
 
-/// Ink v4's sidebar (DESIGN §0.5): the search door, nav, headings, project heads, cards and retained footer.
+/// Ink v4's sidebar (DESIGN §0.5): the search door, nav, headings, project heads and cards.
 extension LoomTheme {
     enum Sidebar {
         // MARK: Header (52 pt): the window buttons' clearance and the sidebar toggle
@@ -20,7 +20,8 @@ extension LoomTheme {
         static let doorPaddingLeading: CGFloat = 10
         static let doorPaddingTrailing: CGFloat = 8
         static let doorSpacing: CGFloat = 8
-        static let doorGlyph = Font.system(size: 13)
+        static let navGlyphBox: CGFloat = 15
+        static let doorGlyph = Font.system(size: navGlyphBox)
         static let doorLabel = InkType.body.font
 
         // MARK: Home and New session (28 pt, radius 8)
@@ -29,7 +30,7 @@ extension LoomTheme {
         static let homeRowInset: CGFloat = 8
         static let homeRowSpacing: CGFloat = 8
         static let homeRowBottom: CGFloat = 2
-        static let homeGlyph = Font.system(size: 13)
+        static let homeGlyph = Font.system(size: navGlyphBox)
         /// The New session row's `+` (15 pt in the same 16 pt column) and its tint: secondary, primary under the pointer.
         static let newSessionGlyph = Font.system(size: 15)
         /// The glyph column, so Home and New session start their words at the same place.
@@ -86,6 +87,9 @@ extension LoomTheme {
         static let cardTopHeight: CGFloat = 18
         static let cardTitleHeight: CGFloat = 20
         static let cardMetaHeight: CGFloat = 16
+        static let cardGap: CGFloat = 1
+        static let cardChildrenGap: CGFloat = 3
+        static let cardHarnessMark: CGFloat = 11
         static let cardMarkSide: CGFloat = ProjectMarkStyle.Size.chip.side
         static let cardMarkGap: CGFloat = 5
         static let cardStatusSpacing: CGFloat = 4
@@ -99,15 +103,15 @@ extension LoomTheme {
         static let rowLeading: CGFloat = 16
         static let lineTitle = InkType.body.font
         static let lineTitleSelected = Font.system(size: 13, weight: .medium)
-        /// The time at a row's trailing end: mono 11.
-        static let timeFont = InkType.meta.font
+        /// A resting time and a working elapsed time, as in the status line of the reference card.
+        static let timeFont = Font.system(size: 10.5, design: .monospaced)
+        static let elapsedFont = Font.system(size: 10, design: .monospaced)
         /// The reason line (11.5, secondary), a command in mono, and the card's fixed bottom row (11, tertiary).
         static let reasonFont = Font.system(size: 11.5)
-        static let reasonMonoFont = Font.system(size: 11.5, design: .monospaced)
+        static let reasonMonoFont = Font.system(size: 10.5, design: .monospaced)
         static let metaFont = Font.system(size: 11)
-        static let metaMonoFont = InkType.meta.font
-        static let metaGlyph = Font.system(size: 10)
-        static let metaSpacing: CGFloat = 4
+        static let metaMonoFont = Font.system(size: 10.5, design: .monospaced)
+        static let metaSpacing: CGFloat = 6
         /// Section headings (Drafts, Active, the days): 11.5 medium tertiary, the count in mono, 6 apart. They start on the
         /// `rowLeading` inside the list's inset, pad 12 above (none for the list's first) and 5 below.
         static let sectionFont = Font.system(size: 11.5, weight: .medium)
@@ -115,6 +119,10 @@ extension LoomTheme {
         static let activityHeadingTop: CGFloat = 12
         static let activityHeadingBottom: CGFloat = 5
         static let activityHeadingSpacing: CGFloat = 6
+        static let dayHeight: CGFloat = 23
+        static let dayInset: CGFloat = 10
+        static let dayGap: CGFloat = 8
+        static let dayFont = Font.system(size: 10.5, design: .monospaced)
 
         /// A draft row: italic, secondary.
         static let draftFont = InkType.body.font

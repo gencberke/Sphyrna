@@ -194,7 +194,6 @@ struct HighlightTests {
             ("Control.badgePaddingH", LoomTheme.Control.badgePaddingH),
             ("Sidebar.doorBottom", LoomTheme.Sidebar.doorBottom), ("Sidebar.doorSpacing", LoomTheme.Sidebar.doorSpacing),
             ("Sidebar.headTrailing", LoomTheme.Sidebar.headTrailing), ("Sidebar.headerTrailing", LoomTheme.Sidebar.headerTrailing),
-            ("Sidebar.metaSpacing", LoomTheme.Sidebar.metaSpacing),
             ("Chat.columnPadding", LoomTheme.Chat.columnPadding), ("Chat.workRowPaddingH", LoomTheme.Chat.workRowPaddingH),
             ("Chat.blockSpacing", LoomTheme.Chat.blockSpacing),
             ("Composer.dockBottomInset", LoomTheme.Composer.dockBottomInset), ("Composer.dockTopInset", LoomTheme.Composer.dockTopInset),
@@ -212,6 +211,7 @@ struct HighlightTests {
         }
         // The v4 reference sets the search and heading insets optically at 10 and 18 pt.
         #expect(LoomTheme.Sidebar.doorInset == 10 && LoomTheme.Sidebar.headingInset == 18)
+        #expect(LoomTheme.Sidebar.metaSpacing == 6, "the reference card's bottom-row optical gap")
     }
 
     @Test func theShellGeometryIsInks() {

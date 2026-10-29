@@ -81,6 +81,7 @@ struct HomeRow: View {
             HStack(spacing: LoomTheme.Sidebar.homeRowSpacing) {
                 Image(systemName: "house").font(LoomTheme.Sidebar.homeGlyph)
                     .foregroundStyle(LoomTheme.Text.secondaryStyle).accessibilityHidden(true)
+                    .frame(width: LoomTheme.Sidebar.navGlyphBox, height: LoomTheme.Sidebar.navGlyphBox)
                     .frame(width: LoomTheme.Sidebar.homeGlyphColumn)
                 Text("Home").font(selected ? LoomTheme.Sidebar.lineTitleSelected : LoomTheme.Sidebar.lineTitle)
                     .foregroundStyle(LoomTheme.Text.primary)
@@ -257,7 +258,8 @@ struct ActivityList: View {
             }
             ForEach(layout.days) { section in
                 ActivityHeading(model: model, title: section.title,
-                                position: layout.active.isEmpty && section.id == layout.days.first?.id ? .firstUnlessDrafts : .later)
+                                position: layout.active.isEmpty && section.id == layout.days.first?.id ? .firstUnlessDrafts : .later,
+                                isDay: true)
                 ForEach(section.rows) { row in activityEntry(row, lastRowID: lastRowID) }
             }
             if list.hasMore { ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(LoomTheme.Space.loadingPadding) }
@@ -288,6 +290,7 @@ struct ActivityHeading: View {
     let title: String
     var count: Int?
     var position = Position.later
+    var isDay = false
 
     /// The padding above a heading; `hasDrafts` matters only for a heading that may follow the drafts.
     static func top(for position: Position, hasDrafts: Bool) -> CGFloat {
@@ -299,18 +302,31 @@ struct ActivityHeading: View {
     }
 
     var body: some View {
-        // Only the heading that may follow the drafts reads them, so a keystroke in a draft redraws this line and not the list.
-        let hasDrafts = position == .firstUnlessDrafts && !DraftRows.drafts(in: .all, of: model).isEmpty
-        HStack(alignment: .firstTextBaseline, spacing: LoomTheme.Sidebar.activityHeadingSpacing) {
-            Text(title).font(LoomTheme.Sidebar.sectionFont)
-            if let count { Text("\(count)").font(LoomTheme.Sidebar.sectionCountFont) }
+        if isDay {
+            HStack(spacing: LoomTheme.Sidebar.dayGap) {
+                Text(title).font(LoomTheme.Sidebar.dayFont)
+                Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline)
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            .padding(.horizontal, LoomTheme.Sidebar.dayInset)
+            .frame(height: LoomTheme.Sidebar.dayHeight)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+        } else {
+            // Only the heading that may follow the drafts reads them, so a keystroke does not redraw the list.
+            let hasDrafts = position == .firstUnlessDrafts && !DraftRows.drafts(in: .all, of: model).isEmpty
+            HStack(alignment: .firstTextBaseline, spacing: LoomTheme.Sidebar.activityHeadingSpacing) {
+                Text(title).font(LoomTheme.Sidebar.sectionFont)
+                if let count { Text("\(count)").font(LoomTheme.Sidebar.sectionCountFont) }
+            }
+            .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            .padding(.leading, LoomTheme.Sidebar.rowLeading).padding(.trailing, LoomTheme.Space.sectionInset)
+            .padding(.top, Self.top(for: position, hasDrafts: hasDrafts))
+            .padding(.bottom, LoomTheme.Sidebar.activityHeadingBottom)
         }
-        .foregroundStyle(LoomTheme.Text.tertiaryStyle)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
-        .padding(.leading, LoomTheme.Sidebar.rowLeading).padding(.trailing, LoomTheme.Space.sectionInset)
-        .padding(.top, Self.top(for: position, hasDrafts: hasDrafts))
-        .padding(.bottom, LoomTheme.Sidebar.activityHeadingBottom)
     }
 }
 
@@ -579,30 +595,22 @@ struct EmptyListHint: View {
     }
 }
 
-/// A session's card with the subagents of its session below it (D-39).
-/// A session without subagents draws exactly the card: the stack holds no second view and adds no space.
+/// A session's card and its independently actionable subagent rows share one surface.
 struct SessionListEntry: View {
     let row: SessionRowModel
     let model: CatalogModel
     var body: some View {
         let subagents = row.live?.subagents ?? []
         VStack(alignment: .leading, spacing: 0) {
-            SessionCardView(row: row, model: model)
-                .overlay {
-                    if !subagents.isEmpty {
-                        // The connector starts below the card's content, on the leading mark's centre line.
-                        SubagentTrunkShape()
-                            .stroke(LoomTheme.Surface.tree, style: StrokeStyle(lineWidth: LoomTheme.Branches.lineWidth))
-                            .mask(alignment: .bottom) { Rectangle().frame(height: LoomTheme.Sidebar.cardBottom) }
-                            .offset(x: LoomTheme.Sidebar.cardBranchOffset)
-                            .allowsHitTesting(false).accessibilityHidden(true)
-                    }
-                }
+            SessionCardView(row: row, model: model, inListEntry: true, hasChildren: !subagents.isEmpty)
             if !subagents.isEmpty {
                 SubagentTreeView(sessionID: row.id, records: subagents, model: model, waiting: SubagentWaiting.ids(in: row.live))
-                    .offset(x: LoomTheme.Sidebar.cardBranchOffset)
+                    .padding(.top, LoomTheme.Sidebar.cardChildrenGap)
+                    .padding(.bottom, LoomTheme.Sidebar.cardBottom)
             }
         }
+        .sidebarCardSurface(selected: row.isSelected, key: "sidebar-card:\(row.id)")
+        .padding(.bottom, LoomTheme.Sidebar.cardGap)
     }
 }
 
@@ -717,7 +725,7 @@ struct CardWorkingElapsed: View {
         let _ = SidebarRenderProbe.timeLabel(id)
         let key = TickKey(start: start, active: visible && indicatorsAnimate)
         Text(SubagentTreeContent.duration(from: start, to: now))
-            .font(LoomTheme.Sidebar.timeFont)
+            .font(LoomTheme.Sidebar.elapsedFont)
             .foregroundStyle(LoomTheme.Text.tertiaryStyle)
             .task(id: key) {
                 guard key.active else { return }
@@ -734,6 +742,8 @@ struct CardWorkingElapsed: View {
 struct SessionCardView: View {
     let row: SessionRowModel
     let model: CatalogModel
+    var inListEntry = false
+    var hasChildren = false
     /// The project name appears on a card only where the card is not already grouped under its project
     /// (activity view). The mode is read from the model inside `body`, not handed down by the list: the
     /// same card ids exist in both views, and a flag passed in kept the value of the view that drew the
@@ -755,12 +765,13 @@ struct SessionCardView: View {
 
     /// "<title>, Claude, Needs approval, <reason>, opened by <requester>, pinned".
     static func accessibilityLabel(title: String, provider: ManagedSession.Provider, status: String?,
-                                   reason: String? = nil, origin: SessionOrigin?, pinned: Bool) -> String {
+                                   reason: String? = nil, origin: SessionOrigin?, pinned: Bool, branch: String? = nil) -> String {
         var parts = [title, ProviderName.title(provider)]
         if let status { parts.append(status) }
         if let reason { parts.append(reason) }
         if let origin { parts.append(origin.accessibilityPhrase) }
         if pinned { parts.append("pinned") }
+        if let branch { parts.append("Git branch, \(branch)") }
         return parts.joined(separator: ", ")
     }
 
@@ -780,7 +791,7 @@ struct SessionCardView: View {
                       origin: origin, reasonLine: reasonLine)
         }
         .buttonStyle(RowButtonStyle(selected: selected, radius: LoomTheme.Highlight.radius,
-                                    key: "sidebar-card:\(row.id)", sidebarCard: true))
+                                    key: "sidebar-card:\(row.id)", sidebarCard: true, externalSidebarSurface: inListEntry))
         .focusEffectDisabled()
         // Resting on the row peeks at its last ask and answer, in its tooltip.
         .modifier(SidebarPeekHover(record: row.record, model: model))
@@ -799,17 +810,13 @@ struct SessionCardView: View {
             SessionLocationMenuItems(row: row, model: model)
             DeletionMenuItems(model: model, row: row)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(Self.accessibilityLabel(
-            title: title, provider: row.record.session.provider, status: CardStatus.accessibilityStatus(indicator),
-            reason: reasonLine?.text, origin: origin, pinned: row.record.pinned))
-        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
+        .modifier(SessionCardAccessibility(row: row, model: model, title: title, indicator: indicator,
+                                           reason: reasonLine, origin: origin, selected: selected))
     }
 
     // MARK: The card (Ink v4)
 
-    /// Project or harness and model at the top, the status at the trailing end; title and optional activity reason below;
-    /// branch (or origin) and the harness at the bottom. No status column precedes the title.
+    /// Project or harness and model at the top, then the title and one reason-or-branch line with the harness.
     @ViewBuilder
     private func cardLabel(title: String, indicator: SessionIndicator, mode: CatalogViewMode,
                            projectName: String?, origin: SessionOrigin?, reasonLine: SessionReasonLine?) -> some View {
@@ -822,7 +829,7 @@ struct SessionCardView: View {
                         CardModelLabel(row: row, model: model)
                     }
                 }
-                .foregroundStyle(LoomTheme.Text.secondaryStyle)
+                .foregroundStyle(row.isSelected ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 CardStatus(row: row, model: model, indicator: indicator)
                     .fixedSize(horizontal: true, vertical: false)
@@ -830,29 +837,10 @@ struct SessionCardView: View {
             .frame(height: LoomTheme.Sidebar.cardTopHeight)
             titleText(title, indicator: indicator)
                 .frame(maxWidth: .infinity, minHeight: LoomTheme.Sidebar.cardTitleHeight, alignment: .leading)
-            if let reasonLine {
-                // What the session waits for or did last: its own line under the title (D-69), so the card is one line taller
-                // while it needs the user. A command is mono.
-                reasonText(reasonLine)
-                    .foregroundStyle(LoomTheme.Text.secondaryStyle).lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(height: LoomTheme.Sidebar.cardMetaHeight, alignment: .leading)
-                    .help(reasonLine.help)
-            }
-            HStack(spacing: LoomTheme.Sidebar.metaSpacing) {
-                branchLabel(origin: origin)
-                if row.record.pinned {
-                    Image(systemName: "pin.fill").font(LoomTheme.Typography.pinGlyph)
-                        .help(Self.pinnedGlyphHelp(cleanupReviewOffered: model.cleanupReview != nil))
-                }
-                Spacer(minLength: LoomTheme.Space.headerSpacing)
-                HarnessMark(provider: row.record.session.provider)
-            }
-            .foregroundStyle(LoomTheme.Text.tertiaryStyle)
-            .frame(height: LoomTheme.Sidebar.cardMetaHeight)
+            SessionCardMeta(row: row, model: model, origin: origin, reason: reasonLine)
         }
         .padding(.horizontal, LoomTheme.Sidebar.cardInset)
-        .padding(.top, LoomTheme.Sidebar.cardTop).padding(.bottom, LoomTheme.Sidebar.cardBottom)
+        .padding(.top, LoomTheme.Sidebar.cardTop).padding(.bottom, hasChildren ? 0 : LoomTheme.Sidebar.cardBottom)
         .contentShape(RoundedRectangle(cornerRadius: LoomTheme.Highlight.radius))
     }
 
@@ -871,30 +859,64 @@ struct SessionCardView: View {
         }
     }
 
-    /// The branch of the session's folder, or the origin where it says more (the same branch as the session that opened it).
-    @ViewBuilder
-    private func branchLabel(origin: SessionOrigin?) -> some View {
-        if let origin, origin.replacesBranch {
-            Label(origin.cardLabel, systemImage: "arrow.turn.down.right")
-                .font(LoomTheme.Sidebar.metaFont).lineLimit(1)
-                .help(origin.tooltip)
-        } else {
-            Label {
-                Text((model.branches[row.record.session.workingDirectory] ?? .unavailable).label)
-                    .font(LoomTheme.Sidebar.metaMonoFont)
-            } icon: {
-                Image(systemName: "arrow.triangle.branch").font(LoomTheme.Sidebar.metaGlyph)
-            }
-            .lineLimit(1)
-            .help(origin.map { "Git branch. " + $0.tooltip } ?? "Git branch")
-        }
-    }
-
     private func titleText(_ title: String, indicator: SessionIndicator) -> some View {
         Text(title)
             .font(LoomTheme.Sidebar.lineTitleSelected)
             .foregroundStyle(indicator == .stale ? LoomTheme.Text.secondary : LoomTheme.Text.primary)
             .lineLimit(2).truncationMode(.tail).fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Only the bottom line observes the cached branch; it never changes another card's body.
+private struct SessionCardMeta: View {
+    let row: SessionRowModel
+    let model: CatalogModel
+    let origin: SessionOrigin?
+    let reason: SessionReasonLine?
+
+    var body: some View {
+        let branch = model.branches[row.record.session.workingDirectory] ?? .unavailable
+        HStack(spacing: LoomTheme.Sidebar.metaSpacing) {
+            if let reason {
+                reasonText(reason)
+                    .foregroundStyle(LoomTheme.Text.secondaryStyle).lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(reasonHelp(reason, branch: branch))
+            } else {
+                branchLabel(branch)
+                if row.record.pinned {
+                    Image(systemName: "pin.fill").font(LoomTheme.Typography.pinGlyph)
+                        .help(SessionCardView.pinnedGlyphHelp(cleanupReviewOffered: model.cleanupReview != nil))
+                }
+            }
+            Spacer(minLength: LoomTheme.Space.headerSpacing)
+            HarnessMark(provider: row.record.session.provider, size: LoomTheme.Sidebar.cardHarnessMark)
+        }
+        .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+        .frame(height: LoomTheme.Sidebar.cardMetaHeight)
+    }
+
+    /// The branch of the session's folder, or the origin where it says more (the same branch as the session that opened it).
+    @ViewBuilder
+    private func branchLabel(_ branch: GitBranch) -> some View {
+        if let origin, origin.replacesBranch {
+            Label(origin.cardLabel, systemImage: "arrow.turn.down.right")
+                .font(LoomTheme.Sidebar.metaFont).lineLimit(1)
+                .help(origin.tooltip)
+        } else {
+            Text(branch.label).font(LoomTheme.Sidebar.metaMonoFont)
+            .lineLimit(1)
+            .help(origin.map { "Git branch. " + $0.tooltip } ?? "Git branch")
+        }
+    }
+
+    /// A reason replaces the branch visually, while the same metadata remains in its tooltip and the card's AX label.
+    private func reasonHelp(_ line: SessionReasonLine, branch: GitBranch) -> String {
+        var parts = [line.help]
+        if branch != .unavailable { parts.append("Git branch: \(branch.label)") }
+        if let origin { parts.append(origin.tooltip) }
+        if row.record.pinned { parts.append(SessionCardView.pinnedGlyphHelp(cleanupReviewOffered: model.cleanupReview != nil)) }
+        return parts.joined(separator: " · ")
     }
 
     private func reasonText(_ line: SessionReasonLine) -> some View {
@@ -905,6 +927,27 @@ struct SessionCardView: View {
                 Text(line.text).font(LoomTheme.Sidebar.reasonFont)
             }
         }
+    }
+}
+
+/// Only a card whose reason replaces the branch observes that branch for its accessible label.
+private struct SessionCardAccessibility: ViewModifier {
+    let row: SessionRowModel
+    let model: CatalogModel
+    let title: String
+    let indicator: SessionIndicator
+    let reason: SessionReasonLine?
+    let origin: SessionOrigin?
+    let selected: Bool
+
+    func body(content: Content) -> some View {
+        let branch = reason == nil ? nil : model.branches[row.record.session.workingDirectory]
+        return content.accessibilityElement(children: .combine)
+            .accessibilityLabel(SessionCardView.accessibilityLabel(
+                title: title, provider: row.record.session.provider, status: CardStatus.accessibilityStatus(indicator),
+                reason: reason?.text, origin: origin, pinned: row.record.pinned,
+                branch: branch != .unavailable ? branch?.label : nil))
+            .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 }
 

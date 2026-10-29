@@ -207,17 +207,6 @@ struct SubagentBranchesShape: Shape {
     func path(in rect: CGRect) -> Path { branches.path(from: rect.origin) }
 }
 
-/// An activity card's part of the line: from under its status mark to its bottom, where the first branch takes over.
-struct SubagentTrunkShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        let x = rect.minX + LoomTheme.Branches.column + LoomTheme.Branches.lineWidth / 2
-        var path = Path()
-        path.move(to: CGPoint(x: x, y: rect.minY + LoomTheme.Branches.cardTrunkTop))
-        path.addLine(to: CGPoint(x: x, y: rect.maxY))
-        return path
-    }
-}
-
 /// The tree under a session card: a branch per row, drawn over the rows from the session's status column, which the list's
 /// leading edge places 22 pt in (`Branches.column`).
 struct SubagentTreeView: View {
@@ -243,6 +232,7 @@ struct SubagentTreeView: View {
             .overlay(alignment: .topLeading) {
                 SubagentBranchesShape(branches: branches)
                     .stroke(LoomTheme.Surface.tree, style: StrokeStyle(lineWidth: LoomTheme.Branches.lineWidth))
+                    .offset(x: LoomTheme.Sidebar.cardBranchOffset)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
             }
@@ -260,7 +250,7 @@ struct SubagentTreeView: View {
     }
 }
 
-private struct SubagentRowView: View {
+struct SubagentRowView: View {
     typealias Metrics = LoomTheme.Branches
     let row: SubagentTreeContent.Row
     let action: () -> Void
@@ -280,7 +270,7 @@ private struct SubagentRowView: View {
                 Spacer(minLength: 0)
                 trailing
             }
-            .padding(.leading, SubagentBranches.contentLeading(depth: row.depth))
+            .padding(.leading, SubagentBranches.contentLeading(depth: row.depth) + LoomTheme.Sidebar.cardBranchOffset)
             .padding(.trailing, Metrics.rowTrailing)
             .frame(height: Metrics.rowHeight)
             .contentShape(Rectangle())
@@ -291,6 +281,7 @@ private struct SubagentRowView: View {
         .accessibilityLabel(row.accessibilityLabel)
         .accessibilityValue(row.accessibilityValue ?? "")
         .accessibilityAddTraits(.isButton)
+        .accessibilityAction { action() }
     }
 
     /// Running: the type in 12 medium, primary. Finished and fold rows: regular, secondary.

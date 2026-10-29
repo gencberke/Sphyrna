@@ -140,9 +140,9 @@ struct SidebarInkLayoutTests {
                 == S.cardInset + S.cardMarkSide / 2)
     }
 
-    @Test func theCardUsesFourteenPointTopMarksAndTwelvePointTrailingHarnessMarks() {
+    @Test func theCardUsesFourteenPointTopMarksAndElevenPointTrailingHarnessMarks() {
         typealias S = LoomTheme.Sidebar
-        #expect(S.cardMarkSide == 14 && LoomTheme.Layout.harnessMarkRow == 12)
+        #expect(S.cardMarkSide == 14 && S.cardHarnessMark == 11 && LoomTheme.Layout.harnessMarkRow == 12)
         #expect(S.cardTopHeight == 18 && S.cardTitleHeight == 20 && S.cardMetaHeight == 16)
     }
 
