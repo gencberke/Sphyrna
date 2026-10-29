@@ -722,7 +722,7 @@ struct ChangesModelTests {
         var sent: [String] = []
         model.changes.sendOverride = { text, _ in sent.append(text) }
         // No Chat host and no driver: this session is a terminal session.
-        #expect(model.changesSendAvailability(for: f.id) == .notChat)
+        #expect(model.changesSendAvailability(for: f.id) == .unavailable)
         await model.sendChangeComments(for: f.id)
         #expect(sent.isEmpty && session.comments(in: .lastTurn).count == 1, "nothing went out, nothing was lost")
         #expect(session.currentState.data?.files.count == 1, "the diffs still show")

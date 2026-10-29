@@ -26,9 +26,19 @@ struct ChangesTab: View {
         .onChange(of: row.indicator, initial: true) { _, indicator in
             model.noteChangesIndicator(indicator, for: row.id)
         }
+        // Whether this run takes the comments (F11): asked again for a new run, a native session or a status change.
+        .task(id: ChangesReceiverKey(run: row.live?.runID, conversation: row.live?.conversationID, indicator: row.indicator)) {
+            await model.refreshChangesReceiver(for: row.id)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("inspector-changes")
     }
+}
+
+private struct ChangesReceiverKey: Equatable {
+    var run: UUID?
+    var conversation: String?
+    var indicator: SessionIndicator
 }
 
 /// Last turn | Whole session | Branch.
@@ -304,7 +314,8 @@ private struct ChangesFileRow: View {
     }
 }
 
-/// "2 comments in 2 files", Discard and Send to Claude; shown while the scope has comments.
+/// "2 comments in 2 files", Discard and "Send to <harness>"; shown while the scope has comments. Send is there while
+/// something takes the comments: a Chat session, or a live terminal run with the session channel.
 private struct ChangesFooter: View {
     let model: CatalogModel
     let sessionID: UUID
@@ -314,7 +325,7 @@ private struct ChangesFooter: View {
         let comments = session.comments(in: session.scope)
         if !comments.isEmpty {
             let files = Set(comments.map(\.anchor.fileID)).count
-            let availability = model.changesSendAvailability(for: sessionID)
+            let sendTitle = model.changesSendTitle(for: sessionID)
             let sending = session.sendStatus == .sending
             VStack(alignment: .leading, spacing: LoomTheme.Changes.noteGap) {
                 HStack(spacing: LoomTheme.Changes.controlGap) {
@@ -325,15 +336,18 @@ private struct ChangesFooter: View {
                     Spacer(minLength: LoomTheme.Changes.controlGap)
                     Button("Discard") { model.discardChangeComments(in: sessionID) }
                         .buttonStyle(ControlButtonStyle(kind: .secondary)).disabled(sending)
-                    Button("Send to Claude") { Task { await model.sendChangeComments(for: sessionID) } }
-                        .buttonStyle(ControlButtonStyle(kind: .default))
-                        .disabled(availability != .ready || sending)
+                    if let sendTitle {
+                        Button(sendTitle) { Task { await model.sendChangeComments(for: sessionID) } }
+                            .buttonStyle(ControlButtonStyle(kind: .default))
+                            .disabled(session.sendStatus.holdsSend)
+                    }
                 }
-                if availability == .notChat {
-                    Text("Comments go to Claude in a Chat session").font(LoomTheme.Typography.caption)
-                        .foregroundStyle(LoomTheme.Text.secondaryStyle)
-                } else if case let .failed(message) = session.sendStatus {
+                if case let .failed(message) = session.sendStatus {
                     Text(verbatim: message).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Status.failureLight)
+                } else if let line = session.sendStatus.line {
+                    Text(verbatim: line).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                } else if let note = model.changesSendNote(for: sessionID) {
+                    Text(verbatim: note).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 }
             }
             .padding(LoomTheme.Changes.footerInset)

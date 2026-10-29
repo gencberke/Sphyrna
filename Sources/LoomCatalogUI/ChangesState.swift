@@ -133,19 +133,6 @@ struct ChangeComment: Equatable, Identifiable, Sendable {
     var text: String
 }
 
-/// The text one send carries: every comment of a scope as one plain-text message.
-enum ChangesMessage {
-    /// "Comments on the changes (<scope name>):", then one block per comment: `path:line`, the line quoted, the comment.
-    /// `comments` come in the order they should read; a line without a number (a notebook cell) names the file alone.
-    static func text(scopeName: String, comments: [ChangeComment]) -> String {
-        let blocks = comments.map { comment -> String in
-            let place = comment.anchor.line.map { "\(comment.displayPath):\($0)" } ?? comment.displayPath
-            return "\(place)\n> \(comment.anchor.text)\n\(comment.text)"
-        }
-        return (["Comments on the changes (\(scopeName)):"] + blocks).joined(separator: "\n\n")
-    }
-}
-
 /// The footer's wording: "2 comments in 2 files".
 enum ChangesFooterText {
     static func summary(comments: Int, files: Int) -> String {
@@ -156,7 +143,29 @@ enum ChangesFooterText {
 enum ChangesSendStatus: Equatable, Sendable {
     case idle
     case sending
+    /// In a terminal session's mailbox, waiting for its Ready edge and its `inbox` ("Sent · waiting for <title> to be ready").
+    case sent(UUID, title: String)
+    /// The terminal session read the comments.
+    case delivered
     case failed(String)
+
+    /// A send is under way or waits to be read: Send is off until it ends.
+    var holdsSend: Bool {
+        switch self {
+        case .sending, .sent: true
+        case .idle, .delivered, .failed: false
+        }
+    }
+
+    /// The footer's line under the buttons, nil when it has none.
+    var line: String? {
+        switch self {
+        case let .sent(_, title): "Sent · waiting for \(title) to be ready"
+        case .delivered: "Delivered"
+        case let .failed(message): message
+        case .idle, .sending: nil
+        }
+    }
 }
 
 /// The tab's holder for one session. In memory only: drafts are not kept across a relaunch.
@@ -177,6 +186,10 @@ final class SessionChanges {
     var composing: ChangeAnchor?
     var composingText = ""
     var sendStatus: ChangesSendStatus = .idle
+    /// The live terminal run the runtime said takes messages; Send is shown for that run only.
+    var messageRun: UUID?
+    /// Follows the last terminal send until it was read.
+    @ObservationIgnored var deliveryWatch: Task<Void, Never>?
     /// A turn ended while the tab was open: reads again.
     private(set) var revision = 0
 
