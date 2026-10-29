@@ -150,7 +150,8 @@ struct ConnectionsTests {
         await rig.model.settle()
         #expect(rig.claude.asks == asks.0, "off: not checked and not probed, even by Check Again")
         #expect(rig.codex.asks == asks.1 + 1, "the other harness is checked as before")
-        #expect(rig.model.healths.map(\.state) == [.disabled, .ready])
+        // AGY runs owned sessions too (f31d53d); off until it is switched on, it is never checked.
+        #expect(rig.model.healths.map(\.state) == [.disabled, .ready, .disabled])
 
         // A reload of the preferences: the switch is still off, and a new health model leaves Claude alone.
         let reread = UIPreferencesStore(url: url)

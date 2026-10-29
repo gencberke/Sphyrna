@@ -59,7 +59,8 @@ struct C3ConnectionsTests {
 
         model.setHarnessConnected(.agy, true)
         let enabledAgy = try row(.agy)
-        #expect(enabledAgy.availability == .on && enabledAgy.headline == "Found")
+        // AGY has a provider since its owned sessions (f31d53d): switched on, it is checked like the others.
+        #expect(enabledAgy.availability == .on && enabledAgy.headline == "Checking…" && rig.model.isChecking(.agy))
         #expect(model.homeConnect.cards.first { $0.id == .agy }?.action == nil)
         #expect(UIPreferencesStore(url: storeURL).current.isHarnessConnected(HarnessID.agy))
         #expect(!model.homeConnect.cards.first { $0.id == .agy }!.row.buildSupportsSessions)
