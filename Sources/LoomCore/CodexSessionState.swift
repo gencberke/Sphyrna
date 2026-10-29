@@ -60,8 +60,12 @@ public struct CodexSessionStatus: Equatable, Sendable {
     public var lastUsedAt: Date?
     public var lastEventAt: Date?
     public var lastAssistantMessage: String?
+    /// Retained even when a newer active thread determines the current UI state.
+    public var lastTurnOutcome: CodexTurnOutcome?
     public var pendingRequestCount: Int
     public var backgroundTerminalCount: Int
+    /// The provider's current thread status, independent of the last turn outcome.
+    public var nativeThreadStatus: CodexThreadStatus?
 
     public init(providerThreadID: String) {
         self.providerThreadID = providerThreadID
@@ -69,8 +73,10 @@ public struct CodexSessionStatus: Equatable, Sendable {
         lastUsedAt = nil
         lastEventAt = nil
         lastAssistantMessage = nil
+        lastTurnOutcome = nil
         pendingRequestCount = 0
         backgroundTerminalCount = 0
+        nativeThreadStatus = nil
     }
 }
 
@@ -98,6 +104,7 @@ public actor CodexEventStateTracker {
         self.managedRunID = managedRunID
         minimumSequence = sequence
         currentStatus = CodexSessionStatus(providerThreadID: threadID)
+        currentStatus.nativeThreadStatus = initialStatus
         if let initialStatus {
             switch initialStatus {
             case .idle: currentStatus.activity = .atPrompt
@@ -134,6 +141,24 @@ public actor CodexEventStateTracker {
         currentStatus.lastEventAt = receivedAt
         currentStatus.lastUsedAt = snapshot.lastTurnStartedAt ?? currentStatus.lastUsedAt
         currentStatus.lastAssistantMessage = snapshot.lastAssistantMessage
+        if let outcome = snapshot.lastTurnOutcome { currentStatus.lastTurnOutcome = outcome }
+        currentStatus.nativeThreadStatus = snapshot.status
+        // A completed older turn is not the current activity when the native
+        // thread says that a newer turn is still running or waiting.
+        if case let .active(flags) = snapshot.status {
+            if flags.contains(.waitingOnApproval) { currentStatus.activity = .waitingForApproval }
+            else if flags.contains(.waitingOnUserInput) { currentStatus.activity = .waitingForInput }
+            else { currentStatus.activity = .working }
+            return .applied
+        }
+        if case .systemError = snapshot.status {
+            currentStatus.activity = .failed("systemError")
+            return .applied
+        }
+        if case .notLoaded = snapshot.status {
+            currentStatus.activity = .unknown
+            return .applied
+        }
         guard let outcome = snapshot.lastTurnOutcome else {
             currentStatus.activity = .turnComplete
             return .applied
@@ -198,6 +223,7 @@ public actor CodexEventStateTracker {
     private func reduce(_ event: CodexAppServerEvent, receivedAt: Date) {
         switch event {
         case let .threadStatusChanged(_, status):
+            currentStatus.nativeThreadStatus = status
             switch status {
             case .notLoaded: currentStatus.activity = .unknown
             case .idle: currentStatus.activity = .turnComplete
@@ -213,9 +239,11 @@ public actor CodexEventStateTracker {
             case .unknown: currentStatus.activity = .unknown
             }
         case .turnStarted:
+            currentStatus.nativeThreadStatus = .active([])
             currentStatus.activity = .working
             currentStatus.lastUsedAt = receivedAt
         case let .turnCompleted(_, _, outcome, message):
+            currentStatus.lastTurnOutcome = outcome
             currentStatus.lastAssistantMessage = message
             switch outcome {
             case .completed: currentStatus.activity = .turnComplete
@@ -224,6 +252,7 @@ public actor CodexEventStateTracker {
             case .unknown: currentStatus.activity = .unknown
             }
         case let .error(_, _, message, willRetry):
+            currentStatus.nativeThreadStatus = nil
             currentStatus.activity = willRetry ? .working : .failed(message)
         case let .serverRequestResolved(_, requestID):
             for sequence in pendingRequestSequences.filter({ $0.value == requestID }).keys {

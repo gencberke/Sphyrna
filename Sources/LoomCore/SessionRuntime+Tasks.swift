@@ -128,10 +128,24 @@ extension SessionRuntime {
               let work else { return .unknown }
         if let server = runs[binding.managedRunID]?.server, !server.requests.isEmpty { return .waitingForUser }
         switch work.activity {
-        case .atPrompt, .turnComplete: return work.pendingProviderWorkCount == 0 ? .ready : .working
+        case .atPrompt, .turnComplete, .failed:
+            guard work.pendingProviderWorkCount == 0 else { return .working }
+            if runs[binding.managedRunID]?.provider == .codex {
+                // Current native idle, not a completed or failed older turn,
+                // is the authority for admitting another input.
+                guard let native = await harnesses.codex.adapter.status(sessionID: binding.sessionID),
+                      native.providerThreadID == binding.nativeSessionID, native.nativeThreadStatus == .idle,
+                      await supervisor.taskBinding(for: plan.claim) == binding,
+                      taskRunPlans[binding.sessionID]?.lease === plan.lease,
+                      plan.lease.permits(revision: revision), !shuttingDown,
+                      runs[binding.managedRunID]?.server?.requests.isEmpty == true else { return .unknown }
+                return .ready
+            }
+            if case .failed = work.activity { return .unknown }
+            return .ready
         case .working: return .working
         case .waitingForApproval, .waitingForInput: return .waitingForUser
-        case .unknown, .failed, .sessionEnded: return .unknown
+        case .unknown, .sessionEnded: return .unknown
         }
     }
 

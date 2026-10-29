@@ -483,13 +483,18 @@ public actor CodexAppServerClient {
 
     /// Interrupt only the named native turn. Callers must first prove its
     /// relationship to the still-current owned task round.
-    func interruptTaskTurn(threadID: String, turnID: String, timeout: TimeInterval = 20) async throws {
+    @discardableResult
+    func interruptTaskTurn(threadID: String, turnID: String, transaction: TerminalWriteTransaction? = nil,
+                           timeout: TimeInterval = 20) async throws -> Bool {
         guard Self.validTaskIdentifier(threadID), Self.validTaskIdentifier(turnID) else {
             throw CodexAppServerError.protocolViolation("invalid task turn identity")
         }
-        _ = try await request(method: "turn/interrupt", params: .object([
-            "threadId": .string(threadID), "turnId": .string(turnID),
-        ]), timeout: timeout)
+        do {
+            _ = try await request(method: "turn/interrupt", params: .object([
+                "threadId": .string(threadID), "turnId": .string(turnID),
+            ]), timeout: timeout, taskTransaction: transaction)
+            return true
+        } catch CodexTaskSendError.deferred { return false }
     }
 
     private static func validTaskIdentifier(_ value: String) -> Bool {

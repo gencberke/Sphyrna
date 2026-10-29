@@ -2,6 +2,16 @@ import Foundation
 import Testing
 @testable import LoomCore
 
+private extension SessionRuntime {
+    func injectActiveNativeSnapshotForTaskTest(_ binding: SessionTaskBinding) async throws {
+        let sequence = await runs[binding.managedRunID]?.server?.client?.latestSequence() ?? 0
+        let snapshot = CodexThreadSnapshot(threadID: binding.nativeSessionID, lastTurnID: nil, lastTurnStartedAt: nil,
+            lastTurnOutcome: nil, lastAssistantMessage: nil, isActive: true, status: .active([]))
+        _ = try await harnesses.codex.adapter.refresh(snapshot, runID: binding.managedRunID,
+                                                      after: sequence + 100, backgroundTerminalCount: 0)
+    }
+}
+
 @Suite(.serialized, .processHeavy, .timeLimit(.minutes(1)))
 struct SessionTaskRuntimeStatusTests {
     @Test func nativeStatusTracksOnlyTheOwnedLiveRunAndProviderReadiness() async throws {
@@ -36,4 +46,21 @@ struct SessionTaskRuntimeStatusTests {
         #expect(await host.nativeStatus(binding: stale) == .unknown)
         #expect((await context.runtime.shutdown()).succeeded)
     }
+
+    @Test func codexReadinessRequiresNativeIdleWhenTheWorkSummaryDisagrees() async throws {
+        let context = try await SessionRuntimeTests.makeContext()
+        defer { context.cleanup() }
+        do {
+            let launch = try await context.runtime.startConversation(provider: .codex, projectID: nil)
+            let claim = try #require(await context.runtime.taskRunPlans[launch.sessionID]?.claim)
+            let binding = try #require(await context.runtime.authenticateTaskRun(claim))
+            let host = SessionTaskRuntimeHost(runtime: context.runtime)
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await host.nativeStatus(binding: binding) == .ready })
+            try await context.runtime.injectActiveNativeSnapshotForTaskTest(binding)
+            #expect(await context.supervisor.providerWorkState(sessionID: launch.sessionID)?.activity == .working)
+            #expect(await host.nativeStatus(binding: binding) != .ready)
+        } catch { Issue.record("native readiness fixture failed: \(error)") }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
 }

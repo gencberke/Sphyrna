@@ -135,6 +135,72 @@ struct SessionTaskRoundIntegrationTests {
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
+    @Test func interruptUpdatesOnlyTheExactCodexRoundAndReusesItsChild() async throws {
+        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: [
+            "LOOM_FAKE_TASK_ROUNDS": "1", "LOOM_FAKE_CODEX_JOIN": "blank", "LOOM_FAKE_TASK_HOLD_FIRST": "1"
+        ], claudeVersion: "2.0.0")
+        defer { context.cleanup() }
+        var trackedTask: UUID?, trackedClaim: SessionTaskClaim?, trackedChild: UUID?
+        do {
+            let folder = context.root.appendingPathComponent("interrupt-task-round", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let project = try await context.catalog.addProject(path: folder.path).project
+            let parentScreen = SessionRuntimeTests.Screen()
+            let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id, outputSink: parentScreen)
+            parentScreen.attach(parent.terminal)
+            let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+            trackedClaim = claim
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+            let taskID = UUID(), operationID = UUID()
+            trackedTask = taskID
+            try await parentScreen.send("/fake-sphyrna-task-create \(taskID.uuidString) \(operationID.uuidString) codex")
+            #expect(await parentScreen.contains("FAKE-TASK-CREATE-OK"))
+            let coordinator = try #require(await context.runtime.taskCoordinator)
+            let socket = try #require(await context.runtime.taskSocketPath)
+            let childScreen = SessionRuntimeTests.Screen(), gate = context.runtime.inputGate
+            let child = try await context.runtime.approveOpenRequest(taskID, outputSink: childScreen, expectedProvider: .codex,
+                onTerminalReady: { launch in
+                    childScreen.attach(launch.terminal)
+                    gate.register(runID: launch.runID, queue: TerminalInputQueue(endpoint: launch.terminal, onError: { _ in }))
+                })
+            trackedChild = child.runID
+            #expect(try await SessionRuntimeTests.waitUntil(4) {
+                let status = try await coordinator.status(taskID: taskID, parent: claim)
+                return status.activeRound != nil && status.nativeStatus == .working
+            })
+            let initial = try await coordinator.status(taskID: taskID, parent: claim)
+            let round = try #require(initial.activeRound?.id), nextOperation = UUID()
+            let interrupt = try Self.helper(["interrupt", "--task", taskID.uuidString, "--round", round.uuidString,
+                "--operation", UUID().uuidString, "--next-operation", nextOperation.uuidString, "--message", "-"],
+                claim: claim, socket: socket, input: "fixture-round-2")
+            let payload = try #require(try JSONSerialization.jsonObject(with: Data(interrupt.1.utf8)) as? [String: Any])
+            #expect(interrupt.0 == 0 && (payload["receipt"] as? [String: Any])?["delivery"] as? String == "verified")
+            let result = try await Self.waitForEvent(task: taskID, coordinator: coordinator, claim: claim, socket: socket, cursor: 0)
+            #expect(result.1 == "fixture-result: fixture-round-2" && result.0 != round)
+            let after = try await coordinator.status(taskID: taskID, parent: claim)
+            #expect(after.task.childSessionID == child.sessionID && after.task.childBinding?.managedRunID == child.runID)
+            let old = try await coordinator.interruptAndUpdate(taskID: taskID, parent: claim, roundID: round,
+                operationID: UUID(), nextOperationID: UUID(), message: "must not run")
+            #expect(old.delivery == .alreadySettled)
+            let methods = (try? String(contentsOf: context.state.appendingPathComponent("codex-methods.log"), encoding: .utf8)) ?? ""
+            #expect(methods.split(separator: "\n").filter { $0 == "turn/interrupt" }.count == 1)
+            #expect(try await context.runtime.stopConversation(sessionID: child.sessionID).succeeded)
+            #expect(try await context.runtime.stopConversation(sessionID: parent.sessionID).succeeded)
+        } catch {
+            let status: SessionTaskStatus?
+            if let taskID = trackedTask, let claim = trackedClaim, let coordinator = await context.runtime.taskCoordinator {
+                status = try? await coordinator.status(taskID: taskID, parent: claim)
+            } else { status = nil }
+            let expected: SessionTaskExpectedInput?
+            if let run = trackedChild { expected = await context.runtime.taskExpectedInputs[run] } else { expected = nil }
+            let methods = (try? String(contentsOf: context.state.appendingPathComponent("codex-methods.log"), encoding: .utf8)) ?? ""
+            let turns = methods.split(separator: "\n").filter { $0 == "turn/start" }.count
+            let interrupts = methods.split(separator: "\n").filter { $0 == "turn/interrupt" }.count
+            Issue.record("exact task interrupt fixture failed: \(error); lifecycle=\(String(describing: status?.task.lifecycle)), native=\(String(describing: status?.nativeStatus)), pending=\(String(describing: status?.pendingRound?.phase)), active=\(String(describing: status?.activeRound?.phase)), observed=\(String(describing: expected?.observed)), receipt=\(String(describing: expected?.expectedNativeTurn)), turns=\(turns), interrupts=\(interrupts)")
+        }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
     @Test(arguments: [ManagedSession.Provider.claude, .codex])
     func threeRoundsUseOneOwnedChildAndItsRealHelperInBothDirections(parentProvider: ManagedSession.Provider) async throws {
         var environment = ["LOOM_FAKE_TASK_ROUNDS": "1"]

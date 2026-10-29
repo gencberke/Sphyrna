@@ -28,4 +28,33 @@ struct SessionTaskCodexInitialStatusTests {
                                               initialStatus: .active([.waitingOnUserInput]))
         #expect(await question.status().activity == .waitingForInput)
     }
+
+    @Test func nativeIdleRemainsDistinctFromTheInterruptedTurnOutcome() async throws {
+        let run = UUID()
+        let tracker = CodexEventStateTracker(threadID: "native", managedRunID: run, after: 0, initialStatus: .idle)
+        #expect(await tracker.receive(.event(sequence: 1, .turnStarted(threadID: "native", turnID: "turn")), for: run) == .applied)
+        #expect(await tracker.status().nativeThreadStatus == .active([]))
+        #expect(await tracker.receive(.event(sequence: 2, .turnCompleted(threadID: "native", turnID: "turn",
+                                                                         outcome: .interrupted, lastAssistantMessage: nil)), for: run) == .applied)
+        #expect(await tracker.status().activity == .failed("interrupted"))
+        #expect(await tracker.status().nativeThreadStatus == .active([]))
+        let snapshot = CodexThreadSnapshot(threadID: "native", lastTurnID: "turn", lastTurnStartedAt: nil,
+            lastTurnOutcome: .interrupted, lastAssistantMessage: nil, isIdle: true, status: .idle)
+        #expect(await tracker.refresh(snapshot, after: 3) == .applied)
+        #expect(await tracker.status().activity == .failed("interrupted"))
+        #expect(await tracker.status().nativeThreadStatus == .idle)
+        #expect(await tracker.status().lastTurnOutcome == .interrupted)
+        let withoutOutcome = CodexThreadSnapshot(threadID: "native", lastTurnID: nil, lastTurnStartedAt: nil,
+            lastTurnOutcome: nil, lastAssistantMessage: nil, isActive: true, status: .active([]))
+        #expect(await tracker.refresh(withoutOutcome, after: 4) == .applied)
+        let retained = await tracker.status()
+        #expect(retained.activity == .working && retained.lastTurnOutcome == .interrupted)
+        let active = CodexThreadSnapshot(threadID: "native", lastTurnID: "turn", lastTurnStartedAt: nil,
+            lastTurnOutcome: .failed("earlier failure"), lastAssistantMessage: nil,
+            isActive: true, status: .active([]))
+        #expect(await tracker.refresh(active, after: 5) == .applied)
+        #expect(await tracker.status().activity == .working)
+        #expect(await tracker.status().lastTurnOutcome == .failed("earlier failure"))
+    }
+
 }

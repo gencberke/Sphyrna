@@ -3,6 +3,10 @@ import Foundation
 import Testing
 @testable import LoomCore
 
+private extension SessionRuntime {
+    func codexSocketForTest(runID: UUID) -> String? { runs[runID]?.server?.socket }
+}
+
 private actor RuntimeCodexSetupGate {
     private var continuation: CheckedContinuation<Void, Never>?
     private(set) var installations = 0
@@ -64,6 +68,11 @@ struct SessionRuntimeCodexTests {
         return (launch, screen)
     }
 
+    static func serverSocket(_ context: RuntimeContext, runID: UUID) async throws -> URL {
+        let path = try #require(await context.runtime.codexSocketForTest(runID: runID))
+        return URL(fileURLWithPath: path)
+    }
+
     static func project(_ context: RuntimeContext, _ name: String) async throws -> CatalogProject {
         let folder = context.root.appendingPathComponent(name, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -94,9 +103,7 @@ struct SessionRuntimeCodexTests {
         let context = try await SessionRuntimeTests.makeContext()
         defer { context.cleanup() }
         let (launch, _) = try await Self.launchCodex(context)
-        let entries = try FileManager.default.contentsOfDirectory(at: context.socketDirectory,
-            includingPropertiesForKeys: nil).filter { $0.lastPathComponent.hasPrefix("c-") }
-        let path = try #require(entries.first)
+        let path = try await Self.serverSocket(context, runID: launch.runID)
         try FileManager.default.removeItem(at: path)
         try "foreign replacement".write(to: path, atomically: true, encoding: .utf8)
         let stop = try await context.runtime.stopConversation(sessionID: launch.sessionID)
@@ -111,9 +118,7 @@ struct SessionRuntimeCodexTests {
         let context = try await SessionRuntimeTests.makeContext(extraEnvironment: ["LOOM_FAKE_CODEX_LEAVE_SOCKET": "1"])
         defer { context.cleanup() }
         let (launch, _) = try await Self.launchCodex(context)
-        let entries = try FileManager.default.contentsOfDirectory(at: context.socketDirectory,
-            includingPropertiesForKeys: nil).filter { $0.lastPathComponent.hasPrefix("c-") }
-        let path = try #require(entries.first)
+        let path = try await Self.serverSocket(context, runID: launch.runID)
         #expect(FileManager.default.fileExists(atPath: path.path))
         #expect(try await context.runtime.stopConversation(sessionID: launch.sessionID).succeeded)
         #expect(!FileManager.default.fileExists(atPath: path.path))
@@ -131,8 +136,7 @@ struct SessionRuntimeCodexTests {
         } else {
             #expect(await screen.contains("CODEX-TURN-DONE completed echo work 5"))
         }
-        let path = try #require(try FileManager.default.contentsOfDirectory(at: context.socketDirectory,
-            includingPropertiesForKeys: nil).first { $0.lastPathComponent.hasPrefix("c-") })
+        let path = try await Self.serverSocket(context, runID: launch.runID)
         let result = await context.runtime.shutdown()
         if !result.succeeded { print("Abnormal socket Quit errors: \(result.errors)") }
         #expect(result.succeeded)

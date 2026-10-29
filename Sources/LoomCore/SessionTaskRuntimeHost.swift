@@ -207,7 +207,9 @@ final class SessionTaskRuntimeHost: SessionTaskHost, @unchecked Sendable {
         await runtime?.submitTaskInput(intent) ?? .unknown
     }
     func wakeIfReady(_ intent: SessionTaskWakeIntent) async -> SessionTaskEffect { .deferred }
-    func interrupt(_ target: SessionTaskRoundTarget) async -> SessionTaskEffect { .unknown }
+    func interrupt(_ target: SessionTaskRoundTarget) async -> SessionTaskEffect {
+        await runtime?.interruptTaskRound(target) ?? .unknown
+    }
     func stopChild(taskID: UUID, binding: SessionTaskBinding) async -> SessionTaskEffect {
         await runtime?.stopTaskChild(taskID: taskID, childSessionID: binding.sessionID, binding: binding) ?? .unknown
     }

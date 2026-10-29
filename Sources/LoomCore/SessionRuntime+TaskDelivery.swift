@@ -327,6 +327,58 @@ extension SessionRuntime {
         taskExpectedInputs[binding.managedRunID] = nil
     }
 
+    /// A Codex interrupt addresses only the native turn proved for this task
+    /// round. The replacement remains queued until the same child is Ready.
+    func interruptTaskRound(_ target: SessionTaskRoundTarget) async -> SessionTaskEffect {
+        let binding = target.binding
+        guard !shuttingDown, let coordinator = taskCoordinator,
+              let task = try? await coordinator.projectionForUser(taskID: target.taskID),
+              task.lifecycle == .revoked, task.childBinding == binding,
+              let reservation = taskChildReservations[target.taskID],
+              let parentPlan = taskRunPlans[task.parentSessionID], let childPlan = taskRunPlans[binding.sessionID],
+              parentPlan.claim.managedRunID == task.parentBinding.managedRunID,
+              parentPlan.claim.generation == task.parentBinding.generation,
+              childPlan.claim.managedRunID == binding.managedRunID, childPlan.claim.generation == binding.generation,
+              await authenticateTaskRun(reservation.parent) == task.parentBinding,
+              let turn = target.nativeTurnID,
+              await taskInputObservation(purpose: .child(taskID: target.taskID, roundID: target.roundID,
+                                                         operationID: target.inputOperationID), binding: binding) == .nativeTurn(turn),
+              await taskNativeStatus(binding) == .working,
+              let record = runs[binding.managedRunID], record.provider == .codex,
+              let client = record.server?.client,
+              let ticket = inputGate.reserveAutomaticInput(runID: binding.managedRunID) else { return .unknown }
+        guard let parentRevision = parentPlan.lease.admit({ $0 }), let childRevision = childPlan.lease.admit({ $0 }),
+              await supervisor.taskBinding(for: childPlan.claim) == binding,
+              taskRunPlans[task.parentSessionID]?.lease === parentPlan.lease,
+              taskRunPlans[binding.sessionID]?.lease === childPlan.lease,
+              parentPlan.lease.permits(revision: parentRevision), childPlan.lease.permits(revision: childRevision) else {
+            inputGate.releaseReservedAutomatic(runID: binding.managedRunID, ticket: ticket)
+            return .unknown
+        }
+        let gate = inputGate
+        do {
+            let accepted = try await client.interruptTaskTurn(threadID: binding.nativeSessionID, turnID: turn,
+                transaction: { write in
+                    try parentPlan.lease.withOptionalAdmission(revision: parentRevision) {
+                        try childPlan.lease.withOptionalAdmission(revision: childRevision) {
+                            try gate.writeReservedAutomatic(runID: binding.managedRunID, ticket: ticket, write) ?? 0
+                        }
+                    }
+                })
+            guard accepted else {
+                inputGate.releaseReservedAutomatic(runID: binding.managedRunID, ticket: ticket)
+                return .deferred
+            }
+            // The interrupt is an RPC, not text in the composer. A concurrent
+            // user edit still prevents this from reopening the input gate.
+            _ = inputGate.confirmAutomaticInput(runID: binding.managedRunID, ticket: ticket)
+            return .verified
+        } catch {
+            inputGate.releaseReservedAutomatic(runID: binding.managedRunID, ticket: ticket)
+            return .unknown
+        }
+    }
+
     func stopTaskChild(taskID: UUID, childSessionID: UUID, binding: SessionTaskBinding?) async -> SessionTaskEffect {
         guard var context = taskLaunchContexts[taskID], context.childID == childSessionID else { return .unknown }
         context.stopRequested = true

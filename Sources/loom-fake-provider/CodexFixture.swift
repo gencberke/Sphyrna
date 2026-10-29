@@ -723,6 +723,10 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
                     "type": "userMessage", "clientId": clientID.map { $0 as Any } ?? NSNull(),
                     "content": [["type": "text", "text": text, "text_elements": []]]
                 ]])
+                if text.hasPrefix("Sphyrna task:"), thread.turns.count == 1,
+                   ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_HOLD_FIRST"] == "1" {
+                    return // The test must interrupt this exact still-active turn.
+                }
                 let turnID = turn.id
                 DispatchQueue.global().async {
                     let isCreate = text.hasPrefix("/fake-sphyrna-task-create ")
