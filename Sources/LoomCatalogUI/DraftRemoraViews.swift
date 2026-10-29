@@ -2,7 +2,7 @@ import LoomCore
 import SwiftUI
 
 // Remora's brief on the new-session page (DESIGN §8, D-80): the row under the presets and the line above the composer. The row's
-// click is the page's one call of the model's Draft Brief API (`RemoraReachTests` counts it here). Nothing here sends: the brief
+// click is the page's one call of the model's Draft Brief API (`check-source-guards.py` counts it here). Nothing here sends: the brief
 // lands in a draft's text, a new draft when the user's has text of its own (`CatalogModel.landRemoraDraft`), and only the
 // composer's own ↵ starts the session.
 

@@ -5,7 +5,7 @@ import SwiftUI
 // one presenter. Settings uses it now (Full Access, Delete); the main window's sheets move onto it with I6b.
 //
 // The family takes its keys through its own key handling (`onKeyPress`), never through a default or cancel action, an exit command or
-// a submit action: over the chat those would meet the composer's keys (`PinnedFixRoundTests`), and `InkSettingsSheetTests.theSheetFamilyBindsNoDefaultCancelExitOrSubmitKey`
+// a submit action: over the chat those would meet the composer's keys (`PinnedFixRoundTests`), and `check-source-guards.py`
 // pins it over this file.
 
 // MARK: Rules

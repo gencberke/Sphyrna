@@ -4,7 +4,7 @@ import LoomRemora
 
 /// ⌘K's door to Remora (DESIGN §20 "⌘K"; SPEC §10.5): when what is typed reads as a question, Ask Remora heads the palette with its
 /// scope, ⇥ and ↵. The rules here are plain values; the palette's state (`PaletteState`) keeps the scope and the question asked, and
-/// the one call is in `PaletteRemoraCalls` (`RemoraReachTests` counts it). Nothing is called while typing.
+/// the one call is in `PaletteRemoraCalls` (`check-source-guards.py` counts it). Nothing is called while typing.
 
 // MARK: Reads as a question
 
@@ -181,7 +181,7 @@ enum PaletteRemoraText {
 
 // MARK: The call
 
-/// The palette's one call into the model's Remora API (`RemoraReachTests` counts it): ↵ on Ask Remora.
+/// The palette's one call into the model's Remora API (`check-source-guards.py` counts it): ↵ on Ask Remora.
 @MainActor
 enum PaletteRemoraCalls {
     @discardableResult

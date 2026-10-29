@@ -5,7 +5,7 @@ import LoomRemora
 import Observation
 import SwiftUI
 
-/// Home's calls into the model's Remora API, all in this file (`RemoraReachTests` counts them): the automatic brief when Home shows,
+/// Home's calls into the model's Remora API, all in this file (`check-source-guards.py` counts them): the automatic brief when Home shows,
 /// Catch Me Up (and Catch Me Up Anyway, and Try Again), and a question from the field. Nothing here runs by itself: each is called
 /// from a view's task or a button.
 @MainActor

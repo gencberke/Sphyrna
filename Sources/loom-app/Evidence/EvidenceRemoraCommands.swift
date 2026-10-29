@@ -4,7 +4,7 @@ import Foundation
 import LoomCatalogUI
 
 /// Remora's glue (L3b): the calls the field and the buttons make, the fake provider's script, and the numbers the snapshot carries.
-/// Every call of the model's Remora API written here counts in `RemoraReachTests`.
+/// Every call of the model's Remora API written here counts in `scripts/check-source-guards.py`.
 ///
 /// - `remora-script:<json>`: writes `remora-fixture.json` into the run's own Claude config folder (`answer`, `mode`, `delayMs`, `chips`,
 ///   `drafts`, `facts`). Refused unless the run uses `--fake-providers` and that folder is inside the run's data root
