@@ -68,6 +68,8 @@ struct HarnessCapabilitiesTests {
         // The explicit bridge from neutral choices to the frozen Claude launch profile.
         "Sources/LoomCore/HarnessLaunchChoices.swift",
         "Sources/LoomCore/ProviderResume.swift",
+        // AGY's invocation builder validates its own neutral launch choices.
+        "Sources/LoomCore/AgyLaunchProfile.swift",
         "Sources/loom-app/Evidence/AppDelegate+Evidence.swift",
         "Sources/loom-app/Evidence/EvidenceCatalogCommands.swift",
     ]
