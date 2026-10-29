@@ -28,6 +28,7 @@
 | `wt/r9-tests` | `slice/r9-tests` (first stop integrated, `0e4ff16`) | running: the test revision's step 5 (D-119), session `test-infra-review` |
 | `wt/r9-d2x` | `slice/r9-d2x` from `bd55e63` | running (D-120): D2's Codex deletion through an owned endpoint, under D-121 |
 | `wt/r9-acc` | `slice/r9-acc` from `1beb330` | running (D-120): the first live acceptance (ordinary Claude, Claude↔Codex child over 3 rounds, Changes→session) and its repeatable driver under `scripts/acceptance/` |
+| `wt/r9-opt` | detached at `de810bb`, read-only | running: the closing `@optimizer` (D-06, two `strict-reviewer` passes on Opus 5.5 / max: LoomCore and helpers; UI and app), started early so its fixes fit the night; the late changes (deletion, acceptance fixes) get a delta pass at the end. Reports go to `evidence/r9/optimizer-closing/` |
 | (integrated) `r9-f2`, `r9-later`, `r9-i1` | merged into `v2` (`bc30467`, `10659fa`, `1beb330`) | F2: Changes comments reach a live terminal session through F1's mailbox; Coming later for opencode and agy (D-120 as built); I1: the run host reads Sphyrna Run Host, the title rule pinned (Claude `-n`; Codex has no start-time name), `evidence/r9/i1/MIGRATION.md` (no rename, D-123) |
 | (integrated) `r9-pool` | merged into `v2` | the three bounded waits on their own threads, plan limits at `.utility`; failing-first tests (`evidence/r9/pool/`) |
 | (removed) `r9-e1r`, `r9-e2n` | no commits | opencode and agy frozen for 1.8.0 (D-120). opencode: Sphyrna has no plain route yet; its native route works (`evidence/r9/e1r/`). agy: an owned `HOME` hides the keychain sign-in, and there is no config-folder flag; for later, its hook answers `PreToolUse` with allow, and its updater runs outside the process group (`evidence/r9/e2n/`). |
@@ -46,5 +47,5 @@ File locks: the test revision holds `Tests/**`, `Package.swift` (test targets an
   - Review and merge `r9-d2x` (D-121) and `r9-i1` (D-123) as they land.
   - Then the 1.8.0 acceptance on the integrated head (`plans/1.8.0/ACCEPTANCE.md`), with live cheap-model runs on Claude and Codex: ordinary sessions, the cross-harness child over 3 rounds, Changes→session, deletion, usage; resources (CPU, RAM, energy; D-92's budgets). Then the closing optimizer and its fixes, the docs audit, and the release steps of D-120.
 - **@implementer-core / @implementer-ink:** only through a new self-contained Brief from the planner; no autonomous retry or native/model run.
-- **@optimizer:** the closing full-app review is due after the acceptance runs.
+- **@optimizer:** the closing review is running on `wt/r9-opt` (`de810bb`); a delta pass on the final candidate covers what changed after it.
 - **@user (morning):** the rename to `Sphyrna.app` (D-123, `evidence/r9/i1/MIGRATION.md`); the hand checks of the release gate §4.6.
