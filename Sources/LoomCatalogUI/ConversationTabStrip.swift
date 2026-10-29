@@ -415,7 +415,9 @@ private struct TabOverflowButton: View {
                 }
             }
         } label: {
+            // An element, or the Menu leaves the accessibility tree with its hidden icon (ARCHITECTURE §12.1).
             InkIcon(.chevronDown, size: LoomTheme.Icon.tiny)
+                .accessibilityElement(children: .ignore)
         }
         .menuStyle(.button).buttonStyle(ChromeButtonStyle(size: CGSize(
             width: LoomTheme.TabStrip.overflowWidth, height: LoomTheme.TabStrip.sessionTabHeight)))

@@ -273,6 +273,31 @@ struct ConversationTabStripTests {
         if case .draft = fixture.model.destination {} else { Issue.record("not a draft: \(String(describing: fixture.model.destination))") }
     }
 
+    /// The chevron is a native menu whose label is only a hidden icon: it stays in the accessibility tree, a menu button named
+    /// "All tabs" (ARCHITECTURE §12.1).
+    @Test func theChevronIsAMenuButtonNamedAllTabs() async throws {
+        let fixture = try await makeFixture(rows: 10)
+        defer { cleanup(fixture) }
+        await fixture.model.start()
+        for id in fixture.ids { fixture.model.openTab(id) }
+        #expect(TabStripLayout(count: 10, width: 800).overflows)
+
+        enableAccessibilityTree()
+        let size = NSSize(width: 800, height: LoomTheme.TabStrip.height)
+        let hosting = NSHostingController(rootView: ConversationTabStrip(model: fixture.model).frame(width: 800, height: size.height))
+        hosting.sizingOptions = []
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentViewController = hosting
+        window.setContentSize(size)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        for _ in 0..<4 {
+            try await Task.sleep(for: .milliseconds(100))
+            window.contentView?.layoutSubtreeIfNeeded()
+        }
+        #expect(InkAX.menuButtonLabels(in: hosting.view) == ["All tabs"])
+    }
+
     // MARK: Fixture
 
     private struct Fixture {

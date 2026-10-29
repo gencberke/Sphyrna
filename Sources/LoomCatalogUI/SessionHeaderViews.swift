@@ -291,7 +291,10 @@ struct HeaderControlGroup<MenuItems: View>: View {
             Menu {
                 menuItems()
             } label: {
+                // InkIcon is hidden from accessibility; a native Menu whose label holds nothing else is left out of the
+                // tree. The element carries the Menu's own label (ARCHITECTURE §12.1).
                 InkIcon(.more).frame(width: LoomTheme.Header.menuSegmentWidth)
+                    .accessibilityElement(children: .ignore)
             }
             .menuStyle(.button).buttonStyle(HeaderSegmentStyle(secondaryUntilHovered: true))
             .menuIndicator(.hidden).fixedSize().focusEffectDisabled()

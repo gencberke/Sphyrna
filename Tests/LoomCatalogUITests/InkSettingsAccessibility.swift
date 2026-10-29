@@ -20,6 +20,21 @@ enum InkAX {
         element.accessibilityFrame()
     }
 
+    /// The names of the native menus under `view` (role `AXMenuButton`): a menu's own label reads as its title or its label,
+    /// either of them possibly an attributed string; "" for a menu with neither.
+    static func menuButtonLabels(in view: NSView) -> [String] {
+        accessibilityElements(in: view).compactMap { element in
+            let role: Any? = element.accessibilityRole?()
+            guard (role as? NSAccessibility.Role) == .menuButton else { return nil }
+            let names = ["accessibilityTitle", "accessibilityLabel"].compactMap { selector -> String? in
+                guard element.responds(to: NSSelectorFromString(selector)) else { return nil }
+                let name = element.perform(NSSelectorFromString(selector))?.takeUnretainedValue()
+                return (name as? String) ?? (name as? NSAttributedString)?.string
+            }
+            return names.first { !$0.isEmpty } ?? ""
+        }
+    }
+
     /// Whether the element holds the accessibility focus (SwiftUI's focus follows it).
     static func isFocused(_ element: AnyObject) -> Bool {
         (element.accessibilityAttributeValue?(NSAccessibility.Attribute(rawValue: "AXFocused")) as? Bool) ?? false
