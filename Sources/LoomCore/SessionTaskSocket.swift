@@ -34,10 +34,14 @@ final class SessionTaskSocket: @unchecked Sendable {
         source.setCancelHandler {
             Darwin.close(fd)
             var current = stat()
-            if lstat(path, &current) == 0, current.st_uid == geteuid(),
-               current.st_mode & mode_t(S_IFMT) == mode_t(S_IFSOCK),
-               current.st_dev == device, current.st_ino == inode { unlink(path) }
-            closed.finish()
+            let found = lstat(path, &current)
+            let verified: Bool
+            if found != 0 { verified = errno == ENOENT }
+            else if current.st_uid == geteuid(), current.st_mode & mode_t(S_IFMT) == mode_t(S_IFSOCK),
+                    current.st_dev == device, current.st_ino == inode {
+                verified = unlink(path) == 0
+            } else { verified = false }
+            closed.finish(verified)
         }
         self.source = source
         source.resume()
@@ -60,9 +64,9 @@ final class SessionTaskSocket: @unchecked Sendable {
         for task in value.1 { task.cancel() }
     }
 
-    func stopAndWait() async {
+    func stopAndWait() async -> Bool {
         stop()
-        await closed.wait()
+        return await closed.wait()
     }
 
     private func acceptAvailable(_ fd: Int32) {
@@ -117,25 +121,25 @@ final class SessionTaskSocket: @unchecked Sendable {
 
 private final class SocketClosure: @unchecked Sendable {
     private let lock = NSLock()
-    private var finished = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    func finish() {
-        let pending: [CheckedContinuation<Void, Never>] = lock.withLock {
-            finished = true
+    private var result: Bool?
+    private var waiters: [CheckedContinuation<Bool, Never>] = []
+    func finish(_ verified: Bool) {
+        let pending: [CheckedContinuation<Bool, Never>] = lock.withLock {
+            result = verified
             let result = waiters
             waiters.removeAll()
             return result
         }
-        for waiter in pending { waiter.resume() }
+        for waiter in pending { waiter.resume(returning: verified) }
     }
-    func wait() async {
+    func wait() async -> Bool {
         await withCheckedContinuation { continuation in
-            let immediate = lock.withLock {
-                if finished { return true }
+            let immediate: Bool? = lock.withLock {
+                if let result { return result }
                 waiters.append(continuation)
-                return false
+                return nil
             }
-            if immediate { continuation.resume() }
+            if let immediate { continuation.resume(returning: immediate) }
         }
     }
 }

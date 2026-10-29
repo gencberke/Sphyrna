@@ -751,7 +751,7 @@ public actor SessionRuntime {
         taskReadFence?.stop()
         taskReadFence = nil
         await claudeLimitObserver?.cancelAll()
-        if let socket = taskSocket { await socket.stopAndWait() }
+        let taskSocketStopped = if let socket = taskSocket { await socket.stopAndWait() } else { true }
         taskSocket = nil
         taskSocketPath = nil
         await taskCoordinator?.finishProjectionUpdates()
@@ -777,7 +777,7 @@ public actor SessionRuntime {
         hookServer = nil
         hookTask?.cancel()
         hookTask = nil
-        var socketErrors: [String] = []
+        var socketErrors: [String] = taskSocketStopped ? [] : ["Task socket ownership or cleanup could not be verified"]
         var preparedSockets = Set<UUID>()
         for server in servers {
             _ = await server.teardownTask?.value

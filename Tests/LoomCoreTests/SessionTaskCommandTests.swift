@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import Testing
 @testable import LoomCore
 
@@ -11,6 +12,19 @@ private final class TaskWakeCounter: @unchecked Sendable {
 
 @Suite(.serialized, .processHeavy, .timeLimit(.minutes(1)))
 struct SessionTaskCommandTests {
+    @Test func taskSocketNeverUnlinksAReplacedNodeAndReportsUnverifiedCleanup() async throws {
+        let root = URL(fileURLWithPath: "/tmp/lt-\(UUID().uuidString.prefix(8))", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let path = root.appendingPathComponent("task.sock").path
+        let server = try SessionTaskSocket(path: path) { _ in Data() }
+        #expect(unlink(path) == 0)
+        try "owned test sentinel".write(toFile: path, atomically: true, encoding: .utf8)
+        #expect(!(await server.stopAndWait()))
+        #expect(try String(contentsOfFile: path, encoding: .utf8) == "owned test sentinel")
+    }
+
     private static func helper(_ args: [String], claim: SessionTaskClaim, socket: String,
                         input: String = "") throws -> (Int32, String, String) {
         let process = Process()

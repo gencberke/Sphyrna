@@ -12,7 +12,7 @@ extension SessionRuntime {
                 .appendingPathComponent("c-\(UUID().uuidString.prefix(8)).sock").path
             let router = SessionTaskWireRouter(coordinator: coordinator)
             let socket = try SessionTaskSocket(path: path, handler: router.handle)
-            guard !shuttingDown else { await socket.stopAndWait(); return }
+            guard !shuttingDown else { _ = await socket.stopAndWait(); return }
             taskCoordinator = coordinator
             taskSocketPath = path
             taskSocket = socket
