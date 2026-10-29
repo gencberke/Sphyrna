@@ -4,6 +4,7 @@ import SwiftUI
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// I4b: what needs a view, hosted in a window nobody sees (never ordered front): the sheet's place under the header, what is behind
 /// it hidden from VoiceOver, and what a switch and a checkbox tell assistive technologies. The scrim's click and the focus on Cancel

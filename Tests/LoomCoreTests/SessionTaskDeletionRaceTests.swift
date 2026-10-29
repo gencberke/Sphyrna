@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
+@testable import LoomCoreTestRigs
 
 private actor TaskDeletionRaceHost: SessionTaskHost {
     let parent: SessionTaskBinding
@@ -112,7 +113,7 @@ private struct TaskDeletionRaceFixture {
                                                         roundID: round, inputOperationID: operation) == "private task input")
         await fixture.host.holdNextStop()
         let deletion = Task { try await fixture.coordinator.forgetAfterVerifiedStop(sessionID: fixture.parent.sessionID) }
-        #expect(await SessionRuntimeTests.waitUntil(2) { await fixture.host.hasEnteredStop() })
+        #expect(await SessionRuntimeRig.waitUntil(2) { await fixture.host.hasEnteredStop() })
         await #expect(throws: SessionTaskError.staleRound) {
             _ = try await fixture.coordinator.childInput(taskID: second, child: fixture.childClaims[1],
                                                           roundID: round, inputOperationID: operation)
@@ -128,7 +129,7 @@ private struct TaskDeletionRaceFixture {
         try await fixture.create(task: original, child: fixture.childClaims[0])
         await fixture.host.holdNextOwnership()
         let creation = Task { try await fixture.create(task: late, child: fixture.childClaims[1]) }
-        #expect(await SessionRuntimeTests.waitUntil(2) { await fixture.host.hasEnteredOwnership() })
+        #expect(await SessionRuntimeRig.waitUntil(2) { await fixture.host.hasEnteredOwnership() })
         try await fixture.coordinator.forgetAfterVerifiedStop(sessionID: fixture.parent.sessionID)
         await fixture.host.releaseOwnership()
         await #expect(throws: SessionTaskError.unverified) { try await creation.value }

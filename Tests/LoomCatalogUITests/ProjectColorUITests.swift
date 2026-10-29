@@ -4,6 +4,7 @@ import SwiftUI
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// Project colours (D-48): the setting, what each surface decides to draw while it is on or off, the tab
 /// tint per state, and the contrast of every tone on the surfaces it sits on.

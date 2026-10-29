@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomRemora
+@testable import LoomRemoraTestRigs
 
 /// The real-CLI probe of Remora's call (off unless `LOOM_REAL_REMORA_PROBE` is set): the whole call (supervisor, argv,
 /// environment, stream, answer) against the installed `claude` with the isolated probe profile, on a synthetic workspace

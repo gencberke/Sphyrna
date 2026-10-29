@@ -3,6 +3,7 @@ import Observation
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// U5: the relative-time tick, the persisted window frame, and the start busy state
 /// (the busy state against a delayed toolchain is in `ConversationControllerTests`).

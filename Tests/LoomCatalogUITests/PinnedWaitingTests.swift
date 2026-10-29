@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// A request that waits for the user reaches every place that says so (V18): Home's Needs you, the sidebar's reason line and
 /// Active section, the Dock badge, the menu bar and the notifications, for the Chat face's requests and for Codex's, through

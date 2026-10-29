@@ -1,5 +1,6 @@
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 /// R4: the face policy's table: switch x structured host x harness -> the face of a start, a resume, an approved opening and
 /// whether a stopped session shows its structured face. The same cells as the face table of

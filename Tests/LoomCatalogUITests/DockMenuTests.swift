@@ -2,6 +2,7 @@ import Foundation
 @testable import LoomCore
 import Testing
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// W3-f: the Dock icon's menu, built from what the model holds: who has a request waiting, who is working, five of each at most,
 /// then New Claude Session.

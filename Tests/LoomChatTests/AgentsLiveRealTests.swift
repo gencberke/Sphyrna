@@ -3,6 +3,11 @@ import Foundation
 import Testing
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
+@testable import LoomChatTestRigs
+
+private typealias AgentsRig = AgentsLiveRealShared.AgentsRig
+private typealias AgentsRealAnchor = AgentsLiveRealShared.AgentsRealAnchor
 
 /// V23, against the user's real `claude` (Haiku) under the isolated profile: a foreground subagent whose command needs approval
 /// (the profile asks before `touch`) gives a request that names the subagent. Runs only when `LOOM_V23_REAL=1`, and only by the
@@ -22,106 +27,6 @@ import Testing
 @Suite(.serialized, .timeLimit(.minutes(6)),
        .enabled(if: ProcessInfo.processInfo.environment["LOOM_V23_REAL"] == "1"))
 struct AgentsLiveRealTests {
-    private static func log(_ line: String) {
-        let text = "[v23-real] \(line)"
-        print(text)
-        guard let folder = ProcessInfo.processInfo.environment["LOOM_V23_DIR"] else { return }
-        let url = URL(fileURLWithPath: folder, isDirectory: true).appendingPathComponent("real-agents.log")
-        if let handle = try? FileHandle(forWritingTo: url) {
-            handle.seekToEndOfFile()
-            handle.write(Data((text + "\n").utf8))
-            try? handle.close()
-        } else {
-            try? Data((text + "\n").utf8).write(to: url)
-        }
-    }
-
-    fileprivate static func capture(_ executable: String, _ arguments: [String], environment: [String: String]) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.environment = environment
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return String(decoding: data, as: UTF8.self)
-    }
-
-    @Test func v23ASubagentsRequestNamesTheSubagentAndTheHubCarriesItsAgentId() async throws {
-        let env = ProcessInfo.processInfo.environment
-        let config = URL(fileURLWithPath: try #require(env["LOOM_V23_CLAUDE_CONFIG"]), isDirectory: true)
-        let work = URL(fileURLWithPath: try #require(env["LOOM_V23_WORK"]), isDirectory: true)
-        #expect(work.path.hasPrefix("/private/tmp/loom-real/") && !work.path.hasPrefix(NSHomeDirectory()))
-        let existing = (try? FileManager.default.contentsOfDirectory(atPath: work.path)) ?? []
-        try #require(existing.filter { $0 != ".claude" }.isEmpty, "the work folder is not new")
-        // The project's own hook sees the permission request next to Loom's: it records the payload.
-        let hookLog = work.appendingPathComponent("hook-permission.jsonl")
-        let settings = work.appendingPathComponent(".claude/settings.json")
-        try FileManager.default.createDirectory(at: settings.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let hook = ["hooks": ["PermissionRequest": [["hooks": [["type": "command",
-                                                                   "command": "{ /bin/cat; /bin/echo; } >> \(hookLog.path)"]]]]]]
-        try JSONSerialization.data(withJSONObject: hook).write(to: settings)
-
-        let rig = try await AgentsRig.make(config: config, work: work)
-        let runtime = rig.runtime, supervisor = rig.supervisor
-        defer { rig.cleanup() }
-
-        let id = UUID()
-        let driver = ChatSessionDriver(sessionID: id, runtime: runtime, rewindStore: nil, readyTimeout: .seconds(30), onMoved: { _, _ in })
-        try await driver.startNew(projectID: nil, draft: NewSessionLaunch(
-            firstMessage: "", choices: ClaudeLaunchChoices(permissionMode: "default", model: "haiku")))
-
-        Self.log("model turn 1 of 3: a foreground subagent runs a command that needs approval")
-        try await driver.send("Use the Agent tool exactly once, with subagent_type general-purpose, and wait for it. The subagent must run "
-            + "exactly this Bash command and nothing else: touch v23-sub.txt . When it is back, reply with the single word: done")
-        var request: ChatPendingRequest?
-        let asked = await waitUntil(120) {
-            request = await driver.liveState().requests.first
-            return request != nil
-        }
-        let card = try #require(request)
-        Self.log("request arrived \(asked); kind \(card.kind), tool \(card.request.toolName), agent_id on the request \(card.request.agentID != nil)")
-        let agent = try #require(card.agent, "the request names no subagent")
-        Self.log("card names the subagent: type \(agent.type ?? "-"), name \(agent.name), has a description \(agent.description?.isEmpty == false)")
-        #expect(!agent.id.isEmpty && !agent.name.isEmpty)
-
-        // The hub's request carries the same agent id; the ledger (fed by the hooks) lists a running subagent with that id.
-        let state = try #require(await supervisor.events.snapshot().sessions[id])
-        let hubAgent = state.pendingRequests.first?.agent
-        let ledgerIDs = state.subagents.map(\.id)
-        Self.log("hub request agent id equals the request's \(hubAgent?.id == agent.id), hub name \(hubAgent?.name ?? "-"), "
-            + "ledger lists \(ledgerIDs.count) subagent(s), the asking one among them \(ledgerIDs.contains(agent.id)) (agent_id = task_id = hook agent_id)")
-        #expect(hubAgent?.id == agent.id)
-        #expect(ledgerIDs.contains(agent.id))
-
-        // Does the PermissionRequest hook's payload carry an agent id? (The project hook ran next to Loom's.)
-        let recorded = await waitUntil(15) { (try? String(contentsOf: hookLog, encoding: .utf8))?.contains("PermissionRequest") == true }
-        let payloads = ((try? String(contentsOf: hookLog, encoding: .utf8)) ?? "").split(separator: "\n")
-            .compactMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] }
-        let withAgent = payloads.filter { ($0["agent_id"] as? String)?.isEmpty == false }
-        Self.log("PermissionRequest hook payloads recorded \(payloads.count) (seen \(recorded)); key names \(Set(payloads.flatMap(\.keys)).sorted()); "
-            + "with agent_id \(withAgent.count); agent_id equals the request's \(withAgent.contains { ($0["agent_id"] as? String) == agent.id })")
-
-        try await driver.answer(requestID: card.requestID, .allowOnce)
-        let finished = await waitUntil(150) { await driver.snapshot().isIdle }
-        let snapshot = await driver.snapshot()
-        let runs = snapshot.model.entries.compactMap { entry -> SubagentRun? in
-            if case let .subagent(run) = entry.body { run } else { nil }
-        }
-        let touched = FileManager.default.fileExists(atPath: work.appendingPathComponent("v23-sub.txt").path)
-        Self.log("turn finished \(finished); subagent cards \(runs.count), status \(runs.first.map { "\($0.status)" } ?? "-"), "
-            + "agent id on the card equals the request's \(runs.first?.agentID == agent.id), the card kept words of its own \(runs.first?.latestProgress?.isEmpty == false), "
-            + "file made by the approved command \(touched)")
-        #expect(finished)
-        #expect(touched)
-        #expect(runs.first?.agentID == agent.id)
-        let report = await runtime.shutdown()
-        Self.log("shutdown succeeded \(report.succeeded)")
-    }
-
     /// Release C's real-Claude check, V23 in the foreground (one Haiku turn; the card is answered by the test, never a bypass).
     /// The prompt asks for a foreground subagent (`run_in_background` false) that first writes one sentence and then runs
     /// `touch`, which the profile asks about. While that card waits: the hub's request carries the subagent's `agent_id`, the
@@ -146,7 +51,7 @@ struct AgentsLiveRealTests {
         try await driver.startNew(projectID: nil, draft: NewSessionLaunch(
             firstMessage: "", choices: ClaudeLaunchChoices(permissionMode: "default", model: "haiku")))
 
-        Self.log("model turn 1 of 1: a foreground subagent writes one sentence, then runs a command that needs approval")
+        AgentsLiveRealShared.log("model turn 1 of 1: a foreground subagent writes one sentence, then runs a command that needs approval")
         try await driver.send("Use the Agent tool exactly once, with subagent_type general-purpose and run_in_background set to false, "
             + "so that it runs in the foreground and you wait for it. The subagent must first write one short sentence saying what it is "
             + "about to do, and then run exactly this Bash command and nothing else: touch v23-fg.txt . When it is back, reply with the "
@@ -157,7 +62,7 @@ struct AgentsLiveRealTests {
             return request != nil
         }
         let card = try #require(request, "no card arrived within 120 s")
-        Self.log("request arrived \(asked); kind \(card.kind), tool \(card.request.toolName), agent_id on the request \(card.request.agentID != nil)")
+        AgentsLiveRealShared.log("request arrived \(asked); kind \(card.kind), tool \(card.request.toolName), agent_id on the request \(card.request.agentID != nil)")
         func subagentRuns() async -> [SubagentRun] {
             await driver.snapshot().model.entries.compactMap { entry -> SubagentRun? in
                 if case let .subagent(run) = entry.body { run } else { nil }
@@ -174,28 +79,28 @@ struct AgentsLiveRealTests {
         let ledger = state.subagents
         let runs = await subagentRuns()
         let callHasResult = runs.first?.result != nil
-        Self.log("subagent cards \(runs.count); the Agent call already has a result \(callHasResult); "
+        AgentsLiveRealShared.log("subagent cards \(runs.count); the Agent call already has a result \(callHasResult); "
             + "ledger lists \(ledger.count), background flags \(ledger.map(\.isBackground))")
         if callHasResult || ledger.contains(where: \.isBackground) {
             let finding = "FINDING: the CLI launched the subagent in the background although the prompt asked for the foreground; "
                 + "the check stops here and sends nothing more"
-            Self.log(finding)
+            AgentsLiveRealShared.log(finding)
             Issue.record(Comment(rawValue: finding))
             return
         }
         let agent = try #require(card.agent, "the request names no subagent")
-        Self.log("card names the subagent: type \(agent.type ?? "-"), name \(agent.name), has a description \(agent.description?.isEmpty == false)")
+        AgentsLiveRealShared.log("card names the subagent: type \(agent.type ?? "-"), name \(agent.name), has a description \(agent.description?.isEmpty == false)")
         #expect(!agent.id.isEmpty && !agent.name.isEmpty)
 
         // While the card waits: the hub's request, the ledger, and the subagent's words.
         let hubAgent = state.pendingRequests.first?.agent
-        Self.log("hub request agent id equals the request's \(hubAgent?.id == agent.id), ledger lists the asking one \(ledger.map(\.id).contains(agent.id))")
+        AgentsLiveRealShared.log("hub request agent id equals the request's \(hubAgent?.id == agent.id), ledger lists the asking one \(ledger.map(\.id).contains(agent.id))")
         #expect(hubAgent?.id == agent.id)
         #expect(ledger.map(\.id).contains(agent.id))
         let words = await waitUntil(30) { (await subagentRuns()).first?.latestProgress?.isEmpty == false }
         let wordCount = (await subagentRuns()).first?.latestProgress?.count ?? 0
         let waitingNow = await driver.liveState().requests.first?.requestID == card.requestID
-        Self.log("the subagent's newest words are not empty \(words) (\(wordCount) characters); the card still waits \(waitingNow)")
+        AgentsLiveRealShared.log("the subagent's newest words are not empty \(words) (\(wordCount) characters); the card still waits \(waitingNow)")
         #expect(waitingNow, "the card went away before the check was done")
         #expect(words, "the subagent card has no words of its own while it works")
 
@@ -204,13 +109,13 @@ struct AgentsLiveRealTests {
         let finished = await waitUntil(150) { await driver.snapshot().isIdle }
         let endRuns = await subagentRuns()
         let touched = FileManager.default.fileExists(atPath: work.appendingPathComponent("v23-fg.txt").path)
-        Self.log("turn finished \(finished); subagent cards \(endRuns.count), status \(endRuns.first.map { "\($0.status)" } ?? "-"), "
+        AgentsLiveRealShared.log("turn finished \(finished); subagent cards \(endRuns.count), status \(endRuns.first.map { "\($0.status)" } ?? "-"), "
             + "agent id on the card equals the request's \(endRuns.first?.agentID == agent.id), file made by the approved command \(touched)")
         #expect(finished)
         #expect(touched)
         let conversation = try #require(await driver.liveState().conversationID)
         let report = try await driver.stop()
-        Self.log("session stopped, succeeded \(report.succeeded)")
+        AgentsLiveRealShared.log("session stopped, succeeded \(report.succeeded)")
 
         // The stopped session's list, read as the Agents tab reads it.
         let main = try #require(ClaudeTranscriptLocator.locate(sessionID: conversation, configDirectory: config, workingDirectory: work.path),
@@ -219,7 +124,7 @@ struct AgentsLiveRealTests {
         let entries = SubagentFolderReader.read(folder: folder)
         let unanswered = AgentCallScan.scan(file: main, wanting: Set(entries.compactMap(\.toolUseID))).unanswered
         let entry = entries.first { $0.record.id == agent.id }
-        Self.log("folder lists \(entries.count) subagent(s), the asking one among them \(entry != nil); type \(entry?.record.agentType ?? "-"), "
+        AgentsLiveRealShared.log("folder lists \(entries.count) subagent(s), the asking one among them \(entry != nil); type \(entry?.record.agentType ?? "-"), "
             + "has a description \(entry?.record.description?.isEmpty == false), ended \(entry?.record.endedAt != nil), background \(entry?.record.isBackground ?? false), "
             + "its Agent call has no result \(entry?.toolUseID.map(unanswered.contains) ?? false)")
         let listed = try #require(entry, "the folder does not list the subagent")
@@ -229,57 +134,3 @@ struct AgentsLiveRealTests {
         #expect(listed.toolUseID != nil && !(listed.toolUseID.map(unanswered.contains) ?? true), "the list would read Interrupted, not Done")
     }
 }
-
-/// The runtime of one real test: the isolated profile, a run host, the hook helper, a catalog in a temporary folder.
-private struct AgentsRig {
-    let runtime: SessionRuntime
-    let supervisor: ProcessSupervisor
-    let root: URL
-    let socketDirectory: URL
-
-    static func make(config: URL, work: URL) async throws -> AgentsRig {
-        let env = ProcessInfo.processInfo.environment
-        let claude = env["LOOM_V23_CLAUDE"] ?? "/opt/homebrew/bin/claude"
-        let child = ["PATH": "/opt/homebrew/bin:/usr/bin:/bin", "HOME": NSHomeDirectory(), "USER": NSUserName(),
-                     "CLAUDE_CONFIG_DIR": config.path]
-        var launchEnvironment = ["PATH": child["PATH"]!, "HOME": NSHomeDirectory(), "USER": NSUserName(),
-                                 "LOGNAME": NSUserName(), "LANG": "en_US.UTF-8"]
-        launchEnvironment["TMPDIR"] = env["TMPDIR"]
-        let toolEnvironment = launchEnvironment
-        let capabilities = ProviderCapabilities(
-            version: try AgentsLiveRealTests.capture(claude, ["--version"], environment: child).trimmingCharacters(in: .whitespacesAndNewlines),
-            help: try AgentsLiveRealTests.capture(claude, ["--help"], environment: child))
-
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-v23-real-\(UUID())", isDirectory: true)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        let socketDirectory = URL(fileURLWithPath: "/tmp/lv-\(UUID().uuidString.prefix(8))", isDirectory: true)
-        let binaries = Bundle(for: AgentsRealAnchor.self).bundleURL.deletingLastPathComponent()
-        let catalog = try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
-        let bundle = try RunScopeLauncher.assembleOwnedBundle(executable: binaries.appendingPathComponent("loom-run-host"), in: root)
-        let supervisor = try await ProcessSupervisor.restoring(
-            catalog: catalog,
-            scopeLauncher: RunScopeLauncher(hostBundle: bundle, socketDirectory: socketDirectory.appendingPathComponent("rs")))
-        let runtime = SessionRuntime(
-            supervisor: supervisor, catalog: catalog,
-            configuration: SessionRuntimeConfiguration(
-                toolchains: { provider in
-                    ProviderToolchain(provider: provider, executable: claude, capabilities: capabilities,
-                                      environment: toolEnvironment, profileDirectory: config, extraArguments: [])
-                },
-                hookHelperPath: binaries.appendingPathComponent("loom-hook").path,
-                socketDirectory: socketDirectory, homeDirectory: work.path, idlePolicy: SessionIdlePolicy(),
-                codexIdentityTimeout: 3, claudeProfileDirectory: config,
-                claudePluginDirectory: root.appendingPathComponent("claude-plugin", isDirectory: true),
-                hookSilenceGrace: 10, catalogBackupDelay: nil))
-        try await runtime.start()
-        return AgentsRig(runtime: runtime, supervisor: supervisor, root: root, socketDirectory: socketDirectory)
-    }
-
-    func cleanup() {
-        RunScopeLauncher.removeOwnedBundle(in: root)
-        try? FileManager.default.removeItem(at: socketDirectory)
-        try? FileManager.default.removeItem(at: root)
-    }
-}
-
-private final class AgentsRealAnchor: NSObject {}

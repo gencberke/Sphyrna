@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 /// Turn time belongs to the event state, so a lazy card or a slow frame consumer never starts its own stopwatch.
 struct SessionTurnTimeTests {

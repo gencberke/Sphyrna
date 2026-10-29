@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// Settings → Sessions → Storage at the presentation boundary (RESCUE C1): measured once while shown and kept until a deletion
 /// or Refresh, grouped by project with totals, a running session never checked, and Claude's retention through the coordinator.

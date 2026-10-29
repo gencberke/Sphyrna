@@ -2,6 +2,7 @@ import Darwin
 import Foundation
 import Testing
 @testable import LoomCore
+@testable import LoomCoreTestRigs
 
 private final class EventPeer: @unchecked Sendable {
     let listener: Int32
@@ -165,11 +166,11 @@ private final class BlockingEventSink: @unchecked Sendable {
         let frame = chunk(event)
         try peer.send(frame.prefix(11))
         try peer.send(frame.dropFirst(11))
-        #expect(await SessionRuntimeTests.waitUntil(2) { sink.events.count == 1 })
+        #expect(await SessionRuntimeRig.waitUntil(2) { sink.events.count == 1 })
         #expect(sink.events.first?.sessionID == "ses_one")
         let changed = Data("data: {\"id\":\"evt_3\",\"type\":\"config.updated\",\"data\":{}}\n\n".utf8)
         try peer.send(chunk(changed))
-        #expect(await SessionRuntimeTests.waitUntil(2) { sink.events.count == 2 })
+        #expect(await SessionRuntimeRig.waitUntil(2) { sink.events.count == 2 })
         #expect(sink.events.last?.type == "config.updated")
         try peer.send(chunk(Data(": heartbeat\n\n".utf8)))
         try await Task.sleep(for: .milliseconds(150))
@@ -191,7 +192,7 @@ private final class BlockingEventSink: @unchecked Sendable {
                                                         onEvent: { sink.receive($0) },
                                                         onDisconnect: { sink.disconnect() })
         try peer.send(Data(repeating: 65, count: 65_537))
-        #expect(await SessionRuntimeTests.waitUntil(2) { sink.disconnected == 1 })
+        #expect(await SessionRuntimeRig.waitUntil(2) { sink.disconnected == 1 })
         _ = try await server.value
         await stream.close()
         #expect(sink.disconnected == 1)
@@ -206,7 +207,7 @@ private final class BlockingEventSink: @unchecked Sendable {
                                                onEvent: { pendingSink.receive($0) },
                                                onDisconnect: { pendingSink.disconnect() })
         }
-        #expect(await SessionRuntimeTests.waitUntil(2) { pendingPeer.receivedRequest })
+        #expect(await SessionRuntimeRig.waitUntil(2) { pendingPeer.receivedRequest })
         starting.cancel()
         await #expect(throws: CancellationError.self) { _ = try await starting.value }
         _ = try await pendingServer.value
@@ -235,7 +236,7 @@ private final class BlockingEventSink: @unchecked Sendable {
                                                          onDisconnect: { second.disconnect() })
         let frame = Data("data: {\"id\":\"evt_2\",\"type\":\"session.created\",\"data\":{\"sessionID\":\"ses_two\"},\"durable\":{\"aggregateID\":\"ses_two\",\"seq\":1,\"version\":1}}\n\n".utf8)
         try secondPeer.send(frame)
-        #expect(await SessionRuntimeTests.waitUntil(2) { second.events.count == 1 })
+        #expect(await SessionRuntimeRig.waitUntil(2) { second.events.count == 1 })
         #expect(first.events.isEmpty)
         #expect(first.disconnected == 1)
         #expect(second.disconnected == 0)
@@ -274,7 +275,7 @@ private final class BlockingEventSink: @unchecked Sendable {
                                                         onDisconnect: {})
         let frame = Data("data: {\"id\":\"evt_2\",\"type\":\"session.created\",\"data\":{\"sessionID\":\"ses_one\"},\"durable\":{\"aggregateID\":\"ses_one\",\"seq\":1,\"version\":1}}\n\n".utf8)
         try peer.send(frame)
-        #expect(await SessionRuntimeTests.waitUntil(2) { blocker.callbackEntered })
+        #expect(await SessionRuntimeRig.waitUntil(2) { blocker.callbackEntered })
         let client = OpenCodeClient(base: peer.serverURL, password: "fixture-secret", eventStream: stream) { _ in
             throw OpenCodeError.unavailable
         }
@@ -288,8 +289,8 @@ private final class BlockingEventSink: @unchecked Sendable {
             await client.close()
             blocker.markFinished()
         }
-        #expect(await SessionRuntimeTests.waitUntil(2) { blocker.starts == 2 })
-        let finishedEarly = await SessionRuntimeTests.waitUntil(0.3) { blocker.completions > 0 }
+        #expect(await SessionRuntimeRig.waitUntil(2) { blocker.starts == 2 })
+        let finishedEarly = await SessionRuntimeRig.waitUntil(0.3) { blocker.completions > 0 }
         #expect(!finishedEarly)
         blocker.release()
         await one.value

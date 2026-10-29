@@ -5,6 +5,8 @@ import SwiftUI
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 @MainActor @Observable private final class PickerRenderProbe {
     var unrelated = 0

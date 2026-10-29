@@ -5,6 +5,8 @@ import Testing
 import Synchronization
 @testable import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 @MainActor
 @Suite struct LimitResetNotifierTests {

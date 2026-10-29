@@ -5,6 +5,8 @@ import Observation
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 @MainActor @Observable
 private final class B2ElapsedGate {

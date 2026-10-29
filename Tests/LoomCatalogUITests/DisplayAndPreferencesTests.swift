@@ -2,6 +2,8 @@ import Foundation
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 @MainActor
 struct DisplayAndPreferencesTests {

@@ -4,6 +4,8 @@ import LoomCore
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// W1-b: the inspector's leading edge drags, with a remembered width per class (narrow, side, review). A drag moves only its
 /// guide; the release changes the class's width once, so the content (a terminal, a Chat stream) takes its new width once.

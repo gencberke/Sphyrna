@@ -6,6 +6,8 @@ import SwiftUI
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 @MainActor @Suite(.serialized) struct StatusBarTests {
     let now = Date(timeIntervalSince1970: 1_791_374_400)

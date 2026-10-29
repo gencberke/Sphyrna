@@ -2,6 +2,7 @@ import Darwin
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 /// Volume measurement on a generated corpus (about 1 GiB of synthetic transcripts). Opt-in:
 /// `LOOM_USAGE_CORPUS=<dir under ~/Library/Caches>` (never under ~/Documents), optionally

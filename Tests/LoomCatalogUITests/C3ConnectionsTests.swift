@@ -4,6 +4,7 @@ import SwiftUI
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 @MainActor
 @Suite(.timeLimit(.minutes(1)))
@@ -26,8 +27,8 @@ struct C3ConnectionsTests {
         let connections = HarnessConnections(choices: store.current.harnessChoices) { id, on in
             MainActor.assumeIsolated { _ = try? store.update { $0.setHarnessConnected(id, on) } }
         }
-        let rig = ConnectionsTests.Rig(claude: HarnessProbeAnswer(account: HarnessAccount.none, windows: []),
-                                       codex: ConnectionsTests.max, codexFound: true, connections: connections)
+        let rig = ConnectionsRig.Rig(claude: HarnessProbeAnswer(account: HarnessAccount.none, windows: []),
+                                       codex: ConnectionsRig.max, codexFound: true, connections: connections)
         let model = CatalogModel(catalog: nil, events: SessionEventHub(), preferences: store)
         model.harnessConnections = connections
         model.installHarnessHealth(rig.model)
@@ -103,7 +104,7 @@ struct C3ConnectionsTests {
         }
         let gate = C3PathGate(path: root.path)
         let connections = HarnessConnections()
-        let rig = ConnectionsTests.Rig(codex: ConnectionsTests.max, codexFound: true, connections: connections)
+        let rig = ConnectionsRig.Rig(codex: ConnectionsRig.max, codexFound: true, connections: connections)
         let model = CatalogModel(catalog: nil, events: SessionEventHub(),
                                  preferences: UIPreferencesStore(url: root.appendingPathComponent("preferences.json")))
         model.harnessConnections = connections
@@ -133,10 +134,10 @@ struct C3ConnectionsTests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let pathGate = C3PathGate(path: root.path)
-        let probeGate = C3ProbeGate(answer: ConnectionsTests.max)
+        let probeGate = C3ProbeGate(answer: ConnectionsRig.max)
         let connections = HarnessConnections()
         let probe = HarnessProbe(connections: connections, sources: [.claude: probeGate])
-        let checker = HarnessHealthChecker(connections: connections, probe: probe, toolchain: { ConnectionsTests.toolchain($0) })
+        let checker = HarnessHealthChecker(connections: connections, probe: probe, toolchain: { ConnectionsRig.toolchain($0) })
         let health = HarnessHealthModel(connections: connections, checker: checker)
         let model = CatalogModel(catalog: nil, events: SessionEventHub(),
                                  preferences: UIPreferencesStore(url: root.appendingPathComponent("preferences.json")))

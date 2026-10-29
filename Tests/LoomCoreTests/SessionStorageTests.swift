@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 /// Settings → Sessions → Storage (RESCUE C1): a session's size is what the deletion allowlist would remove, measured without
 /// following links; the profile's `projects` folder is measured the same way; Claude's retention is read and written as one

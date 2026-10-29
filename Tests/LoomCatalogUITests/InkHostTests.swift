@@ -6,6 +6,9 @@ import SwiftUI
 import Testing
 @testable import LoomCatalogUI
 import LoomTestSupport
+@testable import LoomCatalogUITestRigs
+
+private typealias OpenFlag = InkHostShared.OpenFlag
 
 // MARK: Pure
 
@@ -269,29 +272,9 @@ struct InkHostPureTests {
         #expect(ComposerPlusChip.resolve(.down, highlighted: 2).highlighted == 0, "the + rows wrap")
         #expect(ComposerPlusChip.resolve(.return, highlighted: 1).pick == ComposerPlusItem.allCases[1])
     }
-
-    @Test func theModelPopoversKeysStepTheEffortAndPickOnReturn() {
-        let picker = ComposerModelPicker(
-            modelTitle: "Sonnet 5.5", effortTitle: "High",
-            rows: ["opus", "sonnet", "haiku"].map { ComposerBarText.ModelRow(value: $0, title: $0.capitalized) },
-            chosenModel: "sonnet", levels: ["low", "medium", "high"], chosenLevel: "medium", canResetEffort: false)
-        let down = ComposerModelPopover.resolve(.down, picker: picker, cursor: "haiku")
-        #expect(down.handled && down.cursor != "haiku", "↓ wraps from the last row")
-        #expect(ComposerModelPopover.resolve(.right, picker: picker, cursor: nil).effort == "high")
-        #expect(ComposerModelPopover.resolve(.left, picker: picker, cursor: nil).effort == "low")
-        let done = ComposerModelPopover.resolve(.return, picker: picker, cursor: "haiku")
-        #expect(done.pickModel == "haiku" && done.done && done.handled)
-        #expect(ComposerModelPopover.resolve(.return, picker: picker, cursor: picker.chosenID).pickModel == nil, "the chosen one only closes")
-        #expect(!ComposerModelPopover.resolve(.space, picker: picker, cursor: nil).handled)
-    }
 }
 
 // MARK: Hosted (offscreen: no window is ordered front)
-
-@Observable @MainActor
-private final class OpenFlag {
-    var on = true
-}
 
 /// A view that takes the keyboard, standing for the composer's text.
 @MainActor
@@ -526,62 +509,7 @@ struct InkHostHostedTests {
 /// The real chips presenting through the host: each opens on the side and edge the table gives it, with the surface 6 from the chip.
 @MainActor
 @Suite(.serialized, .timeLimit(.minutes(2)))
-struct InkHostOpenersTests {
-    private func picker() -> ComposerModelPicker {
-        ComposerModelPicker(
-            modelTitle: "Sonnet 5.5", effortTitle: "High",
-            rows: ["opus", "sonnet", "haiku"].map { ComposerBarText.ModelRow(value: $0, title: $0.capitalized) },
-            chosenModel: "sonnet", levels: ["low", "medium", "high"], chosenLevel: "high", canResetEffort: false)
-    }
-
-    private func host<V: View>(_ view: V, size: CGSize) -> (NSWindow, InkHost) {
-        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        let host = InkHost()
-        let hosting = NSHostingView(rootView: view.inkHost(host).frame(width: size.width, height: size.height))
-        let content = NSView(frame: NSRect(origin: .zero, size: size))
-        hosting.frame = content.bounds
-        host.view.frame = content.bounds
-        content.addSubview(hosting)
-        content.addSubview(host.view)
-        window.contentView = content
-        return (window, host)
-    }
-
-    private func settle(_ window: NSWindow, _ host: InkHost) async {
-        for _ in 0..<60 {
-            window.contentView?.layoutSubtreeIfNeeded()
-            window.displayIfNeeded()
-            if host.state.frame != nil { return }
-            try? await Task.sleep(for: .milliseconds(30))
-        }
-    }
-
-    private func check(_ host: InkHost, side: InkPlacement.Side, alignment: InkPlacement.Alignment, id: String) throws {
-        let state = host.state
-        let active = try #require(state.active, "\(id) is open")
-        #expect(active.id == id && active.side == side && active.alignment == alignment)
-        let anchor = try #require(state.anchorRect)
-        let frame = try #require(state.frame)
-        switch side {
-        case .above: #expect(abs(frame.maxY - (anchor.minY - 6)) < 0.5, "\(id): \(frame) over \(anchor)")
-        case .below: #expect(abs(frame.minY - (anchor.maxY + 6)) < 0.5, "\(id): \(frame) under \(anchor)")
-        }
-        switch alignment {
-        case .leading: #expect(abs(frame.minX - anchor.minX) < 0.5, "\(id): \(frame) from \(anchor)")
-        case .trailing: #expect(abs(frame.maxX - anchor.maxX) < 0.5, "\(id): \(frame) from \(anchor)")
-        }
-    }
-
-    private func chips(_ flag: OpenFlag, onDraft: Bool) -> some View {
-        let open = Binding(get: { flag.on }, set: { flag.on = $0 })
-        return HStack {
-            Spacer(minLength: 300)
-            ComposerModeChip(selected: "auto", title: "Auto", help: "Mode", identifier: "composer-mode", onDraft: onDraft, isOpen: open) { _ in }
-            Spacer(minLength: 300)
-        }
-    }
-
+struct InkHostOpenersTests: InkHostOpenersFixtures {
     @Test func theLiveModeChipOpensItsListAboveItWithTheLeadingEdgesAligned() async throws {
         let flag = OpenFlag()
         let (window, host) = host(chips(flag, onDraft: false), size: CGSize(width: 1_000, height: 700))
@@ -598,46 +526,6 @@ struct InkHostOpenersTests {
         defer { host.state.dismiss(); window.contentView = nil; window.close() }
         await settle(window, host)
         try check(host, side: .below, alignment: .leading, id: "composer-mode")
-    }
-
-    @Test func theModelChipOpensAboveItInTheLiveComposerAndBelowItOnTheDraftPageTrailingEdgeAligned() async throws {
-        for onDraft in [false, true] {
-            let flag = OpenFlag()
-            let open = Binding(get: { flag.on }, set: { flag.on = $0 })
-            let view = HStack {
-                Spacer(minLength: 300)
-                ComposerModelChip(picker: picker(), identifier: "composer-model", help: "Model", onDraft: onDraft, isOpen: open,
-                                  onPickModel: { _ in }, onPickEffort: { _ in }, onResetEffort: {})
-                Spacer(minLength: 300)
-            }
-            // A tall window, so the draft's popover has the room under the chip.
-            let (window, host) = host(view, size: CGSize(width: 1_000, height: 900))
-            defer { host.state.dismiss(); window.contentView = nil; window.close() }
-            await settle(window, host)
-            try check(host, side: onDraft ? .below : .above, alignment: .trailing, id: "composer-model")
-            #expect(host.state.contentSize.width == LoomTheme.Composer.modelPopoverWidth)
-        }
-    }
-
-    @Test func thePlusChipAndTheRingOpenAboveTheirChips() async throws {
-        let plus = OpenFlag()
-        let (plusWindow, plusHost) = host(
-            HStack { Spacer(minLength: 300); ComposerPlusChip(isOpen: Binding(get: { plus.on }, set: { plus.on = $0 })) { _ in }; Spacer(minLength: 300) },
-            size: CGSize(width: 1_000, height: 700))
-        defer { plusHost.state.dismiss(); plusWindow.contentView = nil; plusWindow.close() }
-        await settle(plusWindow, plusHost)
-        try check(plusHost, side: .above, alignment: .leading, id: "composer-plus")
-
-        let ring = OpenFlag()
-        let (ringWindow, ringHost) = host(
-            HStack {
-                Spacer(minLength: 300)
-                ComposerRing(usage: nil, canCompact: false, onCompact: {}, showsPopover: Binding(get: { ring.on }, set: { ring.on = $0 }))
-                Spacer(minLength: 300)
-            }, size: CGSize(width: 1_000, height: 700))
-        defer { ringHost.state.dismiss(); ringWindow.contentView = nil; ringWindow.close() }
-        await settle(ringWindow, ringHost)
-        try check(ringHost, side: .above, alignment: .trailing, id: "composer-ring")
     }
 
     @Test func aControlThatShutsItsFlagClosesTheHostsPopover() async throws {

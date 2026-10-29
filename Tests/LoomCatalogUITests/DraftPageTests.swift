@@ -3,6 +3,7 @@ import LoomCore
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// The new-session page in Ink (DESIGN §8): what it says and the values it draws with, as plain values. The start path and the
 /// stored drafts are `NewSessionTests`; the question's wrapping is `UIFixRoundViewTests`.

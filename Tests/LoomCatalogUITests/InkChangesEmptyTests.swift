@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// I6b: the Changes tab's empty and waiting states (DESIGN §13 "Empty and waiting"): one sentence per empty scope, the quiet line
 /// above it, and the branch's read with its command and time.

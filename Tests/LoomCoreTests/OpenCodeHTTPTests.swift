@@ -2,6 +2,8 @@ import Darwin
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
+@testable import LoomCoreTestRigs
 
 /// A numeric loopback peer in the test process, with no provider executable.
 private final class OpenCodeHTTPFixture: @unchecked Sendable {
@@ -128,7 +130,7 @@ private final class OpenCodeHTTPFixture: @unchecked Sendable {
         let peer = server.serve(parts: [], waitForClose: true)
         let owner = try #require(ProcessTable.record(pid: getpid())).identity
         let task = Task { try await OpenCodeHTTP.request(request(server), leader: owner, timeout: 5, lease: .init()) }
-        #expect(await SessionRuntimeTests.waitUntil(2) { server.receivedRequest })
+        #expect(await SessionRuntimeRig.waitUntil(2) { server.receivedRequest })
         task.cancel()
         await #expect(throws: CancellationError.self) { _ = try await task.value }
         #expect(!(try await peer.value).isEmpty)

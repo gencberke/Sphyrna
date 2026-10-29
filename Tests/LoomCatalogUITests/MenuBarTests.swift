@@ -3,6 +3,8 @@ import Foundation
 import Testing
 @testable import LoomCatalogUI
 @testable import LoomCore
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// H1-F (D-49, D-52) without a window or a system service: the menu bar item's state and menu, the
 /// notification decision, the mark's path, the drawn dot, the preferences and the Settings lines.

@@ -4,6 +4,8 @@ import SwiftUI
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// Which sidebar views evaluate their body when something changes. The real sidebar is hosted in a tall
 /// window that is never ordered front (nothing appears on screen), 30 cards are laid out, and

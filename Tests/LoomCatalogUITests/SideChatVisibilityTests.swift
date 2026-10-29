@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// V22 part 2: a side chat is a real session with live state, but it is the Side tab's, not the app's lists'. A side chat that is
 /// working or waits for the user must not raise the Dock badge, Home's Needs you, the menu bar, the notifications, the Active

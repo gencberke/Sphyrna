@@ -3,6 +3,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 /// The subagent panel's reading side (FB4-5): where a transcript may be read from, what a line turns into,
 /// how the tail of a file is read and how the feed delivers it. Line shapes follow 39 real subagent files

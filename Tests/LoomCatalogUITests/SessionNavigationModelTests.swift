@@ -2,6 +2,8 @@ import Foundation
 @testable import LoomCore
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// D-45 at the model: the attention set over live state, the Dock badge count, next/previous in the list as
 /// drawn, the sidebar following the selection, and the two bug fixes (a tab unpinned by a failed read, a

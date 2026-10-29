@@ -4,6 +4,8 @@ import SwiftUI
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// The subagent panel (FB4-5, P1): the model that holds a transcript's entries and runs its feed only while
 /// the panel can be seen, and the catalog model's rules for opening and leaving it. Files are made in

@@ -40,7 +40,7 @@ def refuse_documents(path):
 
 def tree_index():
     """Type names and test functions per test target, from the checked-out tree."""
-    types, funcs = {}, defaultdict(lambda: defaultdict(set))
+    types, funcs = defaultdict(set), defaultdict(lambda: defaultdict(set))
     tests = os.path.join(ROOT, 'Tests')
     re_type = re.compile(r'^\s*(?:@\w+\s+)*(?:(?:private|fileprivate|internal|public|final)\s+)*(?:struct|class|actor|enum|extension)\s+([A-Za-z0-9_]+)')
     re_func = re.compile(r'@Test\b[^\n]*?\bfunc\s+([A-Za-z0-9_]+)|^\s*(?:@\w+\s+)*func\s+([A-Za-z0-9_]+)')
@@ -48,8 +48,8 @@ def tree_index():
         return types, funcs
     for target in sorted(os.listdir(tests)):
         folder = os.path.join(tests, target)
-        if not os.path.isdir(folder):
-            continue
+        if not os.path.isdir(folder) or target == 'LoomTestSupport' or target.endswith('TestRigs'):
+            continue   # libraries the test targets link, never a run of their own
         for base, _, names in os.walk(folder):
             for name in names:
                 if not name.endswith('.swift'):
@@ -59,7 +59,7 @@ def tree_index():
                 for line in open(os.path.join(base, name), encoding='utf-8', errors='replace'):
                     m = re_type.match(line)
                     if m:
-                        types.setdefault(m.group(1), target)
+                        types[m.group(1)].add(target)
                         owner = m.group(1)
                     if '@Test' in line:
                         pending_test = True
@@ -125,7 +125,9 @@ def records(path, source=None):
     log = os.path.basename(path)
     out = []
     for index, run in enumerate(runs):
-        votes = Counter(types.get(s[0]) for s in run['suites'] if types.get(s[0]))
+        # A suite a split by tier left in two targets votes for both; its tests, which are in one of them, decide.
+        votes = Counter(t for s in run['suites'] for t in types.get(s[0], ()))
+        votes.update(t for name, *_ in run['tests'] for t, fs in funcs.items() if name.split('(')[0] in fs)
         target = votes.most_common(1)[0][0] if votes else None
         step = run['step'] or ''
         config = 'release' if '-c release' in step else 'debug'

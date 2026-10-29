@@ -2,6 +2,7 @@ import Foundation
 import SQLite3
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 @Suite(.serialized)
 struct SessionMailboxTests {

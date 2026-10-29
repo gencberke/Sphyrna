@@ -4,6 +4,8 @@ import SwiftUI
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// The project page in Ink (I4c; DESIGN §10): the head on the first 52 pt line and its clearance, the stats line's words, the view
 /// tabs, the session row's structured last line and layout, the project menu's items and order, the empty project and the narrow

@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// Settings → General → Notify when a long turn finishes: which finished turns get a banner (`LongTurnWatch`), what it says, and
 /// that the switch is kept.

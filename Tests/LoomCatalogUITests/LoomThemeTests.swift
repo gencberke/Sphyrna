@@ -1,6 +1,7 @@
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// Ink's values as data (WCAG 2.x relative luminance): the contrast math, the tokens that hold their RGB data, the type,
 /// radius and height scale, and the sidebar's fills (Canvas, Raised, Deep) and opacity steps (FB6-6). The floors per

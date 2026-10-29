@@ -2,6 +2,7 @@ import Foundation
 import LoomCore
 import Testing
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 @MainActor
 @Suite(.serialized, .timeLimit(.minutes(2)))

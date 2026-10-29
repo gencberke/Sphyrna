@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// Synthetic rollout records follow the recorded P0 schema, without provider transcripts.
 @Suite struct CodexPaletteTests {

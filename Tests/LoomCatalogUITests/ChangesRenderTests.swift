@@ -5,6 +5,7 @@ import SwiftUI
 import Testing
 @testable import LoomCatalogUI
 @testable import LoomChat
+@testable import LoomCatalogUITestRigs
 
 /// V20: the Changes tab drawn offscreen (a view that is never put in a window). The states it shows are checked by their
 /// words; with `LOOM_V20_SNAPSHOTS` set to a folder the same views are saved there as PNGs, one per state and look.

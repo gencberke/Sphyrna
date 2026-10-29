@@ -3,6 +3,7 @@ import Synchronization
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// The Usage page with Codex beside Claude (D-99): the Limits section's cards and states, which harness is shown and asked,
 /// the asking rules (Codex when the page opens and when the app turns active, with the probe's floor; Claude through its

@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// Peek: a sidebar row's tooltip tells the session's last ask and the first line of its last answer. The reader works on fixture
 /// transcripts in temporary folders, the model's answer for a session without a transcript is asked of the model, and no view

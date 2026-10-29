@@ -3,6 +3,7 @@ import Foundation
 import Testing
 import SwiftUI
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// A streaming answer is drawn without text selection, its open tail (every flush draws it again, and selection builds a
 /// second text layout of it) and its settled head (each selectable text is a key view the flushes make AppKit and SwiftUI walk

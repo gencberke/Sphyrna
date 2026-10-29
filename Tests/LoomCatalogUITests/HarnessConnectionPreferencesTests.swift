@@ -2,6 +2,7 @@ import Foundation
 import LoomCore
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 @MainActor
 struct HarnessConnectionPreferencesTests {

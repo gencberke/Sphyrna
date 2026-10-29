@@ -5,6 +5,8 @@ import Testing
 import LoomCore
 @testable import LoomRemora
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// L3b: what needs a view, hosted in a window nobody sees (never ordered front): Remora's tab at the window's 680×520, and the memory
 /// sheet's frame under the band. A real click, the focus on Done and the scrim need a key window on screen: they are the end batch's checks.

@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import Synchronization
 @testable import LoomCore
+import LoomTestSupport
 
 @Suite struct ClaudeLimitResetSignalReaderTests {
     private let now = Date(timeIntervalSince1970: 1_791_600_000)

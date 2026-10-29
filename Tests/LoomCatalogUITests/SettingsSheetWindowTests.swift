@@ -4,6 +4,8 @@ import SwiftUI
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// DESIGN §6 Sheets and §3's scrim, in a window built as the Settings window is (`SettingsWindowController.makeWindow`: titled, full
 /// size content, a transparent title bar over an empty unified toolbar), hosted off screen and never ordered front. The title strip

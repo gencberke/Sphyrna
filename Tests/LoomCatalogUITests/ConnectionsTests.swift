@@ -4,6 +4,7 @@ import Synchronization
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// Settings → Connections and Home's "Connect your agents" (D-98): the page's values for Claude ready, Codex not found and Codex not
 /// signed in; the switch through the health model and a reload of the preferences; the setup commands and the re-check on the next
@@ -12,54 +13,6 @@ import Testing
 @MainActor
 struct ConnectionsTests {
     // MARK: Fakes
-
-    final class Script: HarnessProbeSource, @unchecked Sendable {
-        private let lock = NSLock()
-        private let answer: HarnessProbeAnswer?
-        private var count = 0
-        init(_ answer: HarnessProbeAnswer?) { self.answer = answer }
-        var asks: Int { lock.withLock { count } }
-        func read() async -> HarnessProbeAnswer? {
-            lock.withLock { count += 1 }
-            return answer
-        }
-    }
-
-    nonisolated static func toolchain(_ provider: ManagedSession.Provider, version: String? = nil) -> ProviderToolchain {
-        ProviderToolchain(
-            provider: provider, executable: "/opt/fake/bin/\(HarnessHealth.command(provider))",
-            capabilities: ProviderCapabilities(
-                version: version ?? (provider == .codex ? "codex-cli 0.160.0" : "2.1.300 (Claude Code)"), help: "",
-                serverHelp: provider == .codex ? "--listen <URL>" : ""),
-            environment: ["PATH": "/usr/bin:/bin"], profileDirectory: nil)
-    }
-
-    static let max = HarnessProbeAnswer(
-        account: .subscription(email: "a@example.invalid", plan: "max"),
-        windows: [HarnessLimitWindow(id: "five_hour", name: "5-hour", durationMinutes: 300, usedPercent: 10, resetsAt: nil)])
-
-    struct Rig {
-        let connections: HarnessConnections
-        let claude: Script
-        let codex: Script
-        let model: HarnessHealthModel
-
-        @MainActor init(claude: HarnessProbeAnswer? = ConnectionsTests.max, claudeFound: Bool = true,
-                        codex: HarnessProbeAnswer? = nil, codexFound: Bool = false,
-                        connections: HarnessConnections = HarnessConnections()) {
-            self.connections = connections
-            self.claude = Script(claude)
-            self.codex = Script(codex)
-            let probe = HarnessProbe(connections: connections, sources: [.claude: self.claude, .codex: self.codex])
-            let checker = HarnessHealthChecker(connections: connections, probe: probe, toolchain: { provider in
-                if (provider == .claude && !claudeFound) || (provider == .codex && !codexFound) {
-                    throw ProviderToolchainError.executableNotFound(provider: provider, searched: 3)
-                }
-                return ConnectionsTests.toolchain(provider)
-            })
-            model = HarnessHealthModel(connections: connections, checker: checker)
-        }
-    }
 
     private func row(for health: HarnessHealth, buildSupportsSessions: Bool) -> ConnectionsContent.HarnessRow {
         let descriptor = HarnessCatalogue.descriptor(for: HarnessID(health.provider))!
@@ -71,7 +24,7 @@ struct ConnectionsTests {
     // MARK: The page model
 
     @Test func theRowAndDetailForClaudeReady() async {
-        let rig = Rig()
+        let rig = ConnectionsRig.Rig()
         rig.model.checkAll()
         await rig.model.settle()
         let health = rig.model.health(of: .claude)
@@ -88,7 +41,7 @@ struct ConnectionsTests {
     }
 
     @Test func theRowAndDetailForCodexNotFoundAndNotSignedIn() async {
-        let missing = Rig()
+        let missing = ConnectionsRig.Rig()
         missing.model.checkAll()
         await missing.model.settle()
         let note = CatalogModel.newSessionUnavailableReason(.codex, startable: [.claude])
@@ -103,7 +56,7 @@ struct ConnectionsTests {
         #expect(detail.setup?.command == "npm install -g @openai/codex" && detail.setup?.alternative == "brew install --cask codex")
         #expect(!detail.canDeepCheck, "there is nothing to run")
 
-        let signedOut = Rig(codex: HarnessProbeAnswer(account: HarnessAccount.none, windows: []), codexFound: true)
+        let signedOut = ConnectionsRig.Rig(codex: HarnessProbeAnswer(account: HarnessAccount.none, windows: []), codexFound: true)
         signedOut.model.checkAll()
         await signedOut.model.settle()
         let out = signedOut.model.health(of: .codex)
@@ -115,7 +68,7 @@ struct ConnectionsTests {
     }
 
     @Test func aChangedAccountShowsOnTheRowUntilThePageIsSeen() async {
-        let rig = Rig()
+        let rig = ConnectionsRig.Rig()
         rig.model.check(.claude)
         await rig.model.settle()
         var health = rig.model.health(of: .claude)
@@ -136,7 +89,7 @@ struct ConnectionsTests {
         let connections = HarnessConnections(disconnected: store.current.disconnectedHarnesses) { provider, connected in
             MainActor.assumeIsolated { _ = try? store.update { $0.setHarnessConnected(provider, connected) } }
         }
-        let rig = Rig(codex: HarnessProbeAnswer(account: .apiKey, windows: []), codexFound: true, connections: connections)
+        let rig = ConnectionsRig.Rig(codex: HarnessProbeAnswer(account: .apiKey, windows: []), codexFound: true, connections: connections)
         rig.model.checkAll()
         await rig.model.settle()
         #expect(rig.model.health(of: .claude).state == .ready && rig.model.health(of: .codex).state == .ready)
@@ -156,7 +109,7 @@ struct ConnectionsTests {
         // A reload of the preferences: the switch is still off, and a new health model leaves Claude alone.
         let reread = UIPreferencesStore(url: url)
         #expect(reread.current.disconnectedHarnesses == [.claude])
-        let reloaded = Rig(connections: HarnessConnections(disconnected: reread.current.disconnectedHarnesses))
+        let reloaded = ConnectionsRig.Rig(connections: HarnessConnections(disconnected: reread.current.disconnectedHarnesses))
         reloaded.model.checkAll()
         await reloaded.model.settle()
         #expect(reloaded.claude.asks == 0 && reloaded.model.health(of: .claude).state == .disabled)
@@ -170,7 +123,7 @@ struct ConnectionsTests {
     // MARK: Setup and the re-check
 
     @Test func copyAndOpenTerminalShowTheCommandAndTheNextActivationChecksAgainOnce() async {
-        let rig = Rig(claude: HarnessProbeAnswer(account: HarnessAccount.none, windows: []), claudeFound: true)
+        let rig = ConnectionsRig.Rig(claude: HarnessProbeAnswer(account: HarnessAccount.none, windows: []), claudeFound: true)
         var copied: [String] = []
         var opened = 0
         rig.model.copyToPasteboard = { copied.append($0) }
@@ -202,7 +155,7 @@ struct ConnectionsTests {
     }
 
     @Test func theCheckTriggersAreThePageActivationAndASessionRunAllUnderTheFloor() async {
-        let rig = Rig()
+        let rig = ConnectionsRig.Rig()
         rig.model.pageOpened()
         await rig.model.settle()
         #expect(rig.claude.asks == 1)

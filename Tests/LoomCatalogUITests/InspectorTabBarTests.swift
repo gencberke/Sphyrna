@@ -3,6 +3,8 @@ import Foundation
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// The inspector's view tabs in Ink (DESIGN §6 Tabs): a 36 pt bar, and every tab shows its name, the open one as much as
 /// the closed ones (the old bar showed a symbol and a count for a closed tab).

@@ -1,6 +1,8 @@
 import Foundation
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 @MainActor
 struct ChatMarkdownTests {
@@ -101,17 +103,6 @@ struct ChatMarkdownTests {
         #expect(ChatContent.isFollowable(URL(string: "mailto:a@b.c")!))
         #expect(!ChatContent.isFollowable(URL(string: "file:///etc/passwd")!))
         #expect(!ChatContent.isFollowable(URL(string: "loom://open")!))
-    }
-
-    @Test func aStreamingMessageIsSplitAtTheLastCompleteParagraph() {
-        let text = "First paragraph.\n\nSecond paragraph\nstill going"
-        let split = ChatContent.stableSplit(text)
-        #expect(String(text[..<split]) == "First paragraph.\n\n")
-        let streaming = ChatContent.blocks(id: "m", text: text, isStreaming: true)
-        #expect(streaming == ChatMarkdown.parse(text))
-        // A blank line inside a fence is not a paragraph break.
-        let fenced = "Intro\n\n```\na\n\nb"
-        #expect(String(fenced[..<ChatContent.stableSplit(fenced)]) == "Intro\n\n")
     }
 
     /// `isRule` stops at the first character that rules a rule out; it answers exactly as the filter-the-whole-line version did.

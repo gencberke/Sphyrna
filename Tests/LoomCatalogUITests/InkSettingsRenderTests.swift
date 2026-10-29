@@ -4,6 +4,7 @@ import SwiftUI
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// I4b: every Settings section and both sheets drawn offscreen at the window's size, hosted in a window nobody sees. With
 /// `LOOM_SETTINGS_RENDER_DIR` set the pictures are written there as `settings-<section>-<ink|paper>-<tone>.png` (Ink and Paper, and

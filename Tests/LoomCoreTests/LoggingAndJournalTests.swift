@@ -2,6 +2,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 /// H1-B: the logging rules (rate limits, content-free categories) and the diagnostic journal.
 @Suite(.serialized, .timeLimit(.minutes(1)))

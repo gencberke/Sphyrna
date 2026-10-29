@@ -4,6 +4,7 @@ import SwiftUI
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// The project name on a session card belongs to the activity view and never to the project view,
 /// whichever view a card was first drawn in. The same card ids exist in both views, so the real

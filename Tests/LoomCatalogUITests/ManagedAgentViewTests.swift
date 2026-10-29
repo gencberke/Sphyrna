@@ -5,6 +5,7 @@ import Observation
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 @MainActor @Observable
 private final class ManagedAgentProbe {

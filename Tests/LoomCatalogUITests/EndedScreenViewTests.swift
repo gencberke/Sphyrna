@@ -3,6 +3,7 @@ import Foundation
 import LoomTerminal
 import Testing
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// FB4-3: the ended session's last screen is a static, selectable text view of the snapshot.
 @MainActor

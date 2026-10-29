@@ -4,6 +4,8 @@ import SwiftUI
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// FB3-2 (D-53): the detail header row of "A with the branch": the state pill, the project chip that ends
 /// with the Git branch, the hairline and the control group. Pure rules first, then the real `DetailHeader`

@@ -10,7 +10,7 @@ The rules (comments and strings blanked unless a rule reads comments):
   wait-helper       a wait helper defined in a test file (`func waitUntil…`, `waitFor…`, `until`, `eventually`, `wait`):
                     the shared bounded wait lives in Tests/LoomTestSupport/
   silent-wait       `#expect`/`#require` of an awaited wait with no message: a failure names nothing it saw
-  key-window        a window made key or ordered in outside the window tests (WindowEventTests, LoomWindowTests), or
+  key-window        a window made key or ordered in outside the window tests (LoomWindowTests), or
                     LoomTestSupport's `host(…, key: true)` there
   global-state      a write to process-wide state that parallel suites share (ChatPresentation's verifier, HoverForce,
                     DragActivity, ChatUserText.watchedID, SessionDragProbe), or a render probe watched or reset in a file
@@ -24,6 +24,12 @@ The rules (comments and strings blanked unless a rule reads comments):
   serialized        a `.serialized` suite with no `// serialized: <reason>` on its `@Suite` line or the three above
   quarantine        (strict, not ratcheted) `withKnownIssue(isIntermittent: true` needs `// flake: <id> <YYYY-MM-DD> <cause>`
                     on its line or the line above, and fails 14 days after that date
+  targets           (strict) the tiers' boundaries in Package.swift and the test libraries: only test targets (and the
+                    rigs, on LoomTestSupport) depend on a rig (`Loom<Area>TestRigs`) or LoomTestSupport, and no product
+                    lists one; both live under Tests/; scripts/release/Package.release.swift names none; they declare no
+                    `@Test` or `@Suite`; LoomTestSupport imports no product and nothing `@testable` (rigs reach product
+                    internals, the support never does); Sources/ has no `@testable import`; `WindowEventTests` is only in
+                    LoomWindowTests
 
 The ratchet: scripts/check-tests.allow holds `rule<TAB>path<TAB>count` for what the tree had when a rule arrived. A count
 that rises, or a path the file does not list, fails. A count that falls is reported; `--update` writes the lower counts and
@@ -124,7 +130,91 @@ def inside(spans, offset):
 
 
 def is_window_file(path, text):
-    return path.startswith(WINDOW_TARGET) or re.search(r'(extension|struct|enum)\s+WindowEventTests\b', text) is not None
+    return path.startswith(WINDOW_TARGET)
+
+
+def package_targets(text):
+    """{name: (kind, path or None, [dependency names])} and {product: [targets]} from a manifest's text."""
+    def call_end(i):
+        depth = 0
+        for k in range(i, len(text)):
+            if text[k] == '(':
+                depth += 1
+            elif text[k] == ')':
+                depth -= 1
+                if depth == 0:
+                    return k
+        return len(text)
+    targets, products = {}, {}
+    for m in re.finditer(r'\.(target|executableTarget|testTarget|library|executable)\s*\(\s*name:\s*"([^"]+)"', text):
+        body = text[m.start():call_end(text.index('(', m.start()))]
+        if m.group(1) in ('library', 'executable'):
+            t = re.search(r'targets:\s*\[([^\]]*)\]', body)
+            products[m.group(2)] = re.findall(r'"([^"]+)"', t.group(1)) if t else []
+            continue
+        d = re.search(r'dependencies:\s*\[', body)
+        deps = []
+        if d:
+            depth, k = 0, d.end() - 1
+            for k in range(d.end() - 1, len(body)):
+                depth += {'[': 1, ']': -1}.get(body[k], 0)
+                if depth == 0:
+                    break
+            deps = re.findall(r'(?<![\w:])"([^"]+)"', re.sub(r'\.product\([^)]*\)', '', body[d.end():k]))
+        path = re.search(r'path:\s*"([^"]+)"', body)
+        targets[m.group(2)] = (m.group(1), path.group(1) if path else None, deps)
+    return targets, products
+
+
+def target_problems(root):
+    """The `targets` rule over the checked-out tree (strict)."""
+    manifest = os.path.join(root, 'Package.swift')
+    if not os.path.exists(manifest):
+        return []
+    targets, products = package_targets(open(manifest, encoding='utf-8').read())
+    libraries = {n for n in targets if n == 'LoomTestSupport' or n.endswith('TestRigs')}
+    out = []
+    for name, (kind, path, deps) in sorted(targets.items()):
+        used = sorted(set(deps) & libraries)
+        if name in libraries:
+            if kind != 'target' or not (path or '').startswith('Tests/'):
+                out.append(f'targets: {name} is a plain target under Tests/')
+            if name == 'LoomTestSupport' and used:
+                out.append(f'targets: LoomTestSupport depends on {", ".join(used)}')
+        elif kind != 'testTarget' and used:
+            out.append(f'targets: {kind} {name} depends on {", ".join(used)}; only test targets do')
+    for name, members in sorted(products.items()):
+        if set(members) & libraries:
+            out.append(f'targets: product {name} lists {", ".join(sorted(set(members) & libraries))}')
+    release = os.path.join(root, 'scripts/release/Package.release.swift')
+    if os.path.exists(release) and re.search(r'LoomTestSupport|TestRigs', open(release, encoding='utf-8').read()):
+        out.append('targets: scripts/release/Package.release.swift names a test library')
+    library_types = set()
+    for path in test_files(root):
+        if path.split('/')[1] in libraries:
+            library_types |= set(re.findall(r'^(?:@\w+(?:\([^)]*\))?\s+)*(?:(?:public|final)\s+)*(?:struct|enum|class|actor)\s+(\w+)',
+                                            swift.code(open(os.path.join(root, path), encoding='utf-8').read()), re.M))
+    for path in test_files(root):
+        top = path.split('/')[1]
+        code = swift.code(open(os.path.join(root, path), encoding='utf-8').read())
+        if top in libraries and re.search(r'@(Test|Suite)\b', code):
+            out.append(f'targets: {path} declares a test or suite; {top} is a library the tests link')
+        if top == 'LoomTestSupport':
+            for m in re.finditer(r'^\s*(@testable\s+import\s+\w+|import\s+(Loom\w+|CLoom\w+))', code, re.M):
+                out.append(f'targets: {path}:{swift.line_of(code, m.start())}: LoomTestSupport stays product-free ({m.group(1)})')
+        if top not in libraries:
+            for m in re.finditer(r'^extension\s+(\w+)\b', code, re.M):
+                body = code[m.end():swift.closing_brace(code, code.index('{', m.end()))] if '{' in code[m.end():] else ''
+                if m.group(1) in library_types and re.search(r'@(Test|Suite)\b', body):
+                    out.append(f'targets: {path}:{swift.line_of(code, m.start())}: tests nested in {m.group(1)}, a type of a '
+                               'test library, carry its module in their ids (out of their tier\'s filter)')
+        if not path.startswith(WINDOW_TARGET) and re.search(r'\bWindowEventTests\b', code):
+            out.append(f'targets: {path} names WindowEventTests, which is only LoomWindowTests\'')
+    for base, _, names in os.walk(os.path.join(root, 'Sources')):
+        for name in names:
+            if name.endswith('.swift') and re.search(r'^\s*@testable\s+import', open(os.path.join(base, name), encoding='utf-8').read(), re.M):
+                out.append(f'targets: {os.path.relpath(os.path.join(base, name), root)} has an @testable import')
+    return out
 
 
 def scan(path, text, superseded):
@@ -291,6 +381,7 @@ def check(root, today):
         for n, _, _, problem in quarantines(path, text, today):
             if problem:
                 bad_quarantine.append(f'quarantine: {path}:{n}: {problem}')
+    bad_quarantine += target_problems(root)
     t = totals(current)
     print('test guard: ' + ', '.join(f'{r} {t.get(r, 0)}' for r in RATCHETED))
     if falls:
@@ -390,8 +481,10 @@ def self_test():
         expect(got == n, f'{rule}: {n} expected, {got} found')
     expect(not scan('Tests/LoomTestSupport/Waits.swift', PLANTED['wait-helper'][0], set()).get('wait-helper'),
            'wait-helper: the support target may define waits')
-    expect(not scan('Tests/LoomCoreTests/W.swift', 'extension WindowEventTests {}\n' + PLANTED['key-window'][0], set())
-           .get('key-window'), 'key-window: the window tests may make windows key')
+    expect(not scan('Tests/LoomWindowTests/W.swift', PLANTED['key-window'][0], set()).get('key-window'),
+           'key-window: the window tests may make windows key')
+    expect(scan('Tests/LoomCoreTests/W.swift', 'extension WindowEventTests {}\n' + PLANTED['key-window'][0], set())
+           .get('key-window'), 'key-window: the namespace alone no longer exempts a file outside LoomWindowTests')
     expect(not scan('Tests/LoomCoreTests/P.swift', '@Suite(.renderProbe) struct S {}\nSidebarRenderProbe.watch([])\n', set())
            .get('global-state'), 'global-state: a file with .renderProbe may watch the probe')
     expect(scan('Tests/LoomCoreTests/B2FixRoundTests.swift', '', set()).get('milestone-name') == [1], 'milestone-name')
@@ -406,6 +499,47 @@ def self_test():
 
     tmp = tempfile.mkdtemp(prefix='check-tests-')
     try:
+        clean = '''let package = Package(name: "P",
+    products: [.library(name: "LoomCore", targets: ["LoomCore"])],
+    targets: [
+        .target(name: "LoomCore", dependencies: ["CLoomPOSIX", .product(name: "X", package: "x")]),
+        .target(name: "LoomTestSupport", path: "Tests/LoomTestSupport"),
+        .target(name: "LoomCoreTestRigs", dependencies: ["LoomCore", "LoomTestSupport"], path: "Tests/LoomCoreTestRigs"),
+        .testTarget(name: "LoomCoreTests", dependencies: ["LoomCore", "LoomTestSupport", "LoomCoreTestRigs"]),
+    ])'''
+        for d in ('Tests/LoomTestSupport', 'Tests/LoomCoreTestRigs', 'Tests/LoomCoreTests', 'Tests/LoomWindowTests', 'Sources/LoomCore',
+                  'scripts/release'):
+            os.makedirs(os.path.join(tmp, d))
+        open(os.path.join(tmp, 'Package.swift'), 'w').write(clean)
+        open(os.path.join(tmp, 'scripts/release/Package.release.swift'), 'w').write('// no test libraries\n')
+        open(os.path.join(tmp, 'Tests/LoomTestSupport/Waits.swift'), 'w').write('import Testing\npublic func waitFor() {}\n')
+        open(os.path.join(tmp, 'Tests/LoomCoreTestRigs/Rig.swift'), 'w').write('@testable import LoomCore\nstruct Rig {}\n')
+        open(os.path.join(tmp, 'Tests/LoomWindowTests/W.swift'), 'w').write('enum WindowEventTests {}\n')
+        open(os.path.join(tmp, 'Tests/LoomCoreTests/Own.swift'), 'w').write('enum Own {}\nextension Own { @Suite struct S {} }\n')
+        expect(target_problems(tmp) == [], f'targets: the clean layout passes: {target_problems(tmp)}')
+        for what, path, text in [
+                ('a product target on a rig', 'Package.swift', clean.replace('"CLoomPOSIX",', '"CLoomPOSIX", "LoomCoreTestRigs",')),
+                ('a product listing the support', 'Package.swift', clean.replace('targets: ["LoomCore"]', 'targets: ["LoomCore", "LoomTestSupport"]')),
+                ('a rig outside Tests/', 'Package.swift', clean.replace('path: "Tests/LoomCoreTestRigs"', 'path: "Sources/Rigs"')),
+                ('the release manifest naming the support', 'scripts/release/Package.release.swift', '.target(name: "LoomTestSupport")\n'),
+                ('a test in a rig', 'Tests/LoomCoreTestRigs/Rig.swift', '@Suite struct S { @Test func t() {} }\n'),
+                ('the support importing a product', 'Tests/LoomTestSupport/Waits.swift', 'import LoomCore\n'),
+                ('the support importing @testable', 'Tests/LoomTestSupport/Waits.swift', '@testable import Foundation\n'),
+                ('@testable in a product', 'Sources/LoomCore/A.swift', '@testable import LoomChat\n'),
+                ('the window namespace outside LoomWindowTests', 'Tests/LoomCoreTestRigs/Rig.swift', 'extension WindowEventTests {}\n'),
+                ('a suite nested in a rig type', 'Tests/LoomCoreTests/Nested.swift',
+                 'extension Rig { @Suite struct S { @Test func t() {} } }\n')]:
+            full = os.path.join(tmp, path)
+            before = open(full).read() if os.path.exists(full) else None
+            open(full, 'w').write(text)
+            expect(len(target_problems(tmp)) == 1, f'targets: {what} fails once: {target_problems(tmp)}')
+            if before is None:
+                os.remove(full)
+            else:
+                open(full, 'w').write(before)
+        expect(target_problems(tmp) == [], 'targets: each plant is undone')
+        shutil.rmtree(tmp)
+        tmp = tempfile.mkdtemp(prefix='check-tests-')
         os.makedirs(os.path.join(tmp, 'Tests/LoomCoreTests'))
         os.makedirs(os.path.join(tmp, 'scripts'))
         plant = os.path.join(tmp, 'Tests/LoomCoreTests/ATests.swift')
@@ -436,7 +570,7 @@ def self_test():
         for f in failures:
             print(f'  {f}', file=sys.stderr)
         return 1
-    print(f'test guard self-test: {len(PLANTED)} planted rules, quarantine dates and the ratchet behave')
+    print(f'test guard self-test: {len(PLANTED)} planted rules, the targets rule, quarantine dates and the ratchet behave')
     return 0
 
 

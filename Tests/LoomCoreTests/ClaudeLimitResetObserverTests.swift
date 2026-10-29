@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 @Suite struct ClaudeLimitResetObserverTests {
     private actor Sink {

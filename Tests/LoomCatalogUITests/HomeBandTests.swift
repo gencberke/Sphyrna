@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// DESIGN §9, the plain values of Home: the band's words, which cards show in which state, and the layout values of a row and
 /// a card. No view is hosted (the hosted checks are in `HomeRenderTests`).

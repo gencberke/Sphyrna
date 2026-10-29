@@ -4,6 +4,7 @@ import SwiftUI
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// The Usage page as cards (FB3-1, U1): the pure rules of the card texts and their order, the contrast of the
 /// text on the card surface, and an offscreen render of the report at the Settings page width.

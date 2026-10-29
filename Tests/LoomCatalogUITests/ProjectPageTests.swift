@@ -6,6 +6,8 @@ import Synchronization
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// An index that answers project lookups from a fixed answer and records what it was asked.
 final class ProjectUsageFakeIndex: UsageIndexing, @unchecked Sendable {

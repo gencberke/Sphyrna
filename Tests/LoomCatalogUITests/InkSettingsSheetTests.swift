@@ -4,6 +4,7 @@ import SwiftUI
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// A window's own state, as the source of a `SheetPresenter` in `aPresenterReadsAWindowsOwnStateAsItsSheet`.
 @MainActor

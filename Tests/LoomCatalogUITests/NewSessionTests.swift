@@ -4,6 +4,8 @@ import LoomCore
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// V07: the draft session. Drafts are stored and reused, the defaults follow one order, and the first send hands the runtime what the draft shows. Everything
 /// lives in temporary folders that each test removes; no process starts.
@@ -25,27 +27,10 @@ struct NewSessionTests {
         return condition()
     }
 
-    /// The runtime's side of a draft send: records what was asked and lets the test answer.
-    @MainActor
-    final class DraftIntents: NewSessionIntents {
-        var sends: [(projectID: UUID?, launch: NewSessionLaunch, focus: NewSessionFocus, outcome: @MainActor (NewSessionOutcome) -> Void)] = []
-        var plainStarts = 0
-        func start(provider: ManagedSession.Provider, projectID: UUID?) { plainStarts += 1 }
-        func resume(sessionID: UUID) {}
-        func stop(sessionID: UUID) {}
-        func answer(sessionID: UUID, requestID: String, accept: Bool) {}
-        func viewed(sessionID: UUID) {}
-        func terminalView(sessionID: UUID) -> NSView? { nil }
-        func startSession(projectID: UUID?, launch: NewSessionLaunch, focus: NewSessionFocus,
-                          outcome: @escaping @MainActor (NewSessionOutcome) -> Void) {
-            sends.append((projectID, launch, focus, outcome))
-        }
-    }
-
     private struct Rig {
         let root: URL
         let model: CatalogModel
-        let intents: DraftIntents
+        let intents: NewSessionRig.DraftIntents
         let catalog: SessionCatalog
         let projectID: UUID
         let otherProjectID: UUID
@@ -61,7 +46,7 @@ struct NewSessionTests {
             ids.append(try await catalog.addProject(path: folder.path).project.id)
         }
         let hub = SessionEventHub()
-        let intents = DraftIntents()
+        let intents = NewSessionRig.DraftIntents()
         let model = CatalogModel(
             catalog: catalog, events: hub, preferences: UIPreferencesStore(url: root.appendingPathComponent("ui-preferences.json")))
         model.intents = intents

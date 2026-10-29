@@ -52,12 +52,31 @@ let package = Package(
         // The tests' shared fixtures (DEVELOPMENT §3.1): the bounded waits, the products directory, temporary roots, the
         // process-heavy gate and the window host. Product-free, so it builds in every configuration; never bundled.
         .target(name: "LoomTestSupport", path: "Tests/LoomTestSupport"),
-        .testTarget(name: "LoomCoreTests", dependencies: ["LoomCore", "LoomTestSupport"]),
+        // Rigs: fixtures that reach a product's internals (`@testable import`), shared by the tiers of one area. Only test
+        // targets depend on them, and swift test builds them with testing enabled; Package.release.swift lists none.
+        .target(name: "LoomCoreTestRigs", dependencies: ["LoomCore", "LoomTestSupport"], path: "Tests/LoomCoreTestRigs"),
+        .target(name: "LoomChatTestRigs", dependencies: ["LoomChat", "LoomCore", "LoomTestSupport"], path: "Tests/LoomChatTestRigs"),
+        .target(name: "LoomRemoraTestRigs", dependencies: ["LoomRemora", "LoomChat", "LoomCore", "LoomTestSupport"],
+                path: "Tests/LoomRemoraTestRigs"),
+        .target(name: "LoomCatalogUITestRigs", dependencies: ["LoomCore", "LoomTerminal", "LoomCatalogUI", "LoomChat", "LoomRemora",
+                                                              "LoomTestSupport"], path: "Tests/LoomCatalogUITestRigs"),
+        // Tiers (DEVELOPMENT §2): one target per area for unit tests (T1), then one target each for integration (T2: real
+        // children, PTYs, sockets, run scopes), window (T3: run alone) and frozen (TF: code D-100 and D-102 left unreachable).
+        .testTarget(name: "LoomCoreTests", dependencies: ["LoomCore", "LoomTestSupport", "LoomCoreTestRigs"]),
         .testTarget(name: "LoomTerminalTests", dependencies: ["LoomCore", "LoomTerminal", "LoomTestSupport"]),
-        .testTarget(name: "LoomChatTests", dependencies: ["LoomChat", "LoomCore", "LoomTestSupport"]),
-        .testTarget(name: "LoomRemoraTests", dependencies: ["LoomRemora", "LoomChat", "LoomCore", "LoomTestSupport"]),
+        .testTarget(name: "LoomChatTests", dependencies: ["LoomChat", "LoomCore", "LoomTestSupport", "LoomChatTestRigs"]),
+        .testTarget(name: "LoomRemoraTests", dependencies: ["LoomRemora", "LoomChat", "LoomCore", "LoomTestSupport",
+                                                            "LoomRemoraTestRigs"]),
         .testTarget(name: "LoomLaunchOptionsTests", dependencies: ["LoomLaunchOptions", "LoomTestSupport"]),
         .testTarget(name: "LoomCatalogUITests", dependencies: ["LoomCore", "LoomTerminal", "LoomCatalogUI", "LoomChat", "LoomRemora",
-                                                               "LoomTestSupport"]),
+                                                               "LoomTestSupport", "LoomCatalogUITestRigs"]),
+        .testTarget(name: "LoomIntegrationTests", dependencies: ["LoomCore", "LoomTerminal", "LoomCatalogUI", "LoomChat", "LoomRemora",
+                                                                 "LoomTestSupport", "LoomCoreTestRigs", "LoomChatTestRigs",
+                                                                 "LoomRemoraTestRigs", "LoomCatalogUITestRigs"]),
+        .testTarget(name: "LoomWindowTests", dependencies: ["LoomCore", "LoomTerminal", "LoomCatalogUI", "LoomChat", "LoomRemora",
+                                                            "LoomTestSupport", "LoomCatalogUITestRigs"]),
+        .testTarget(name: "LoomFrozenTests", dependencies: ["LoomCore", "LoomTerminal", "LoomCatalogUI", "LoomChat", "LoomRemora",
+                                                            "LoomTestSupport", "LoomCoreTestRigs", "LoomChatTestRigs",
+                                                            "LoomCatalogUITestRigs"]),
     ]
 )

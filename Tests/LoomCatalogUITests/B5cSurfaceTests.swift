@@ -5,6 +5,7 @@ import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
 import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 @MainActor
 @Suite(.serialized, .timeLimit(.minutes(2)))

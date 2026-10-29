@@ -5,6 +5,7 @@ import Testing
 import LoomCore
 @testable import LoomRemora
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// L3b: Settings → Remora (on and off) and Remora's memory sheet (its three tabs and the Clear question) drawn offscreen at the window's
 /// size, in a window nobody sees. With `LOOM_SETTINGS_RENDER_DIR` set the pictures are written there as

@@ -3,6 +3,7 @@ import Foundation
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// FB6-5: one value says which session is dragged and which targets take it, so every target shows one of the three looks
 /// and a drag that ends without a drop leaves nothing behind. Projects are not in it any more: their reorder is live and

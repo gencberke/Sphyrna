@@ -4,6 +4,8 @@ import LoomCore
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 extension StatusBarTests {
 /// The actual main-window root, serialized with the other test that temporarily replaces NSApp.helpMenu.

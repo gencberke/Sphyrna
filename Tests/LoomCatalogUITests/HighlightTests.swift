@@ -1,6 +1,7 @@
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// V25: the one hover and selection treatment (`LoomTheme.Highlight`, `RowHighlight`), its contrast in both appearances (Ink,
 /// Paper) on every tone, and

@@ -4,6 +4,8 @@ import LoomCore
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// I4c, the edges, drawn offscreen (nothing here is ordered onto the screen): the top stack's fitting (one box, "+N", opened), the
 /// ended line's 40 pt, and the record's order and facts card.

@@ -6,6 +6,7 @@ import Testing
 @testable import LoomRemora
 @testable import LoomCatalogUI
 import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 // Nested in ModelPickerTests' serialized suite: both host draft popovers in borderless windows, one at a time.
 extension ModelPickerTests {
@@ -93,7 +94,7 @@ extension ModelPickerTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let model = CatalogModel(catalog: nil, events: SessionEventHub(),
                                  preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
-        let intents = NewSessionTests.DraftIntents()
+        let intents = NewSessionRig.DraftIntents()
         model.intents = intents
         defer { model.stop(); withExtendedLifetime(intents) {} }
         let project = UUID()
@@ -207,7 +208,7 @@ extension ModelPickerTests {
             projectNames: ["demo"], seeds: seeds, preferences: preferences, withHost: false)
         defer { Task { await rig.finish() } }
         let model = rig.model
-        let intents = NewSessionTests.DraftIntents()
+        let intents = NewSessionRig.DraftIntents()
         model.intents = intents
         let project = rig.projects[0].id
         model.newSession.addPreset(NewSessionPreset(name: "Review the branch", message: "Review the branch", projectID: project))

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 // Release B fix round 2, the core part: what each project remembers for its next session, and the pause between looks.
 

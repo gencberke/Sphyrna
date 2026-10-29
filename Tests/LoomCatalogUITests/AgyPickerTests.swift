@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 @MainActor struct AgyPickerTests {
     @Test func enabledAgyModelCanSelectItsHarnessWithoutInventingEffortOrFullAccess() throws {

@@ -3,6 +3,7 @@ import SwiftUI
 import Testing
 @testable import LoomCatalogUI
 @testable import LoomCore
+@testable import LoomCatalogUITestRigs
 
 /// I6b: the inspector's Agents tab in Ink (DESIGN §4 "The Agents tab"): the list's grouping, order and lines, the transcript's two
 /// voices, its brief, "Result" and its tail, the review width while a transcript is open, and Esc back to the list.

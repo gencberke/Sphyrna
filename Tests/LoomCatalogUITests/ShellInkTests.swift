@@ -4,6 +4,7 @@ import LoomCore
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// The session window's shell in Ink (I2a; DESIGN §2 item 2, §6 Header, Tabs, Controls, Iconography and Terminal framing):
 /// the harness marks, the control family, the divider, the flush terminal and the one canvas around the main pane. The

@@ -5,6 +5,7 @@ import SwiftUI
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// Controlled first-screen measurement: one owned 8 MiB transcript, no provider, profile or shown window.
 @MainActor

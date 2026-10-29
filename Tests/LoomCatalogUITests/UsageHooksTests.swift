@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// The two events the catalog model forwards to usage: the first load finishing and a finished turn.
 @MainActor

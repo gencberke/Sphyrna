@@ -4,6 +4,7 @@ import SwiftUI
 import Testing
 @testable import LoomCatalogUI
 @testable import LoomCore
+@testable import LoomCatalogUITestRigs
 
 /// I6b: the review surfaces drawn offscreen, each hosted in a window nobody sees and never ordered front: the Agents list at 328,
 /// a transcript at 556 (running, and finished with its Result), the Changes tab's empty and waiting states at 556, and the main

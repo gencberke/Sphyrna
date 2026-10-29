@@ -3,10 +3,11 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 @MainActor
 struct HomeConnectTests {
-    typealias Rig = ConnectionsTests.Rig
+    typealias Rig = ConnectionsRig.Rig
 
     private func catalogModel(startable: Set<ManagedSession.Provider> = [.claude, .codex]) throws -> (CatalogModel, URL) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-connections-\(UUID())", isDirectory: true)
@@ -57,7 +58,7 @@ struct HomeConnectTests {
     @Test func aClaudeThatCouldNotBeCheckedRaisesNoSetupCard() async throws {
         let (model, root) = try catalogModel()
         defer { try? FileManager.default.removeItem(at: root) }
-        let rig = Rig(claude: nil, codex: ConnectionsTests.max, codexFound: true)
+        let rig = Rig(claude: nil, codex: ConnectionsRig.max, codexFound: true)
         model.installHarnessHealth(rig.model)
         rig.model.checkAll()
         await rig.model.settle()
@@ -71,7 +72,7 @@ struct HomeConnectTests {
         let (model, root) = try catalogModel()
         defer { try? FileManager.default.removeItem(at: root) }
         #expect(!model.homeConnect.showsNotice && !model.homeClaudeCLIMissing)
-        let rig = Rig(claude: nil, claudeFound: false, codex: ConnectionsTests.max, codexFound: true)
+        let rig = Rig(claude: nil, claudeFound: false, codex: ConnectionsRig.max, codexFound: true)
         model.installHarnessHealth(rig.model)
         rig.model.checkAll()
         await rig.model.settle()

@@ -2,6 +2,7 @@ import Foundation
 @testable import LoomCore
 import Testing
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// W3-f: the palette's Add project… and Reveal in Finder, listed where they apply and found by their words; "draft" finds New
 /// session, which does what ⌘N does.

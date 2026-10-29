@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// V20: the Changes tab in the inspector's frame (the wide column and the overlay rule, the tab bar) and the
 /// diff bands' contrast. The tab's reads and comments are in `ChangesModelTests`.

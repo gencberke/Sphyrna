@@ -3,6 +3,7 @@ import SwiftUI
 import Testing
 @testable import LoomCatalogUI
 @testable import LoomCore
+@testable import LoomCatalogUITestRigs
 
 /// I6b: the main window's Delete sheet in the family's facts (DESIGN §6 Sheets): one lead sentence, then "Removed" and "Kept", from
 /// the runtime's dry run; and its keys (D-78, "Filled means Return"): no filled button, Return does nothing, Esc cancels.

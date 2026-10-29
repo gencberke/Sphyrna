@@ -5,6 +5,8 @@ import SwiftUI
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// U4: the strip's layout rules and the keyboard commands the menu routes to the model.
 /// Everything here is pure presentation state; nothing starts a provider.

@@ -4,6 +4,7 @@ import SwiftUI
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// D-69 point 11 (O-12): the failure mark under "Differentiate without color" and the app icon on the first-run Home.
 /// Both are drawn off screen with `ImageRenderer`; nothing opens a window.

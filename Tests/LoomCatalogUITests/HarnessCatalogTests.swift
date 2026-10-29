@@ -4,6 +4,9 @@ import Foundation
 import LoomCore
 import Testing
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
+
+private typealias LookupCount = HarnessCatalogShared.LookupCount
 
 /// Intents that start nothing: a model with one can ask whether a start is available (C2B).
 @MainActor
@@ -18,13 +21,7 @@ private final class StartIntents: ConversationIntents {
 
 /// The connect switch's preference and the composer's model lists as they come from `ModelCatalog` (D-98, D-99).
 @MainActor
-struct HarnessCatalogTests {
-    private func picker(codexNote: String = ComposerModelNotes.inNewSession) -> ComposerModelPicker {
-        ComposerModelPicker(
-            modelTitle: "Sonnet", effortTitle: nil, rows: ModelCatalog.claude.map { ComposerBarText.ModelRow(value: $0.id, title: $0.title) },
-            chosenModel: nil, levels: NewSessionModels.effortLevels, chosenLevel: nil, canResetEffort: false, codexNote: codexNote)
-    }
-
+struct HarnessCatalogTests: HarnessCatalogFixtures {
     // MARK: The preference
 
     @Test func theSwitchIsStoredPerHarnessAndReadsOnInAnOlderFile() throws {
@@ -117,18 +114,6 @@ struct HarnessCatalogTests {
         state.models = [ModelOption(value: "opus", resolvedModel: "claude-opus-5-5", displayName: "Opus",
                                     supportedEffortLevels: [])]
         #expect(ComposerBarText.modelTitle(state) == "Opus 5.5")
-    }
-
-    @Test func codexRowsComeFromTheGivenListAndTheGroupIsLeftOutWhenThereIsNone() {
-        let probed = [ModelCatalogEntry(harness: .codex, id: "fake-alpha", title: "Fake Alpha", note: "Default"),
-                      ModelCatalogEntry(harness: .codex, id: "fake-beta", title: "Fake Beta")]
-        let codex = picker().groups(codex: probed)[1]
-        #expect(codex.rows.map(\.title) == ["Fake Alpha", "Fake Beta"])
-        #expect(codex.rows.map(\.subtitle) == ["Default", nil])
-        #expect(codex.rows.allSatisfy { !$0.isEnabled && !$0.checked && $0.id.hasPrefix("codex:") })
-        #expect(picker().groups().count == 2, "without a list: today's names")
-        #expect(picker().groups()[1].rows.map(\.title) == ModelCatalog.codexFallback.map(\.title))
-        #expect(picker().groups(codex: []).map(\.provider) == [.claude], "switched off: Claude's group only")
     }
 
     @Test func fallbackCodexRowsUseModelIDsRatherThanDisplayNames() {
@@ -256,22 +241,6 @@ struct HarnessCatalogTests {
         model.refreshHarnessAvailability(force: true)
         #expect(await lookups(reads, reached: 3) == 3, "Check Again or a switch: at once")
     }
-
-    /// Waits until the lookups reach `count`, for a read that runs off the main actor; returns how many there were.
-    private func lookups(_ reads: LookupCount, reached count: Int) async -> Int {
-        for _ in 0..<500 {
-            let value = await reads.value
-            if value >= count { return value }
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-        return await reads.value
-    }
-}
-
-/// Counts the PATH lookups a test's reader makes.
-private actor LookupCount {
-    private(set) var value = 0
-    func bump() { value += 1 }
 }
 
 /// A clock a test moves by hand.

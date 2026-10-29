@@ -4,6 +4,8 @@ import LoomCore
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// Offscreen tests of the real controls and card; no native window is shown.
 @MainActor

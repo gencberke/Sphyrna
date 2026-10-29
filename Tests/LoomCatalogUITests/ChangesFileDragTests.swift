@@ -4,6 +4,8 @@ import SwiftUI
 import Testing
 import UniformTypeIdentifiers
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// W3-e: a changed file drags out of the Changes tab as the composer's `@path` text, never as the file; a file gone from
 /// disk offers no drag, and the rows keep their click.

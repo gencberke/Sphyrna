@@ -6,6 +6,8 @@ import Synchronization
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// V05, the parts that need no window: the two lists and their numbers against the sidebar's and the Dock
 /// badge's, Continue and its Resume, the start box's project, the first-run and empty states, and the plan

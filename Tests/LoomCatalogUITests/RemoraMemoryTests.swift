@@ -4,6 +4,7 @@ import Testing
 import LoomCore
 @testable import LoomRemora
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// L3b: Remora's memory sheet as plain values and over a host that holds a temporary memory: the 560 width beside 420 and 480, the
 /// day labels, the keys, the note's text and what Clear asks. No Claude call, no panel, no real profile or vault.

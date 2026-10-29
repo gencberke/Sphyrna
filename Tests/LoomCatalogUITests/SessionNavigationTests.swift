@@ -4,6 +4,8 @@ import LoomCore
 import LoomTerminal
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 private func candidate(_ indicator: SessionIndicator, _ seconds: Double, id: UUID = UUID(),
                        backgroundWork: Int = 0) -> AttentionCandidate {

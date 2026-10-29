@@ -5,6 +5,8 @@ import LoomTerminal
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// Fix round 3 F (D-69): the header's model segment, the model and the context fill on every face without the composer
 /// bar. The words and the width rules first (pure), then the real `DetailHeader` and the inspector's Overview hosted in a

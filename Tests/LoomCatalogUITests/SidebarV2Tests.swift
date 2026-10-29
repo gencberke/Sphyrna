@@ -3,6 +3,7 @@ import Observation
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// V04, the parts that need no window: the words of a reason line, the row's own reason property, the Home
 /// row's count and its label. What the views evaluate is in `SidebarRenderTests`; what they expose to

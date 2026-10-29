@@ -2,6 +2,7 @@ import Foundation
 import LoomCore
 import Testing
 @testable import LoomChat
+@testable import LoomChatTestRigs
 
 /// The wire: NDJSON framing across chunk boundaries and for lines of many MB, unknown types passed through, and the
 /// typed messages Loom reads.

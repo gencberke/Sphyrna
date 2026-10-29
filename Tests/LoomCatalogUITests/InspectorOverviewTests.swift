@@ -3,6 +3,7 @@ import LoomChat
 import LoomCore
 import Testing
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// The inspector's Overview as plain values: which rows a session has, where each value comes from when more than one source
 /// knows it, and the words (the start, the folder, the context). No view and no window.

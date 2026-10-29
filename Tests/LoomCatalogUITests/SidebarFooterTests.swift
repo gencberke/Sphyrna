@@ -2,6 +2,8 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 struct SidebarFooterTests {
     private func today(_ tokens: Int64, cost: Double, unknown: [String] = []) -> UsageSnapshot {

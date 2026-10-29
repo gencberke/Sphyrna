@@ -5,6 +5,8 @@ import Testing
 import LoomChat
 @testable import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// Release A UI fix round: the pure rules behind the small fixes (formats, wrapping, wording, snippets, counts).
 @MainActor

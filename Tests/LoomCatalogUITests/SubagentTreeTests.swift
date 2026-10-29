@@ -4,6 +4,7 @@ import SwiftUI
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// The subagent tree under a session card (D-39): the content rules as a plain value, and the real
 /// sidebar in a window that is never ordered front.

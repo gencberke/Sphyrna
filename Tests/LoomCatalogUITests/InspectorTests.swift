@@ -4,6 +4,8 @@ import LoomCore
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// V09: the inspector's state per session, the words of its tabs and the way a subagent's click and the tabs
 /// end a transcript. The window tests (the PTY resize count, the header toggle, what the tabs draw) are in

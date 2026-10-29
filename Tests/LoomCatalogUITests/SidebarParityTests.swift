@@ -4,6 +4,8 @@ import LoomCore
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// The real lazy sidebar, without showing a window. Native appearance still belongs to the visual pool.
 @MainActor

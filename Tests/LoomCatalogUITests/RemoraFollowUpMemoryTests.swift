@@ -3,6 +3,7 @@ import Testing
 import LoomCore
 @testable import LoomRemora
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// L3b follow-ups: the memory sheet on the host's reads (L3a3), over a host that holds a temporary memory. The journal's folded
 /// weeks, and a removal's own Undo with two removals in flight. No Claude call, no panel, no real profile or vault.

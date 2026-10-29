@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// The launch question for a damaged catalog (H1 item 2): what it says and which buttons it has.
 struct CatalogRecoveryPromptTests {

@@ -5,6 +5,7 @@ import SwiftUI
 import Testing
 @testable import LoomCatalogUI
 @testable import LoomChat
+@testable import LoomCatalogUITestRigs
 
 /// V20: the Changes tab on the model. It reads only while the tab is open, reads again for a turn that ended, a new
 /// scope or a new file, drops a read nobody waits for, and sends its comments as one message. Counting seams stand in

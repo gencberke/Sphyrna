@@ -4,6 +4,8 @@ import SwiftUI
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
+@testable import LoomCatalogUITestRigs
 
 /// V05, the views: Home hosted in a window nobody sees, at the two panel widths of the evidence screenshots,
 /// reports every block it should and no block it should not (read from the accessibility tree).
@@ -250,7 +252,7 @@ struct HomeRenderTests {
         let model = CatalogModel(catalog: try SessionCatalog(url: root.appendingPathComponent("c.sqlite3")),
                                  events: SessionEventHub(),
                                  preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
-        let rig = ConnectionsTests.Rig(claude: nil, claudeFound: false, codex: nil, codexFound: false)
+        let rig = ConnectionsRig.Rig(claude: nil, claudeFound: false, codex: nil, codexFound: false)
         var copied: String?
         rig.model.copyToPasteboard = { copied = $0 }
         model.installHarnessHealth(rig.model)
@@ -282,7 +284,7 @@ struct HomeRenderTests {
         enableAccessibilityTree()
         let rig = try await ListRig.make(projects: 1, perProject: 2, unassigned: 0, mode: .activity)
         defer { rig.cleanup() }
-        let health = ConnectionsTests.Rig(claude: nil, claudeFound: false, codex: ConnectionsTests.max, codexFound: true)
+        let health = ConnectionsRig.Rig(claude: nil, claudeFound: false, codex: ConnectionsRig.max, codexFound: true)
         rig.model.installHarnessHealth(health.model)
         health.model.checkAll()
         await health.model.settle()

@@ -4,6 +4,7 @@ import SwiftUI
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// Settings pages in the window's fixed size, hosted in a window nobody sees (never ordered front).
 @MainActor
