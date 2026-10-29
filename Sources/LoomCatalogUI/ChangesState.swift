@@ -310,6 +310,12 @@ final class SessionChanges {
         drafts[scope]?.removeAll { $0.anchor == anchor }
     }
 
+    /// Removes the comments with these ids (a read terminal send), leaving any other in the scope.
+    func removeComments(_ ids: Set<UUID>, in scope: ChangesScope) {
+        drafts[scope]?.removeAll { ids.contains($0.id) }
+        if drafts[scope]?.isEmpty == true { drafts[scope] = nil }
+    }
+
     func discardComments(in scope: ChangesScope) {
         drafts[scope] = nil
         composing = nil

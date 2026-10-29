@@ -87,6 +87,7 @@ struct ChangesTerminalSendTests: ChangesSendFixtures {
             #expect(status.line?.hasPrefix("Sent · waiting for ") == true && status.line?.hasSuffix(" to be ready") == true,
                     "sent: \(status)")
             #expect(status.holdsSend, "a second click does not send it again while it waits")
+            comment(model, target.sessionID, file: "src/c.swift", line: 2, "Written while it waits.")
             #expect(!screen.snapshot.contains("Sphyrna: message"), "a working session never receives input")
 
             #expect(await screen.contains("Sphyrna: message", timeout: 8), "the pointer comes on the Ready edge")
@@ -112,8 +113,8 @@ struct ChangesTerminalSendTests: ChangesSendFixtures {
             #expect(second.messages.isEmpty, "inbox reads the message once")
             #expect(await waitUntil(10) { model.changes.session(for: target.sessionID).sendStatus == .delivered },
                     "the footer says Delivered once the session read it")
-            #expect(model.changes.session(for: target.sessionID).comments(in: .lastTurn).count == 3,
-                    "the comments stay until the user discards them")
+            #expect(model.changes.session(for: target.sessionID).comments(in: .lastTurn).map(\.text) == ["Written while it waits."],
+                    "the sent comments are gone once read; one written after the send stays")
 
             #expect(try await context.runtime.stopConversation(sessionID: target.sessionID).succeeded)
             #expect(await waitUntil(10) { model.rowModels[target.sessionID].map { !model.isRunning($0) } == true },
