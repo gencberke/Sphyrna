@@ -49,10 +49,15 @@ private final class UsageWindowTestBundle: NSObject {}
         window.contentViewController = host
         window.setContentSize(NSSize(width: 320, height: 500))
         defer { window.close() }
-        try await Task.sleep(for: .milliseconds(100))
-        host.view.layoutSubtreeIfNeeded()
-        window.displayIfNeeded()
-        #expect(accessibilityElements(in: host.view).map(InkAX.label).contains { $0.contains("Weekly · Fable") && $0.contains("0% left") })
+        func fableCard() -> Bool {
+            accessibilityElements(in: host.view).map(InkAX.label).contains { $0.contains("Weekly · Fable") && $0.contains("0% left") }
+        }
+        await waitFor("Home's usage to show Weekly · Fable at 0% left") {
+            host.view.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            return fableCard()
+        }
+        #expect(fableCard())
         #expect(!window.isVisible && !window.isKeyWindow)
     }
 
@@ -94,10 +99,15 @@ private final class UsageWindowTestBundle: NSObject {}
         window.contentViewController = hosting
         window.setContentSize(NSSize(width: 320, height: 700))
         defer { window.close() }
-        try await Task.sleep(for: .milliseconds(100))
-        hosting.view.layoutSubtreeIfNeeded()
-        window.displayIfNeeded()
-        let labels = accessibilityElements(in: hosting.view).map(InkAX.label)
+        let labels = await waitFor("Home's usage to show Weekly · Opus and the partial-limits line",
+                                   observe: { () -> [String] in
+            hosting.view.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            return accessibilityElements(in: hosting.view).map(InkAX.label)
+        }, until: { seen in
+            seen.contains { $0.contains("Weekly · Opus") && $0.contains("95% left") }
+                && seen.contains { $0.contains("Some limits may be unavailable") }
+        })
         #expect(labels.contains { $0.contains("Weekly · Opus") && $0.contains("95% left") })
         #expect(labels.contains { $0.contains("Some limits may be unavailable") })
         #expect(!window.isVisible && !window.isKeyWindow)
@@ -110,10 +120,15 @@ private final class UsageWindowTestBundle: NSObject {}
         settingsWindow.contentViewController = settings
         settingsWindow.setContentSize(NSSize(width: 640, height: 600))
         defer { settingsWindow.close() }
-        try await Task.sleep(for: .milliseconds(100))
-        settings.view.layoutSubtreeIfNeeded()
-        settingsWindow.displayIfNeeded()
-        let settingsWords = accessibilityElements(in: settings.view).flatMap { [InkAX.value($0), InkAX.label($0)].compactMap { $0 } }
+        let settingsWords = await waitFor("Settings' usage to show Weekly · Opus and the partial-limits line",
+                                          observe: { () -> [String] in
+            settings.view.layoutSubtreeIfNeeded()
+            settingsWindow.displayIfNeeded()
+            return accessibilityElements(in: settings.view).flatMap { [InkAX.value($0), InkAX.label($0)].compactMap { $0 } }
+        }, until: { words in
+            words.contains { $0.contains("Weekly · Opus") && $0.contains("95% left") }
+                && words.contains { $0.contains("Some limits may be unavailable") }
+        })
         #expect(settingsWords.contains {
             $0.contains("Weekly · Opus") && $0.contains("95% left")
         })
@@ -130,16 +145,21 @@ private final class UsageWindowTestBundle: NSObject {}
         barWindow.isReleasedWhenClosed = false
         barWindow.contentViewController = layout
         defer { barWindow.close() }
-        try await Task.sleep(for: .milliseconds(100))
-        layout.view.layoutSubtreeIfNeeded()
-        barWindow.displayIfNeeded()
-        let button = try #require(accessibilityElements(in: bar.view).first {
-            $0.accessibilityRole?() == .button && InkAX.label($0).contains("Weekly · Opus")
-        })
+        func drawBar() { layout.view.layoutSubtreeIfNeeded(); barWindow.displayIfNeeded() }
+        func limitButton() -> AnyObject? {
+            accessibilityElements(in: bar.view).first {
+                $0.accessibilityRole?() == .button && InkAX.label($0).contains("Weekly · Opus")
+            }
+        }
+        await waitFor("the bar's Weekly · Opus button") { drawBar(); return limitButton() != nil }
+        let button = try #require(limitButton())
         #expect(button.accessibilityPerformPress?() == true)
-        try await Task.sleep(for: .milliseconds(100))
-        layout.view.layoutSubtreeIfNeeded()
-        barWindow.displayIfNeeded()
+        await waitFor("the Claude limits popover to open with its partial-limits line") {
+            drawBar()
+            return host.state.active?.id == "status-limits-claude" && accessibilityElements(in: host.view).contains {
+                (InkAX.value($0) ?? InkAX.label($0)).contains("Some limits may be unavailable")
+            }
+        }
         #expect(host.state.active?.id == "status-limits-claude")
         #expect(accessibilityElements(in: host.view).map(InkAX.label).contains {
             $0.contains("Weekly · Opus") && $0.contains("95% left")

@@ -31,7 +31,10 @@ struct SearchFocusAndHitTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 300, height: 400), key: true)
         defer { window.orderOut(nil); model.palette.close() }
-        try await Task.sleep(for: .milliseconds(400))
+        await waitFor("the sidebar's search door to be drawn") {
+            hosting.view.layoutSubtreeIfNeeded()
+            return self.door(in: hosting.view) != nil
+        }
         #expect(!(window.firstResponder is NSText), "no field holds the keyboard")
         #expect(!accessibilityElements(in: hosting.view).contains { $0.accessibilityRole?() == .textField },
                 "the filter is gone: the sidebar has no text field")
@@ -53,7 +56,6 @@ struct SearchFocusAndHitTests {
                 .frame(width: 120, height: 200).ignoresSafeArea()
             let (window, hosting) = host(content, size: NSSize(width: 120, height: 200), key: true)
             defer { window.orderOut(nil) }
-            try await Task.sleep(for: .milliseconds(400))
             func hits(x: Double, y: Double) async throws -> Bool {
                 let before = presses
                 let point = hosting.view.convert(NSPoint(x: x, y: y), to: nil)
@@ -63,9 +65,12 @@ struct SearchFocusAndHitTests {
                         context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
                     NSApp.sendEvent(event)
                 }
-                try await Task.sleep(for: .milliseconds(25))
+                // A miss has no effect to wait for: this is how long a click is given to press the button.
+                try await Task.sleep(for: .milliseconds(25)) // sleep: the window a miss is watched for
                 return presses > before
             }
+            // The window takes clicks once a click at the button's centre presses it.
+            try await waitFor("a click at the button's centre to press it") { try await hits(x: 60, y: 100) }
             var width = 0.0, height = 0.0
             for x in stride(from: 40.0, through: 80.0, by: 0.5) where try await hits(x: x, y: 100) { width += 0.5 }
             for y in stride(from: 80.0, through: 120.0, by: 0.5) where try await hits(x: 60, y: y) { height += 0.5 }
@@ -94,10 +99,11 @@ struct SearchFocusAndHitTests {
                 .transformEnvironment(\.self) { $0._accessibilityReduceMotion = reduceMotion }
             let (window, hosting) = host(content, size: NSSize(width: 60, height: 60), key: true)
             defer { window.orderOut(nil) }
-            try await Task.sleep(for: .milliseconds(60))
+            try await Task.sleep(for: .milliseconds(60)) // sleep: the early sample of a 200 ms fade; the time is what is measured
             let early = try brightness(of: hosting.view)
-            try await Task.sleep(for: .milliseconds(500))
-            return (early, try brightness(of: hosting.view))
+            let late = await waitFor("the banner to be fully shown", observe: { (try? brightness(of: hosting.view)) ?? 0 },
+                                     until: { $0 > 0.95 })
+            return (early, late)
         }
         let animated = try await firstFrames(reduceMotion: false)
         #expect(animated.late > 0.95, "fully shown after the transition")

@@ -6,6 +6,7 @@ import Testing
 import LoomCore
 import LoomTerminal
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// A stand-in for the live terminal: it takes first responder and records the keys it receives.
 @MainActor
@@ -58,6 +59,7 @@ struct DefaultActionTests {
     /// A window with the real detail view: an approval card above `terminal`, which has the focus.
     private func hostApprovalCard(terminal: NSView?, root: URL, provider: ManagedSession.Provider = .claude) async throws
         -> (window: NSWindow, intents: AnswerRecordingIntents) {
+        if terminal == nil { enableAccessibilityTree() } // the card's Approve button is how a test sees the card drawn
         let catalog = try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
         let session = ManagedSession(provider: provider, workingDirectory: root.path)
         try await catalog.insertSession(session, title: "Needs approval", lifecycle: .idle)
@@ -85,8 +87,16 @@ struct DefaultActionTests {
         window.contentViewController = hosting
         window.setContentSize(NSSize(width: 700, height: 500))
         window.makeKeyAndOrderFront(nil)
-        try await Task.sleep(for: .milliseconds(400))
-        if let terminal { #expect(terminal.window === window, "the terminal is hosted below the approval card") }
+        func draw() { hosting.view.layoutSubtreeIfNeeded(); window.displayIfNeeded() }
+        if let terminal {
+            await waitFor("the terminal to be hosted below the approval card") { draw(); return terminal.window === window }
+            #expect(terminal.window === window, "the terminal is hosted below the approval card")
+        } else {
+            await waitFor("the approval card's Approve button to be drawn") {
+                draw()
+                return accessibilityElements(in: hosting.view).contains { InkAX.label($0) == "Approve" }
+            }
+        }
         return (window, intents)
     }
 
@@ -105,13 +115,14 @@ struct DefaultActionTests {
         // Focus on the bare window: nothing may approve.
         #expect(window.makeFirstResponder(nil))
         NSApp.sendEvent(try returnKey(in: window))
-        try await Task.sleep(for: .milliseconds(200))
+        // The negative window: for 200 ms after the Return, no answer goes out.
+        await holds("Return with the focus off the terminal answers nothing", for: .milliseconds(200)) { intents.answers.isEmpty }
         #expect(intents.answers.isEmpty, "Return with the focus off the terminal must not approve")
 
         // Focus on the terminal: Return reaches it as a carriage return.
         #expect(window.makeFirstResponder(surface.view))
         NSApp.sendEvent(try returnKey(in: window))
-        try await Task.sleep(for: .milliseconds(200))
+        await waitFor("Return to reach the focused terminal") { !recorder.sent.isEmpty }
         #expect(recorder.sent == [[13]], "Return reaches the focused terminal as a carriage return")
         #expect(intents.answers.isEmpty, "Return must not answer the approval card")
     }
@@ -126,7 +137,7 @@ struct DefaultActionTests {
         defer { window.orderOut(nil) }
         #expect(window.makeFirstResponder(nil))
         NSApp.sendEvent(try returnKey(in: window))
-        try await Task.sleep(for: .milliseconds(200))
+        await waitFor("Return to answer the approval card") { !intents.answers.isEmpty }
         #expect(intents.answers.map(\.1) == [true], "no terminal below: the card's Approve stays the default action")
     }
 }
