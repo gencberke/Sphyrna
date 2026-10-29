@@ -197,6 +197,7 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
     var joinAttempts: [String: Int] = [:]
     var prepareFailures = 0
     var completedFailures = 0
+    var extraSkillRoots: [String] = []
 
     func recordStopDiagnostic(_ line: String) {
         guard let state else { return }
@@ -362,6 +363,24 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
             reply(["userAgent": "fake-codex-server/0.0.1 (fake)"])
         case "initialized":
             break
+        case "skills/extraRoots/set":
+            guard let roots = params["extraRoots"] as? [String], roots.allSatisfy({ $0.hasPrefix("/") }) else {
+                failure(-32602, "invalid extra skill roots"); return
+            }
+            extraSkillRoots = roots
+            broadcast("skills/changed", [:])
+            reply([:])
+        case "skills/list":
+            let cwds = (params["cwds"] as? [String]) ?? []
+            let extras: [[String: Any]] = extraSkillRoots.compactMap { root in
+                let path = URL(fileURLWithPath: root).appendingPathComponent("sphyrna/SKILL.md").path
+                guard FileManager.default.fileExists(atPath: path) else { return nil }
+                return ["name": "sphyrna", "description": "fixture", "path": path, "scope": "user",
+                        "enabled": ProcessInfo.processInfo.environment["LOOM_FAKE_CODEX_SKILL_DISABLED"] == nil]
+            }
+            let skills = [["name": "native-fixture", "description": "native", "path": "/fixture/native/SKILL.md",
+                           "scope": "user", "enabled": true] as [String: Any]] + extras
+            reply(["data": cwds.map { ["cwd": $0, "skills": skills, "errors": []] }])
         case "account/read", "account/rateLimits/read", "account/usage/read", "model/list":
             // The reads a probe makes (D-94): fixed answers, no network. LOOM_FAKE_CODEX_PROBE steers them: hang (account/read
             // never answers), signed-out, api-key, limits-error (account/rateLimits/read fails), paged (model/list in two pages).
@@ -632,6 +651,7 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
         case "turn/start":
             let threadID = (params["threadId"] as? String) ?? ""
             guard var thread = load(threadID) else { failure(-32600, "thread not found: \(threadID)"); return }
+            appendState("codex-turn-skill-roots.log", extraSkillRoots.joined(separator: ","))
             appendState("codex-turn-settings.log", "\(threadID) \(thread.sandbox) \(thread.approval)")
             let permissions: [String: Any] = ["reviewer": thread.reviewer, "networkAccess": thread.networkAccess,
                                               "writableRoots": thread.writableRoots]

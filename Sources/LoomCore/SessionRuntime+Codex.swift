@@ -17,6 +17,8 @@ extension SessionRuntime {
         var client: CodexAppServerClient?
         var coordinator: CodexSessionCoordinator?
         var resumeSettings: CodexResumeSettings?
+        var taskSkillRoot: URL?
+        var taskDiscovery: SessionTaskDiscovery = .unavailable
         var setup: (id: UUID, task: Task<CodexSessionCoordinator, any Error>)?
         var requestTask: Task<Void, Never>?
         var requests: [String: CodexPendingRequest] = [:]
@@ -44,6 +46,12 @@ extension SessionRuntime {
     /// The provider's settings when this run resumed, not a second saved default.
     public func codexResumeSettings(forSession key: UUID) async -> CodexResumeSettings? {
         await codexServer(forCard: key)?.resumeSettings
+    }
+
+    /// Whether the owned server listed the enabled Sphyrna task skill. This
+    /// does not promise that the provider selected it for the model's context.
+    public func codexTaskDiscovery(forSession key: UUID) async -> SessionTaskDiscovery {
+        await codexServer(forCard: key)?.taskDiscovery ?? .unavailable
     }
 
     public func codexRoutingDiagnostics() async -> CodexRoutingDiagnostics.Snapshot {
@@ -140,6 +148,7 @@ extension SessionRuntime {
         rows: UInt16, columns: UInt16, outputSink: (any TerminalOutputSink)?,
         onTerminalReady: (@MainActor @Sendable (RuntimeLaunch) async -> Void)?
     ) async throws -> RuntimeLaunch {
+        await refreshTaskDiscovery(server: server, directory: directory)
         let reservation = await coordinator.reserveNewLaunch(
             sessionID: sessionID, managedRunID: runID, workingDirectory: directory
         )
@@ -203,6 +212,7 @@ extension SessionRuntime {
         do {
             guard let client = server.client else { throw CodexAppServerError.closed }
             server.resumeSettings = try await client.resumeThread(conversationID, workingDirectory: session.workingDirectory)
+            await refreshTaskDiscovery(server: server, directory: session.workingDirectory)
             let environment = LaunchEnvironment.make(
                 base: toolchain.environment, runID: supervisor.ownershipRunID, sessionID: session.id
             )
@@ -350,6 +360,17 @@ extension SessionRuntime {
         do {
             await codexSetupObserverForTesting?(.installing)
             try requireCodexSetup(server, setupID)
+            // Only this conversation's private server receives the extra root.
+            // A failed or disabled discovery entry must not break ordinary starts.
+            do {
+                let root = try SessionTaskSkill.install(in: catalog.dataRoot)
+                _ = try await client.request(method: "skills/extraRoots/set", params: .object([
+                    "extraRoots": .array([.string(root.path)]),
+                ]), timeout: 2)
+                server.taskSkillRoot = root
+            } catch is CancellationError { throw CancellationError() }
+            catch { server.taskSkillRoot = nil }
+            try requireCodexSetup(server, setupID)
             await coordinator.setConnectionLostHandler { [weak self, weak coordinator] detail in
                 guard let coordinator else { return }
                 Task { await self?.codexConnectionLost(detail, from: coordinator) }
@@ -381,6 +402,24 @@ extension SessionRuntime {
             await coordinator.stop()
             throw error
         }
+    }
+
+    private func refreshTaskDiscovery(server: CodexServer, directory: String) async {
+        server.taskDiscovery = .unavailable
+        guard let root = server.taskSkillRoot, let client = server.client else { return }
+        do {
+            let response = try await client.request(method: "skills/list", params: .object([
+                "cwds": .array([.string(directory)]), "forceReload": .bool(true),
+            ]), timeout: 2)
+            let expected = root.appendingPathComponent("sphyrna/SKILL.md").standardizedFileURL.path
+            let entries = response.object?["data"]?.array ?? []
+            let skills = entries.flatMap { $0.object?["skills"]?.array ?? [] }
+            if skills.contains(where: { skill in
+                guard let item = skill.object, item["name"]?.string == SessionTaskSkill.name,
+                      item["enabled"]?.bool == true, let path = item["path"]?.string else { return false }
+                return URL(fileURLWithPath: path).standardizedFileURL.path == expected
+            }) { server.taskDiscovery = .available }
+        } catch { /* Ordinary starts remain available; discovery is reported unavailable. */ }
     }
 
     /// True only when the server process is verified gone: it is no longer
