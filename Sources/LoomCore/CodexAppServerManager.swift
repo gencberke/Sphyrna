@@ -17,6 +17,8 @@ public struct CodexAppServerConfiguration: Sendable {
     public let optOutNotificationMethods: [String]
     /// Measurement hook for development probes; nil in the product.
     public let inboundObserver: CodexInboundObserver?
+    /// Arguments after the server's own (a deletion's server disables the features that could reach another endpoint).
+    public let serverArguments: [String]
 
     public init(
         executable: String, capabilities: ProviderCapabilities, home: URL,
@@ -24,7 +26,7 @@ public struct CodexAppServerConfiguration: Sendable {
         socketPath: String, clientVersion: String, launchChoices: HarnessLaunchChoices? = nil,
         startupTimeout: TimeInterval = 5, scope: RunScope? = nil,
         optOutNotificationMethods: [String] = CodexAppServerClient.productOptOutNotificationMethods,
-        inboundObserver: CodexInboundObserver? = nil
+        inboundObserver: CodexInboundObserver? = nil, serverArguments: [String] = []
     ) {
         self.executable = executable
         self.capabilities = capabilities
@@ -38,6 +40,7 @@ public struct CodexAppServerConfiguration: Sendable {
         self.scope = scope
         self.optOutNotificationMethods = optOutNotificationMethods
         self.inboundObserver = inboundObserver
+        self.serverArguments = serverArguments
     }
 }
 
@@ -260,7 +263,7 @@ public actor CodexAppServerManager {
             let launch = try await supervisor.launch(
                 sessionID: sessionID,
                 executable: configuration.executable,
-                arguments: profile.arguments,
+                arguments: profile.arguments + configuration.serverArguments,
                 environment: profile.environment,
                 outputSink: diagnostics, managedRunID: managedOwner?.runID,
                 scope: configuration.scope

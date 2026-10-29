@@ -10,6 +10,11 @@ struct DeleteSessionFacts: Equatable {
     static let keptTitle = "Kept"
     /// One session's transcript; with side chats there is one per session, as the cleanup's Delete says.
     static let removedItems = ["The transcript and the subagent transcripts", "File snapshots and session folders"]
+    /// What Codex's own delete removes for a Codex session (D-121); its prompt history and marker stay.
+    static let codexRemovedItems = ["The session's rollout and Codex's record of it", "Its entry in Codex's session index"]
+    static let codexKeptItems = [
+        "Your prompts in Codex's shared prompt history", "Project files and worktrees", "Anything already sent to OpenAI",
+    ]
 
     let lead: String
     let removed: [String]
@@ -21,15 +26,21 @@ struct DeleteSessionFacts: Equatable {
         let sideChats = preview.sideChatCount
         let who = sideChats > 0 ? "it and its \(sideChats) side chat\(sideChats == 1 ? "" : "s")" : "it"
         let theirs = sideChats > 0 ? "them" : "it"
-        let action = "removes \(who) from Sphyrna and deletes Claude's local files for \(theirs)"
+        // The runtime's dry run says whose data it is; Codex's own delete removes other things than Claude's files.
+        let codex: Bool
+        switch preview.provider {
+        case .codex: codex = true
+        case .claude, .agy, .synthetic: codex = false
+        }
+        let action = "removes \(who) from Sphyrna and deletes \(codex ? "Codex" : "Claude")'s local files for \(theirs)"
         lead = (preview.isRunning ? "It is running now, so Sphyrna stops it first, then \(action)" : "Sphyrna \(action)")
             + ". This can't be undone."
-        removed = sideChats > 0 ? DeleteSheetText.removedItems : Self.removedItems
+        removed = codex ? Self.codexRemovedItems : sideChats > 0 ? DeleteSheetText.removedItems : Self.removedItems
         let files = preview.fileCount == 1 ? "1 file" : "\(preview.fileCount) files"
         let size = preview.byteCount == 0 ? "0 bytes" : DeleteSheetText.size(preview.byteCount)
         let folder = (preview.configDirectory as NSString).abbreviatingWithTildeInPath
         totals = "\(files) \u{00B7} \(size) \u{00B7} in \(folder)"
-        kept = DeleteSheetText.keptItems
+        kept = codex ? Self.codexKeptItems : DeleteSheetText.keptItems
     }
 }
 

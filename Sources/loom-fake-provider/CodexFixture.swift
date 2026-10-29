@@ -667,6 +667,70 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
             guard let thread = load(threadID) else { failure(-32600, "thread not found: \(threadID)"); return }
             if (params["includeTurns"] as? Bool) == true { recordFullRead(threadID) }
             reply(["thread": threadObject(thread, includeTurns: (params["includeTurns"] as? Bool) ?? false)])
+        case "thread/list":
+            // Only the deletion's preflight form: the spawned descendants of `ancestorThreadId`, from the test's
+            // `codex-spawn-edges.log` ("<parent> <child>" lines), one page, archived threads none.
+            guard let ancestor = (params["ancestorThreadId"] as? String)?.lowercased() else {
+                failure(-32600, "fixture thread/list needs ancestorThreadId"); return
+            }
+            appendState("codex-methods-delete.log", "thread/list \(ancestor)")
+            var found: [String] = []
+            if (params["archived"] as? Bool) != true, let state,
+               let text = try? String(contentsOf: state.appendingPathComponent("codex-spawn-edges.log"), encoding: .utf8) {
+                let edges = text.split(separator: "\n").compactMap { line -> (String, String)? in
+                    let parts = line.split(separator: " ").map { $0.lowercased() }
+                    return parts.count == 2 ? (parts[0], parts[1]) : nil
+                }
+                var frontier = [ancestor]
+                while let parent = frontier.popLast() {
+                    for edge in edges where edge.0 == parent && !found.contains(edge.1) {
+                        found.append(edge.1)
+                        frontier.append(edge.1)
+                    }
+                }
+            }
+            reply(["data": found.map { ["id": $0] }, "nextCursor": NSNull(), "backwardsCursor": NSNull()])
+        case "thread/delete":
+            // Codex's delete as the deletion sees it: the thread, its rollouts under CODEX_HOME's sessions and
+            // archived_sessions, and its session_index.jsonl records go; history.jsonl and other files are untouched.
+            // `LOOM_FAKE_CODEX_DELETE`: `error` fails with provider text and changes nothing; `keep-rollout` answers
+            // success and leaves the rollout (a delete that did not do what it said).
+            let threadID = ((params["threadId"] as? String) ?? "").lowercased()
+            appendState("codex-methods-delete.log", "thread/delete \(threadID)")
+            let mode = ProcessInfo.processInfo.environment["LOOM_FAKE_CODEX_DELETE"] ?? ""
+            if mode == "error" { failure(-32603, "private-provider-error-text"); return }
+            let home = ProcessInfo.processInfo.environment["CODEX_HOME"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+            var rollouts: [URL] = []
+            if let home {
+                for folder in ["sessions", "archived_sessions"] {
+                    let base = home.appendingPathComponent(folder, isDirectory: true)
+                    guard let walker = FileManager.default.enumerator(atPath: base.path) else { continue }
+                    for case let relative as String in walker {
+                        let name = (relative as NSString).lastPathComponent
+                        if name.hasPrefix("rollout-"), name.lowercased().hasSuffix("-\(threadID).jsonl") {
+                            rollouts.append(base.appendingPathComponent(relative))
+                        }
+                    }
+                }
+            }
+            guard known(threadID) || !rollouts.isEmpty else { failure(-32600, "thread not found: \(threadID)"); return }
+            threads[threadID] = nil
+            if let state {
+                for suffix in ["cwd", "settings"] {
+                    try? FileManager.default.removeItem(at: state.appendingPathComponent("codex-thread-\(threadID).\(suffix)"))
+                }
+            }
+            if mode != "keep-rollout" { rollouts.forEach { try? FileManager.default.removeItem(at: $0) } }
+            if let index = home?.appendingPathComponent("session_index.jsonl"),
+               let text = try? String(contentsOf: index, encoding: .utf8) {
+                let kept = text.split(separator: "\n", omittingEmptySubsequences: false).filter { line in
+                    guard let object = json(String(line)), let id = object["id"] as? String else { return true }
+                    return id.lowercased() != threadID
+                }
+                try? kept.joined(separator: "\n").write(to: index, atomically: true, encoding: .utf8)
+            }
+            reply([:])
+            broadcast("thread/deleted", ["threadId": threadID])
         case "thread/turns/list":
             let threadID = (params["threadId"] as? String) ?? ""
             guard let thread = load(threadID) else { failure(-32600, "thread not found: \(threadID)"); return }
