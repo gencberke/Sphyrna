@@ -154,6 +154,9 @@ public struct SessionViewState: Equatable, Sendable {
     /// new run; survives skipped frames.
     public var issue: String?
     public var userRequests: [ProviderUserRequest]
+    /// Revision only: managed-task text and permission payloads stay with the
+    /// runtime and are fetched for the selected task, never broadcast here.
+    public var managedTaskRevision: UInt64
     /// The live run's requests that wait for the user (provider-independent; the Chat face publishes them).
     /// Cleared by a new run and by the end of the run.
     public var pendingRequests: [ProviderPendingRequest]
@@ -183,7 +186,8 @@ public struct SessionViewState: Equatable, Sendable {
         waitingAcknowledged: Bool = false, activePhase: ActivePhase = .inactive, issue: String? = nil,
         userRequests: [ProviderUserRequest] = [], subagents: [SubagentRecord] = [], reason: StatusReason? = nil,
         runEndpoint: RunEndpointKind? = nil, pendingRequests: [ProviderPendingRequest] = [],
-        permissionMode: String? = nil, effort: String? = nil, turnStartedAt: Date? = nil
+        permissionMode: String? = nil, effort: String? = nil, turnStartedAt: Date? = nil,
+        managedTaskRevision: UInt64 = 0
     ) {
         self.turnStartedAt = turnStartedAt
         self.permissionMode = permissionMode
@@ -202,6 +206,7 @@ public struct SessionViewState: Equatable, Sendable {
         self.activePhase = activePhase
         self.issue = issue
         self.userRequests = userRequests
+        self.managedTaskRevision = managedTaskRevision
         self.subagents = subagents
         self.reason = reason
     }
@@ -251,6 +256,9 @@ public enum SessionEventChange: Equatable, Sendable {
     case markedRead
     case issue(String?)
     case userRequests([ProviderUserRequest])
+    /// The selected task's bounded presentation changed; fetch it from the
+    /// runtime. Frames carry a revision, not progress or permission contents.
+    case managedTaskChanged(UUID)
     /// The conversation's subagents changed (a start, a stop, details read, the next turn).
     case subagents([SubagentRecord])
     /// The reason for the conversation's status changed (a permission request, a stop, a failure, a
@@ -412,6 +420,8 @@ public actor SessionEventHub {
             if Self.isAtPromptPeriod(state.status?.activity) { state.waitingAcknowledged = true }
         case let .issue(value): state.issue = value
         case let .userRequests(value): state.userRequests = value
+        case .managedTaskChanged:
+            if state.managedTaskRevision < .max { state.managedTaskRevision += 1 }
         case let .runEndpoint(run, kind):
             guard state.runID == run else { return }
             state.runEndpoint = kind

@@ -3,6 +3,20 @@ import Testing
 @testable import LoomCore
 
 struct SessionEventHubTests {
+    @Test func managedPresentationRevisionSurvivesSkippedFramesAndRunEnd() async throws {
+        let hub = SessionEventHub(), session = UUID(), run = UUID(), task = UUID()
+        let stream = await hub.subscribe()
+        var iterator = stream.makeAsyncIterator()
+        _ = await iterator.next()
+        await hub.publish(sessionID: session, change: .runStarted(run))
+        await hub.publish(sessionID: session, change: .managedTaskChanged(task))
+        await hub.publish(sessionID: session, change: .managedTaskChanged(task))
+        await hub.publish(sessionID: session, change: .runEnded(run, .requested))
+        let latest = try #require(await iterator.next())
+        #expect(latest.sessions[session]?.managedTaskRevision == 2)
+        #expect(latest.sessions[session]?.runID == nil)
+    }
+
     @Test func fastConsumerSeesTypedChangesInOrder() async throws {
         let hub = SessionEventHub()
         let sessionID = UUID(), runID = UUID()
