@@ -29,6 +29,9 @@ public struct ChatTranscriptView<Fallback: View>: View {
     /// Made when the view first shows a session and again when the session changes, never on a parent's re-render: a model
     /// owns a scroll view, a table, a measurer and observers.
     @State private var model: ChatTranscriptModel?
+    #if DEBUG
+    @Environment(\.chatRowVerifier) private var rowVerifier
+    #endif
 
     public init(sessionID: String, configDirectory: URL, workingDirectory: String?, isWorking: Bool = false,
                 onOpenSubagent: ((String?, String) -> Void)? = nil, onOpenChanges: ((Bool) -> Void)? = nil,
@@ -64,10 +67,21 @@ public struct ChatTranscriptView<Fallback: View>: View {
     private func show() {
         if let model, model.sessionID == sessionID, model.configDirectory == configDirectory { return }
         model?.close()
-        model = ChatTranscriptModel(sessionID: sessionID, configDirectory: configDirectory, workingDirectory: workingDirectory,
-                                    isWorking: isWorking)
+        let model = ChatTranscriptModel(sessionID: sessionID, configDirectory: configDirectory, workingDirectory: workingDirectory,
+                                        isWorking: isWorking)
+        #if DEBUG
+        model.presentation.verifier = rowVerifier
+        #endif
+        self.model = model
     }
 }
+
+#if DEBUG
+extension EnvironmentValues {
+    /// The verifier a `ChatTranscriptView` gives the presentation it makes (tests; nil in the app).
+    @Entry var chatRowVerifier: ChatRowVerifier?
+}
+#endif
 
 /// The view over a model (the tests and the screenshot harness build the model themselves).
 struct ChatTranscriptContent<Fallback: View>: View {

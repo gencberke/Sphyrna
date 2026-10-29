@@ -90,7 +90,7 @@ struct ChatStreamWidthTests {
     private static let long = "Only the logger keeps a static buffer too, but it is lock-protected, so I left it alone; "
         + "nothing else reads the old static, and the suite passes ten runs in a row after the change."
 
-    private func rig(width: CGFloat, height: CGFloat) async throws -> Rig {
+    private func rig(width: CGFloat, height: CGFloat, rowCheck: ChatRowCheck) async throws -> Rig {
         ChatSessionMemoryStore.removeAll()
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-chat-width-\(UUID())", isDirectory: true)
         let folder = root.appendingPathComponent("project", isDirectory: true)
@@ -121,7 +121,11 @@ struct ChatStreamWidthTests {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height), styleMask: [.titled],
                               backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        #if DEBUG
+        let host = NSHostingView(rootView: DetailView(model: model).environment(\.chatRowVerifier, rowCheck.environmentValue))
+        #else
         let host = NSHostingView(rootView: DetailView(model: model))
+        #endif
         host.frame = NSRect(x: 0, y: 0, width: width, height: height)
         window.contentView = host
         window.orderFrontRegardless()
@@ -166,12 +170,8 @@ struct ChatStreamWidthTests {
     }
 
     @Test func growingTheWindowWithTheInspectorOpenKeepsTheChatAsWideAsItsContainer() async throws {
-        #if DEBUG
-        ChatPresentation.verifiesRows = true
-        ChatPresentation.onMismatch = { Issue.record("\($0)") }
-        defer { ChatPresentation.verifiesRows = false; ChatPresentation.onMismatch = nil }
-        #endif
-        let rig = try await rig(width: 480, height: 500) // the detail pane of a 780 pt window beside a 300 pt sidebar
+        let rowCheck = ChatRowCheck()
+        let rig = try await rig(width: 480, height: 500, rowCheck: rowCheck) // the detail pane of a 780 pt window beside a 300 pt sidebar
         defer { rig.window.contentView = nil; rig.window.close(); rig.model.stop(); try? FileManager.default.removeItem(at: rig.root) }
         _ = await inspectorWaitUntil { rig.model.detailRoute == .chat(sessionID: rig.model.selectedSessionID ?? UUID()) }
         await settle(rig)
@@ -192,6 +192,7 @@ struct ChatStreamWidthTests {
         rig.window.setContentSize(NSSize(width: 920, height: 780))
         await settle(rig)
         try expectFollowsContainer(rig, "grown again")
+        rowCheck.expectClean("the chat")
     }
 }
 }

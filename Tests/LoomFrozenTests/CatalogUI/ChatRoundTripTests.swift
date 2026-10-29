@@ -16,6 +16,7 @@ struct RoundTrip {
     let presentation: ChatPresentation
     let stream: ChatHostedStream
     private let gap = GapFlag()
+    private let rowCheck = ChatRowCheck()
     private(set) var mismatches = 0
     /// What the source says about older turns, in the changes it makes next.
     var hasOlder = false
@@ -32,17 +33,11 @@ struct RoundTrip {
         presentation.attach(stream.controller)
         let flag = gap
         presentation.onGap = { flag.raised = true }
-        #if DEBUG
-        ChatPresentation.verifiesRows = true
-        ChatPresentation.onMismatch = { report in Issue.record("\(report)") }
-        #endif
+        rowCheck.watch(presentation)
     }
 
     func finish() {
-        #if DEBUG
-        ChatPresentation.verifiesRows = false
-        ChatPresentation.onMismatch = nil
-        #endif
+        rowCheck.expectClean("the round trip")
         stream.controller.stop()
     }
 

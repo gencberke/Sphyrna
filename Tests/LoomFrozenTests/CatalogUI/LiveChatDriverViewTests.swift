@@ -39,16 +39,7 @@ struct LiveChatDriverViewTests {
     /// driver, the turn at the joint once. Then a request card, an interrupt and `/clear`, each drawn as a full rebuild would
     /// draw it.
     @Test func theDriversSessionStreamsUnderItsHistoryThroughRequestsAnInterruptAndAClear() async throws {
-        final class Mismatches { var reports: [String] = [] }
-        let found = Mismatches()
-        #if DEBUG
-        ChatPresentation.verifiesRows = true
-        ChatPresentation.onMismatch = { found.reports.append($0) }
-        defer {
-            ChatPresentation.verifiesRows = false
-            ChatPresentation.onMismatch = nil
-        }
-        #endif
+        let rowCheck = ChatRowCheck()
         let rig = try await LiveRig.make()
         let id = UUID()
         let host = ChatSessionHost(runtime: rig.runtime, dataRoot: rig.root)
@@ -65,6 +56,7 @@ struct LiveChatDriverViewTests {
         #expect(attachments.attachment(for: driver) { LiveChatFeed(source: driver, card: id, conversationID: nil, configDirectory: nil,
                                                             workingDirectory: nil) } === feed)
         let stream = ChatHostedStream()
+        rowCheck.watch(feed)
         feed.attach(stream.controller)
         feed.start()
         #expect(await waitUntil { feed.phase == .ready && Self.prompts(feed.presentation.model) == ["hello before the view"] })
@@ -114,7 +106,7 @@ struct LiveChatDriverViewTests {
 
         let expected = await driver.snapshot().model
         #expect(await waitUntil { feed.presentation.model.rowInputsEqual(expected) })
-        #expect(found.reports.isEmpty, "\(found.reports)")
+        rowCheck.expectClean("the feed")
         stream.controller.stop()
         _ = try await driver.stop()
         await rig.finish()
@@ -128,16 +120,7 @@ extension LiveChatDriverViewTests {
     /// records. A history read that overlaps the whole run shows each prompt once. A driver made after a relaunch marks
     /// its resume "Resumed", not "Session started".
     @Test func everyKindOfSendShowsOnceUnderAnOverlappingHistoryRead() async throws {
-        final class Mismatches { var reports: [String] = [] }
-        let found = Mismatches()
-        #if DEBUG
-        ChatPresentation.verifiesRows = true
-        ChatPresentation.onMismatch = { found.reports.append($0) }
-        defer {
-            ChatPresentation.verifiesRows = false
-            ChatPresentation.onMismatch = nil
-        }
-        #endif
+        let rowCheck = ChatRowCheck()
         let rig = try await LiveRig.make()
         let id = UUID()
         let host = ChatSessionHost(runtime: rig.runtime, dataRoot: rig.root)
@@ -192,6 +175,7 @@ extension LiveChatDriverViewTests {
         let feed = LiveChatFeed(source: driver, card: id, conversationID: conversation, configDirectory: rig.profile,
                                 workingDirectory: nil)
         let stream = ChatHostedStream()
+        rowCheck.watch(feed)
         feed.attach(stream.controller)
         feed.start()
         let sent = ["plain send", "/scenario bash", "/scenario work 3000", "mid-turn next", "/scenario work 3001", "read me now",
@@ -203,7 +187,7 @@ extension LiveChatDriverViewTests {
         // One "Session started": the run's own marker, no made-up row above it.
         #expect(feed.presentation.model.markers.filter { if case .sessionStart = $0 { true } else { false } }.count == 1)
         #expect(!stream.controller.rows.contains { $0.kind.tag == "start" })
-        #expect(found.reports.isEmpty, "\(found.reports)")
+        rowCheck.expectClean("the feed")
         stream.controller.stop()
         _ = try await driver.stop()
 
