@@ -67,6 +67,36 @@ struct ChangesModelTests {
         }
     }
 
+    /// Holds independent file reads so their completion order can be reversed.
+    final class DelayedDiffs: @unchecked Sendable {
+        private let lock = NSLock()
+        private var pending: [Int: CheckedContinuation<GitFileDiff, Never>] = [:]
+        private var started = 0
+        var count: Int { lock.withLock { started } }
+
+        func read() async -> GitFileDiff {
+            await withCheckedContinuation { continuation in
+                lock.withLock {
+                    let id = started
+                    started += 1
+                    pending[id] = continuation
+                }
+            }
+        }
+
+        func finish(_ id: Int, with result: GitFileDiff) {
+            lock.withLock { pending.removeValue(forKey: id) }?.resume(returning: result)
+        }
+
+        func finishRemaining() {
+            let rest = lock.withLock { () -> [CheckedContinuation<GitFileDiff, Never>] in
+                defer { pending.removeAll() }
+                return Array(pending.values)
+            }
+            rest.forEach { $0.resume(returning: .failed("Test ended")) }
+        }
+    }
+
     @MainActor private struct Fixture {
         let rig: InspectorRig
         let log: ReadLog
@@ -187,6 +217,194 @@ struct ChangesModelTests {
         #expect(model.changes.session(for: id).state(.lastTurn).data?.files.count == 2)
         model.setInspector(open: false, for: id)
         #expect(model.changesTrigger == nil)
+    }
+
+    @Test func anEvictedSelectedScopeRequestsAReadAgainWithoutLosingAnOpenComment() async throws {
+        let f = try await fixture()
+        defer { f.cleanup() }
+        let model = f.model
+        f.log.edits = edited(["/w/a.swift"])
+        model.setInspector(open: true, for: f.id)
+        model.selectInspectorTab(.changes)
+        await model.runChangesRead()
+        let session = model.changes.session(for: f.id)
+        let anchor = ChangeAnchor(fileID: "/w/a.swift", line: 1, removed: false, text: "+b")
+        session.saveComment("Saved", at: anchor, displayPath: "a.swift", in: .lastTurn)
+        session.composing = anchor
+        session.composingText = "Unsent"
+        let before = try #require(model.changesTrigger)
+        for _ in 0..<100 {
+            model.changes.session(for: UUID()).setState(.ready(ChangesScopeData(files: [])), for: .lastTurn)
+        }
+        #expect(session.state(.lastTurn) == .idle)
+        let after = try #require(model.changesTrigger)
+        #expect(after != before, "the mounted reader's task identity changes when its cached scope is evicted")
+        if after != before { await model.runChangesRead() }
+        #expect(f.log.scans == [.lastTurn, .lastTurn])
+        #expect(session.state(.lastTurn).data?.files.first?.id == "/w/a.swift")
+        #expect(session.comments(in: .lastTurn).map(\.text) == ["Saved"])
+        #expect(session.composing == anchor && session.composingText == "Unsent")
+    }
+
+    @Test func aLateEvictedFileReadCannotReplaceItsReopenedSuccessor() async throws {
+        let f = try await fixture()
+        defer { f.cleanup() }
+        let delayed = DelayedDiffs()
+        defer { delayed.finishRemaining() }
+        f.log.git = gitList(["a.txt"])
+        var reader = f.log.reader
+        reader.gitDiff = { _, _ in await delayed.read() }
+        f.model.changes.reader = reader
+        f.model.setInspector(open: true, for: f.id)
+        f.model.selectInspectorTab(.changes)
+        f.model.setChangesScope(.branch, for: f.id)
+        await f.model.runChangesRead()
+        #expect(await inspectorWaitUntil { delayed.count == 1 })
+        let session = f.model.changes.session(for: f.id)
+        // The same removal is used when the cached file is evicted; opening it starts a fresh read.
+        session.setGitDiff(nil, for: "a.txt")
+        f.model.selectChangesFile("a.txt", in: f.id)
+        #expect(await inspectorWaitUntil { delayed.count == 2 })
+        let newer = DiffHunk(oldStart: 1, oldLines: 0, newStart: 1, newLines: 1, lines: ["+new"])
+        let older = DiffHunk(oldStart: 1, oldLines: 0, newStart: 1, newLines: 1, lines: ["+old"])
+        delayed.finish(1, with: .hunks([newer]))
+        #expect(await inspectorWaitUntil { session.gitDiffs["a.txt"] == .hunks([newer]) })
+        delayed.finish(0, with: .hunks([older]))
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(session.gitDiffs["a.txt"] == .hunks([newer]), "a late result cannot overwrite the new file read")
+    }
+
+    @Test func fileReadCapacityWaitsForPhysicalCompletionAndAllowsAnExplicitRetry() async throws {
+        let f = try await fixture()
+        defer { f.cleanup() }
+        let delayed = DelayedDiffs()
+        defer { delayed.finishRemaining() }
+        let files = (0..<9).map { String(format: "file-%02d.txt", $0) }
+        f.log.git = gitList(files)
+        var reader = f.log.reader
+        reader.gitDiff = { _, _ in await delayed.read() }
+        f.model.changes.reader = reader
+        f.model.setInspector(open: true, for: f.id)
+        f.model.selectInspectorTab(.changes)
+        f.model.setChangesScope(.branch, for: f.id)
+        await f.model.runChangesRead()
+        #expect(await inspectorWaitUntil { delayed.count == 1 })
+        for file in files.dropFirst().prefix(7) { f.model.selectChangesFile(file, in: f.id) }
+        #expect(await inspectorWaitUntil { delayed.count == 8 })
+        f.model.selectChangesFile(files[8], in: f.id)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(delayed.count == 8, "the ninth physical read must not begin while eight are still running")
+        let session = f.model.changes.session(for: f.id)
+        #expect(files.dropFirst().prefix(7).allSatisfy { session.gitDiffs[$0] == .loading },
+                "unrelated pending reads remain valid")
+        if case .failed = session.gitDiffs[files[8]] {} else { Issue.record("The busy file must offer an explicit retry") }
+
+        // Removing an in-flight cache entry does not free its physical slot until that read returns.
+        session.setGitDiff(nil, for: files[0])
+        f.model.selectChangesFile(files[0], in: f.id)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(delayed.count == 8)
+        guard delayed.count == 8 else { return }
+        delayed.finish(0, with: .hunks([]))
+        try await Task.sleep(for: .milliseconds(100))
+        f.model.retryChangesFile(files[0], in: f.id)
+        #expect(await inspectorWaitUntil { delayed.count == 9 })
+        let newer = DiffHunk(oldStart: 1, oldLines: 0, newStart: 1, newLines: 1, lines: ["+retried"])
+        delayed.finish(8, with: .hunks([newer]))
+        #expect(await inspectorWaitUntil { session.gitDiffs[files[0]] == .hunks([newer]) })
+    }
+
+    @Test func cachePressureDoesNotInvalidateAnUnrelatedPendingFileRead() async throws {
+        let f = try await fixture()
+        defer { f.cleanup() }
+        let delayed = DelayedDiffs()
+        defer { delayed.finishRemaining() }
+        f.log.git = gitList(["a.txt"])
+        var reader = f.log.reader
+        reader.gitDiff = { _, _ in await delayed.read() }
+        f.model.changes.reader = reader
+        f.model.setInspector(open: true, for: f.id)
+        f.model.selectInspectorTab(.changes)
+        f.model.setChangesScope(.branch, for: f.id)
+        await f.model.runChangesRead()
+        #expect(await inspectorWaitUntil { delayed.count == 1 })
+        let session = f.model.changes.session(for: f.id)
+        for _ in 0..<100 {
+            f.model.changes.session(for: UUID()).setState(.ready(ChangesScopeData(files: [])), for: .lastTurn)
+        }
+        #expect(session.state(.branch).data != nil && session.gitDiffs["a.txt"] == .loading)
+        let result = DiffHunk(oldStart: 1, oldLines: 0, newStart: 1, newLines: 1, lines: ["+finished"])
+        delayed.finish(0, with: .hunks([result]))
+        #expect(await inspectorWaitUntil { session.gitDiffs["a.txt"] == .hunks([result]) })
+    }
+
+    @Test func aForgottenSessionCannotReinstallItsLateScopeReadIntoAReplacementHolder() async throws {
+        let f = try await fixture()
+        defer { f.cleanup() }
+        f.log.edits = edited(["/w/a.swift"])
+        f.model.setInspector(open: true, for: f.id)
+        f.model.selectInspectorTab(.changes)
+        f.log.holdNextScan()
+        defer { f.log.release() }
+        let slow = Task { await f.model.runChangesRead() }
+        #expect(await inspectorWaitUntil { f.log.scans.count == 1 })
+        let old = f.model.changes.session(for: f.id)
+        let trigger = try #require(f.model.changesTrigger)
+        f.model.changes.forget(f.id)
+        let replacement = f.model.changes.session(for: f.id)
+        #expect(old !== replacement && f.model.changesTrigger == trigger)
+        f.log.release()
+        await slow.value
+        #expect(old.state(.lastTurn).data == nil, "a retired holder cannot install the late payload")
+        #expect(replacement.state(.lastTurn).data == nil)
+    }
+
+    @Test func anEvictedScopeRejectsItsLateReadAndCanReload() async throws {
+        let f = try await fixture()
+        defer { f.cleanup() }
+        f.log.edits = edited(["/w/a.swift"])
+        f.model.setInspector(open: true, for: f.id)
+        f.model.selectInspectorTab(.changes)
+        await f.model.runChangesRead()
+        let session = f.model.changes.session(for: f.id)
+        f.log.holdNextScan()
+        defer { f.log.release() }
+        let slow = Task { await f.model.runChangesRead() }
+        #expect(await inspectorWaitUntil { f.log.scans.count == 2 })
+        for _ in 0..<100 {
+            f.model.changes.session(for: UUID()).setState(.ready(ChangesScopeData(files: [])), for: .lastTurn)
+        }
+        #expect(session.state(.lastTurn) == .idle)
+        f.log.release()
+        await slow.value
+        #expect(session.state(.lastTurn) == .idle, "a late read cannot restore an evicted payload")
+        await f.model.runChangesRead()
+        #expect(f.log.scans.count == 3 && session.state(.lastTurn).data?.files.first?.id == "/w/a.swift")
+    }
+
+    @Test func aForgottenSessionCannotReinstallItsLateFileReadIntoAReplacementHolder() async throws {
+        let f = try await fixture()
+        defer { f.cleanup() }
+        let delayed = DelayedDiffs()
+        defer { delayed.finishRemaining() }
+        f.log.git = gitList(["a.txt"])
+        var reader = f.log.reader
+        reader.gitDiff = { _, _ in await delayed.read() }
+        f.model.changes.reader = reader
+        f.model.setInspector(open: true, for: f.id)
+        f.model.selectInspectorTab(.changes)
+        f.model.setChangesScope(.branch, for: f.id)
+        await f.model.runChangesRead()
+        #expect(await inspectorWaitUntil { delayed.count == 1 })
+        let old = f.model.changes.session(for: f.id)
+        f.model.changes.forget(f.id)
+        let replacement = f.model.changes.session(for: f.id)
+        replacement.scope = .branch
+        let result = DiffHunk(oldStart: 1, oldLines: 0, newStart: 1, newLines: 1, lines: ["+stale"])
+        delayed.finish(0, with: .hunks([result]))
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(old.gitDiffs["a.txt"] == nil, "a retired holder cannot install the late diff")
+        #expect(replacement.gitDiffs["a.txt"] == nil)
     }
 
     /// RS-8: a card that waits moved the indicator off `.working`, so each approval card made a read and the allow made another.

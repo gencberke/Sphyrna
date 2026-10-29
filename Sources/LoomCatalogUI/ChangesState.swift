@@ -8,7 +8,7 @@ import Observation
 // `CatalogModel+Changes.swift`, and they happen only while the tab is open.
 
 /// What the tab compares: recorded edits of the last turn or of the whole session, or the branch against its base.
-enum ChangesScope: String, CaseIterable, Sendable {
+enum ChangesScope: String, CaseIterable, Hashable, Sendable {
     case lastTurn
     case wholeSession
     case branch
@@ -163,7 +163,10 @@ enum ChangesSendStatus: Equatable, Sendable {
 @MainActor @Observable
 final class SessionChanges {
     @ObservationIgnored private weak var owner: ChangesState?
+    @ObservationIgnored private let sessionID: UUID
     @ObservationIgnored private var codexSourceGeneration: UInt64?
+    /// Only the current token may install a file result; old physical reads retain their own owner slot until they return.
+    @ObservationIgnored private var fileReadTokens: [String: UUID] = [:]
     var scope: ChangesScope = .lastTurn
     private(set) var states: [ChangesScope: ChangesScopeState] = [:]
     private(set) var selected: [ChangesScope: String] = [:]
@@ -181,43 +184,96 @@ final class SessionChanges {
     /// Moves with every branch list, so a diff read for an older list is dropped.
     @ObservationIgnored private(set) var branchGeneration = 0
 
-    init(owner: ChangesState? = nil) { self.owner = owner }
+    init(owner: ChangesState? = nil, sessionID: UUID = UUID()) {
+        self.owner = owner
+        self.sessionID = sessionID
+    }
 
     func state(_ scope: ChangesScope) -> ChangesScopeState {
         if scope.isEdits, let generation = codexSourceGeneration,
            let owner, generation != owner.codexSourceGeneration { return .idle }
+        owner?.touch(.scope(sessionID, scope))
         return states[scope] ?? .idle
     }
     var currentState: ChangesScopeState { state(scope) }
 
     func setState(_ state: ChangesScopeState, for scope: ChangesScope) {
-        guard states[scope] != state else { return }
-        states[scope] = state
+        let key = ChangesPayloadCache.Key.scope(sessionID, scope)
+        if states[scope] == state { owner?.touch(key); return }
+        let next = owner?.admit(state, key: key) ?? state
+        if case .idle = next {
+            if states[scope] != nil { states[scope] = nil }
+        } else if states[scope] != next {
+            states[scope] = next
+        }
     }
 
     /// Stale Codex turn results are hidden immediately by `state`; release their bytes when this session is read again.
     func prepareCodexRead() {
         let generation = owner?.codexSourceGeneration ?? 0
         guard codexSourceGeneration != generation else { return }
+        owner?.remove(.scope(sessionID, .lastTurn))
+        owner?.remove(.scope(sessionID, .wholeSession))
         states[.lastTurn] = nil
         states[.wholeSession] = nil
         codexSourceGeneration = generation
     }
 
     func select(_ id: String?, in scope: ChangesScope) {
+        if scope == .branch, let id { owner?.touch(.diff(sessionID, id)) }
         guard selected[scope] != id else { return }
         selected[scope] = id
     }
 
     func setGitDiff(_ diff: ChangesFileDiff?, for id: String) {
-        guard gitDiffs[id] != diff else { return }
-        gitDiffs[id] = diff
+        if diff == nil { fileReadTokens[id] = nil }
+        let key = ChangesPayloadCache.Key.diff(sessionID, id)
+        if gitDiffs[id] == diff { owner?.touch(key); return }
+        let next = owner?.admit(diff, key: key, fileID: id) ?? diff
+        guard gitDiffs[id] != next else { return }
+        gitDiffs[id] = next
     }
 
     /// A new branch list: the diffs read for the old one are gone.
     func resetGitDiffs() {
         branchGeneration += 1
+        fileReadTokens.removeAll()
+        owner?.removeDiffs(for: sessionID)
         if !gitDiffs.isEmpty { gitDiffs = [:] }
+    }
+
+    /// Starts at most one current request for a file; a busy result uses the existing explicit Retry path.
+    func beginGitDiffRead(for id: String) -> UUID? {
+        guard gitDiffs[id] == nil, let owner else { return nil }
+        guard let token = owner.reserveFileRead(session: sessionID, file: id) else {
+            setGitDiff(.failed("Other files are still being read. Try again."), for: id)
+            return nil
+        }
+        fileReadTokens[id] = token
+        setGitDiff(.loading, for: id)
+        return token
+    }
+
+    func isCurrentFileRead(_ token: UUID, for id: String) -> Bool { fileReadTokens[id] == token }
+
+    func finishGitDiffRead(_ token: UUID, for id: String) {
+        guard fileReadTokens[id] == token else { return }
+        fileReadTokens[id] = nil
+        if gitDiffs[id] == .loading { setGitDiff(nil, for: id) }
+    }
+
+    /// An evicted payload is re-read by the mounted task; drafts, selections and send state remain intact.
+    fileprivate func evict(_ key: ChangesPayloadCache.Key) {
+        switch key {
+        case let .scope(_, scope):
+            guard states[scope] != nil else { return }
+            states[scope] = nil
+            if scope == .branch { resetGitDiffs() }
+            bumpRevision()
+        case let .diff(_, file):
+            gitDiffs[file] = nil
+            if scope == .branch, selected[.branch] == file { bumpRevision() }
+        }
     }
 
     func bumpRevision() { revision += 1 }
@@ -255,7 +311,14 @@ final class SessionChanges {
 /// The holder on `CatalogModel`: one `SessionChanges` per session, and how the tab reads.
 @MainActor @Observable
 final class ChangesState {
+    private struct FileRead {
+        var session: UUID
+        var file: String
+    }
+    private static let maximumFileReads = 8
     @ObservationIgnored private var sessions: [UUID: SessionChanges] = [:]
+    @ObservationIgnored private var payloads = ChangesPayloadCache()
+    @ObservationIgnored private var fileReads: [UUID: FileRead] = [:]
     @ObservationIgnored var reader = ChangesReader.unavailable
     /// Replaces the send path of a test; nil sends through the session's Chat driver.
     @ObservationIgnored var sendOverride: (@MainActor (String, UUID) async throws -> Void)?
@@ -265,18 +328,62 @@ final class ChangesState {
 
     func session(for id: UUID) -> SessionChanges {
         if let existing = sessions[id] { return existing }
-        let made = SessionChanges(owner: self)
+        let made = SessionChanges(owner: self, sessionID: id)
         sessions[id] = made
         return made
     }
 
     func existing(_ id: UUID) -> SessionChanges? { sessions[id] }
 
+    fileprivate func touch(_ key: ChangesPayloadCache.Key) { payloads.touch(key) }
+    fileprivate func remove(_ key: ChangesPayloadCache.Key) { payloads.remove(key) }
+    fileprivate func removeDiffs(for id: UUID) { payloads.removeDiffs(id) }
+
+    fileprivate func reserveFileRead(session: UUID, file: String) -> UUID? {
+        guard fileReads.count < Self.maximumFileReads else { return nil }
+        let token = UUID()
+        fileReads[token] = FileRead(session: session, file: file)
+        return token
+    }
+
+    func finishFileRead(_ token: UUID) { fileReads[token] = nil }
+
+    fileprivate func admit(_ state: ChangesScopeState, key: ChangesPayloadCache.Key) -> ChangesScopeState {
+        guard let bytes = ChangesPayloadCache.estimate(state) else { payloads.remove(key); return state }
+        if insert(key, bytes: bytes) { return state }
+        let reason = bytes > ChangesPayloadCache.maximumRegularBytes
+            ? "The changes are too large to keep here."
+            : "Other files are still being read. Try again."
+        let unavailable = ChangesScopeState.failed(reason)
+        if let bytes = ChangesPayloadCache.estimate(unavailable) { _ = insert(key, bytes: bytes, fallback: true) }
+        return unavailable
+    }
+
+    fileprivate func admit(_ diff: ChangesFileDiff?, key: ChangesPayloadCache.Key, fileID: String) -> ChangesFileDiff? {
+        guard let diff, let bytes = ChangesPayloadCache.estimate(diff, id: fileID) else { payloads.remove(key); return diff }
+        if insert(key, bytes: bytes) { return diff }
+        let unavailable: ChangesFileDiff = bytes > ChangesPayloadCache.maximumRegularBytes
+            ? .tooLarge : .failed("Other files are still being read. Try again.")
+        if let bytes = ChangesPayloadCache.estimate(unavailable, id: fileID) { _ = insert(key, bytes: bytes, fallback: true) }
+        return unavailable
+    }
+
+    private func insert(_ key: ChangesPayloadCache.Key, bytes: Int, fallback: Bool = false) -> Bool {
+        var pinned: Set<ChangesPayloadCache.Key> = Set(fileReads.compactMap { token, read in
+            guard sessions[read.session]?.isCurrentFileRead(token, for: read.file) == true else { return nil }
+            return ChangesPayloadCache.Key.scope(read.session, .branch)
+        })
+        if case let .diff(id, _) = key { pinned.insert(.scope(id, .branch)) }
+        guard let victims = payloads.insert(key, bytes: bytes, fallback: fallback, protected: pinned.contains) else { return false }
+        for victim in victims { sessions[victim.sessionID]?.evict(victim) }
+        return true
+    }
+
     /// Invalidates only Codex turn reads, without walking retained sessions or disturbing drafts and branch state.
     func invalidateCodexReads(to generation: UInt64) { codexSourceGeneration = generation }
 
     /// The session was deleted: what it read, its open file and its comment drafts go.
-    func forget(_ id: UUID) { sessions[id] = nil }
+    func forget(_ id: UUID) { payloads.removeSession(id); sessions[id] = nil }
 }
 
 /// What the tab's reads are made of, so a test counts them and the app wires the real ones.

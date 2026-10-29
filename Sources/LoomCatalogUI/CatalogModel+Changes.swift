@@ -116,7 +116,7 @@ extension CatalogModel {
             if session.state(trigger.scope).data == nil { session.setState(.loading, for: trigger.scope) }
             result = await changes.reader.editScan(
                 ChangesReader.Transcript(sessionID: conversation, configDirectory: config, workingDirectory: directory), scan)
-            guard changesTrigger == trigger else { return }
+            guard changesTrigger == trigger, changes.existing(trigger.session) === session else { return }
         }
         var files: [ChangesFile] = []
         var hunks: [String: [DiffHunk]] = [:]
@@ -145,7 +145,8 @@ extension CatalogModel {
         if session.state(trigger.scope).data == nil { session.setState(.loading, for: trigger.scope) }
         let result = await changes.reader.codexScan(
             ChangesReader.Transcript(sessionID: conversation, configDirectory: home, workingDirectory: directory), scan)
-        guard !Task.isCancelled, changesTrigger == trigger, codexConfigDirectory == home else { return }
+        guard !Task.isCancelled, changesTrigger == trigger, changes.existing(trigger.session) === session,
+              codexConfigDirectory == home else { return }
         guard let result else {
             session.setState(.off("Codex's recorded file changes could not be read."), for: trigger.scope)
             return
@@ -198,7 +199,7 @@ extension CatalogModel {
         }
         if session.state(.branch).data == nil { session.setState(.loading, for: .branch) }
         let state = await changes.reader.gitList(directory)
-        guard changesTrigger == trigger else { return }
+        guard changesTrigger == trigger, changes.existing(trigger.session) === session else { return }
         switch state {
         case .notARepository: session.setState(.off("Not a Git repository"), for: .branch)
         case .noBaseBranch: session.setState(.off("No base branch found"), for: .branch)
@@ -236,12 +237,19 @@ extension CatalogModel {
         let session = changes.session(for: sessionID)
         guard isChangesTabOpen(on: sessionID), session.scope == .branch, let list = session.state(.branch).data?.list,
               let file = list.files.first(where: { $0.path == fileID }), session.gitDiffs[fileID] == nil else { return }
-        session.setGitDiff(.loading, for: fileID)
+        guard let token = session.beginGitDiffRead(for: fileID) else { return }
         let generation = session.branchGeneration
         let read = changes.reader.gitDiff
-        Task { [weak self, weak session] in
+        let owner = changes
+        Task { [weak self, weak session, weak owner] in
             let diff = await read(file, list)
-            guard let self, let session, session.branchGeneration == generation, isChangesTabOpen(on: sessionID) else { return }
+            defer {
+                owner?.finishFileRead(token)
+                session?.finishGitDiffRead(token, for: fileID)
+            }
+            guard let self, let session, session.branchGeneration == generation,
+                  changes.existing(sessionID) === session, session.isCurrentFileRead(token, for: fileID),
+                  isChangesTabOpen(on: sessionID) else { return }
             switch diff {
             case let .hunks(hunks): session.setGitDiff(.hunks(hunks), for: fileID)
             case .binary: session.setGitDiff(.binary, for: fileID)
