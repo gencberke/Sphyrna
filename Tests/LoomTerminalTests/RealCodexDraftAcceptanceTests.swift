@@ -170,7 +170,7 @@ private final class RealAcceptanceScreen: TerminalOutputSink, TerminalDelegate, 
                 "ownedBasename": trustedPaths.contains { text.contains(URL(fileURLWithPath: $0).lastPathComponent.lowercased()) },
                 "repositoryRootWarning": text.contains("repository root"), "inputFailed": inputFailed]
             for (key, value) in checks { screenChecks[key] = screenChecks[key] == true || value }
-            if !trustAccepted, text.contains("trust this folder?"), text.contains("trust and continue"), text.contains("quit"),
+            if !trustAccepted, text.contains("trust this folder?"), text.contains("trust and continue"),
                trustedPaths.contains(where: { text.contains($0.lowercased()) }) {
                 trustAccepted = true
                 pendingReplies.append(contentsOf: "\r".utf8)
