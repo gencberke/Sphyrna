@@ -27,7 +27,7 @@ struct SessionServiceTests: SessionServiceFixtures {
         rig.host.script = .readyThenHold(gate)
         let task = start(rig)
         // Ready was told, so the card exists and the next draft of the project may start while the message is still going.
-        while rig.told.cards.isEmpty { await Task.yield() }
+        await waitFor("Ready to be told (the card exists)") { !rig.told.cards.isEmpty }
         #expect(rig.service.transitions.startingKeys.isEmpty)
         #expect(start(rig) != nil)
         gate.open()
@@ -87,7 +87,7 @@ struct SessionServiceTests: SessionServiceFixtures {
 
     /// Lets the move's task begin and reach the face.
     private func untilTheFaceHasTheMove(_ rig: Rig, _ id: UUID) async {
-        while !rig.host.moveBegan.contains(id) { await Task.yield() }
+        await waitFor("the move to begin at the face") { rig.host.moveBegan.contains(id) }
     }
 
     @Test func aCancelBeforeThePointEndsTheMoveAndTheFaceIsToldItIsOver() async throws {
@@ -123,7 +123,7 @@ struct SessionServiceTests: SessionServiceFixtures {
         rig.host.move = .failsAfterPoint(HostFailure())
         let task = handOver(rig, id)
         await untilTheFaceHasTheMove(rig, id)
-        while reached.isEmpty { await Task.yield() }
+        await waitFor("the failing move to reach its point") { !reached.isEmpty }
         #expect(rig.service.transitions.handovers[id]?.phase == .switching)
         rig.service.cancelHandover(sessionID: id)
         #expect(rig.host.cancelled.isEmpty, "Cancel is not offered after the point")
@@ -163,7 +163,7 @@ struct SessionServiceTests: SessionServiceFixtures {
         }
         rig.host.move = .moves(card: id)
         let task = handOver(rig, id, log)
-        while !reached { await Task.yield() }
+        await waitFor("the move to reach its point") { reached }
         let stop = rig.service.stop(sessionID: id, liveRunID: nil, settled: { _ in })
         gate.open()
         await task?.value
@@ -188,7 +188,7 @@ struct SessionServiceTests: SessionServiceFixtures {
         }
         rig.host.move = .moves(card: card)
         let task = handOver(rig, id, log)
-        while !reached { await Task.yield() }
+        await waitFor("the move to reach its point") { reached }
         rig.service.transitions.setBusy(card, .stopping)
         gate.open()
         await task?.value

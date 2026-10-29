@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// "Collect Diagnostics…" (H1 item 1): one export at a time, revealed on success, an alert with the
 /// error category on failure.
@@ -35,7 +36,7 @@ struct DiagnosticsCollectionTests {
             reveal: { revealed.append($0) }, failed: { _, _ in })
         collection.isAvailable = true
         collection.collect()
-        while gate.continuation == nil { await Task.yield() }
+        await waitFor("the collection's run to reach its gate") { gate.continuation != nil }
         #expect(collection.isRunning && !collection.canCollect)
         collection.collect() // a second request while one runs does nothing
         #expect(gate.starts == 1)

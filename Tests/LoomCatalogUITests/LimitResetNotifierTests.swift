@@ -64,8 +64,7 @@ import LoomTestSupport
         let signal = signal(id: UUID(), reset: reset), reading = reading(reset: reset)
         let pending = Task { await notifier.receive(signal, reading: reading, accountRevision: 1,
             authorization: .authorized, now: now, isCurrent: { validity.withLock { $0 } }) }
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while scheduler.pending == nil, ContinuousClock.now < deadline { await Task.yield() }
+        await waitFor("the notifier to ask for its notice", within: .seconds(2)) { scheduler.pending != nil }
         let notice = try #require(scheduler.added)
         validity.withLock { $0 = false }
         scheduler.pending?.resume(returning: true)
