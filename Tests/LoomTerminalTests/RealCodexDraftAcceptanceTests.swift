@@ -673,16 +673,8 @@ struct RealCodexDraftAcceptanceTests {
     }
 
     private static func requireSafeSettings(_ value: JSONValue, threadID: String, cwd: String) throws {
-        let response = value.object ?? [:]
-        let thread = response["thread"]?.object ?? [:]
-        let sandbox = response["sandbox"]?.object ?? [:]
-        try requireAcceptance(thread["id"]?.string == threadID && isExactOwnedDirectory(response["cwd"]?.string, cwd: cwd) &&
-            response["model"]?.string == "gpt-6-luna" && response["reasoningEffort"]?.string == "low" &&
-            response["approvalPolicy"]?.string == "on-request" && response["approvalsReviewer"]?.string == "user" &&
-            sandbox["type"]?.string == "readOnly" && sandbox["networkAccess"]?.bool == false &&
-            (sandbox["writableRoots"] == nil || sandbox["writableRoots"]?.array == []) &&
-            (response["runtimeWorkspaceRoots"] == nil || response["runtimeWorkspaceRoots"]?.array == []) &&
-            (response["activePermissionProfile"] == nil || response["activePermissionProfile"] == .null),
+        let settings = try CodexResumeSettings.decodeNative(value, threadID: threadID, workingDirectory: cwd)
+        try requireAcceptance(settings.model == "gpt-6-luna" && settings.effort == "low" && settings.mode == .askBeforeEdits,
             "effective-settings-mismatch")
     }
 
