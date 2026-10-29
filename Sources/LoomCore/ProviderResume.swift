@@ -55,7 +55,7 @@ public enum ProviderResumeDiagnostics {
                 || normalized.contains("rollout not found")
                 || normalized.contains("conversation not found")
                 || normalized.contains("no saved session found")
-        case .synthetic:
+        case .agy, .synthetic:
             unavailable = false
         }
         if unavailable {

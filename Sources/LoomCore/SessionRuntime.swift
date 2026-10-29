@@ -407,6 +407,7 @@ public actor SessionRuntime {
     var hookTask: Task<Void, Never>?
 
     var codexServers: [CodexServer] = []
+    var agyRuns: [UUID: AgyRunState] = [:]
     let routingDiagnostics = CodexRoutingDiagnostics()
     enum CodexSetupPhase: Sendable { case installing }
     var codexSetupObserverForTesting: (@Sendable (CodexSetupPhase) async -> Void)?
@@ -814,6 +815,8 @@ public actor SessionRuntime {
             runs[run.id]?.activeSession = active
         }
         await reconcileEnded()
+        let agyErrors = await finishAgyRun(run.id)
+        if !agyErrors.isEmpty { report = report.adding(errors: agyErrors) }
         // The conversation's own app-server is part of its stop: the TUI went
         // first (so the provider stop hooks had a server), the server and its
         // scope go now. A server that cannot be shown gone is a failed stop.
@@ -903,6 +906,9 @@ public actor SessionRuntime {
         backupTask = nil
         backup?.cancel()
         let supervisorReport = await supervisor.shutdown()
+        if supervisorReport.succeeded {
+            for runID in Array(agyRuns.keys) { socketErrors += await finishAgyRun(runID) }
+        }
         if supervisorReport.succeeded {
             for server in servers where preparedSockets.contains(server.id) {
                 let errors = await server.manager.finishSocketCleanup()
@@ -1103,6 +1109,7 @@ public actor SessionRuntime {
 
     /// After an idle stop of the TUI: the run's server must be gone too.
     fileprivate func companionTeardown(runID: UUID) async -> [String] {
+        if agyRuns[runID] != nil { return await finishAgyRun(runID) }
         guard let server = codexServers.first(where: { $0.runID == runID }) else { return [] }
         let card = runs[runID]?.activeSession ?? server.ownerCard
         return await tearDown(server, card: card)

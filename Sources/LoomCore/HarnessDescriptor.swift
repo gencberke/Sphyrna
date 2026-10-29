@@ -5,8 +5,7 @@ import Foundation
 /// `HarnessDeepCheck`'s arguments) live here beside the capability row (optimizer 6 and 11, FB6-13).
 ///
 /// `capabilities` is the harness's row with nothing startable (`HarnessCapabilities.intrinsic(of:)`); `startable` is the
-/// build's separate answer. A production build still narrows the set through `BuildIdentity.startableProviders` (Codex is
-/// read-only there, D-28, D-69 (5)); opencode, agy and pi are shown, not started, until E1–E3.
+/// build's separate answer. A production build still narrows the set through `BuildIdentity.startableProviders`.
 public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
     /// How the public mark is interpreted, without coupling the catalogue to a UI framework.
     public enum MarkRendering: Equatable, Sendable {
@@ -33,7 +32,7 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
     public let doctorArguments: [String]?
     /// The vendor's documentation, for the person setting the CLI up.
     public let docs: URL?
-    /// The variable that moves the CLI's profile folder (for isolation); nil when the CLI has none (pi).
+    /// The verified variable that moves the CLI's profile folder (for isolation), if known.
     public let profileVariable: String?
     /// The folder under the home directory the CLI keeps its profile in, when `profileVariable` is unset.
     public let profileFolder: String
@@ -50,12 +49,14 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
     public let onWhenFound: Bool
     /// Whether this build has a start path for the harness at all (production narrows it further).
     public let startable: Bool
-    /// The stored provider this build runs the harness with; nil for a harness that has none yet (opencode, agy, pi).
+    /// The stored provider this build runs the harness with; nil for a harness that has none yet.
     public let provider: ManagedSession.Provider?
     /// Product modes whose mapping has been established for this harness, and its safe fallback.
     public let modes: [HarnessMode]
     public let agentModes: [HarnessMode]
     public let defaultMode: HarnessMode?
+    /// Whether same-named modes may carry between this harness and another compatible one.
+    public let sharesCrossHarnessModes: Bool
     /// Effort levels known for the harness's own default model when no model was named.
     public let defaultEfforts: [String]
 
@@ -67,7 +68,7 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
         capabilities: HarnessCapabilities, onWhenFound: Bool, startable: Bool, provider: ManagedSession.Provider? = nil,
         markRendering: MarkRendering = .image, showsOnboardingWhenMissing: Bool = false,
         modes: [HarnessMode] = [], agentModes: [HarnessMode] = [], defaultMode: HarnessMode? = nil,
-        defaultEfforts: [String] = []
+        defaultEfforts: [String] = [], sharesCrossHarnessModes: Bool = false
     ) {
         self.id = id
         self.displayName = displayName
@@ -93,6 +94,7 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
         self.agentModes = agentModes
         self.defaultMode = defaultMode
         self.defaultEfforts = defaultEfforts
+        self.sharesCrossHarnessModes = sharesCrossHarnessModes
     }
 
     /// The doctor command as a person reads it ("claude doctor"), nil when the CLI has none.

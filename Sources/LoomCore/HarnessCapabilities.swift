@@ -95,6 +95,7 @@ public struct HarnessCapabilities: Equatable, Sendable {
         switch provider {
         case .claude: claude
         case .codex: codex
+        case .agy: row(hasHarness: true, displayName: "agy")
         case .synthetic: row(hasHarness: false, displayName: "Synthetic")
         }
     }
@@ -131,6 +132,7 @@ extension SessionHarness {
         switch self {
         case .claude: .intrinsic(of: .claude)
         case .codex: .intrinsic(of: .codex)
+        case .agy: .intrinsic(of: .agy)
         }
     }
 }

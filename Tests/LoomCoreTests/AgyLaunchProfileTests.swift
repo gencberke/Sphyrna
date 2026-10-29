@@ -3,6 +3,35 @@ import Testing
 @testable import LoomCore
 
 struct AgyLaunchProfileTests {
+    @Test(arguments: [HarnessMode.auto, .plan, .acceptEdits])
+    func changingToAgyDoesNotCarryAnotherHarnessMode(mode: HarnessMode) throws {
+        let entry = ModelCatalogEntry(harness: .agy, id: "gemini-3.8-flash-medium", title: "AGY")
+        let fromClaude = HarnessLaunchChoices(harness: .claude, mode: mode).choosing(entry)
+        #expect(fromClaude.harness == .agy && fromClaude.mode == nil)
+        let alreadyAgy = HarnessLaunchChoices(harness: .agy, mode: mode).choosing(entry)
+        #expect(alreadyAgy.mode == mode)
+        let profile = try AgyLaunchProfile.terminal(route: .new(firstMessage: nil), choices: alreadyAgy,
+            discoveryDirectory: URL(fileURLWithPath: "/private/tmp/owned-agy-channel"), environment: [:])
+        let expected = mode == .acceptEdits ? "accept-edits" : mode.rawValue
+        #expect(Array(profile.arguments.suffix(2)) == ["--mode", expected])
+    }
+
+    @Test(arguments: [HarnessMode.auto, .plan, .acceptEdits])
+    func changingFromAgyDoesNotCarryItsMode(mode: HarnessMode) {
+        let claude = ModelCatalogEntry(harness: .claude, id: "claude-test", title: "Claude")
+        let codex = ModelCatalogEntry(harness: .codex, id: "codex-test", title: "Codex")
+        let original = HarnessLaunchChoices(harness: .agy, mode: mode)
+        #expect(original.choosing(claude).mode == .askBeforeEdits)
+        #expect(original.choosing(codex).mode == .askBeforeEdits)
+    }
+
+    @Test func existingClaudeCodexModeCarryIsPreserved() {
+        let claude = ModelCatalogEntry(harness: .claude, id: "claude-test", title: "Claude")
+        let codex = ModelCatalogEntry(harness: .codex, id: "codex-test", title: "Codex")
+        #expect(HarnessLaunchChoices(harness: .claude, mode: .acceptEdits).choosing(codex).mode == .acceptEdits)
+        #expect(HarnessLaunchChoices(harness: .codex, mode: .acceptEdits).choosing(claude).mode == .acceptEdits)
+    }
+
     @Test func newAndResumeKeepTheirNativeContractsSeparate() throws {
         let root = URL(fileURLWithPath: "/private/tmp/owned-agy-channel")
         let environment = ["HOME": "/private/tmp/owned-home", "SPHYRNA_CLI": "/private/tmp/owned-helper"]

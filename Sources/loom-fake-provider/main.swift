@@ -211,7 +211,7 @@ let stateDirectory = (take("--fake-state") ?? ProcessInfo.processInfo.environmen
     .map { URL(fileURLWithPath: $0, isDirectory: true) }
 let role: String = explicitRole
     ?? (arguments.contains("app-server") ? "codex-server"
-        : arguments.contains("--remote") ? "codex-tui" : "claude")
+        : arguments.contains("--remote") ? "codex-tui" : arguments.contains("--add-dir") ? "agy" : "claude")
 
 // MARK: Claude role
 
@@ -576,6 +576,8 @@ struct FakeClaude {
 }
 
 switch role {
+case "agy":
+    runFakeAgy(arguments: arguments, stateDirectory: stateDirectory)
 case "claude":
     let firstMessage = arguments.firstIndex(of: "--").flatMap { $0 + 1 < arguments.count ? arguments[$0 + 1] : nil }
     let settingsText = take("--settings") ?? "{}"

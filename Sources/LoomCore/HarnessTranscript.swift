@@ -10,7 +10,7 @@ public enum HarnessTranscriptKind: Equatable, Sendable {
         switch provider {
         case .claude: self = .claude
         case .codex: self = .codex
-        case .synthetic: return nil
+        case .agy, .synthetic: return nil
         }
     }
 

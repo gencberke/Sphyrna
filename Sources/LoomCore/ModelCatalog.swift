@@ -75,6 +75,7 @@ public final class ModelCatalog {
         return switch provider {
         case .claude: claudeModels
         case .codex: probedCodex ?? Self.codexFallback
+        case .agy: Self.agyFallback
         case .synthetic: []
         }
     }
@@ -101,9 +102,16 @@ public final class ModelCatalog {
         switch reading.provider {
         case .codex: probedCodex = reading.models.map { Self.entry(of: $0, harness: .codex) }
         case .claude: probedClaude = reading.models
+        case .agy: break
         case .synthetic: break
         }
     }
+
+    /// The native CLI accepted this model in the isolated discovery probe.
+    /// It does not establish account entitlement or model-specific effort.
+    public nonisolated static let agyFallback = [
+        ModelCatalogEntry(harness: .agy, id: "gemini-3.8-flash-medium", title: "Gemini 3.8 Flash")
+    ]
 
     /// Claude's aliases to offer: the ones the probe's `initialize` listed (`default`, ids and `[1m]` variants left out), each
     /// with its full name and the note of a known alias; the fixed three before a probe answered.

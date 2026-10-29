@@ -7,6 +7,7 @@ public struct ManagedSession: Codable, Equatable, Sendable {
     public enum Provider: String, Codable, Sendable {
         case claude
         case codex
+        case agy
         case synthetic
     }
 

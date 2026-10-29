@@ -9,6 +9,13 @@ struct LoomHook {
         // Claude runs the helper with no arguments for a hook event. Any argument makes it the
         // command agents use (`"$LOOM_CLI" open ...` or `sessions ...`); the hook path below is unchanged.
         if !arguments.isEmpty {
+            if arguments.first == "agy-hook" {
+                let event = arguments.count == 2 ? arguments[1] : ""
+                let payload = (try? readStandardInput(limit: 64 * 1024 + 1)) ?? Data()
+                let answer = AgyHookCommand.run(event: event, environment: ProcessInfo.processInfo.environment, payload: payload)
+                FileHandle.standardOutput.write(Data((answer + "\n").utf8))
+                return
+            }
             if arguments.first == "send" || arguments.first == "inbox" {
                 exit(SendMessageCommand.run(arguments: arguments, environment: ProcessInfo.processInfo.environment,
                     output: .init(

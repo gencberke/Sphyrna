@@ -45,7 +45,7 @@ public enum HarnessCatalogue {
         showsOnboardingWhenMissing: true,
         modes: [.ask, .askBeforeEdits, .acceptEdits, .plan, .auto, .fullAccess],
         agentModes: [.askBeforeEdits, .acceptEdits, .plan, .auto],
-        defaultMode: .askBeforeEdits, defaultEfforts: ClaudeLaunchChoices.effortLevels)
+        defaultMode: .askBeforeEdits, defaultEfforts: ClaudeLaunchChoices.effortLevels, sharesCrossHarnessModes: true)
 
     private static let codex = HarnessDescriptor(
         id: .codex,
@@ -71,7 +71,7 @@ public enum HarnessCatalogue {
         showsOnboardingWhenMissing: true,
         modes: [.askBeforeEdits, .acceptEdits],
         agentModes: [.askBeforeEdits, .acceptEdits],
-        defaultMode: .askBeforeEdits)
+        defaultMode: .askBeforeEdits, sharesCrossHarnessModes: true)
 
     /// opencode 2.2.0 (2.1.4 when P1 was planned). Install lines and the profile variable are to confirm; `opencode auth
     /// login` is its own `auth --help`'s. It has no doctor yet: `opencode debug config` prints the whole resolved config,
@@ -93,20 +93,21 @@ public enum HarnessCatalogue {
         startable: false,
         markRendering: .luminanceMask)
 
-    /// agy (Antigravity CLI) 1.4.5. Its `--help` lists no install or sign-in subcommand and no doctor; the profile folder
-    /// is to confirm. It becomes startable through E2.
+    /// agy (Antigravity CLI) 1.4.5. Its `--help` lists no install or sign-in subcommand and no doctor. The default profile
+    /// root is checked against native event paths; no profile override variable is assumed.
     private static let agy = HarnessDescriptor(
         id: .agy,
         displayName: "agy",
         command: "agy",
         mark: "harness-agy",
         docs: URL(string: "https://antigravity.google/docs/cli/reference"),
-        profileVariable: "ANTIGRAVITY_GEMINI_DIR",
         profileFolder: ".gemini/antigravity-cli",
         capabilities: HarnessCapabilities.intrinsic(ofHarness: HarnessID.agy),
         onWhenFound: false,
-        startable: false,
-        markRendering: .template)
+        startable: true,
+        provider: .agy,
+        markRendering: .template,
+        modes: [.acceptEdits, .auto, .plan], agentModes: [.acceptEdits, .auto, .plan])
 
     /// pi 0.85.1. Its `--help` lists no sign-in or doctor command and no profile variable; `pi auth check` needs a
     /// provider or a model, so it is not a doctor. Its mark follows the reference's boxed π glyph (C3). It becomes startable

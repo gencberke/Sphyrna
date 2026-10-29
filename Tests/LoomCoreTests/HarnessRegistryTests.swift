@@ -10,11 +10,13 @@ struct HarnessRegistryTests {
         HarnessRegistry(supervisor: try ProcessSupervisor(ledger: OwnershipLedger()), hookSilenceGrace: 1)
     }
 
-    @Test func theRegistryHoldsClaudeAndCodexAndNothingForASyntheticSession() throws {
+    @Test func theRegistryHoldsSupportedHarnessesAndNothingForASyntheticSession() throws {
         let harnesses = try registry()
-        #expect(harnesses.providers == [.claude, .codex])
+        #expect(harnesses.providers == [.claude, .codex, .agy])
         #expect(harnesses[.claude]?.provider == .claude)
         #expect(harnesses[.codex]?.provider == .codex)
+        #expect(harnesses[.agy]?.provider == .agy)
+        #expect(harnesses[.agy]?.taskTransport == nil)
         #expect(harnesses[.synthetic] == nil)
         #expect(harnesses[.claude]?.taskTransport == .terminalHook)
         #expect(harnesses[.codex]?.taskTransport == .ownedAppServer)
@@ -28,6 +30,8 @@ struct HarnessRegistryTests {
         #expect(harnesses.claude.deletionRefusal == nil)
         #expect(harnesses.codex.takesOpeningOrDraft)
         #expect(harnesses.codex.deletionRefusal == "Codex sessions cannot be deleted from Sphyrna yet")
+        #expect(harnesses.agy.takesOpeningOrDraft)
+        #expect(harnesses.agy.deletionRefusal != nil)
     }
 
     @Test func sideChatsAreClaudesAlone() {

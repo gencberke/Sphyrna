@@ -169,6 +169,7 @@ public actor SystemProviderToolchains {
         switch provider {
         case .claude: value = try await claude(resolution)
         case .codex: value = try await codex(resolution)
+        case .agy: value = try await agy(resolution)
         case .synthetic:
             throw ProviderToolchainError.unsupported("Synthetic sessions have no provider CLI")
         }
@@ -266,6 +267,19 @@ public actor SystemProviderToolchains {
             environment: resolution.environment, profileDirectory: home,
             warnings: resolution.warnings, executableStamp: stamp
         )
+    }
+
+    private func agy(_ resolution: LaunchEnvironment.Resolution) async throws -> ProviderToolchain {
+        guard let found = ProviderToolchainProbe.find("agy", in: resolution.environment) else {
+            throw ProviderToolchainError.executableNotFound(
+                provider: .agy, searched: (resolution.environment["PATH"] ?? "").split(separator: ":").count)
+        }
+        let stamp = ExecutableStamp.read(found.path)
+        let version = try await capture(found.path, ["--version"], resolution.environment)
+        let help = try await capture(found.path, ["--help"], resolution.environment)
+        return ProviderToolchain(provider: .agy, executable: found.path,
+            capabilities: ProviderCapabilities(version: version, help: help),
+            environment: resolution.environment, warnings: resolution.warnings, executableStamp: stamp)
     }
 
     /// Capability queries go through the supervisor, so they are tracked,

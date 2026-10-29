@@ -1,7 +1,7 @@
 import Foundation
 
 public enum AgyLaunchError: Error, Equatable, Sendable {
-    case invalidTarget, unsupportedChoice
+    case invalidTarget, unsupportedChoice, cleanupUnverified
 }
 
 /// Arguments for the unmodified interactive CLI. Resume never carries an

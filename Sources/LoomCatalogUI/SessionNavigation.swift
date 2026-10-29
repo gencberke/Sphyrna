@@ -156,7 +156,7 @@ extension SessionRowModel {
             claudeSessionID.map {
                 SessionCommandText.resumeCommand(directory: record.session.workingDirectory, providerConversationID: $0)
             }
-        case .codex, .synthetic:
+        case .codex, .agy, .synthetic:
             nil
         }
     }

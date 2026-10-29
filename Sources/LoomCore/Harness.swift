@@ -68,19 +68,22 @@ extension Harness {
 struct HarnessRegistry: Sendable {
     let claude: ClaudeHarness
     let codex: CodexHarness
+    let agy: AgyHarness
 
     init(supervisor: ProcessSupervisor, hookSilenceGrace: TimeInterval) {
         claude = ClaudeHarness(adapter: ClaudeSessionAdapter(supervisor: supervisor, hookSilenceGrace: hookSilenceGrace))
         codex = CodexHarness(adapter: CodexSessionAdapter(supervisor: supervisor))
+        agy = AgyHarness()
     }
 
     /// The providers with a harness (a synthetic session has none).
-    var providers: Set<ManagedSession.Provider> { [claude.provider, codex.provider] }
+    var providers: Set<ManagedSession.Provider> { [claude.provider, codex.provider, agy.provider] }
 
     subscript(provider: ManagedSession.Provider) -> (any Harness)? {
         switch provider {
         case .claude: claude
         case .codex: codex
+        case .agy: agy
         case .synthetic: nil
         }
     }

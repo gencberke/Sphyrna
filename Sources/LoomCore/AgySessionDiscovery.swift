@@ -5,6 +5,16 @@ import Foundation
 /// Native hooks inherit launch-local credentials; none are written here.
 enum AgySessionDiscovery {
     static let hookEvents = ["SessionStart", "PreInvocation", "PostInvocation", "PreToolUse", "PostToolUse", "Stop"]
+    static let skill = """
+        ---
+        name: sphyrna
+        description: This session runs inside Sphyrna. Run "$SPHYRNA_CLI" --help for session commands.
+        ---
+
+        # Sphyrna session commands
+
+        Use `"$SPHYRNA_CLI" sessions` to list session metadata and `"$SPHYRNA_CLI" open --help` to request an approved session.
+        """
 
     static func install(in directory: URL, helper: URL) throws -> URL {
         guard directory.isFileURL, helper.isFileURL, directory.path.hasPrefix("/"),
@@ -22,7 +32,7 @@ enum AgySessionDiscovery {
         let skill = agents.appendingPathComponent("skills/sphyrna", isDirectory: true)
         try FileManager.default.createDirectory(at: skill, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
-        try write(Data(SessionTaskSkill.content.utf8), to: skill.appendingPathComponent("SKILL.md"))
+        try write(Data(Self.skill.utf8), to: skill.appendingPathComponent("SKILL.md"))
         let quotedHelper = "'" + helper.path.replacingOccurrences(of: "'", with: "'\\''") + "'"
         let events = Dictionary(uniqueKeysWithValues: hookEvents.map { event in
             (event, [["type": "command", "command": "\(quotedHelper) agy-hook \(event)", "timeout": 5] as [String: Any]])

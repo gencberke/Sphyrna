@@ -4,11 +4,13 @@ import Foundation
 public enum SessionHarness: String, Codable, Sendable, Equatable {
     case claude
     case codex
+    case agy
 
     init?(_ provider: ManagedSession.Provider) {
         switch provider {
         case .claude: self = .claude
         case .codex: self = .codex
+        case .agy: self = .agy
         case .synthetic: return nil
         }
     }

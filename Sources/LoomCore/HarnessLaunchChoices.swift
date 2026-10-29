@@ -28,12 +28,15 @@ public struct HarnessLaunchChoices: Equatable, Sendable, Codable {
     /// Compatibility spelling for the existing Claude-facing display and evidence callers.
     public var permissionMode: String? { mode?.rawValue }
 
-    /// Keep an effort the new model offers; otherwise use its default. Never carry Full access across harnesses.
+    /// Keep an offered effort. Carry a mode only between compatible harnesses, never Full access across harnesses.
     public func choosing(_ entry: ModelCatalogEntry) -> HarnessLaunchChoices {
         let descriptor = HarnessCatalogue.descriptor(for: entry.harness)
+        let previousDescriptor = HarnessCatalogue.descriptor(for: harness)
         let changedHarness = harness != entry.harness
         let keptMode: HarnessMode? = mode.flatMap { mode -> HarnessMode? in
-            guard descriptor?.modes.contains(mode) == true, !(changedHarness && mode == .fullAccess) else { return nil }
+            guard descriptor?.modes.contains(mode) == true,
+                  !changedHarness || (mode != .fullAccess && descriptor?.sharesCrossHarnessModes == true &&
+                                      previousDescriptor?.sharesCrossHarnessModes == true) else { return nil }
             return mode
         }
         let safeDefault: HarnessMode? = descriptor?.defaultMode.flatMap { $0 == .fullAccess ? nil : $0 }

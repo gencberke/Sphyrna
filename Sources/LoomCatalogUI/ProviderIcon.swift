@@ -14,6 +14,7 @@ enum ProviderImages {
         switch provider {
         case .claude: return ("harness-claude", false)
         case .codex: return exists("harness-codex-template") ? ("harness-codex-template", true) : ("harness-codex", false)
+        case .agy: return ("harness-agy", true)
         case .synthetic: return nil
         }
     }

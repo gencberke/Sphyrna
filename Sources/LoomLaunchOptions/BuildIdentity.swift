@@ -25,8 +25,7 @@ public struct BuildIdentity: Equatable, Sendable {
     /// string for both identities.
     public var commandChannelPrefix: String { "local.loom.desktop.dev.command." }
 
-    /// Provider raw values a user may start. Codex is compiled and paused
-    /// (D-14, D-28): absent from the production app, present in development.
+    /// Provider raw values this build can start; connections still control availability.
     /// Raw strings keep this target free of dependencies.
-    public var startableProviders: [String] { ["claude", "codex"] }
+    public var startableProviders: [String] { ["claude", "codex", "agy"] }
 }

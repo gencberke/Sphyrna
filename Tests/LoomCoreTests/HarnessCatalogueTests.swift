@@ -17,10 +17,11 @@ struct HarnessCatalogueTests {
         #expect(HarnessCatalogue.descriptor(for: HarnessID("future-harness")) == nil)
     }
 
-    @Test func claudeAndCodexAreOnWhenFoundAndOnlyTheyHaveAStartPath() {
+    @Test func agyHasAStartPathButStaysOffUntilEnabled() {
         #expect(HarnessCatalogue.all.filter(\.onWhenFound).map(\.id) == [.claude, .codex])
-        #expect(HarnessCatalogue.all.filter(\.startable).map(\.id) == [.claude, .codex])
-        for id in [HarnessID.opencode, .agy, .pi] {
+        #expect(HarnessCatalogue.all.filter(\.startable).map(\.id) == [.claude, .codex, .agy])
+        #expect(HarnessCapabilities.ofHarness(.agy, startable: [.agy]).startable)
+        for id in [HarnessID.opencode, .pi] {
             #expect(HarnessCatalogue.descriptor(for: id)?.startable == false)
             #expect(HarnessCapabilities.ofHarness(id, startable: [id]).startable == false, "a harness with no start path never starts")
         }
@@ -73,7 +74,7 @@ struct HarnessCatalogueTests {
         #expect(codex?.pinsDefaultProfile == true)
         #expect(HarnessCatalogue.descriptor(for: .opencode)?.profileVariable == "OPENCODE_CONFIG_DIR")
         #expect(HarnessCatalogue.descriptor(for: .opencode)?.profileFolder == ".config/opencode")
-        #expect(HarnessCatalogue.descriptor(for: .agy)?.profileVariable == "ANTIGRAVITY_GEMINI_DIR")
+        #expect(HarnessCatalogue.descriptor(for: .agy)?.profileVariable == nil)
         #expect(HarnessCatalogue.descriptor(for: .agy)?.profileFolder == ".gemini/antigravity-cli")
         #expect(HarnessCatalogue.descriptor(for: .pi)?.profileVariable == nil)
         #expect(HarnessCatalogue.descriptor(for: .pi)?.profileFolder == ".pi/agent")
@@ -85,7 +86,7 @@ struct HarnessCatalogueTests {
         #expect(HarnessID(.synthetic).provider == .synthetic)
         #expect(HarnessID(.synthetic).isKnown == false, "a test fixture is not a harness")
         #expect(HarnessID.opencode.provider == nil, "opencode has no stored provider yet")
-        #expect(HarnessID.agy.provider == nil && HarnessID.pi.provider == nil)
+        #expect(HarnessID.agy.provider == .agy && HarnessID.pi.provider == nil)
         #expect(ManagedSession.Provider.claude.harnessID == .claude)
     }
 
