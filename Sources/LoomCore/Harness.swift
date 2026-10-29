@@ -1,5 +1,9 @@
 import Foundation
 
+/// The two existing task-input and proof transports. A harness that has no
+/// verified transport is unavailable to the task and peer channels.
+enum SessionTaskTransport: Sendable { case terminalHook, ownedAppServer }
+
 /// What a new terminal start hands its harness: everything `SessionRuntime.startConversation` fixed before the provider
 /// part (the ids, the folder and the toolchain `withNewStart` resolved, the terminal's size and sink).
 struct HarnessTerminalStart {
@@ -29,7 +33,7 @@ struct HarnessTerminalResume {
     let choices: ClaudeLaunchChoices
 }
 
-/// One harness (Claude today, Codex frozen but kept, others later) as the runtime sees it: the provider-specific part
+/// One harness (Claude and Codex today, others later) as the runtime sees it: the provider-specific part
 /// of a session's start, resume, run end and deletion, behind one value. The runtime manages sessions and asks the harness
 /// wherever the provider matters; it does not branch on `provider` for these (R7, `SESSION-SERVICE.md` §2).
 ///
@@ -38,6 +42,7 @@ struct HarnessTerminalResume {
 /// the Chat face, the side chats and the open requests share them.
 protocol Harness: Sendable {
     var provider: ManagedSession.Provider { get }
+    var taskTransport: SessionTaskTransport? { get }
     /// A start of this harness may carry an opening (an Open Session request) or a draft (the new-session form).
     var takesOpeningOrDraft: Bool { get }
     /// Why a session of this harness is refused for deletion; nil when its data can be removed from Loom.
@@ -52,6 +57,10 @@ protocol Harness: Sendable {
     /// The CLI a run launches with was resolved (`previous` is the one it replaced): logged and journaled when the harness
     /// keeps such a record.
     func noteToolchain(_ toolchain: ProviderToolchain, previous: ProviderToolchain?, in runtime: isolated SessionRuntime)
+}
+
+extension Harness {
+    var taskTransport: SessionTaskTransport? { nil }
 }
 
 /// The harnesses a runtime manages, by provider. `claude` and `codex` are also kept typed: the Chat face, the hook ingress

@@ -142,7 +142,9 @@ extension SessionRuntime {
         switch work.activity {
         case .atPrompt, .turnComplete, .failed, .waitingForInput:
             guard work.pendingProviderWorkCount == 0 else { return .working }
-            if runs[binding.managedRunID]?.provider == .codex {
+            guard let provider = runs[binding.managedRunID]?.provider,
+                  let transport = harnesses[provider]?.taskTransport else { return .unknown }
+            if transport == .ownedAppServer {
                 // Current native idle, not a completed or failed older turn,
                 // is the authority for admitting another input.
                 guard let native = await harnesses.codex.adapter.status(sessionID: binding.sessionID),
@@ -153,7 +155,7 @@ extension SessionRuntime {
                       runs[binding.managedRunID]?.server?.requests.isEmpty == true else { return .unknown }
                 return .ready
             }
-            guard runs[binding.managedRunID]?.provider == .claude,
+            guard transport == .terminalHook,
                   let context = await supervisor.runContext(runID: binding.managedRunID),
                   let idle = await harnesses.claude.adapter.taskIdleProof(runID: binding.managedRunID,
                       nativeSessionID: binding.nativeSessionID, workingDirectory: context.session.workingDirectory),

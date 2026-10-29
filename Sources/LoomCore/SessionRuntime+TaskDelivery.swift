@@ -356,6 +356,7 @@ extension SessionRuntime {
               parentPlan.claim.managedRunID == task.parentBinding.managedRunID,
               parentPlan.claim.generation == task.parentBinding.generation,
               childPlan.claim.managedRunID == binding.managedRunID, childPlan.claim.generation == binding.generation,
+              let transport = harnesses[launch.provider]?.taskTransport,
               await taskNativeStatus(binding) == .ready else { return .deferred }
         // This succeeds only for a newly attached, untouched terminal. After a
         // proved task input, confirmAutomaticInput establishes later boundaries.
@@ -370,9 +371,9 @@ extension SessionRuntime {
                                                              operationID: intent.round.operationID)
         let pointer = "Sphyrna task: run \"$SPHYRNA_CLI\" task input --task \(task.id.uuidString.lowercased()) --round \(intent.round.id.uuidString.lowercased()) --operation \(intent.round.operationID.uuidString.lowercased()); report using task --help."
         let digest = Data(SHA256.hash(data: Data(pointer.utf8)))
-        let clientMessageID = launch.provider == .codex ? UUID().uuidString.lowercased() : nil
+        let clientMessageID = transport == .ownedAppServer ? UUID().uuidString.lowercased() : nil
         var candidate: CodexTaskInputProofCandidate?
-        if launch.provider == .codex, intent.round.ordinal == 1, let clientMessageID,
+        if transport == .ownedAppServer, intent.round.ordinal == 1, let clientMessageID,
            let server = runs[binding.managedRunID]?.server, let rollout = server.initialTaskRollout,
            rollout.runID == binding.managedRunID, rollout.threadID == binding.nativeSessionID,
            let cwd = await supervisor.runContext(runID: binding.managedRunID)?.session.workingDirectory {
@@ -387,7 +388,7 @@ extension SessionRuntime {
             taskLaunchContexts[task.id]?.firstInputEffect = effect
         }
         guard await prepareTaskInput(purpose: purpose, binding: binding, digest: digest, effect: effect, ticket: ticket,
-                                     requiresNativeReceipt: launch.provider == .codex,
+                                     requiresNativeReceipt: transport == .ownedAppServer,
                                      clientMessageID: clientMessageID, rolloutCandidate: candidate),
               let parentRevision = parentPlan.lease.admit({ $0 }), let childRevision = childPlan.lease.admit({ $0 }),
               taskLaunchContexts[task.id]?.stopRequested == false else {
@@ -402,7 +403,7 @@ extension SessionRuntime {
                 }
             }
         }
-        if launch.provider == .codex {
+        if transport == .ownedAppServer {
             guard let client = runs[binding.managedRunID]?.server?.client else {
                 inputGate.releaseReservedAutomatic(runID: binding.managedRunID, ticket: ticket)
                 clearTaskExpectation(purpose, binding: binding)
@@ -423,7 +424,8 @@ extension SessionRuntime {
                 return .submitted(binding: binding, nativeTurnID: turn, actualModel: nil, actualEffort: nil, actualMode: nil)
             } catch { return .unknown }
         }
-        guard inputGate.enqueueReservedAutomatic(runID: binding.managedRunID, ticket: ticket,
+        guard transport == .terminalHook,
+              inputGate.enqueueReservedAutomatic(runID: binding.managedRunID, ticket: ticket,
                                                  bytes: Data((pointer + "\r").utf8), transaction: transaction) else {
             inputGate.releaseReservedAutomatic(runID: binding.managedRunID, ticket: ticket)
             clearTaskExpectation(purpose, binding: binding)
@@ -459,15 +461,16 @@ extension SessionRuntime {
               let plan = taskRunPlans[binding.sessionID], let readFence = taskReadFence,
               plan.claim.managedRunID == binding.managedRunID, plan.claim.generation == binding.generation,
               await authenticateTaskRun(origin) == binding, await taskNativeStatus(binding) == .ready,
-              let record = runs[binding.managedRunID], let revision = plan.lease.admit({ $0 }) else { return .deferred }
+              let record = runs[binding.managedRunID], let transport = harnesses[record.provider]?.taskTransport,
+              let revision = plan.lease.admit({ $0 }) else { return .deferred }
         let ticket = reservation.ticket
         let purpose = SessionTaskExpectedInput.Purpose.wake(taskID: intent.taskID, operationID: intent.operationID)
         let pointer = "Sphyrna updates: run \"$SPHYRNA_CLI\" task read --task \(intent.taskID.uuidString.lowercased())"
         let digest = Data(SHA256.hash(data: Data(pointer.utf8)))
         let effect = SessionTaskInputEffectMarker()
-        let clientMessageID = record.provider == .codex ? UUID().uuidString.lowercased() : nil
+        let clientMessageID = transport == .ownedAppServer ? UUID().uuidString.lowercased() : nil
         guard await prepareTaskInput(purpose: purpose, binding: binding, digest: digest, effect: effect, ticket: ticket,
-                                     requiresNativeReceipt: record.provider == .codex, clientMessageID: clientMessageID),
+                                     requiresNativeReceipt: transport == .ownedAppServer, clientMessageID: clientMessageID),
               plan.lease.permits(revision: revision), taskLaunchContexts[intent.taskID]?.wakeReservation?.operationID == intent.operationID else {
             clearTaskExpectation(purpose, binding: binding)
             return .deferred
@@ -485,7 +488,7 @@ extension SessionRuntime {
             guard allowed, let result else { return nil }
             return try result.get()
         }
-        if record.provider == .codex {
+        if transport == .ownedAppServer {
             guard let client = record.server?.client else { clearTaskExpectation(purpose, binding: binding); return .deferred }
             let gate = inputGate
             do {
@@ -497,7 +500,7 @@ extension SessionRuntime {
                 return .verified
             } catch { return .unknown }
         }
-        guard record.provider == .claude,
+        guard transport == .terminalHook,
               inputGate.enqueueReservedAutomatic(runID: binding.managedRunID, ticket: ticket,
                                                   bytes: Data((pointer + "\r").utf8), transaction: transaction) else {
             clearTaskExpectation(purpose, binding: binding)
@@ -625,7 +628,7 @@ extension SessionRuntime {
               target.execution == nil || target.execution == observation,
               await taskNativeStatus(binding) == .working,
               parentPlan.lease.permits(revision: parentRevision), childPlan.lease.permits(revision: childRevision),
-              let record = runs[binding.managedRunID],
+              let record = runs[binding.managedRunID], let transport = harnesses[record.provider]?.taskTransport,
               let ticket = inputGate.reserveAutomaticInput(runID: binding.managedRunID) else { return .deferred }
         guard await supervisor.taskBinding(for: childPlan.claim) == binding,
               taskRunPlans[task.parentSessionID]?.lease === parentPlan.lease,
@@ -635,7 +638,7 @@ extension SessionRuntime {
             return .deferred
         }
         let gate = inputGate
-        if record.provider == .claude {
+        if transport == .terminalHook {
             let purpose = SessionTaskExpectedInput.Purpose.child(taskID: target.taskID, roundID: target.roundID,
                                                                   operationID: target.inputOperationID)
             guard target.nativeTurnID == nil,
@@ -676,7 +679,7 @@ extension SessionRuntime {
                 return verified ? .verified : .unknown
             }
         }
-        guard record.provider == .codex, let turn = target.nativeTurnID, observation == .nativeTurn(turn),
+        guard transport == .ownedAppServer, let turn = target.nativeTurnID, observation == .nativeTurn(turn),
               let client = record.server?.client else {
             gate.releaseReservedAutomatic(runID: binding.managedRunID, ticket: ticket)
             return .deferred

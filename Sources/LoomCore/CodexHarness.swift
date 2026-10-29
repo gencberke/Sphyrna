@@ -5,6 +5,7 @@ struct CodexHarness: Harness {
     let adapter: CodexSessionAdapter
 
     var provider: ManagedSession.Provider { .codex }
+    var taskTransport: SessionTaskTransport? { .ownedAppServer }
     var takesOpeningOrDraft: Bool { true }
     var deletionRefusal: String? { "Codex sessions cannot be deleted from Sphyrna yet" }
 

@@ -26,7 +26,7 @@ extension SessionRuntime {
                   let sender = try await catalog.session(id: senderBinding.sessionID),
                   let target = try await catalog.session(id: targetID), !target.isSideChat,
                   target.runEndpoint != .pipe, let nativeID = target.session.providerConversationID,
-                  !nativeID.isEmpty, harnesses[target.session.provider] != nil,
+                  !nativeID.isEmpty, harnesses[target.session.provider]?.taskTransport != nil,
                   let fence = peerTargetFences.acquire(targetID) else { throw SessionTaskError.notReady }
             let targetBinding: SessionTaskBinding?
             if let plan = taskRunPlans[targetID] {
@@ -73,7 +73,7 @@ extension SessionRuntime {
               await authenticateTaskRun(pending.sender) == pending.senderBinding,
               let target = try? await catalog.session(id: pending.targetID), !target.isSideChat,
               target.runEndpoint != .pipe, target.session.providerConversationID == pending.nativeID,
-              target.session.harnessID == pending.harness, harnesses[target.session.provider] != nil,
+              target.session.harnessID == pending.harness, harnesses[target.session.provider]?.taskTransport != nil,
               (try? await catalog.isDeletionPending(pending.targetID)) == false else { return false }
         if let expected = pending.targetBinding {
             guard let plan = taskRunPlans[pending.targetID], await authenticateTaskRun(plan.claim) == expected else { return false }
@@ -252,7 +252,8 @@ extension SessionRuntime {
     private func deliverPeerPointer(_ intent: PeerPointerIntent, binding: SessionTaskBinding, plan: SessionTaskRunPlan,
                                     revision: UInt64, targetFence: PeerTargetFence, readFence: SessionTaskReadFence,
                                     ticket: TerminalInputQueue.AutomaticInputTicket) async -> SessionTaskEffect {
-        guard let record = runs[binding.managedRunID], targetFence.isActive,
+        guard let record = runs[binding.managedRunID], let transport = harnesses[record.provider]?.taskTransport,
+              targetFence.isActive,
               plan.lease.permits(revision: revision), !deletionsInFlight.contains(binding.sessionID),
               (try? await catalog.isDeletionPending(binding.sessionID)) == false else { return .deferred }
         let title = String(intent.senderTitle.unicodeScalars.prefix(80).map { scalar -> Character in
@@ -263,9 +264,9 @@ extension SessionRuntime {
         let purpose = SessionTaskExpectedInput.Purpose.peer(targetID: binding.sessionID, operationID: intent.operationID)
         let digest = Data(SHA256.hash(data: Data(pointer.utf8)))
         let effect = SessionTaskInputEffectMarker()
-        let clientID = record.provider == .codex ? UUID().uuidString.lowercased() : nil
+        let clientID = transport == .ownedAppServer ? UUID().uuidString.lowercased() : nil
         guard await prepareTaskInput(purpose: purpose, binding: binding, digest: digest, effect: effect, ticket: ticket,
-                                     requiresNativeReceipt: record.provider == .codex, clientMessageID: clientID),
+                                     requiresNativeReceipt: transport == .ownedAppServer, clientMessageID: clientID),
               targetFence.isActive, plan.lease.permits(revision: revision) else {
             clearTaskExpectation(purpose, binding: binding); return .deferred
         }
@@ -282,7 +283,7 @@ extension SessionRuntime {
             guard allowed, let result else { return nil }
             return try result.get()
         }
-        if record.provider == .codex {
+        if transport == .ownedAppServer {
             guard let client = record.server?.client else { clearTaskExpectation(purpose, binding: binding); return .deferred }
             let gate = inputGate
             do {
@@ -294,7 +295,7 @@ extension SessionRuntime {
                 return .verified
             } catch { return .unknown }
         }
-        guard record.provider == .claude,
+        guard transport == .terminalHook,
               inputGate.enqueueReservedAutomatic(runID: binding.managedRunID, ticket: ticket,
                                                   bytes: Data((pointer + "\r").utf8), transaction: transaction) else {
             clearTaskExpectation(purpose, binding: binding); return .deferred

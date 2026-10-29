@@ -7,6 +7,7 @@ struct ClaudeHarness: Harness {
     let adapter: ClaudeSessionAdapter
 
     var provider: ManagedSession.Provider { .claude }
+    var taskTransport: SessionTaskTransport? { .terminalHook }
     var takesOpeningOrDraft: Bool { true }
     var deletionRefusal: String? { nil }
 
