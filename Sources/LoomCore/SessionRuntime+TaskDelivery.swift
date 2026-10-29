@@ -84,7 +84,7 @@ extension SessionRuntime {
         scheduleTaskDelivery(taskID)
     }
 
-    private func updateTaskQuiescenceObservers() {
+    func updateTaskQuiescenceObservers() {
         for (sessionID, plan) in taskRunPlans {
             let runID = plan.claim.managedRunID
             let needed = taskLaunchContexts.contains { taskID, context in
@@ -317,16 +317,25 @@ extension SessionRuntime {
         guard let launch = context.launch, binding == nil ||
               (binding?.sessionID == launch.sessionID && binding?.managedRunID == launch.runID) else { return .unknown }
         if let binding {
-            guard let plan = taskRunPlans[binding.sessionID], plan.claim.managedRunID == binding.managedRunID,
-                  plan.claim.generation == binding.generation else {
-                let report = await supervisor.lastStopReport(sessionID: childSessionID)
-                let current = await supervisor.session(id: childSessionID)
-                return report?.runID == launch.runID && report?.succeeded == true && current?.currentRun == nil ? .verified : .unknown
-            }
+            let live = taskRunPlans[binding.sessionID].map {
+                $0.claim.managedRunID == binding.managedRunID && $0.claim.generation == binding.generation
+            } ?? false
+            let retired = retiredTaskRuns[binding.sessionID].map {
+                $0.runID == binding.managedRunID && $0.generation == binding.generation
+            } ?? false
+            guard live || retired else { return .unknown }
         }
+        let current = await supervisor.session(id: childSessionID)
+        if current?.currentRun == nil {
+            let report = await supervisor.lastStopReport(sessionID: childSessionID)
+            return report?.runID == launch.runID && report?.succeeded == true ? .verified : .unknown
+        }
+        guard current?.currentRun?.id == launch.runID else { return .unknown }
         do {
-            let report = try await stopConversation(sessionID: childSessionID)
-            return report.runID == launch.runID && report.succeeded ? .verified : .unknown
+            let report = try await stopConversation(sessionID: childSessionID, expectedRunID: launch.runID)
+            let after = await supervisor.session(id: childSessionID)
+            return report.sessionID == childSessionID && report.runID == launch.runID && report.succeeded &&
+                after?.currentRun == nil && taskRunPlans[childSessionID] == nil ? .verified : .unknown
         } catch {
             let report = await supervisor.lastStopReport(sessionID: childSessionID)
             let current = await supervisor.session(id: childSessionID)

@@ -81,12 +81,20 @@ extension ProcessSupervisor {
 
     func stop(sessionID: UUID, runID: UUID, graceSeconds: Double,
               endReason: ManagedRunEndReason,
-              inputCloseGraceSeconds: Double = ProcessSupervisor.defaultInputCloseGraceSeconds
+              inputCloseGraceSeconds: Double = ProcessSupervisor.defaultInputCloseGraceSeconds,
+              requiringSessionID: UUID? = nil
     ) async -> SessionStopReport {
         let start = Date()
+        func mismatch() -> SessionStopReport {
+            SessionStopReport(remainingCountVerified: false, sessionID: sessionID, runID: runID,
+                              elapsedSeconds: Date().timeIntervalSince(start), signals: [], remaining: [],
+                              errors: ["The expected managed run no longer belongs to this session"], outsideOwnership: [])
+        }
         if stoppingRuns.contains(runID) {
             while stoppingRuns.contains(runID) { try? await Task.sleep(for: .milliseconds(10)) }
-            return settledStopReport(sessionID: sessionID, runID: runID, started: start)
+            let report = settledStopReport(sessionID: sessionID, runID: runID, started: start)
+            if let required = requiringSessionID, report.sessionID != required { return mismatch() }
+            return report
         }
         stoppingRuns.insert(runID)
         defer { stoppingRuns.remove(runID) }
@@ -106,6 +114,12 @@ extension ProcessSupervisor {
                 errors: errors, outsideOwnership: runtimes[runID]?.outsideOwnership ?? [])
             await recordStopReport(report)
             return report
+        }
+        // Task cancellation/deletion may only stop the original card and run.
+        // An adoption already in progress can move it while the wait above yields.
+        if let required = requiringSessionID {
+            guard required == sessionID, runtimes[runID]?.activeSessionID == required,
+                  sessions[required]?.currentRun?.id == runID else { return mismatch() }
         }
         let sessionID = runtimes[runID]?.activeSessionID ?? sessionID
         guard var runtime = runtimes[runID] else {

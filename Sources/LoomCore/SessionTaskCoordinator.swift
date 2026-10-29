@@ -15,6 +15,9 @@ public actor SessionTaskCoordinator {
     private let now: @Sendable () -> Date
     private var waiters: [UUID: Waiter] = [:]
     private var wakeLeases: [UUID: SessionTaskWakeLease] = [:]
+    private var deletionFences: Set<UUID> = []
+    private var deletionsInProgress: Set<UUID> = []
+    private var activeCreations: [UUID: Int] = [:]
     private var projectionRevision: UInt64 = 0
     private var projectionSubscribers: [UUID: AsyncStream<UInt64>.Continuation] = [:]
 
@@ -45,7 +48,21 @@ public actor SessionTaskCoordinator {
               choices.effort.map(HarnessEffort.isToken) ?? true, parent.sessionID != childID else {
             throw SessionTaskError.invalidPayload
         }
+        guard !deletionFences.contains(parent.sessionID), !deletionFences.contains(childID) else {
+            throw SessionTaskError.unverified
+        }
+        for id in [parent.sessionID, childID] { activeCreations[id, default: 0] += 1 }
+        defer {
+            for id in [parent.sessionID, childID] {
+                let remaining = (activeCreations[id] ?? 1) - 1
+                activeCreations[id] = remaining > 0 ? remaining : nil
+                if remaining == 0 && !deletionsInProgress.contains(id) { deletionFences.remove(id) }
+            }
+        }
         let parentBinding = try await authenticated(parent)
+        guard !deletionFences.contains(parent.sessionID), !deletionFences.contains(childID) else {
+            throw SessionTaskError.unverified
+        }
         if let existing = try store.task(taskID) {
             guard existing.parentBinding == parentBinding, existing.childSessionID == childID,
                   existing.harness == harness, existing.childName == childName,
@@ -56,6 +73,9 @@ public actor SessionTaskCoordinator {
         guard await host.ownsNewChild(taskID: taskID, parent: parentBinding, childID: childID),
               try await authenticated(parent) == parentBinding else { throw SessionTaskError.unauthorized }
         let created: SessionTaskProjection = try store.transaction {
+            guard !deletionFences.contains(parent.sessionID), !deletionFences.contains(childID) else {
+                throw SessionTaskError.unverified
+            }
             if let existing = try store.task(taskID) {
                 guard existing.parentBinding == parentBinding, existing.childSessionID == childID,
                       existing.harness == harness, existing.childName == childName,
@@ -301,7 +321,7 @@ public actor SessionTaskCoordinator {
         let fingerprint = Self.fingerprint(["report", taskID.uuidString, roundID.uuidString,
                                             eventID.uuidString, kind.rawValue, payload])
         guard let task = try store.task(taskID), let round = try store.round(roundID), round.taskID == taskID,
-              task.lifecycle == .active else {
+              task.lifecycle == .active, !isDeletionFenced(task) else {
             throw SessionTaskError.staleBinding
         }
         let legacyFingerprint = round.nativeTurnID.map {
@@ -325,7 +345,8 @@ public actor SessionTaskCoordinator {
         let receipt = try store.transaction {
             guard var current = try store.task(taskID), var currentRound = try store.round(roundID),
                   currentRound.taskID == taskID, currentRound.operationID == round.operationID,
-                  current.lifecycle == .active, current.authorityEpoch == task.authorityEpoch else {
+                  current.lifecycle == .active, current.authorityEpoch == task.authorityEpoch,
+                  !isDeletionFenced(current) else {
                 throw SessionTaskError.staleBinding
             }
             let boundNow = current.childBinding == principal && currentRound.binding == principal
@@ -676,7 +697,8 @@ public actor SessionTaskCoordinator {
         let childBinding: SessionTaskBinding?
         if let child { childBinding = try await authenticated(child) } else { childBinding = nil }
         let task = try store.transaction {
-            guard var task = try store.task(taskID), task.lifecycle == .revoked || task.lifecycle == .stopped else {
+            guard var task = try store.task(taskID), task.lifecycle == .revoked || task.lifecycle == .stopped,
+                  !isDeletionFenced(task) else {
                 throw SessionTaskError.needsApproval
             }
             guard task.uncertainChildEffects == 0 && task.uncertainWakeEffects == 0 else { throw SessionTaskError.unverified }
@@ -854,13 +876,72 @@ public actor SessionTaskCoordinator {
         return result.revision > afterRevision ? result : nil
     }
 
-    /// Called only after the runtime's deletion fence has verified stop. The
-    /// host keeps that fence while the idempotent store deletion completes.
+    /// Only the runtime's fenced deletion calls this. Stop each owned child
+    /// before forgetting any relationship; a failed/uncertain stop remains
+    /// durable and makes the deletion retryable.
     func forgetAfterVerifiedStop(sessionID: UUID) async throws {
+        guard deletionsInProgress.insert(sessionID).inserted else { throw SessionTaskError.unverified }
+        deletionFences.insert(sessionID)
+        defer {
+            deletionsInProgress.remove(sessionID)
+            if activeCreations[sessionID] == nil { deletionFences.remove(sessionID) }
+        }
+        guard await host.mayForget(sessionID: sessionID) else { throw SessionTaskError.unverified }
+        var cursor: UUID?
+        repeat {
+            let page = try store.projections(parentSessionID: sessionID, after: cursor, limit: SessionTaskLimits.pageSize)
+            for task in page { try await stopOwnedChildForDeletion(task.id) }
+            cursor = page.count == SessionTaskLimits.pageSize ? page.last?.id : nil
+            if cursor != nil { await Task.yield() }
+        } while cursor != nil
         guard await host.mayForget(sessionID: sessionID) else { throw SessionTaskError.unverified }
         try store.forget(sessionID: sessionID)
         for id in Array(waiters.keys) { finishWaiter(id) }
         projectionChanged()
+    }
+
+    private func stopOwnedChildForDeletion(_ taskID: UUID) async throws {
+        wakeLeases[taskID]?.cancel()
+        let prepared: (SessionTaskBinding?, UUID, Bool, Int64)? = try store.transaction {
+            guard var task = try store.task(taskID) else { return nil }
+            if task.lifecycle == .stopped { return nil }
+            guard task.lifecycle != .stopping else { throw SessionTaskError.unverified }
+            let unknownStart: Bool
+            if let pending = task.pendingRoundID, let round = try store.round(pending) {
+                unknownStart = round.phase == .deliveringUnknown
+            } else { unknownStart = false }
+            let needsUnknownStop = task.childBinding == nil && (unknownStart || task.uncertainChildEffects > 0)
+            try retireRounds(&task)
+            task.authorityEpoch += 1
+            task.lifecycle = task.childBinding == nil && !needsUnknownStop ? .stopped : .stopping
+            task.revision += 1
+            try store.save(task)
+            return task.lifecycle == .stopped ? nil : (task.childBinding, task.childSessionID, needsUnknownStop, task.authorityEpoch)
+        }
+        changed(taskID)
+        guard let prepared else { return }
+        let outcome: SessionTaskEffect
+        if let binding = prepared.0 { outcome = await host.stopChild(taskID: taskID, binding: binding) }
+        else if prepared.2 { outcome = await host.stopUnknownChild(taskID: taskID, childSessionID: prepared.1) }
+        else { outcome = .unknown }
+        let verified = try store.transaction {
+            guard var task = try store.task(taskID), task.authorityEpoch == prepared.3, task.lifecycle == .stopping else {
+                return false
+            }
+            if case .verified = outcome {
+                task.lifecycle = .stopped
+                task.uncertainChildEffects = 0
+            } else { task.lifecycle = .stopUnverified }
+            task.revision += 1
+            try store.save(task)
+            return task.lifecycle == .stopped
+        }
+        changed(taskID)
+        guard verified else { throw SessionTaskError.unverified }
+    }
+
+    private func isDeletionFenced(_ task: SessionTaskProjection) -> Bool {
+        deletionFences.contains(task.parentSessionID) || deletionFences.contains(task.childSessionID)
     }
 
     private func authenticated(_ claim: SessionTaskClaim) async throws -> SessionTaskBinding {
@@ -873,13 +954,16 @@ public actor SessionTaskCoordinator {
 
     private func authorizedTask(_ id: UUID, parent: SessionTaskBinding, allowRevoked: Bool = false) throws -> SessionTaskProjection {
         guard let task = try store.task(id) else { throw SessionTaskError.notFound }
-        guard task.parentBinding == parent, task.parentSessionID == parent.sessionID else { throw SessionTaskError.unauthorized }
+        guard task.parentBinding == parent, task.parentSessionID == parent.sessionID,
+              !isDeletionFenced(task) else { throw SessionTaskError.unauthorized }
         if !allowRevoked && task.lifecycle != .active { throw SessionTaskError.needsApproval }
         return task
     }
 
     private func requireGrant(_ task: SessionTaskProjection, remaining: Bool) throws {
-        guard task.lifecycle == .active, now() < task.expiresAt, remaining else { throw SessionTaskError.needsApproval }
+        guard task.lifecycle == .active, !isDeletionFenced(task), now() < task.expiresAt, remaining else {
+            throw SessionTaskError.needsApproval
+        }
     }
 
     private func sameOperation(_ id: UUID, fingerprint: String) throws -> SessionTaskReceipt? {

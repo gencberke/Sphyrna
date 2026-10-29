@@ -765,18 +765,31 @@ public actor SessionRuntime {
     /// outcome; an unverified stop is also carried to the card as a failure.
     @discardableResult
     public func stopConversation(sessionID: UUID) async throws -> SessionStopReport {
-        revokeTaskRun(sessionID: sessionID)
+        try await stopConversation(sessionID: sessionID, expectedRunID: nil)
+    }
+
+    /// Task lifecycle work may never follow a card to a newer or moved run.
+    func stopConversation(sessionID: UUID, expectedRunID: UUID?) async throws -> SessionStopReport {
+        revokeTaskRun(sessionID: sessionID, runID: expectedRunID)
         guard let session = await supervisor.session(id: sessionID) else {
             throw SessionRuntimeError.sessionNotFound(sessionID)
         }
-        guard let run = session.currentRun else { throw SessionRuntimeError.notRunning(sessionID) }
+        guard let run = session.currentRun, expectedRunID == nil || expectedRunID == run.id else {
+            throw SessionRuntimeError.notRunning(sessionID)
+        }
         let previousCard = runs[run.id]?.activeSession
         stopRequestedRuns.insert(run.id)
         runs[run.id]?.activeSession = sessionID
         let server = runs[run.id]?.server
         var report: SessionStopReport
-        do { report = try await supervisor.stop(sessionID: sessionID) }
-        catch SessionManagementError.sessionNotRunning {
+        do {
+            if let expectedRunID {
+                guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
+                report = await supervisor.stop(sessionID: sessionID, runID: expectedRunID,
+                                               graceSeconds: 0.2, endReason: .requested,
+                                               requiringSessionID: sessionID)
+            } else { report = try await supervisor.stop(sessionID: sessionID) }
+        } catch SessionManagementError.sessionNotRunning {
             // The run exited, or `/clear` moved it to another card, between the read above and the
             // stop: nothing of this card was stopped, and a run that still lives is not Loom's stop.
             if await supervisor.runContext(runID: run.id) != nil {
@@ -784,6 +797,11 @@ public actor SessionRuntime {
                 if let previousCard { runs[run.id]?.activeSession = previousCard }
             }
             throw SessionRuntimeError.notRunning(sessionID)
+        }
+        if expectedRunID != nil, !report.succeeded,
+           let active = await supervisor.activeSessionID(runID: run.id), active != sessionID {
+            stopRequestedRuns.remove(run.id)
+            runs[run.id]?.activeSession = active
         }
         await reconcileEnded()
         // The conversation's own app-server is part of its stop: the TUI went

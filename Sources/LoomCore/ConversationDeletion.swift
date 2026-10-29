@@ -527,6 +527,8 @@ extension SessionRuntime {
 
     /// Every registered component drops its copy, then the deletion record (when there is one) goes.
     private func finishLoomSide(of id: UUID, providerIDs: [String]) async throws {
+        do { try await forgetTasksAfterVerifiedStop(sessionID: id) }
+        catch { throw DeletionStepFailure("task_stop_unverified") }
         for forgetter in configuration.forgetters.registered {
             do { try await forgetter.forget(sessionID: id, providerIDs: providerIDs) }
             catch { throw DeletionStepFailure("forget_hook_failed") }

@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 extension SessionRuntime {
@@ -29,16 +30,17 @@ extension SessionRuntime {
     /// The reservation is app-owned, bounded and cannot adopt an existing row.
     func reserveTaskChild(taskID: UUID, childID: UUID, parent: SessionTaskClaim,
                           operationID: UUID? = nil, fingerprint: String? = nil) async throws {
-        guard !shuttingDown, taskChildReservations.count < OpenSessionCoordinator.maximumEntries,
+        guard !shuttingDown, !deletionsInFlight.contains(parent.sessionID),
+              taskChildReservations.count < OpenSessionCoordinator.maximumEntries,
               taskChildReservations[taskID] == nil, !taskChildReservations.values.contains(where: { $0.childID == childID }),
               parent.sessionID != childID,
               await authenticateTaskRun(parent) != nil,
               try await catalog.session(id: childID) == nil,
               await supervisor.session(id: childID) == nil else { throw SessionTaskError.unauthorized }
-        guard !shuttingDown, taskChildReservations[taskID] == nil,
+        guard !shuttingDown, !deletionsInFlight.contains(parent.sessionID), taskChildReservations[taskID] == nil,
               !taskChildReservations.values.contains(where: { $0.childID == childID }),
               await authenticateTaskRun(parent) != nil else { throw SessionTaskError.unauthorized }
-        guard !shuttingDown, taskChildReservations[taskID] == nil,
+        guard !shuttingDown, !deletionsInFlight.contains(parent.sessionID), taskChildReservations[taskID] == nil,
               !taskChildReservations.values.contains(where: { $0.childID == childID }) else { throw SessionTaskError.unauthorized }
         taskChildReservations[taskID] = SessionTaskChildReservation(parent: parent, childID: childID,
                                                                      operationID: operationID, fingerprint: fingerprint)
@@ -92,11 +94,13 @@ extension SessionRuntime {
     }
 
     func authenticateTaskRun(_ claim: SessionTaskClaim) async -> SessionTaskBinding? {
-        guard !shuttingDown, let plan = taskRunPlans[claim.sessionID], plan.lease.isEnabled,
+        guard !shuttingDown, !deletionsInFlight.contains(claim.sessionID),
+              let plan = taskRunPlans[claim.sessionID], plan.lease.isEnabled,
               plan.claim.managedRunID == claim.managedRunID, plan.claim.generation == claim.generation,
               secureEqual(plan.claim.credential, claim.credential),
               let binding = await supervisor.taskBinding(for: claim),
-              !shuttingDown, let current = taskRunPlans[claim.sessionID], current.lease === plan.lease,
+              !shuttingDown, !deletionsInFlight.contains(claim.sessionID),
+              let current = taskRunPlans[claim.sessionID], current.lease === plan.lease,
               current.lease.isEnabled else { return nil }
         return binding
     }
@@ -271,6 +275,54 @@ extension SessionRuntime {
             finishTaskProofWaiters(runID: binding.managedRunID, observation: current)
         }
         return true
+    }
+
+    /// A deletion fence remains held until the owned run is gone and the task
+    /// database has forgotten its relationships.
+    func mayForgetTaskSession(_ sessionID: UUID) async -> Bool {
+        guard !shuttingDown, deletionsInFlight.contains(sessionID),
+              !startingSessions.contains(sessionID), taskRunPlans[sessionID] == nil else { return false }
+        let current = await supervisor.session(id: sessionID)
+        return !shuttingDown && deletionsInFlight.contains(sessionID) &&
+            !startingSessions.contains(sessionID) && taskRunPlans[sessionID] == nil && current?.currentRun == nil
+    }
+
+    func forgetTasksAfterVerifiedStop(sessionID: UUID) async throws {
+        guard await mayForgetTaskSession(sessionID) else { throw SessionTaskError.unverified }
+        let reservations = taskChildReservations.filter {
+            $0.value.parent.sessionID == sessionID || $0.value.childID == sessionID
+        }
+        // An offer still in flight can add its card after a snapshot. Keep the
+        // deletion pending until it returns and can no longer do so.
+        guard reservations.values.allSatisfy(\.offered) else { throw SessionTaskError.unverified }
+        for request in await openRequests.snapshot() where request.task != nil &&
+            (request.requesterID == sessionID || request.task?.childID == sessionID) {
+            do { try await openRequests.dismiss(request.id) }
+            catch { throw SessionTaskError.unverified }
+        }
+        var coordinator = taskCoordinator
+        if coordinator == nil {
+            // Deletion is also available before runtime.start(). If a task
+            // store already exists, open it even when the channel is down;
+            // never silently skip an unsafe or unreadable store.
+            let directory = catalog.dataRoot.appendingPathComponent("session-tasks", isDirectory: true)
+            var info = stat()
+            if lstat(directory.path, &info) == 0 {
+                guard info.st_mode & mode_t(S_IFMT) == mode_t(S_IFDIR), info.st_uid == geteuid(),
+                      info.st_mode & 0o077 == 0 else { throw SessionTaskError.storage }
+                coordinator = try await SessionTaskCoordinator.open(url: directory.appendingPathComponent("tasks.sqlite3"),
+                                                                     host: SessionTaskRuntimeHost(runtime: self))
+            } else if errno != ENOENT { throw SessionTaskError.storage }
+        }
+        if let coordinator { try await coordinator.forgetAfterVerifiedStop(sessionID: sessionID) }
+        else if !(await mayForgetTaskSession(sessionID)) { throw SessionTaskError.unverified }
+        for id in reservations.keys {
+            taskChildReservations[id] = nil
+            taskLaunchContexts[id] = nil
+            tasksNeedingDelivery.remove(id)
+            taskDeliveriesRequested.remove(id)
+        }
+        updateTaskQuiescenceObservers()
     }
 
     /// App-only task metadata. Subscribe to updates before loading pages; a

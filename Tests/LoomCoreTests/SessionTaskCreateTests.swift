@@ -157,6 +157,128 @@ struct SessionTaskCreateTests {
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
+    @Test func taskStopNeverFollowsAChildThatMovedWhileStopWaited() async throws {
+        let context = try await SessionRuntimeTests.makeContext(claudeVersion: "2.0.0")
+        defer { context.cleanup() }
+        let hold = TaskDeletionTransitionGate()
+        defer { hold.release() }
+        do {
+            let folder = context.root.appendingPathComponent("task-stop-move", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let project = try await context.catalog.addProject(path: folder.path).project
+            let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id)
+            let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+            let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
+            #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                    message: "Do not follow a moved child", harness: "claude").0 == 0)
+            let screen = SessionRuntimeTests.Screen(), gate = context.runtime.inputGate
+            let child = try await context.runtime.approveOpenRequest(taskID, outputSink: screen, expectedProvider: .claude,
+                onTerminalReady: { launch in
+                    screen.attach(launch.terminal)
+                    gate.register(runID: launch.runID, queue: TerminalInputQueue(endpoint: launch.terminal, onError: { _ in }))
+                })
+            #expect(await screen.contains("Sphyrna task:"))
+            let projection = try #require(try await context.runtime.sessionTaskProjection(id: taskID))
+            let binding = try #require(projection.childBinding)
+            let blocked = Task.detached { await context.catalog.holdTaskDeletionTransition(hold) }
+            #expect(await SessionRuntimeTests.waitUntil(3) { hold.entered })
+            let adoption = Task { try await context.supervisor.adoptConversation(runID: child.runID,
+                                                        conversationID: UUID().uuidString, transition: .new) }
+            #expect(await SessionRuntimeTests.waitUntil(3) { await context.supervisor.pendingConversationTransitionCount() > 0 })
+            let stop = Task { await context.runtime.stopTaskChild(taskID: taskID, childSessionID: child.sessionID, binding: binding) }
+            #expect(await SessionRuntimeTests.waitUntil(3) { await context.supervisor.pendingStopCount() > 0 })
+            hold.release()
+            await blocked.value
+            let moved = try await adoption.value
+            let result = await stop.value
+            if case .unknown = result {} else { Issue.record("a moved run must not be reported as the stopped task child") }
+            #expect(await context.supervisor.session(id: moved)?.currentRun?.id == child.runID)
+        } catch { Issue.record("task stop/move race failed: \(error)") }
+        hold.release()
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test func removingParentStopsItsOwnedChildAndForgetsOnlyTheRelationship() async throws {
+        let context = try await SessionRuntimeTests.makeContext(claudeVersion: "2.0.0")
+        defer { context.cleanup() }
+        do {
+            let folder = context.root.appendingPathComponent("task-deletion", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let project = try await context.catalog.addProject(path: folder.path).project
+            let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id)
+            let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+            let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
+            #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                    message: "Retain until stopped", harness: "claude").0 == 0)
+            let screen = SessionRuntimeTests.Screen(), gate = context.runtime.inputGate
+            let child = try await context.runtime.approveOpenRequest(taskID, outputSink: screen, expectedProvider: .claude,
+                onTerminalReady: { launch in
+                    screen.attach(launch.terminal)
+                    gate.register(runID: launch.runID, queue: TerminalInputQueue(endpoint: launch.terminal, onError: { _ in }))
+                })
+            #expect(await screen.contains("Sphyrna task:"))
+            #expect(try await SessionRuntimeTests.waitUntil(3) {
+                await context.runtime.taskLaunchContexts[taskID]?.firstInputEffect?.hasEffect == true
+            })
+            let pendingTask = UUID()
+            #expect(try Self.create(taskID: pendingTask, operationID: UUID(), claim: claim, socket: socket,
+                                    message: "A pending request is also forgotten", harness: "claude").0 == 0)
+            #expect(await context.runtime.openRequestSnapshot().contains { $0.id == pendingTask })
+            try await context.runtime.removeFromLoomOnly(id: parent.sessionID)
+            #expect(!(await context.runtime.openRequestSnapshot()).contains { $0.id == pendingTask })
+            #expect(await context.supervisor.session(id: child.sessionID)?.currentRun == nil)
+            #expect((await context.supervisor.lastStopReport(sessionID: child.sessionID))?.succeeded == true)
+            #expect(try await context.catalog.session(id: parent.sessionID) == nil)
+            #expect(try await context.catalog.session(id: child.sessionID) != nil)
+            #expect(try await context.runtime.sessionTaskProjection(id: taskID) == nil)
+        } catch { Issue.record("parent deletion failed: \(error)") }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test func unverifiedChildStopKeepsTaskUntilDeletionRetry() async throws {
+        let context = try await SessionRuntimeTests.makeContext(claudeVersion: "2.0.0")
+        defer { context.cleanup() }
+        let failure = TaskDeletionFailure()
+        do {
+            let folder = context.root.appendingPathComponent("task-delete-retry", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let project = try await context.catalog.addProject(path: folder.path).project
+            let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id)
+            let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+            let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
+            #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                    message: "Keep this task on stop failure", harness: "claude").0 == 0)
+            let screen = SessionRuntimeTests.Screen(), gate = context.runtime.inputGate
+            let child = try await context.runtime.approveOpenRequest(taskID, outputSink: screen, expectedProvider: .claude,
+                onTerminalReady: { launch in
+                    screen.attach(launch.terminal)
+                    gate.register(runID: launch.runID, queue: TerminalInputQueue(endpoint: launch.terminal, onError: { _ in }))
+                })
+            #expect(await screen.contains("Sphyrna task:"))
+            #expect(try await SessionRuntimeTests.waitUntil(3) {
+                await context.runtime.taskLaunchContexts[taskID]?.firstInputEffect?.hasEffect == true
+            })
+            try await context.supervisor.registerStopHooks(runID: child.runID, hooks: ManagedRunStopHooks(
+                prepare: { if failure.isOn { throw LoomError.message("synthetic stop failure") } }, completed: {}))
+            await #expect(throws: SessionRuntimeError.self) {
+                try await context.runtime.removeFromLoomOnly(id: parent.sessionID)
+            }
+            #expect(await context.supervisor.session(id: child.sessionID)?.currentRun?.id == child.runID)
+            #expect(try await context.runtime.sessionTaskProjection(id: taskID)?.lifecycle == .stopUnverified)
+            #expect(try await context.runtime.pendingDeletions().contains { $0.id == parent.sessionID })
+            failure.clear()
+            try await context.runtime.removeFromLoomOnly(id: parent.sessionID)
+            #expect(await context.supervisor.session(id: child.sessionID)?.currentRun == nil)
+            #expect(try await context.catalog.session(id: child.sessionID) != nil)
+            #expect(try await context.runtime.sessionTaskProjection(id: taskID) == nil)
+        } catch { Issue.record("task deletion retry failed: \(error)") }
+        failure.clear()
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
     @Test func realHelperCreatesOneBoundedApprovalAndDenyLeavesNoChild() async throws {
         let context = try await SessionRuntimeTests.makeContext()
         defer { context.cleanup() }
@@ -190,4 +312,34 @@ struct SessionTaskCreateTests {
         #expect(try await context.runtime.stopConversation(sessionID: parent.sessionID).succeeded)
         #expect((await context.runtime.shutdown()).succeeded)
     }
+}
+
+private final class TaskDeletionFailure: @unchecked Sendable {
+    private let lock = NSLock()
+    private var enabled = true
+    var isOn: Bool { lock.withLock { enabled } }
+    func clear() { lock.withLock { enabled = false } }
+}
+
+private final class TaskDeletionTransitionGate: @unchecked Sendable {
+    private let condition = NSCondition()
+    private var waiting = false
+    private var released = false
+    var entered: Bool { condition.withLock { waiting } }
+    func hold() {
+        condition.lock()
+        waiting = true
+        while !released { condition.wait() }
+        condition.unlock()
+    }
+    func release() {
+        condition.lock()
+        released = true
+        condition.broadcast()
+        condition.unlock()
+    }
+}
+
+private extension SessionCatalog {
+    func holdTaskDeletionTransition(_ gate: TaskDeletionTransitionGate) { gate.hold() }
 }

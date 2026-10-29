@@ -210,7 +210,7 @@ final class SessionTaskRuntimeHost: SessionTaskHost, @unchecked Sendable {
         await runtime?.stopTaskChild(taskID: taskID, childSessionID: childSessionID, binding: nil) ?? .unknown
     }
     func verifyUnknownWakeStopped(taskID: UUID, operationID: UUID, binding: SessionTaskBinding) async -> Bool { false }
-    func mayForget(sessionID: UUID) async -> Bool { false }
+    func mayForget(sessionID: UUID) async -> Bool { await runtime?.mayForgetTaskSession(sessionID) ?? false }
 }
 
 extension ProcessSupervisor {
