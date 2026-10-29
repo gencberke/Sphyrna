@@ -198,6 +198,105 @@ struct ManagedTaskScopeRecoveryTests {
         #expect(try await opening.coordinator.managedChildStopped(taskID: opening.taskID, sessionID: opening.childID, binding: nil) == false)
     }
 
+    /// Moves `fixture`'s launch to `opening` under `owner`, as the coordinator of that app would while its first round's
+    /// delivery is under way (so its outcome is unknown), and on to `scoped` when asked; the binding the launch would have.
+    @discardableResult
+    private func beginLaunch(_ fixture: TaskFixture, owner: ManagedLaunchOwner?, scoped: Bool = false) async throws
+        -> ManagedTaskScopeBinding {
+        await fixture.host.setUnknown(true)
+        _ = try await fixture.input("opening under \(owner == nil ? "no owner" : "an owner")")
+        #expect(try await fixture.coordinator.deliverPending(taskID: fixture.taskID).delivery == .unknown)
+        let binding = ManagedTaskScopeBinding(taskID: fixture.taskID, sessionID: fixture.childID,
+            runID: fixture.child.managedRunID, generation: fixture.child.generation, ownerRunID: UUID(),
+            scope: RunScopeRecord(coalitionID: 1, bootSessionID: "fixture", hostPID: 99_998, hostIDVersion: 1))
+        let store = try SessionTaskStore(url: fixture.url)
+        try store.transaction {
+            try store.beginManagedLaunch(taskID: binding.taskID, childID: binding.sessionID, runID: binding.runID,
+                                         generation: binding.generation, owner: owner)
+            if scoped { try store.prepareManagedScope(binding) }
+        }
+        return binding
+    }
+
+    /// The crash window between `opening` and the first record that ties a scope to the task: a launch that a gone
+    /// app left `opening` never sent its provider SPAWN, so the next open settles it as not admitted and its task can
+    /// be forgotten. What is not known of a scope host it may have started goes to the diagnostic journal. Before, the
+    /// task could never be shown stopped and was never forgotten.
+    @Test func aLaunchAGoneAppLeftOpeningIsNotAdmittedAndItsTaskCanBeForgotten() async throws {
+        let fixture = try await TaskFixture.make(recoveryLayout: true)
+        let context = try await SessionRuntimeTests.makeContext(startRuntime: false, scoped: true)
+        defer { context.cleanup(); fixture.clean() }
+        do {
+            let boot = try #require(ProcessTable.bootSessionID())
+            let gone = ManagedLaunchOwner(process: ProcessIdentity(pid: 99_999, startSeconds: 1, startMicroseconds: 0),
+                                          boot: boot)
+            try await beginLaunch(fixture, owner: gone)
+            #expect(try await fixture.coordinator.managedChildStopped(taskID: fixture.taskID, sessionID: fixture.childID,
+                                                                      binding: nil) == false)
+            let reopened = try await SessionTaskCoordinator.open(url: fixture.url, host: SessionTaskRuntimeHost(runtime: context.runtime))
+            #expect(try await reopened.managedChildStopped(taskID: fixture.taskID, sessionID: fixture.childID, binding: nil))
+            let journal = DiagnosticJournal.forDataRoot(fixture.root).lines().filter { $0.contains("\"taskLaunchRecovery\"") }
+            #expect(journal.count == 1 && journal[0].contains("\"cleanupUnverified\":1") && journal[0].contains("\"notAdmitted\":1"),
+                    "\(journal)")
+            // A not-admitted launch is never begun again.
+            await #expect(throws: SessionTaskError.self) {
+                try await reopened.beginManagedLaunch(taskID: fixture.taskID, childID: fixture.childID,
+                                                      runID: UUID(), generation: UUID())
+            }
+            await context.runtime.installRecoveredTaskCoordinatorForTest(reopened)
+            try await context.runtime.forgetRecoveredParentForTest(fixture.parent.sessionID)
+            #expect(try await reopened.projectionForUser(taskID: fixture.taskID) == nil)
+        } catch { Issue.record("Not-admitted restart cleanup failed: \(error)") }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    /// Only a launch whose owner is provably gone and that never reached `scoped` is settled: an owner that still runs
+    /// (this process), a record of an older build (no owner, no rule) and a launch past `scoped` stay as they were. An
+    /// owner of an earlier boot is gone even with a matching process identity.
+    @Test func onlyAnOpeningOfAGoneOwnerUnderTheAdmissionRuleIsSettled() async throws {
+        let live = try await TaskFixture.make(), legacy = try await TaskFixture.make()
+        let scoped = try await TaskFixture.make(), rebooted = try await TaskFixture.make()
+        defer { live.clean(); legacy.clean(); scoped.clean(); rebooted.clean() }
+        let current = try #require(ManagedLaunchOwner.current())
+        let gone = ManagedLaunchOwner(process: ProcessIdentity(pid: 99_999, startSeconds: 1, startMicroseconds: 0),
+                                      boot: current.boot)
+        try await beginLaunch(live, owner: current)
+        try await beginLaunch(legacy, owner: nil)
+        try await beginLaunch(scoped, owner: gone, scoped: true)
+        try await beginLaunch(rebooted, owner: ManagedLaunchOwner(process: current.process, boot: "an-earlier-boot"))
+        for (fixture, settled) in [(live, false), (legacy, false), (scoped, false), (rebooted, true)] {
+            let reopened = try await SessionTaskCoordinator.open(url: fixture.url, host: fixture.host)
+            #expect(try await reopened.managedChildStopped(taskID: fixture.taskID, sessionID: fixture.childID,
+                                                           binding: nil) == settled)
+        }
+    }
+
+    /// The runtime's own failure before `scoped` settles its launch as not admitted at once; past `scoped` the store
+    /// refuses, so the runtime may ask after any failure.
+    @Test func aLiveLaunchThatFailedBeforeScopedIsNotAdmittedAndOnePastItIsNot() async throws {
+        let failed = try await TaskFixture.make(), admitted = try await TaskFixture.make()
+        defer { failed.clean(); admitted.clean() }
+        _ = try await failed.input("fails before its scope is tied to it")
+        try await failed.coordinator.beginManagedLaunch(taskID: failed.taskID, childID: failed.childID,
+                                                        runID: failed.child.managedRunID, generation: failed.child.generation)
+        await #expect(throws: SessionTaskError.self) {
+            try await failed.coordinator.confirmManagedLaunchNotAdmitted(taskID: failed.taskID, childID: failed.childID,
+                                                                         runID: UUID(), generation: failed.child.generation)
+        }
+        try await failed.coordinator.confirmManagedLaunchNotAdmitted(taskID: failed.taskID, childID: failed.childID,
+                                                                     runID: failed.child.managedRunID,
+                                                                     generation: failed.child.generation)
+        #expect(try await failed.coordinator.managedChildStopped(taskID: failed.taskID, sessionID: failed.childID, binding: nil))
+
+        let binding = try await beginLaunch(admitted, owner: ManagedLaunchOwner.current(), scoped: true)
+        await #expect(throws: SessionTaskError.self) {
+            try await admitted.coordinator.confirmManagedLaunchNotAdmitted(taskID: binding.taskID, childID: binding.sessionID,
+                                                                           runID: binding.runID, generation: binding.generation)
+        }
+        #expect(try await admitted.coordinator.managedChildStopped(taskID: admitted.taskID, sessionID: admitted.childID,
+                                                                   binding: nil) == false)
+    }
+
     @Test(arguments: [true, false])
     func interruptedStopUsesRecoveredProofWithoutTouchingASuccessor(receiptFirst: Bool) async throws {
         let fixture = try await TaskFixture.make(recoveryLayout: true)

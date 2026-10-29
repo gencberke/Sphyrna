@@ -30,13 +30,28 @@ final class SessionTaskStore {
         var verifiedStopped: Bool
     }
     private struct StoredManagedLaunch: Codable {
-        enum Phase: String, Codable { case unstarted, opening, scoped, noEffect }
+        /// `notAdmitted`: the attempt ended while it was `opening`, so its provider was never sent SPAWN (the admission
+        /// rule: every managed SPAWN follows a committed `scoped`). Unlike `noEffect` it says nothing of a scope host the
+        /// attempt may have started; that host's cleanup is the supervisor's and previous-run recovery's to verify.
+        enum Phase: String, Codable { case unstarted, opening, scoped, noEffect, notAdmitted }
         let childID: UUID
         var phase: Phase
         var runID: UUID? = nil
         var generation: UUID? = nil
         var roundID: UUID? = nil
         var operationID: UUID? = nil
+        /// The app process that moved the launch to `opening`, its boot, and the admission rule it followed. A record
+        /// without them (an older build) is never settled as not admitted.
+        var owner: ProcessIdentity? = nil
+        var ownerBoot: String? = nil
+        var admissionRule: Int? = nil
+    }
+
+    /// What settling the launches a gone app left `opening` did: how many, and how many of those have no verified
+    /// scope receipt (a scope host the attempt may have started is not known to be gone).
+    struct AbandonedLaunches: Equatable {
+        var settled = 0
+        var cleanupUnverified = 0
     }
 
     private let db: OpaquePointer
@@ -163,7 +178,8 @@ final class SessionTaskStore {
 
     /// Reserve before opening even the scope host. A settled no-effect
     /// record makes any later launch attempt fail in this same transaction.
-    func beginManagedLaunch(taskID: UUID, childID: UUID, runID: UUID, generation: UUID) throws {
+    func beginManagedLaunch(taskID: UUID, childID: UUID, runID: UUID, generation: UUID,
+                            owner: ManagedLaunchOwner?) throws {
         guard let task = try task(taskID), task.childSessionID == childID, task.childBinding == nil,
               task.lifecycle == .active, let roundID = task.pendingRoundID, let round = try round(roundID),
               round.taskID == taskID, round.phase == .queued || round.phase == .deliveringUnknown,
@@ -173,7 +189,59 @@ final class SessionTaskStore {
         launch.phase = .opening
         launch.runID = runID; launch.generation = generation
         launch.roundID = roundID; launch.operationID = round.operationID
+        launch.owner = owner?.process; launch.ownerBoot = owner?.boot
+        launch.admissionRule = owner == nil ? nil : ManagedLaunchOwner.admissionRule
         try saveManagedLaunch(launch, taskID: taskID)
+    }
+
+    /// The runtime ends an attempt that failed before `scoped`: its provider was never sent SPAWN. Any other phase is
+    /// refused, so a caller may ask after every failure.
+    func confirmManagedLaunchNotAdmitted(taskID: UUID, childID: UUID, runID: UUID, generation: UUID) throws {
+        guard var launch = try get("SELECT body FROM managed_launches WHERE task=?", [taskID.uuidString],
+                                   as: StoredManagedLaunch.self),
+              launch.childID == childID, launch.phase == .opening,
+              launch.runID == runID, launch.generation == generation else { throw SessionTaskError.unverified }
+        launch.phase = .notAdmitted
+        try saveManagedLaunch(launch, taskID: taskID)
+    }
+
+    /// Settles as not admitted every launch left `opening` under the admission rule by an app `isGone` says is no longer
+    /// running (its process, or its boot). Rows this build cannot read are left as they are.
+    func settleAbandonedManagedLaunches(isGone: (ProcessIdentity, String) -> Bool) throws -> AbandonedLaunches {
+        var result = AbandonedLaunches()
+        var after = ""
+        let page = 256
+        while true {
+            let rows: [(task: String, body: String)] = try statement(
+                "SELECT task,body FROM managed_launches WHERE task>? ORDER BY task LIMIT \(page)", [after]) { stmt in
+                var rows: [(task: String, body: String)] = []
+                var step = sqlite3_step(stmt)
+                while step == SQLITE_ROW {
+                    guard let task = sqlite3_column_text(stmt, 0), let body = sqlite3_column_text(stmt, 1) else {
+                        throw SessionTaskError.storage
+                    }
+                    rows.append((String(cString: task), String(cString: body)))
+                    step = sqlite3_step(stmt)
+                }
+                guard step == SQLITE_DONE else { throw SessionTaskError.storage }
+                return rows
+            }
+            for row in rows {
+                guard var launch = try? decoder.decode(StoredManagedLaunch.self, from: Data(row.body.utf8)),
+                      launch.phase == .opening, launch.admissionRule == ManagedLaunchOwner.admissionRule,
+                      let owner = launch.owner, let boot = launch.ownerBoot, isGone(owner, boot) else { continue }
+                launch.phase = .notAdmitted
+                try run("UPDATE managed_launches SET body=? WHERE task=?",
+                        [try json(launch, limit: Self.maximumOperationBytes), row.task])
+                result.settled += 1
+                let scopes = try list("SELECT body FROM managed_scopes WHERE task=? LIMIT 17", [row.task],
+                                      as: StoredManagedScope.self)
+                if scopes.isEmpty || !scopes.allSatisfy(\.verifiedStopped) { result.cleanupUnverified += 1 }
+            }
+            guard rows.count == page, let last = rows.last else { break }
+            after = last.task
+        }
+        return result
     }
 
     func settleUnstartedManagedLaunch(taskID: UUID, childID: UUID) throws -> Bool {
@@ -245,7 +313,7 @@ final class SessionTaskStore {
         if rows.isEmpty, binding == nil,
            let launch = try get("SELECT body FROM managed_launches WHERE task=?", [taskID.uuidString],
                                 as: StoredManagedLaunch.self),
-           launch.childID == sessionID, launch.phase == .noEffect { return true }
+           launch.childID == sessionID, launch.phase == .noEffect || launch.phase == .notAdmitted { return true }
         guard !rows.isEmpty, rows.count <= 16, rows.allSatisfy({
             $0.binding.taskID == taskID && $0.binding.sessionID == sessionID && $0.verifiedStopped
         }) else { return false }
@@ -477,5 +545,21 @@ final class SessionTaskStore {
             }
         }
         return try body(stmt)
+    }
+}
+
+/// The app process that moves a managed launch to `opening`, and its boot: what lets a later app tell that the launch's
+/// owner is gone. `admissionRule` 1 is the rule every managed provider launch of this build follows: the task commits
+/// `scoped` before the provider is sent SPAWN, so a launch still `opening` when its owner is gone never admitted one.
+struct ManagedLaunchOwner: Equatable, Sendable {
+    static let admissionRule = 1
+    let process: ProcessIdentity
+    let boot: String
+
+    /// This process, or nil when its identity or the boot cannot be read (its launches are then never settled for it).
+    static func current() -> ManagedLaunchOwner? {
+        guard let process = ProcessTable.record(pid: getpid())?.identity, let boot = ProcessTable.bootSessionID(),
+              !boot.isEmpty else { return nil }
+        return ManagedLaunchOwner(process: process, boot: boot)
     }
 }

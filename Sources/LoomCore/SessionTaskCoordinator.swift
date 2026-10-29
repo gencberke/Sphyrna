@@ -13,6 +13,8 @@ public actor SessionTaskCoordinator {
     private let store: SessionTaskStore
     private let host: any SessionTaskHost
     private let now: @Sendable () -> Date
+    /// This app's identity on the launches it moves to `opening` (nil when it cannot be read).
+    private let launchOwner = ManagedLaunchOwner.current()
     private var waiters: [UUID: Waiter] = [:]
     private var wakeLeases: [UUID: SessionTaskWakeLease] = [:]
     private var interruptLeases: [UUID: SessionTaskInterruptLease] = [:]
@@ -30,6 +32,38 @@ public actor SessionTaskCoordinator {
         store = try SessionTaskStore(url: url)
         self.host = host
         self.now = now
+        Self.settleAbandonedLaunches(in: store, url: url)
+    }
+
+    /// A launch an app that is gone left `opening` never sent its provider SPAWN: it is settled as not admitted, so its
+    /// task can be stopped and forgotten. Only a record that names its owner and the admission rule qualifies, and only
+    /// when that owner is provably gone (another boot, or no live process with its identity). Whether a scope host such
+    /// a launch started is gone is not known from here: that is said in the log and the diagnostic journal, and it stays
+    /// previous-run recovery's to verify where the host's scope was recorded.
+    private static func settleAbandonedLaunches(in store: SessionTaskStore, url: URL) {
+        do {
+            let boot = ProcessTable.bootSessionID()
+            var live: Set<ProcessIdentity>?
+            let result = try store.transaction {
+                try store.settleAbandonedManagedLaunches { owner, ownerBoot in
+                    guard let boot, !boot.isEmpty else { return false }
+                    if ownerBoot != boot { return true }
+                    if live == nil { live = (try? ProcessTable.snapshot()).map { Set($0.map(\.identity)) } }
+                    guard let live else { return false }
+                    return !live.contains(owner)
+                }
+            }
+            guard result.settled > 0 else { return }
+            LoomLog.error(.recovery, "\(result.settled) task launch(es) left opening by a previous Sphyrna were never admitted; \(result.cleanupUnverified) without verified scope cleanup")
+            // The canonical store sits at `<data root>/session-tasks/tasks.sqlite3`; a test's own file has no journal.
+            let folder = url.deletingLastPathComponent()
+            guard folder.lastPathComponent == "session-tasks" else { return }
+            DiagnosticJournal.forDataRoot(folder.deletingLastPathComponent()).record("taskLaunchRecovery", [
+                "notAdmitted": .int(result.settled), "cleanupUnverified": .int(result.cleanupUnverified),
+            ])
+        } catch {
+            LoomLog.error(.recovery, "Task launches left opening could not be settled (\(LoomLog.category(of: error)))")
+        }
     }
 
     /// Opening and SQLite integrity checks can walk the database. Do them away
@@ -45,7 +79,15 @@ public actor SessionTaskCoordinator {
 
     func beginManagedLaunch(taskID: UUID, childID: UUID, runID: UUID, generation: UUID) throws {
         try store.transaction {
-            try store.beginManagedLaunch(taskID: taskID, childID: childID, runID: runID, generation: generation)
+            try store.beginManagedLaunch(taskID: taskID, childID: childID, runID: runID, generation: generation,
+                                         owner: launchOwner)
+        }
+    }
+
+    /// The runtime's attempt failed before `scoped`, so its provider was never sent SPAWN. Refused in any other phase.
+    func confirmManagedLaunchNotAdmitted(taskID: UUID, childID: UUID, runID: UUID, generation: UUID) throws {
+        try store.transaction {
+            try store.confirmManagedLaunchNotAdmitted(taskID: taskID, childID: childID, runID: runID, generation: generation)
         }
     }
 

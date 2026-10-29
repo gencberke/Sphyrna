@@ -270,6 +270,9 @@ extension SessionRuntime {
             if await supervisor.runContext(runID: runID) != nil {
                 _ = try? await stopConversation(sessionID: sessionID, expectedRunID: runID)
             } else { revokeTaskRun(sessionID: sessionID, runID: runID) }
+            // A launch that never reached `scoped` never sent its provider SPAWN; the store refuses any other phase.
+            try? await taskCoordinator?.confirmManagedLaunchNotAdmitted(taskID: taskID, childID: sessionID, runID: runID,
+                                                                       generation: plan.claim.generation)
             if let controller = managedTaskControllers.removeValue(forKey: runID)?.controller { await controller.close() }
             return .unknown
         }

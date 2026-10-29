@@ -290,7 +290,16 @@ extension SessionRuntime {
                 )
             }
         }
-        let server = try await makeCodexServer(card: card, toolchain: toolchain, choices: choices, managedRun: managedRun)
+        let server: CodexServer
+        do { server = try await makeCodexServer(card: card, toolchain: toolchain, choices: choices, managedRun: managedRun) }
+        catch {
+            // A managed launch that never reached `scoped` never sent its provider SPAWN; the store refuses any other phase.
+            if let run = managedRun {
+                try? await taskCoordinator?.confirmManagedLaunchNotAdmitted(taskID: run.taskID, childID: card, runID: run.runID,
+                                                                           generation: run.generation)
+            }
+            throw error
+        }
         codexServers.append(server)
         do {
             let client = try await server.manager.start()
