@@ -26,14 +26,16 @@
 | --- | --- | --- |
 | `~/Library/Caches/loom-v2/wt/v2` | local `v2`, `0f48daf` (+ this STATUS commit) | Claude planner continuation; clean after each commit |
 | `wt/r9-tests` | `slice/r9-tests` (first stop integrated, `v2` = `0e4ff16`) | running: the test revision's step 5 (D-119), session `test-infra-review` |
-| `wt/r9-pool`, `wt/r9-f2`, `wt/r9-e1r` | `slice/r9-<id>` from `0e4ff16` | running (D-120): the three pool waits; F2 (Changes to a terminal session); opencode as a terminal session, time-boxed |
+| `wt/r9-pool`, `wt/r9-f2` | `slice/r9-<id>` from `0e4ff16` | running (D-120): the three pool waits; F2 (Changes to a terminal session) |
+| `wt/r9-later`, `wt/r9-e2n` | `slice/r9-<id>` from `0e4ff16` | running (D-120): the "Coming later" harness state (opencode frozen for 1.8.0); agy live, one-hour box |
+| `wt/r9-e1r` | `slice/r9-e1r`, unchanged | done: freeze recommended for opencode (no plain route in Sphyrna yet; the native route `--standalone --session --prompt` works; `evidence/r9/e1r/`) |
 | `wt/r9-m1` | `slice/r9-m1`, `ae9774b`, clean | c4 completed; integrated, report in `r9/m1` |
 | `wt/r9-resource` | `slice/r9-resource`, `9ef909c`, clean | b3 completed; integrated, report in `r9/resource` |
 | `wt/r9-m1-ui`, `wt/r9-x2`, `wt/r9-e2`, `wt/r9-e1-native`, `wt/r9-f1`, `wt/r9-e1` | `9091534`, `ba830ea`, `f0cad4d`, `c97a34c`, `8dc5e95`, `d09e18a` | completed warm history; recovery/source-equivalence cleanup remains planner-owned, no active writes |
 | `~/Documents/github/loom-dev` | `swarm/1` | guarded canonical/reference mirror; never Sources/build/commit |
 | `~/Documents/github/loom` | `main` | public release tree, release-script-only; untouched |
 
-File locks: the test revision holds `Tests/**`, `Package.swift` (test targets and `LoomTestSupport`), `scripts/check.sh` and the test guards and ledger, DEVELOPMENT §2 and §3.1, and three product seams (`OwnThread.swift`'s access, the `ChatPresentation` verifier, the git-hook and join timeouts as parameters). `r9-pool` holds the three `Task.detached` sites and ARCHITECTURE's owned-helpers paragraph; `r9-f2` F2's brief write set; `r9-e1r` E.md's opencode write set. Do not restart completed workers or repeat accepted slices. Canonical/reference final writes are finished; Claude takes the planner role after the authorized brief is submitted.
+File locks: the test revision holds `Tests/**`, `Package.swift` (test targets and `LoomTestSupport`), `scripts/check.sh` and the test guards and ledger, DEVELOPMENT §2 and §3.1, and three product seams (`OwnThread.swift`'s access, the `ChatPresentation` verifier, the git-hook and join timeouts as parameters). `r9-pool` holds the three `Task.detached` sites and ARCHITECTURE's owned-helpers paragraph; `r9-f2` F2's brief write set; `r9-later` the harness capability table and the surfaces that list harnesses; `r9-e2n` agy's launch profile and status bridge. Do not restart completed workers or repeat accepted slices. Canonical/reference final writes are finished; Claude takes the planner role after the authorized brief is submitted.
 
 ## Next actions by role
 
