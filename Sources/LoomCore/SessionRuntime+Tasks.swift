@@ -55,6 +55,7 @@ extension SessionRuntime {
             old.lease.revoke()
             taskIngress.remove(runID: old.claim.managedRunID)
         }
+        retiredTaskRuns[sessionID] = nil
         let plan = SessionTaskRunPlan(sessionID: sessionID, runID: runID)
         taskRunPlans[sessionID] = plan
         taskIngress.register(runID: runID, lease: plan.lease)
@@ -63,6 +64,10 @@ extension SessionRuntime {
     func revokeTaskRun(sessionID: UUID, runID: UUID? = nil) {
         guard let plan = taskRunPlans[sessionID], runID == nil || plan.claim.managedRunID == runID else { return }
         plan.lease.revoke()
+        if retiredTaskRuns[sessionID] == nil, retiredTaskRuns.count >= 256, let first = retiredTaskRuns.keys.first {
+            retiredTaskRuns[first] = nil
+        }
+        retiredTaskRuns[sessionID] = SessionTaskRetiredRun(runID: plan.claim.managedRunID, generation: plan.claim.generation)
         taskIngress.remove(runID: plan.claim.managedRunID)
         taskExpectedInputs[plan.claim.managedRunID] = nil
         taskRunPlans[sessionID] = nil
@@ -81,6 +86,36 @@ extension SessionRuntime {
               !shuttingDown, let current = taskRunPlans[claim.sessionID], current.lease === plan.lease,
               current.lease.isEnabled else { return nil }
         return binding
+    }
+
+    /// Reads the existing process owner's state; never starts or probes a provider.
+    func taskNativeStatus(_ binding: SessionTaskBinding) async -> SessionTaskNativeStatus {
+        guard let plan = taskRunPlans[binding.sessionID],
+              plan.claim.managedRunID == binding.managedRunID, plan.claim.generation == binding.generation else {
+            guard taskRunPlans[binding.sessionID] == nil,
+                  let retired = retiredTaskRuns[binding.sessionID], retired.runID == binding.managedRunID,
+                  retired.generation == binding.generation else { return .unknown }
+            let report = await supervisor.lastStopReport(sessionID: binding.sessionID)
+            let session = await supervisor.session(id: binding.sessionID)
+            guard report?.runID == binding.managedRunID, report?.succeeded == true,
+                  session?.currentRun == nil, taskRunPlans[binding.sessionID] == nil,
+                  retiredTaskRuns[binding.sessionID]?.runID == binding.managedRunID,
+                  retiredTaskRuns[binding.sessionID]?.generation == binding.generation else { return .unknown }
+            return .stopped
+        }
+        guard let revision = plan.lease.admit({ $0 }),
+              await supervisor.taskBinding(for: plan.claim) == binding else { return .unknown }
+        let work = await supervisor.providerWorkState(sessionID: binding.sessionID)
+        guard let current = taskRunPlans[binding.sessionID], current.lease === plan.lease,
+              current.lease.permits(revision: revision), !shuttingDown,
+              let work else { return .unknown }
+        if let server = runs[binding.managedRunID]?.server, !server.requests.isEmpty { return .waitingForUser }
+        switch work.activity {
+        case .atPrompt, .turnComplete: return work.pendingProviderWorkCount == 0 ? .ready : .working
+        case .working: return .working
+        case .waitingForApproval, .waitingForInput: return .waitingForUser
+        case .unknown, .failed, .sessionEnded: return .unknown
+        }
     }
 
     func observeCodexTaskInput(serverID: UUID, observation: CodexTaskInputObservation) async {

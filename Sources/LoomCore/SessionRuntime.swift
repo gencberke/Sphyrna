@@ -349,6 +349,7 @@ public actor SessionRuntime {
     var taskRunPlans: [UUID: SessionTaskRunPlan] = [:]
     var taskExpectedInputs: [UUID: SessionTaskExpectedInput] = [:]
     var taskChildReservations: [UUID: SessionTaskChildReservation] = [:]
+    var retiredTaskRuns: [UUID: SessionTaskRetiredRun] = [:]
     var startingTaskChildren: Set<UUID> = []
     let taskIngress = SessionTaskIngressRegistry()
 
@@ -807,6 +808,7 @@ public actor SessionRuntime {
         taskRunPlans.removeAll()
         taskExpectedInputs.removeAll()
         taskChildReservations.removeAll()
+        retiredTaskRuns.removeAll()
         taskReadFence?.stop()
         taskReadFence = nil
         await claudeLimitObserver?.cancelAll()

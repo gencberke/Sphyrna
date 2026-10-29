@@ -91,6 +91,11 @@ struct SessionTaskRunPlan: Sendable {
     }
 }
 
+struct SessionTaskRetiredRun: Sendable {
+    let runID: UUID
+    let generation: UUID
+}
+
 struct SessionTaskChildReservation: Sendable {
     let parent: SessionTaskClaim
     let childID: UUID
@@ -120,7 +125,9 @@ final class SessionTaskRuntimeHost: SessionTaskHost, @unchecked Sendable {
     }
     func observedChildExecution(_ target: SessionTaskRoundTarget) async -> SessionTaskExecutionReference? { nil }
     func observedWakeExecution(taskID: UUID, operationID: UUID, binding: SessionTaskBinding) async -> SessionTaskExecutionReference? { nil }
-    func nativeStatus(binding: SessionTaskBinding) async -> SessionTaskNativeStatus { .unknown }
+    func nativeStatus(binding: SessionTaskBinding) async -> SessionTaskNativeStatus {
+        await runtime?.taskNativeStatus(binding) ?? .unknown
+    }
     func submitIfReady(_ intent: SessionTaskInputIntent) async -> SessionTaskInputEffect { .deferred }
     func wakeIfReady(_ intent: SessionTaskWakeIntent) async -> SessionTaskEffect { .deferred }
     func interrupt(_ target: SessionTaskRoundTarget) async -> SessionTaskEffect { .unknown }

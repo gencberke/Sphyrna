@@ -1,0 +1,34 @@
+import Foundation
+import Testing
+@testable import LoomCore
+
+@Suite(.serialized, .processHeavy, .timeLimit(.minutes(1)))
+struct SessionTaskRuntimeStatusTests {
+    @Test func nativeStatusTracksOnlyTheOwnedLiveRunAndProviderReadiness() async throws {
+        let context = try await SessionRuntimeTests.makeContext()
+        defer { context.cleanup() }
+        let screen = SessionRuntimeTests.Screen()
+        let launch = try await context.runtime.startConversation(provider: .claude, projectID: nil, outputSink: screen)
+        screen.attach(launch.terminal)
+        let claim = try #require(await context.runtime.taskRunPlans[launch.sessionID]?.claim)
+        #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+        let binding = try #require(await context.runtime.authenticateTaskRun(claim))
+        let host = SessionTaskRuntimeHost(runtime: context.runtime)
+        #expect(try await SessionRuntimeTests.waitUntil(3) { await host.nativeStatus(binding: binding) == .ready })
+        try await screen.send("/work 700")
+        #expect(await screen.contains("WORKING 700"))
+        #expect(try await SessionRuntimeTests.waitUntil(2) { await host.nativeStatus(binding: binding) == .working })
+        #expect(try await SessionRuntimeTests.waitUntil(3) { await host.nativeStatus(binding: binding) == .ready })
+        try await screen.send("/approve")
+        #expect(await screen.contains("NEEDS-APPROVAL"))
+        #expect(try await SessionRuntimeTests.waitUntil(2) { await host.nativeStatus(binding: binding) == .waitingForUser })
+        let stale = SessionTaskBinding(sessionID: binding.sessionID, nativeSessionID: binding.nativeSessionID,
+                                       managedRunID: binding.managedRunID, generation: UUID())
+        #expect(await host.nativeStatus(binding: stale) == .unknown)
+        try await screen.send("n")
+        #expect(try await context.runtime.stopConversation(sessionID: launch.sessionID).succeeded)
+        #expect(await host.nativeStatus(binding: binding) == .stopped)
+        #expect(await host.nativeStatus(binding: stale) == .unknown)
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+}
