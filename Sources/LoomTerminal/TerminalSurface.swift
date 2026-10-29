@@ -146,13 +146,21 @@ final class AlternateScreenKeeper: Sendable {
 public final class TerminalSurface: NSObject, TerminalViewDelegate {
     public let view: LoomTerminalView
     private let output: TerminalOutputBridge
+    private struct InputFragment {
+        var bytes: [UInt8]
+        let origin: TerminalInputOrigin
+    }
+    private struct EarlyInput {
+        var fragments: [InputFragment] = []
+        var count = 0
+    }
     private enum InputState {
-        /// Replies produced before `attach` are kept in order, bounded.
-        case launching([UInt8])
+        /// Input produced before `attach` is kept in order, bounded.
+        case launching(EarlyInput)
         case attached(TerminalInputQueue, TerminalEndpoint)
         case ended
     }
-    private var input: InputState = .launching([])
+    private var input: InputState = .launching(EarlyInput())
     private var inputGate: TerminalInputGate?
     private let leftAlternate = AlternateScreenKeeper()
     private var inputErrors: [String] = []
@@ -214,7 +222,12 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
         self.inputGate = inputGate
         // Registration can wake a deferred automatic sender. Put earlier
         // user/terminal bytes into this queue before it becomes visible.
-        queue.enqueue(early)
+        for fragment in early.fragments {
+            switch fragment.origin {
+            case .protocolResponse: queue.enqueueTerminalResponse(fragment.bytes)
+            case .unclassified: queue.enqueue(fragment.bytes)
+            }
+        }
         inputGate?.register(runID: runID, queue: queue)
         // The grid may have changed between launch and attach.
         let size = gridSize
@@ -284,16 +297,29 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
     // MARK: TerminalViewDelegate
 
     public func send(source: TerminalView, data: ArraySlice<UInt8>) {
+        send(source: source, data: data, origin: .unclassified)
+    }
+
+    public func send(source: TerminalView, data: ArraySlice<UInt8>, origin: TerminalInputOrigin) {
+        guard !data.isEmpty else { return }
         switch input {
         case var .launching(early):
             guard early.count + data.count <= 64 * 1024 else {
                 report(.overflow(pending: early.count, rejected: data.count, capacity: 64 * 1024))
                 return
             }
-            early.append(contentsOf: data)
+            if early.fragments.last?.origin == origin {
+                early.fragments[early.fragments.count - 1].bytes.append(contentsOf: data)
+            } else {
+                early.fragments.append(InputFragment(bytes: Array(data), origin: origin))
+            }
+            early.count += data.count
             input = .launching(early)
         case let .attached(queue, _):
-            queue.enqueue(data)
+            switch origin {
+            case .protocolResponse: queue.enqueueTerminalResponse(data)
+            case .unclassified: queue.enqueue(data)
+            }
         case .ended:
             report(.writeFailed("run has ended"))
         }

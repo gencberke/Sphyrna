@@ -27,6 +27,13 @@ public enum TerminalColorScheme: Equatable {
     case light
 }
 
+/// Source of a terminal-to-host input payload. Synchronous parser replies and
+/// fixed focus/visibility reports are distinct from ordinary or unknown input.
+public enum TerminalInputOrigin: Sendable, Equatable {
+    case protocolResponse
+    case unclassified
+}
+
 /**
  * The terminal delegate is a protocol that must be implemented by a class
  * that would provide a user interface for the terminal, and it is used by the
@@ -90,6 +97,9 @@ public protocol TerminalDelegate: AnyObject {
      * documentation, this is the "host")
      */
     func send (source: Terminal, data: ArraySlice<UInt8>)
+
+    /// Origin is captured before a response leaves the parser's thread.
+    func send(source: Terminal, data: ArraySlice<UInt8>, origin: TerminalInputOrigin)
     
     // callbacks
     
@@ -964,7 +974,7 @@ open class Terminal {
 
     func sendFocusReport() {
         let data: [UInt8] = cc.CSI + [reportedFocusState ? 0x49 : 0x4f]
-        tdel?.send(source: self, data: data[0...])
+        tdel?.send(source: self, data: data[...], origin: .protocolResponse)
     }
 
     /// Records the terminal's effective visibility and reports a change to subscribed applications.
@@ -977,7 +987,8 @@ open class Terminal {
     }
 
     private func reportTerminalVisibility() {
-        sendResponse(cc.CSI, "?999;\(reportedVisibility.rawValue)n")
+        let bytes = cc.CSI + Array("?999;\(reportedVisibility.rawValue)n".utf8)
+        tdel?.send(source: self, data: bytes[...], origin: .protocolResponse)
     }
     
     ///
@@ -3306,7 +3317,8 @@ open class Terminal {
                 // Absolute rows are reported clamped to the viewport.
                 y = min(max(position.row - buffer.yBase + 1, 1), rows)
             }
-            sendResponse("\u{1b}[<0;\(x);\(y)M")
+            let bytes = Array("\u{1b}[<0;\(x);\(y)M".utf8)
+            tdel?.send(source: self, data: bytes[...])
             return true
         case .cursorKeys(let strategy):
             // The cursor's offset uses buffer.x unclamped so a pending wrap
@@ -7287,26 +7299,32 @@ open class Terminal {
      */
     public func sendResponse (text: String)
     {
-        tdel?.send (source: self, data: ([UInt8] (text.utf8))[...])
+        sendResponseBytes(Array(text.utf8))
+    }
+
+    private func sendResponseBytes(_ bytes: [UInt8]) {
+        let origin: TerminalInputOrigin = terminalLock.isLockedByCurrentThread && parseDepth > 0
+            ? .protocolResponse : .unclassified
+        tdel?.send(source: self, data: bytes[...], origin: origin)
     }
 
     public func sendResponse(_ text: String) { sendResponse(text: text) }
-    public func sendResponse(_ bytes: [UInt8]) { tdel?.send(source: self, data: bytes[...]) }
+    public func sendResponse(_ bytes: [UInt8]) { sendResponseBytes(bytes) }
     public func sendResponse(_ prefix: [UInt8], _ text: String) {
         var response = prefix
         response.append(contentsOf: text.utf8)
-        tdel?.send(source: self, data: response[...])
+        sendResponseBytes(response)
     }
     public func sendResponse(_ prefix: [UInt8], _ bytes: [UInt8]) {
         var response = prefix
         response.append(contentsOf: bytes)
-        tdel?.send(source: self, data: response[...])
+        sendResponseBytes(response)
     }
     public func sendResponse(_ prefix: [UInt8], _ text: String, _ suffix: [UInt8]) {
         var response = prefix
         response.append(contentsOf: text.utf8)
         response.append(contentsOf: suffix)
-        tdel?.send(source: self, data: response[...])
+        sendResponseBytes(response)
     }
     
     /**
@@ -7329,7 +7347,7 @@ open class Terminal {
                 log ("Do not know how to handle type \(item)")
             }
         }
-        tdel?.send (source: self, data: buffer[...])
+        sendResponseBytes(buffer)
     }
 #endif
     
@@ -8665,28 +8683,41 @@ open class Terminal {
                         originalButton: originalButton, x: x, y: y, pixelX: pixelX, pixelY: pixelY)
     }
 
+    private func sendMouseInput(_ prefix: [UInt8], _ text: String) {
+        let bytes = prefix + Array(text.utf8)
+        tdel?.send(source: self, data: bytes[...])
+    }
+    private func sendMouseInput(_ prefix: [UInt8], _ bytes: [UInt8]) {
+        let result = prefix + bytes
+        tdel?.send(source: self, data: result[...])
+    }
+    private func sendMouseInput(_ prefix: [UInt8], _ text: String, _ suffix: [UInt8]) {
+        let bytes = prefix + Array(text.utf8) + suffix
+        tdel?.send(source: self, data: bytes[...])
+    }
+
     private func sendMousePacket(buttonFlags: Int, release: Bool, originalButton: Int,
                                  x: Int, y: Int, pixelX: Int, pixelY: Int) {
         switch mouseProtocol {
         case .x10:
-            sendResponse(cc.CSI, "M", [UInt8(min(buttonFlags+32, 255)), UInt8(max(0, min(x, 222))+33), UInt8(max(0, min(y, 222))+33)])
+            sendMouseInput(cc.CSI, "M", [UInt8(min(buttonFlags+32, 255)), UInt8(max(0, min(x, 222))+33), UInt8(max(0, min(y, 222))+33)])
         case .sgr:
             let bflags = release ? (buttonFlags & ~3) | originalButton : buttonFlags
             let m = release ? "m" : "M"
-            sendResponse(cc.CSI, "<\(bflags);\(x+1);\(y+1)\(m)")
+            sendMouseInput(cc.CSI, "<\(bflags);\(x+1);\(y+1)\(m)")
         case .sgrPixel:
             let bflags = release ? (buttonFlags & ~3) | originalButton : buttonFlags
             let m = release ? "m" : "M"
-            sendResponse(cc.CSI, "<\(bflags);\(pixelX+1);\(pixelY+1)\(m)")
+            sendMouseInput(cc.CSI, "<\(bflags);\(pixelX+1);\(pixelY+1)\(m)")
             
         case .urxvt:
-            sendResponse(cc.CSI, "\(buttonFlags+32);\(x+1);\(y+1)M");
+            sendMouseInput(cc.CSI, "\(buttonFlags+32);\(x+1);\(y+1)M");
         case .utf8:
             var buffer: [UInt8] = [UInt8 (ascii: "M")]
             encodeMouseUtf(data: &buffer, ch: buttonFlags+32)
             encodeMouseUtf (data: &buffer, ch: x+33)
             encodeMouseUtf (data: &buffer, ch: y+33)
-            sendResponse(cc.CSI, buffer)
+            sendMouseInput(cc.CSI, buffer)
         }
     }
     
@@ -9850,6 +9881,10 @@ final class ViewTerminal: Terminal {
 
 // Default implementations
 public extension TerminalDelegate {
+    func send(source: Terminal, data: ArraySlice<UInt8>, origin: TerminalInputOrigin) {
+        send(source: source, data: data)
+    }
+
     func clipboardReadRequest(source: Terminal, selection: String) -> Bool { false }
 
     func cursorStyleChanged (source: Terminal, newStyle: CursorStyle)

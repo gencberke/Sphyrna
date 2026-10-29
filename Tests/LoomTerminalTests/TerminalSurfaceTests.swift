@@ -105,6 +105,39 @@ struct TerminalSurfaceTests {
         #expect((await supervisor.shutdown()).succeeded)
     }
 
+    @Test func earlyParserRepliesStayCleanButMixedEarlyUserInputDoesNot() async throws {
+        for mixed in [false, true] {
+            let supervisor = try ProcessSupervisor()
+            let surface = TerminalSurface()
+            surface.view.feed(text: "\u{1b}[6")
+            surface.view.feed(text: "n")
+            if mixed { surface.view.send(data: Array("user draft".utf8)[...]) }
+            // Let the deliberately deferred parser callback reach the launching surface.
+            try await Task.sleep(for: .milliseconds(30))
+            let sessionID = UUID()
+            try await supervisor.createSession(ManagedSession(id: sessionID, provider: .synthetic,
+                workingDirectory: FileManager.default.temporaryDirectory.path))
+            let environment = LaunchEnvironment.make(path: "/usr/bin:/bin", runID: supervisor.ownershipRunID, sessionID: sessionID)
+            let launched = try await supervisor.launch(sessionID: sessionID, executable: childPath, arguments: ["interactive"],
+                environment: environment, rows: 24, columns: 80, outputSink: surface.outputSink)
+            let runID = try #require(launched.session.currentRun?.id)
+            let gate = TerminalInputGate()
+            surface.attach(runID: runID, endpoint: launched.terminal, inputGate: gate)
+            let deadline = ProcessInfo.processInfo.systemUptime + 5
+            while gate.pendingByteCount(runID: runID) != 0 && ProcessInfo.processInfo.systemUptime < deadline {
+                try await Task.sleep(for: .milliseconds(2))
+            }
+            #expect(gate.pendingByteCount(runID: runID) == 0)
+            if !mixed {
+                while !gate.establishFreshCleanInput(runID: runID) && ProcessInfo.processInfo.systemUptime < deadline {
+                    try await Task.sleep(for: .milliseconds(2))
+                }
+            }
+            #expect(gate.establishFreshCleanInput(runID: runID) == !mixed)
+            #expect((await supervisor.shutdown()).succeeded)
+        }
+    }
+
     @Test func splitSequencesRepliesAndOrderedInputReachTheRun() async throws {
         let supervisor = try ProcessSupervisor()
         let surface = TerminalSurface()

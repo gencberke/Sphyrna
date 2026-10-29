@@ -50,6 +50,13 @@ private final class PausedTaskWrite: @unchecked Sendable {
     func release() { condition.withLock { released = true; condition.broadcast() } }
 }
 
+private final class IdleResult: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [Bool] = []
+    func append(_ value: Bool) { lock.withLock { storage.append(value) } }
+    var values: [Bool] { lock.withLock { storage } }
+}
+
 private final class PermitOnce: @unchecked Sendable {
     private let lock = NSLock()
     private var calls = 0
@@ -144,6 +151,32 @@ struct TerminalInputQueueTests {
         #expect(await writer.received == Data("first\rsecond\r".utf8))
         gate.unregister(runID: runID)
         #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("third\r".utf8)) == nil)
+    }
+
+    @Test func idleCallbackRechecksFreshBoundaryWithoutLosingDrainRace() async throws {
+        let pause = PausedTaskWrite(), result = IdleResult()
+        let queue = TerminalInputQueue(capacity: 1024, writer: { data in
+            _ = pause.permit()
+            return data.count
+        }, onError: { _ in })
+        #expect(queue.enqueueTerminalResponse(Data("\u{1b}[1;1R".utf8)))
+        #expect(try await SessionRuntimeTests.waitUntil(2) { pause.isEntered })
+        #expect(queue.notifyWhenIdle { result.append(queue.establishFreshCleanInput()) })
+        #expect(!queue.notifyWhenIdle { result.append(false) })
+        pause.release()
+        #expect(try await SessionRuntimeTests.waitUntil(2) { !result.values.isEmpty })
+        #expect(result.values == [true])
+        #expect(queue.notifyWhenIdle { result.append(queue.establishFreshCleanInput()) })
+        #expect(result.values == [true, true])
+    }
+
+    @Test func parserRepliesDoNotDirtyAnOtherwiseFreshInputQueue() async throws {
+        let writer = ScriptedWriter(script: [])
+        let queue = TerminalInputQueue(capacity: 1024, writer: { try await writer.write($0) }, onError: { _ in })
+        #expect(queue.enqueueTerminalResponse(Data("\u{1b}[1;1R".utf8)))
+        try await waitUntilIdle(queue)
+        #expect(queue.establishFreshCleanInput())
+        #expect(await writer.received == Data("\u{1b}[1;1R".utf8))
     }
 
     @Test func priorUnclassifiedInputCannotBeDeclaredFresh() async throws {

@@ -65,6 +65,12 @@ public final class TerminalInputGate: @unchecked Sendable {
         lock.withLock { queues[runID] }?.pendingByteCount ?? 0
     }
 
+    @discardableResult
+    func notifyWhenIdle(runID: UUID, _ callback: @escaping @Sendable () -> Void) -> Bool {
+        guard let queue = lock.withLock({ queues[runID] }) else { return false }
+        return queue.notifyWhenIdle(callback)
+    }
+
     func establishFreshCleanInput(runID: UUID) -> Bool {
         lock.withLock { queues[runID]?.establishFreshCleanInput() ?? false }
     }

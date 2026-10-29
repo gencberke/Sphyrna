@@ -1495,11 +1495,11 @@ open class TerminalView: NSView, NSUserInterfaceValidations, TerminalDelegate {
     }
     
     nonisolated open func send(source: Terminal, data: ArraySlice<UInt8>) {
-        let capturedData = Array(data)
-        onMain { [weak self] in
-            guard let self else { return }
-            self.terminalDelegate?.send(source: self, data: capturedData[...])
-        }
+        inputSender.deliverTerminalResponse(Array(data), origin: .unclassified)
+    }
+
+    nonisolated open func send(source: Terminal, data: ArraySlice<UInt8>, origin: TerminalInputOrigin) {
+        inputSender.deliverTerminalResponse(Array(data), origin: origin)
     }
         
     private var scrollerWidth: CGFloat {

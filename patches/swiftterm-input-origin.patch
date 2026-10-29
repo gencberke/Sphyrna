@@ -1,0 +1,178 @@
+diff --git a/Sources/SwiftTerm/Apple/AppleTerminalView.swift b/Sources/SwiftTerm/Apple/AppleTerminalView.swift
+index 054b194..6194c8f 100644
+--- a/Sources/SwiftTerm/Apple/AppleTerminalView.swift
++++ b/Sources/SwiftTerm/Apple/AppleTerminalView.swift
+@@ -1071,0 +1072,4 @@ private final class TerminalInputMainActorDelivery: Sendable {
++    private struct Payload: Sendable {
++        let bytes: [UInt8]
++        let origin: TerminalInputOrigin
++    }
+@@ -1073 +1077 @@ private final class TerminalInputMainActorDelivery: Sendable {
+-        var pending: [[UInt8]] = []
++        var pending: [Payload] = []
+@@ -1078 +1082 @@ private final class TerminalInputMainActorDelivery: Sendable {
+-    private let sink: @MainActor @Sendable ([UInt8]) -> Void
++    private let sink: @MainActor @Sendable ([UInt8], TerminalInputOrigin) -> Void
+@@ -1080 +1084 @@ private final class TerminalInputMainActorDelivery: Sendable {
+-    init(sink: @escaping @MainActor @Sendable ([UInt8]) -> Void) {
++    init(sink: @escaping @MainActor @Sendable ([UInt8], TerminalInputOrigin) -> Void) {
+@@ -1084 +1088 @@ private final class TerminalInputMainActorDelivery: Sendable {
+-    func enqueue(_ bytes: [UInt8]) {
++    func enqueue(_ bytes: [UInt8], origin: TerminalInputOrigin, deferOnMain: Bool = false) {
+@@ -1086 +1090 @@ private final class TerminalInputMainActorDelivery: Sendable {
+-            state.pending.append(bytes)
++            state.pending.append(Payload(bytes: bytes, origin: origin))
+@@ -1093 +1097 @@ private final class TerminalInputMainActorDelivery: Sendable {
+-        if Thread.isMainThread {
++        if Thread.isMainThread && !deferOnMain {
+@@ -1096 +1100 @@ private final class TerminalInputMainActorDelivery: Sendable {
+-            Task { @MainActor in drain() }
++            DispatchQueue.main.async { MainActor.assumeIsolated { self.drain() } }
+@@ -1103 +1107 @@ private final class TerminalInputMainActorDelivery: Sendable {
+-            let batch = state.withLock { state -> [[UInt8]]? in
++            let batch = state.withLock { state -> [Payload]? in
+@@ -1113,2 +1117,2 @@ private final class TerminalInputMainActorDelivery: Sendable {
+-            for bytes in batch {
+-                sink(bytes)
++            for payload in batch {
++                sink(payload.bytes, payload.origin)
+@@ -1130,0 +1135 @@ public final class TerminalInputSender: Sendable {
++        var deliverResponse: (@Sendable ([UInt8], TerminalInputOrigin) -> Void)?
+@@ -1140 +1145,2 @@ public final class TerminalInputSender: Sendable {
+-        deliverOnMain: @escaping @MainActor @Sendable ([UInt8]) -> Void
++        deliverOnMain: @escaping @MainActor @Sendable ([UInt8]) -> Void,
++        deliverResponse: @escaping @Sendable ([UInt8], TerminalInputOrigin) -> Void
+@@ -1146,0 +1153 @@ public final class TerminalInputSender: Sendable {
++            state.deliverResponse = deliverResponse
+@@ -1159,0 +1167,6 @@ public final class TerminalInputSender: Sendable {
++    // Parser callbacks use the same ordered path as user input. This does not
++    // register a user edit and never invokes a UI delegate under the parser lock.
++    nonisolated func deliverTerminalResponse(_ bytes: [UInt8], origin: TerminalInputOrigin) {
++        state.withLock { $0.deliverResponse }?(bytes, origin)
++    }
++
+@@ -1401 +1414 @@ extension TerminalView {
+-        let deliverOnMain: @MainActor @Sendable ([UInt8]) -> Void = { [weak self] bytes in
++        let deliverOnMain: @MainActor @Sendable ([UInt8], TerminalInputOrigin) -> Void = { [weak self] bytes, origin in
+@@ -1403 +1416 @@ extension TerminalView {
+-            self.terminalDelegate?.send(source: self, data: bytes[...])
++            self.terminalDelegate?.send(source: self, data: bytes[...], origin: origin)
+@@ -1409,2 +1422,3 @@ extension TerminalView {
+-            deliver: { bytes in mainDelivery.enqueue(bytes) },
+-            deliverOnMain: { bytes in mainDelivery.enqueue(bytes) })
++            deliver: { bytes in mainDelivery.enqueue(bytes, origin: .unclassified) },
++            deliverOnMain: { bytes in mainDelivery.enqueue(bytes, origin: .unclassified) },
++            deliverResponse: { bytes, origin in mainDelivery.enqueue(bytes, origin: origin, deferOnMain: true) })
+@@ -5063,0 +5078,4 @@ extension TerminalViewDelegate {
++    public func send(source: TerminalView, data: ArraySlice<UInt8>, origin: TerminalInputOrigin) {
++        send(source: source, data: data)
++    }
++
+diff --git a/Sources/SwiftTerm/Apple/TerminalViewDelegate.swift b/Sources/SwiftTerm/Apple/TerminalViewDelegate.swift
+index 01b65bb..5367516 100644
+--- a/Sources/SwiftTerm/Apple/TerminalViewDelegate.swift
++++ b/Sources/SwiftTerm/Apple/TerminalViewDelegate.swift
+@@ -73,0 +74,3 @@ public protocol TerminalViewDelegate: AnyObject {
++
++    /// Origin is captured before the parser's callback crosses to the UI.
++    func send(source: TerminalView, data: ArraySlice<UInt8>, origin: TerminalInputOrigin)
+diff --git a/Sources/SwiftTerm/Mac/MacTerminalView.swift b/Sources/SwiftTerm/Mac/MacTerminalView.swift
+index 393830c..0d00b7a 100644
+--- a/Sources/SwiftTerm/Mac/MacTerminalView.swift
++++ b/Sources/SwiftTerm/Mac/MacTerminalView.swift
+@@ -1498,5 +1498,5 @@ open class TerminalView: NSView, NSUserInterfaceValidations, TerminalDelegate {
+-        let capturedData = Array(data)
+-        onMain { [weak self] in
+-            guard let self else { return }
+-            self.terminalDelegate?.send(source: self, data: capturedData[...])
+-        }
++        inputSender.deliverTerminalResponse(Array(data), origin: .unclassified)
++    }
++
++    nonisolated open func send(source: Terminal, data: ArraySlice<UInt8>, origin: TerminalInputOrigin) {
++        inputSender.deliverTerminalResponse(Array(data), origin: origin)
+diff --git a/Sources/SwiftTerm/Terminal.swift b/Sources/SwiftTerm/Terminal.swift
+index 94f36c5..6256b4e 100644
+--- a/Sources/SwiftTerm/Terminal.swift
++++ b/Sources/SwiftTerm/Terminal.swift
+@@ -29,0 +30,7 @@ public enum TerminalColorScheme: Equatable {
++/// Source of a terminal-to-host input payload. Synchronous parser replies and
++/// fixed focus/visibility reports are distinct from ordinary or unknown input.
++public enum TerminalInputOrigin: Sendable, Equatable {
++    case protocolResponse
++    case unclassified
++}
++
+@@ -92,0 +100,3 @@ public protocol TerminalDelegate: AnyObject {
++
++    /// Origin is captured before a response leaves the parser's thread.
++    func send(source: Terminal, data: ArraySlice<UInt8>, origin: TerminalInputOrigin)
+@@ -967 +977 @@ open class Terminal {
+-        tdel?.send(source: self, data: data[0...])
++        tdel?.send(source: self, data: data[...], origin: .protocolResponse)
+@@ -980 +990,2 @@ open class Terminal {
+-        sendResponse(cc.CSI, "?999;\(reportedVisibility.rawValue)n")
++        let bytes = cc.CSI + Array("?999;\(reportedVisibility.rawValue)n".utf8)
++        tdel?.send(source: self, data: bytes[...], origin: .protocolResponse)
+@@ -3309 +3320,2 @@ open class Terminal {
+-            sendResponse("\u{1b}[<0;\(x);\(y)M")
++            let bytes = Array("\u{1b}[<0;\(x);\(y)M".utf8)
++            tdel?.send(source: self, data: bytes[...])
+@@ -7290 +7302,7 @@ open class Terminal {
+-        tdel?.send (source: self, data: ([UInt8] (text.utf8))[...])
++        sendResponseBytes(Array(text.utf8))
++    }
++
++    private func sendResponseBytes(_ bytes: [UInt8]) {
++        let origin: TerminalInputOrigin = terminalLock.isLockedByCurrentThread && parseDepth > 0
++            ? .protocolResponse : .unclassified
++        tdel?.send(source: self, data: bytes[...], origin: origin)
+@@ -7294 +7312 @@ open class Terminal {
+-    public func sendResponse(_ bytes: [UInt8]) { tdel?.send(source: self, data: bytes[...]) }
++    public func sendResponse(_ bytes: [UInt8]) { sendResponseBytes(bytes) }
+@@ -7298 +7316 @@ open class Terminal {
+-        tdel?.send(source: self, data: response[...])
++        sendResponseBytes(response)
+@@ -7303 +7321 @@ open class Terminal {
+-        tdel?.send(source: self, data: response[...])
++        sendResponseBytes(response)
+@@ -7309 +7327 @@ open class Terminal {
+-        tdel?.send(source: self, data: response[...])
++        sendResponseBytes(response)
+@@ -7332 +7350 @@ open class Terminal {
+-        tdel?.send (source: self, data: buffer[...])
++        sendResponseBytes(buffer)
+@@ -8667,0 +8686,13 @@ open class Terminal {
++    private func sendMouseInput(_ prefix: [UInt8], _ text: String) {
++        let bytes = prefix + Array(text.utf8)
++        tdel?.send(source: self, data: bytes[...])
++    }
++    private func sendMouseInput(_ prefix: [UInt8], _ bytes: [UInt8]) {
++        let result = prefix + bytes
++        tdel?.send(source: self, data: result[...])
++    }
++    private func sendMouseInput(_ prefix: [UInt8], _ text: String, _ suffix: [UInt8]) {
++        let bytes = prefix + Array(text.utf8) + suffix
++        tdel?.send(source: self, data: bytes[...])
++    }
++
+@@ -8672 +8703 @@ open class Terminal {
+-            sendResponse(cc.CSI, "M", [UInt8(min(buttonFlags+32, 255)), UInt8(max(0, min(x, 222))+33), UInt8(max(0, min(y, 222))+33)])
++            sendMouseInput(cc.CSI, "M", [UInt8(min(buttonFlags+32, 255)), UInt8(max(0, min(x, 222))+33), UInt8(max(0, min(y, 222))+33)])
+@@ -8676 +8707 @@ open class Terminal {
+-            sendResponse(cc.CSI, "<\(bflags);\(x+1);\(y+1)\(m)")
++            sendMouseInput(cc.CSI, "<\(bflags);\(x+1);\(y+1)\(m)")
+@@ -8680 +8711 @@ open class Terminal {
+-            sendResponse(cc.CSI, "<\(bflags);\(pixelX+1);\(pixelY+1)\(m)")
++            sendMouseInput(cc.CSI, "<\(bflags);\(pixelX+1);\(pixelY+1)\(m)")
+@@ -8683 +8714 @@ open class Terminal {
+-            sendResponse(cc.CSI, "\(buttonFlags+32);\(x+1);\(y+1)M");
++            sendMouseInput(cc.CSI, "\(buttonFlags+32);\(x+1);\(y+1)M");
+@@ -8689 +8720 @@ open class Terminal {
+-            sendResponse(cc.CSI, buffer)
++            sendMouseInput(cc.CSI, buffer)
+@@ -9852,0 +9884,4 @@ public extension TerminalDelegate {
++    func send(source: Terminal, data: ArraySlice<UInt8>, origin: TerminalInputOrigin) {
++        send(source: source, data: data)
++    }
++

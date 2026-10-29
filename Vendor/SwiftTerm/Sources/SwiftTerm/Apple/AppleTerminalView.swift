@@ -1069,38 +1069,42 @@ public struct TerminalViewStateSnapshot: Sendable {
 /// At most one drain task is pending. The queue preserves the order in which
 /// callers enter ``enqueue(_:)`` without relying on unstructured task order.
 private final class TerminalInputMainActorDelivery: Sendable {
+    private struct Payload: Sendable {
+        let bytes: [UInt8]
+        let origin: TerminalInputOrigin
+    }
     private struct State: Sendable {
-        var pending: [[UInt8]] = []
+        var pending: [Payload] = []
         var drainScheduled = false
     }
 
     private let state = Locked(State())
-    private let sink: @MainActor @Sendable ([UInt8]) -> Void
+    private let sink: @MainActor @Sendable ([UInt8], TerminalInputOrigin) -> Void
 
-    init(sink: @escaping @MainActor @Sendable ([UInt8]) -> Void) {
+    init(sink: @escaping @MainActor @Sendable ([UInt8], TerminalInputOrigin) -> Void) {
         self.sink = sink
     }
 
-    func enqueue(_ bytes: [UInt8]) {
+    func enqueue(_ bytes: [UInt8], origin: TerminalInputOrigin, deferOnMain: Bool = false) {
         let shouldSchedule = state.withLock { state in
-            state.pending.append(bytes)
+            state.pending.append(Payload(bytes: bytes, origin: origin))
             guard !state.drainScheduled else { return false }
             state.drainScheduled = true
             return true
         }
 
         guard shouldSchedule else { return }
-        if Thread.isMainThread {
+        if Thread.isMainThread && !deferOnMain {
             MainActor.assumeIsolated { drain() }
         } else {
-            Task { @MainActor in drain() }
+            DispatchQueue.main.async { MainActor.assumeIsolated { self.drain() } }
         }
     }
 
     @MainActor
     private func drain() {
         while true {
-            let batch = state.withLock { state -> [[UInt8]]? in
+            let batch = state.withLock { state -> [Payload]? in
                 guard !state.pending.isEmpty else {
                     state.drainScheduled = false
                     return nil
@@ -1110,8 +1114,8 @@ private final class TerminalInputMainActorDelivery: Sendable {
                 return batch
             }
             guard let batch else { return }
-            for bytes in batch {
-                sink(bytes)
+            for payload in batch {
+                sink(payload.bytes, payload.origin)
             }
         }
     }
@@ -1128,6 +1132,7 @@ public final class TerminalInputSender: Sendable {
         var notifyUI: (@MainActor @Sendable () -> Void)?
         var deliver: (@Sendable ([UInt8]) -> Void)?
         var deliverOnMain: (@MainActor @Sendable ([UInt8]) -> Void)?
+        var deliverResponse: (@Sendable ([UInt8], TerminalInputOrigin) -> Void)?
     }
 
     private let state = Locked(State())
@@ -1137,13 +1142,15 @@ public final class TerminalInputSender: Sendable {
         registerInput: @escaping @Sendable ([UInt8]) -> Void,
         notifyUI: @escaping @MainActor @Sendable () -> Void,
         deliver: @escaping @Sendable ([UInt8]) -> Void,
-        deliverOnMain: @escaping @MainActor @Sendable ([UInt8]) -> Void
+        deliverOnMain: @escaping @MainActor @Sendable ([UInt8]) -> Void,
+        deliverResponse: @escaping @Sendable ([UInt8], TerminalInputOrigin) -> Void
     ) {
         state.withLock { state in
             state.registerInput = registerInput
             state.notifyUI = notifyUI
             state.deliver = deliver
             state.deliverOnMain = deliverOnMain
+            state.deliverResponse = deliverResponse
         }
     }
 
@@ -1155,6 +1162,12 @@ public final class TerminalInputSender: Sendable {
             state.deliver = deliver
             state.deliverOnMain = { bytes in deliver(bytes) }
         }
+    }
+
+    // Parser callbacks use the same ordered path as user input. This does not
+    // register a user edit and never invokes a UI delegate under the parser lock.
+    nonisolated func deliverTerminalResponse(_ bytes: [UInt8], origin: TerminalInputOrigin) {
+        state.withLock { $0.deliverResponse }?(bytes, origin)
     }
 
     /// Sends one input payload. Serial calls preserve their delivery order.
@@ -1398,16 +1411,17 @@ extension TerminalView {
 #endif
             }
         }
-        let deliverOnMain: @MainActor @Sendable ([UInt8]) -> Void = { [weak self] bytes in
+        let deliverOnMain: @MainActor @Sendable ([UInt8], TerminalInputOrigin) -> Void = { [weak self] bytes, origin in
             guard let self else { return }
-            self.terminalDelegate?.send(source: self, data: bytes[...])
+            self.terminalDelegate?.send(source: self, data: bytes[...], origin: origin)
         }
         let mainDelivery = TerminalInputMainActorDelivery(sink: deliverOnMain)
         inputSender.configure(
             registerInput: { bytes in owner.registerUserInput(bytes) },
             notifyUI: notifyUI,
-            deliver: { bytes in mainDelivery.enqueue(bytes) },
-            deliverOnMain: { bytes in mainDelivery.enqueue(bytes) })
+            deliver: { bytes in mainDelivery.enqueue(bytes, origin: .unclassified) },
+            deliverOnMain: { bytes in mainDelivery.enqueue(bytes, origin: .unclassified) },
+            deliverResponse: { bytes, origin in mainDelivery.enqueue(bytes, origin: origin, deferOnMain: true) })
     }
 
     @MainActor
@@ -5061,6 +5075,10 @@ struct ProgramScrollRouting {
 }
 
 extension TerminalViewDelegate {
+    public func send(source: TerminalView, data: ArraySlice<UInt8>, origin: TerminalInputOrigin) {
+        send(source: source, data: data)
+    }
+
     public func kittyClipboardCapabilities(source: TerminalView) -> KittyClipboardCapabilities {
         []
     }

@@ -63,6 +63,7 @@ public final class TerminalInputQueue: @unchecked Sendable {
     private var automaticEverUsed = false
     private var automaticOutstanding: (ticket: AutomaticInputTicket, generation: UInt64)?
     private var automaticSegment: AutomaticSegment?
+    private var idleWaiter: (@Sendable () -> Void)?
 
     public init(capacity: Int = 4 * 1024 * 1024, writer: @escaping Writer,
                 onError: @escaping @Sendable (TerminalInputError) -> Void) {
@@ -81,6 +82,17 @@ public final class TerminalInputQueue: @unchecked Sendable {
     /// through `onError` so the UI can show it instead of dropping input silently.
     @discardableResult
     public func enqueue<Bytes: Collection>(_ bytes: Bytes) -> Bool where Bytes.Element == UInt8 {
+        enqueue(bytes, unclassified: true)
+    }
+
+    /// Only for a trusted protocol response identified by the terminal.
+    /// It still shares the same ordered, bounded write path.
+    @discardableResult
+    public func enqueueTerminalResponse<Bytes: Collection>(_ bytes: Bytes) -> Bool where Bytes.Element == UInt8 {
+        enqueue(bytes, unclassified: false)
+    }
+
+    private func enqueue<Bytes: Collection>(_ bytes: Bytes, unclassified: Bool) -> Bool where Bytes.Element == UInt8 {
         guard !bytes.isEmpty else { return true }
         let outcome: (accepted: Bool, startDrain: Bool, error: TerminalInputError?) = lock.withLock {
             if let failure { return (false, false, failure) }
@@ -91,8 +103,10 @@ public final class TerminalInputQueue: @unchecked Sendable {
                                                 capacity: capacity))
             }
             pending.append(contentsOf: bytes)
-            unclassifiedGeneration &+= 1
-            automaticClean = false
+            if unclassified {
+                unclassifiedGeneration &+= 1
+                automaticClean = false
+            }
             lastAcceptedUptime = ProcessInfo.processInfo.systemUptime
             lastAccepted = Date()
             guard !draining else { return (true, false, nil) }
@@ -102,6 +116,20 @@ public final class TerminalInputQueue: @unchecked Sendable {
         if let error = outcome.error { onError(error) }
         if outcome.startDrain { Task.detached { [self] in await drain() } }
         return outcome.accepted
+    }
+
+    /// One bounded, one-shot notification, including the race where draining
+    /// finishes just before registration. The callback always rechecks state.
+    @discardableResult
+    func notifyWhenIdle(_ callback: @escaping @Sendable () -> Void) -> Bool {
+        let result = lock.withLock { () -> (accepted: Bool, immediate: Bool) in
+            guard idleWaiter == nil else { return (false, false) }
+            if !draining { return (true, true) }
+            idleWaiter = callback
+            return (true, false)
+        }
+        if result.immediate { callback() }
+        return result.accepted
     }
 
     public var pendingByteCount: Int { lock.withLock { pending.count - sent } }
@@ -192,21 +220,24 @@ public final class TerminalInputQueue: @unchecked Sendable {
     private func drain() async {
         var idleWrites = 0
         while true {
-            let work: DrainChunk? = lock.withLock {
+            let next: (work: DrainChunk?, onIdle: (@Sendable () -> Void)?) = lock.withLock {
                 guard failure == nil, sent < pending.count else {
                     pending.removeAll(keepingCapacity: false)
                     sent = 0
                     draining = false
-                    return nil
+                    let callback = idleWaiter
+                    idleWaiter = nil
+                    return (nil, callback)
                 }
                 let start = pending.startIndex + sent
                 if let segment = automaticSegment, sent < segment.end {
                     let end = pending.startIndex + segment.end
-                    return .automatic(Data(pending[start..<end]), segment)
+                    return (.automatic(Data(pending[start..<end]), segment), nil)
                 }
-                return .ordinary(Data(pending[start..<min(start + 64 * 1024, pending.endIndex)]))
+                return (.ordinary(Data(pending[start..<min(start + 64 * 1024, pending.endIndex)])), nil)
             }
-            guard let work else { return }
+            next.onIdle?()
+            guard let work = next.work else { return }
             let chunk: Data
             switch work {
             case let .ordinary(bytes): chunk = bytes
@@ -254,17 +285,20 @@ public final class TerminalInputQueue: @unchecked Sendable {
                 }
             } catch {
                 let failure = TerminalInputError.writeFailed(String(describing: error))
-                let automatic = lock.withLock {
+                let stopped = lock.withLock { () -> (AutomaticInputTicket?, (@Sendable () -> Void)?) in
                     let automatic = automaticSegment?.ticket
+                    let callback = idleWaiter
                     automaticSegment = nil
+                    idleWaiter = nil
                     self.failure = failure
                     pending.removeAll()
                     sent = 0
                     draining = false
-                    return automatic
+                    return (automatic, callback)
                 }
-                automatic?.completion.finish(.unknown)
+                stopped.0?.completion.finish(.unknown)
                 onError(failure)
+                stopped.1?()
                 return
             }
         }

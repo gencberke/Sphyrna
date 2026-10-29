@@ -71,6 +71,9 @@ public protocol TerminalViewDelegate: AnyObject {
      * - Parameter data: Slice of data that should be sent
      */
     func send (source: TerminalView, data: ArraySlice<UInt8>)
+
+    /// Origin is captured before the parser's callback crosses to the UI.
+    func send(source: TerminalView, data: ArraySlice<UInt8>, origin: TerminalInputOrigin)
   
     /**
      * Invoked when the terminal has been scrolled and the new position is provided
