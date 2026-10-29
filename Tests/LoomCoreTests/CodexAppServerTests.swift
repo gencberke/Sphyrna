@@ -417,6 +417,8 @@ struct CodexAppServerTests {
             id: "thread-one", workingDirectory: "/tmp/one",
             originator: "codex-tui", source: "cli", ephemeral: false
         ))))
+        #expect(await matcher.commitMatched(CodexRunBinding(sessionID: first.sessionID, managedRunID: first.managedRunID,
+            threadID: "thread-one", workingDirectory: "/tmp/one")))
         #expect(try await matcher.waitForMatch(first) == "thread-one")
 
         let second = await secondTask.value
@@ -424,6 +426,8 @@ struct CodexAppServerTests {
             id: "thread-two", workingDirectory: "/tmp/two",
             originator: "codex-tui", source: "cli", ephemeral: false
         ))))
+        #expect(await matcher.commitMatched(CodexRunBinding(sessionID: second.sessionID, managedRunID: second.managedRunID,
+            threadID: "thread-two", workingDirectory: "/tmp/two")))
         #expect(try await matcher.waitForMatch(second) == "thread-two")
     }
 
@@ -485,6 +489,8 @@ struct CodexAppServerTests {
             sessionID: sessionID, managedRunID: runID,
             threadID: "new-launch", workingDirectory: "/tmp/shared"
         ), sequence: 4))
+        #expect(await matcher.commitMatched(CodexRunBinding(sessionID: reservation.sessionID, managedRunID: reservation.managedRunID,
+            threadID: "new-launch", workingDirectory: "/tmp/shared")))
         #expect(try await matcher.waitForMatch(reservation) == "new-launch")
     }
 
@@ -505,6 +511,8 @@ struct CodexAppServerTests {
         #expect(await router.route(.event(sequence: 5, .threadStarted(genuinelyNew))) == .initialLaunchMatched(
             CodexRunBinding(sessionID: reservation.sessionID, managedRunID: reservation.managedRunID,
                             threadID: genuinelyNew.id, workingDirectory: "/tmp/shared"), sequence: 5))
+        #expect(await matcher.commitMatched(CodexRunBinding(sessionID: reservation.sessionID, managedRunID: reservation.managedRunID,
+            threadID: genuinelyNew.id, workingDirectory: "/tmp/shared")))
         #expect(try await matcher.waitForMatch(reservation) == genuinelyNew.id)
     }
 
@@ -527,6 +535,8 @@ struct CodexAppServerTests {
         #expect(await router.route(.event(sequence: 2, .threadStarted(normal))) == .initialLaunchMatched(
             CodexRunBinding(sessionID: reservation.sessionID, managedRunID: reservation.managedRunID,
                             threadID: normal.id, workingDirectory: "/tmp/shared"), sequence: 2))
+        #expect(await matcher.commitMatched(CodexRunBinding(sessionID: reservation.sessionID, managedRunID: reservation.managedRunID,
+            threadID: normal.id, workingDirectory: "/tmp/shared")))
         #expect(try await matcher.waitForMatch(reservation) == normal.id)
         #expect(await router.route(helper) == .unmatched)
         await router.register(CodexRunBinding(sessionID: UUID(), managedRunID: UUID(),
@@ -559,6 +569,8 @@ struct CodexAppServerTests {
             await matcher.cancel(reservation)
             return
         }
+        #expect(await matcher.commitMatched(CodexRunBinding(sessionID: reservation.sessionID, managedRunID: reservation.managedRunID,
+            threadID: "user", workingDirectory: "/tmp/shared")))
         #expect(try await matcher.waitForMatch(reservation) == "user")
     }
 

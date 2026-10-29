@@ -218,6 +218,7 @@ public actor CodexLaunchMatcher {
         let afterSequence: UInt64
         var matchedThreadID: String?
         var matchedSequence: UInt64?
+        var committed = false
         var continuation: CheckedContinuation<String, any Error>?
     }
 
@@ -259,6 +260,7 @@ public actor CodexLaunchMatcher {
         _ inbound: CodexAppServerInbound
     ) -> (CodexLaunchReservation, CodexThreadIdentity, UInt64)? {
         guard var current = pending,
+              current.matchedThreadID == nil,
               case let .event(sequence, .threadStarted(identity)) = inbound,
               sequence > current.afterSequence,
               identity.isInteractiveConversation,
@@ -268,9 +270,28 @@ public actor CodexLaunchMatcher {
         current.matchedThreadID = identity.id
         current.matchedSequence = sequence
         pending = current
-        current.continuation?.resume(returning: identity.id)
-        if current.continuation != nil { finishReservation() }
         return (current.reservation, identity, sequence)
+    }
+
+    /// Matching is provisional until the runtime has adopted the native ID
+    /// durably and installed its run binding. A cancelled owner cannot commit.
+    func commitMatched(_ binding: CodexRunBinding) -> Bool {
+        guard var current = pending,
+              current.reservation.sessionID == binding.sessionID,
+              current.reservation.managedRunID == binding.managedRunID,
+              current.matchedThreadID == binding.threadID else { return false }
+        current.committed = true
+        pending = current
+        if let continuation = current.continuation {
+            continuation.resume(returning: binding.threadID)
+            finishReservation()
+        }
+        return true
+    }
+
+    func rejectMatched(runID: UUID) {
+        guard let current = pending, current.reservation.managedRunID == runID else { return }
+        cancel(current.reservation)
     }
 
     public func waitForMatch(
@@ -279,7 +300,7 @@ public actor CodexLaunchMatcher {
         guard var current = pending, current.reservation == reservation else {
             throw CodexLaunchMatchingError.invalidReservation
         }
-        if let matched = current.matchedThreadID {
+        if current.committed, let matched = current.matchedThreadID {
             finishReservation()
             return matched
         }

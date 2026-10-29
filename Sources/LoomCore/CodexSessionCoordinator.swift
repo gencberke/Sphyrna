@@ -202,6 +202,7 @@ public actor CodexSessionCoordinator {
         let binding = CodexRunBinding(sessionID: sessionID, managedRunID: managedRunID,
             threadID: threadID, workingDirectory: workingDirectory)
         try await installBinding(binding, after: sequence)
+        launchJoin(runID: managedRunID)
     }
 
     public func unbind(runID: UUID) async {
@@ -265,7 +266,17 @@ public actor CodexSessionCoordinator {
         do {
             switch decision {
             case let .initialLaunchMatched(binding, sequence):
-                try await installBinding(binding, after: sequence)
+                do {
+                    try await installBinding(binding, after: sequence)
+                    guard await router.launchMatcher.commitMatched(binding) else {
+                        await unbind(runID: binding.managedRunID)
+                        throw CancellationError()
+                    }
+                    launchJoin(runID: binding.managedRunID)
+                } catch {
+                    await router.launchMatcher.rejectMatched(runID: binding.managedRunID)
+                    throw error
+                }
             case let .routed(binding):
                 if case let .request(_, request) = inbound,
                    (pendingRequests + answeredRequests).contains(where: {
@@ -332,6 +343,7 @@ public actor CodexSessionCoordinator {
                         ?? previous.workingDirectory
                 )
                 try await installBinding(binding, after: sequence, alreadyBound: true)
+                launchJoin(runID: binding.managedRunID)
             case let .ambiguous(candidates, threadID):
                 try await adapter.markAmbiguous(candidates, threadID: threadID)
             case .unmatched:
@@ -375,7 +387,6 @@ public actor CodexSessionCoordinator {
         try verify()
         await router.register(binding)
         try verify()
-        launchJoin(runID: binding.managedRunID)
     }
 
     private func launchJoin(runID: UUID) {
