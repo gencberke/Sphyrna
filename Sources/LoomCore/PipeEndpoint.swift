@@ -29,6 +29,13 @@ public final class PipeEndpoint: @unchecked Sendable {
         try await transport.write(data)
     }
 
+    /// Makes one bounded, nonblocking attempt under the caller's live authority.
+    /// This is never queued: cancellation or revocation before the syscall
+    /// leaves no bytes to be replayed when the pipe next becomes writable.
+    public func writeManaged(_ data: Data, admission: @escaping ManagedTaskWriteAdmission) async -> ManagedTaskWriteOutcome {
+        await transport.writeManaged(data, admission: admission)
+    }
+
     /// Closes the child's stdin: it sees end-of-file. Queued writes fail.
     public func closeInput() async { await transport.closeInput() }
 

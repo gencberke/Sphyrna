@@ -1,4 +1,5 @@
 import Darwin
+import Dispatch
 import Foundation
 import Synchronization
 import Testing
@@ -208,6 +209,87 @@ struct PipeScopeTests {
         #expect(try liveMembers(coalition).isEmpty)
         #expect(await supervisor.ledgerSnapshot().scopes?.isEmpty == true)
         #expect(await supervisor.runningSessionIDs().isEmpty)
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
+    @Test func managedPipeRejectsRevokedAdmissionBeforeWriting() async throws {
+        let supervisor = try makeSupervisor()
+        let sink = PipeCollector()
+        do {
+            let launch = try await start(["pipe-echo"], supervisor: supervisor, sink: sink)
+            _ = try await sink.firstObject()
+            let outcome = await launch.pipe.writeManaged(Data("revoked-input\n".utf8), admission: { _ in nil })
+            #expect(outcome == .deferred)
+            try await launch.pipe.write(Data("ordinary-input\n".utf8))
+            try await sink.wait("the ordinary echo") { sink.output.contains("echo: ordinary-input\n") }
+            #expect(!sink.output.contains("revoked-input"))
+            #expect(try await supervisor.stop(sessionID: launch.session.id).succeeded)
+        } catch {
+            _ = await supervisor.shutdown()
+            throw error
+        }
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
+    @Test func managedPipeNeverSendsARevokedWriteAfterBackpressure() async throws {
+        let supervisor = try makeSupervisor()
+        let sink = PipeCollector()
+        do {
+            let launch = try await start(["pipe-count", "usr1"], supervisor: supervisor, sink: sink, inputLimit: 64 * 1024)
+            _ = try await sink.firstObject()
+            let largeCount = 200 * 1_024
+            let first = Task { try await launch.pipe.write(Data(repeating: 0x41, count: largeCount)) }
+            try await Task.sleep(for: .milliseconds(100))
+            let pending = Task {
+                await launch.pipe.writeManaged(Data("revoked-input\n".utf8), admission: { _ in nil })
+            }
+            try await Task.sleep(for: .milliseconds(100))
+            #expect(kill(launch.pipe.pid, SIGUSR1) == 0)
+            try await first.value
+            #expect(await pending.value == .deferred)
+            await launch.pipe.closeInput()
+            try await sink.wait("the byte count") { sink.output.contains("stdinBytes") }
+            let line = try #require(sink.output.split(separator: "\n").last)
+            let counted = try #require(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+            #expect(counted["stdinBytes"] as? Int == largeCount)
+            try await stopUnlessAlreadyEnded(supervisor, launch)
+        } catch {
+            _ = await supervisor.shutdown()
+            throw error
+        }
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
+    @Test func managedPipeCancellationWinsBeforeSyscall() async throws {
+        let supervisor = try makeSupervisor()
+        let sink = PipeCollector()
+        do {
+            let launch = try await start(["pipe-echo"], supervisor: supervisor, sink: sink)
+            _ = try await sink.firstObject()
+            let entered = DispatchSemaphore(value: 0)
+            let proceed = DispatchSemaphore(value: 0)
+            let input = Task {
+                await launch.pipe.writeManaged(Data("cancelled-input\n".utf8)) { write in
+                    entered.signal()
+                    _ = proceed.wait(timeout: .now() + 5)
+                    return try write()
+                }
+            }
+            let reachedGate = await Task.detached { entered.wait(timeout: .now() + 5) == .success }.value
+            input.cancel()
+            proceed.signal()
+            #expect(reachedGate)
+            #expect(await input.value == .deferred)
+
+            let accepted = await launch.pipe.writeManaged(Data("accepted-input\n".utf8)) { write in try write() }
+            #expect(accepted == .submitted)
+            try await sink.wait("the admitted echo") { sink.output.contains("echo: accepted-input\n") }
+            #expect(!sink.output.contains("cancelled-input"))
+            #expect(try await supervisor.stop(sessionID: launch.session.id).succeeded)
+        } catch {
+            _ = await supervisor.shutdown()
+            throw error
+        }
         #expect((await supervisor.shutdown()).succeeded)
     }
 

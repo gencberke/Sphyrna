@@ -31,6 +31,21 @@ enum PipeInputError: Error, CustomStringConvertible, Sendable {
     }
 }
 
+/// Orders task cancellation with one nonblocking input syscall. A cancellation
+/// that wins this lock prevents the syscall; one after it cannot undo a write.
+private final class ManagedPipeCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    func cancel() { lock.withLock { cancelled = true } }
+    func attempt(_ write: () throws -> Int) rethrows -> Int? {
+        try lock.withLock {
+            guard !cancelled else { return nil }
+            return try write()
+        }
+    }
+}
+
 /// The parent's ends of a pipe child's three streams. All are close-on-exec;
 /// the output ends and `input` are non-blocking.
 struct PipeDescriptors: Sendable {
@@ -177,6 +192,51 @@ final class StdioProcess: @unchecked Sendable {
                     admission.append(Admission(data: data, continuation: continuation))
                 }
             }
+        }
+    }
+
+    /// Managed task input is never accepted into the ordinary pending queue.
+    /// The lease and cancellation token both guard the actual nonblocking
+    /// syscall. A partial write is an unknown effect: close stdin and require
+    /// the owner to stop the run rather than ever replaying its remainder.
+    func writeManaged(_ data: Data, admission gate: @escaping ManagedTaskWriteAdmission) async -> ManagedTaskWriteOutcome {
+        guard !data.isEmpty, data.count <= 64 * 1_024 else { return .deferred }
+        let cancellation = ManagedPipeCancellation()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<ManagedTaskWriteOutcome, Never>) in
+                ioQueue.async { [self] in
+                    guard inputOpen, pending.isEmpty, admission.isEmpty else {
+                        continuation.resume(returning: .deferred)
+                        return
+                    }
+                    do {
+                        let written = try gate {
+                            try cancellation.attempt {
+                                let count = data.withUnsafeBytes { Darwin.write(inputFD, $0.baseAddress!, $0.count) }
+                                if count >= 0 { return count }
+                                let code = errno
+                                if code == EINTR || code == EAGAIN || code == EWOULDBLOCK { return 0 }
+                                throw PipeInputError.writeFailed(code)
+                            } ?? 0
+                        }
+                        guard let written, written != 0 else {
+                            continuation.resume(returning: .deferred)
+                            return
+                        }
+                        if written == data.count {
+                            continuation.resume(returning: .submitted)
+                        } else {
+                            failInput(.closed)
+                            continuation.resume(returning: .unknown)
+                        }
+                    } catch {
+                        failInput(.closed)
+                        continuation.resume(returning: .unknown)
+                    }
+                }
+            }
+        } onCancel: {
+            cancellation.cancel()
         }
     }
 
