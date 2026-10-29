@@ -29,7 +29,9 @@ struct HarnessDraftRuntimeTests {
         let tuiLine = try String(contentsOf: context.state.appendingPathComponent("codex-tui-arguments.log"), encoding: .utf8)
         let tui = try #require(JSONSerialization.jsonObject(with: Data(tuiLine.trimmingCharacters(in: .whitespacesAndNewlines).utf8)) as? [String])
         let end = try #require(tui.firstIndex(of: "--"))
-        #expect(end >= required.count && Array(tui[(end - required.count)..<end]) == required)
+        let tuiSafety = ["-c", "approvals_reviewer=\"user\"", "-c", "sandbox_workspace_write.network_access=false"]
+        #expect(end >= tuiSafety.count && Array(tui[(end - tuiSafety.count)..<end]) == tuiSafety)
+        #expect(!tui.contains { $0.hasPrefix("sandbox_workspace_write.writable_roots=") })
         #expect(Array(tui.suffix(2)) == ["--", "under requested permissions"])
         #expect(try await context.runtime.stopConversation(sessionID: launch.sessionID).succeeded)
         #expect((await context.runtime.shutdown()).succeeded)

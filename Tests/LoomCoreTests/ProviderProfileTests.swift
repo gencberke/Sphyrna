@@ -3,18 +3,37 @@ import Testing
 @testable import LoomCore
 
 struct ProviderProfileTests {
-    @Test func newCodexSafetyFlagsComeAfterExtrasAndBeforeTheFirstMessage() throws {
+    @Test(arguments: [HarnessMode.askBeforeEdits, .acceptEdits])
+    func newCodexSafetyFlagsComeAfterExtrasAndBeforeTheFirstMessage(mode: HarnessMode) throws {
         let capabilities = ProviderCapabilities(version: "test", help: "--remote <ADDR>", serverHelp: "--listen <URL>")
-        let choices = HarnessLaunchChoices(harness: .codex, mode: .acceptEdits)
+        let choices = HarnessLaunchChoices(harness: .codex, mode: mode)
         let profile = try ProviderLaunchProfile.codex(route: .remote(socket: "/tmp/owned.sock", threadID: nil, workingDirectory: "/tmp/project"),
             capabilities: capabilities, home: URL(fileURLWithPath: "/tmp/home"), environment: [:], choices: choices, firstMessage: "hello")
         let extras = ["-c", "approvals_reviewer=\"auto_review\"", "-c", "sandbox_workspace_write.network_access=true"]
         let argv = profile.launchArguments(extra: extras)
         let required = ["-c", "approvals_reviewer=\"user\"", "-c", "sandbox_workspace_write.network_access=false",
-                        "-c", "sandbox_workspace_write.writable_roots=[]", "--", "hello"]
+                        "--", "hello"]
         #expect(Array(argv.suffix(required.count)) == required)
+        #expect(!argv.contains { $0.hasPrefix("sandbox_workspace_write.writable_roots=") })
         #expect((argv.firstIndex(of: extras[1]) ?? -1) < (argv.lastIndex(of: required[1]) ?? -1))
         #expect((argv.firstIndex(of: extras[3]) ?? -1) < (argv.lastIndex(of: required[3]) ?? -1))
+
+        let server = try ProviderLaunchProfile.codex(route: .server(socket: "/tmp/owned.sock"),
+            capabilities: capabilities, home: URL(fileURLWithPath: "/tmp/home"), environment: [:], choices: choices)
+        let serverSafety = ["-c", "approvals_reviewer=\"user\"", "-c", "sandbox_workspace_write.network_access=false",
+                            "-c", "sandbox_workspace_write.writable_roots=[]"]
+        #expect(Array(server.arguments.suffix(serverSafety.count)) == serverSafety)
+    }
+
+    @Test func codexDoesNotSilentlyRemoveCallerSuppliedArguments() throws {
+        let capabilities = ProviderCapabilities(version: "test", help: "--remote <ADDR>", serverHelp: "--listen <URL>")
+        let profile = try ProviderLaunchProfile.codex(route: .remote(socket: "/tmp/owned.sock", threadID: nil, workingDirectory: "/tmp/project"),
+            capabilities: capabilities, home: URL(fileURLWithPath: "/tmp/home"), environment: [:],
+            choices: HarnessLaunchChoices(harness: .codex, mode: .askBeforeEdits), firstMessage: "hello")
+        // Construction is intentionally tested without running an incompatible CLI argument.
+        let extra = ["-c", "sandbox_workspace_write.writable_roots=[\"/caller-owned\"]"]
+        let argv = profile.launchArguments(extra: extra)
+        #expect(Array(argv.dropFirst(profile.arguments.count).prefix(extra.count)) == extra)
     }
 
     @Test func rejectsUnknownCapabilities() throws {

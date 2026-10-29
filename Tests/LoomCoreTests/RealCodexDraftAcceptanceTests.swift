@@ -110,27 +110,52 @@ private final class RealAcceptanceScreen: TerminalOutputSink, @unchecked Sendabl
         }
     }
 
-    func diagnostics() -> (signals: [String], queries: [String: Int]) {
+    func diagnostics() -> (signals: [String], queries: [String: Int], errorWords: [String], errorPhrases: [String], byteCount: Int) {
         lock.withLock {
             let text = String(decoding: bytes, as: UTF8.self).lowercased()
             let known = ["cursor position", "could not be read", "terminal", "not a tty", "unexpected argument",
                          "permission overrides", "approvals_reviewer", "unauthorized", "trust", "error", "failed"]
+            // Output only fixed vocabulary, never arbitrary provider text or
+            // values. Whole-buffer matching also tolerates split PTY chunks.
+            let words = Set(text.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty })
+            let allowedWords = ["error", "warning", "cannot", "could", "not", "failed", "failure", "invalid",
+                "unknown", "unexpected", "unrecognized", "duplicate", "missing", "required", "argument",
+                "arguments", "option", "options", "value", "values", "configuration", "config", "overrides",
+                "toml", "parse", "parsing", "deserializing", "conflict", "used", "multiple", "times", "with",
+                "sandbox", "approval", "reviewer", "permissions", "network", "writable", "roots", "profile",
+                "terminal", "tty", "cursor", "dimensions", "size", "query", "timeout", "timed", "out",
+                "remote", "server", "socket", "address", "connection", "connect", "refused", "closed", "url",
+                "working", "directory", "path", "file", "found", "executable", "home", "environment", "user",
+                "username", "shell", "login", "authentication", "unauthorized", "trust", "trusting", "denied",
+                "permission", "panic", "panicked", "os", "cause", "caused", "internal", "thread", "model"]
+            let phrases = ["cannot be used with", "cannot be used multiple times", "unexpected argument",
+                "invalid value", "invalid configuration", "failed to parse", "failed to load", "permission denied",
+                "no such file or directory", "not a tty", "could not be read", "cursor position", "connection refused",
+                "not found", "not logged in", "authentication required", "duplicate key", "missing field",
+                "not supported", "not supported with", "not allowed", "cannot be used", "sandbox overrides",
+                "writable roots", "writable_roots", "sandbox_workspace_write", "network_access", "remote server",
+                "remote app-server", "--remote", "approvals_reviewer", "overrides are not", "overrides not",
+                "sandbox_workspace_write.writable_roots overrides are not supported with --remote.",
+                "trust and continue", "trust this folder"]
             return (known.filter { text.contains($0) }, [
                 "cursor": text.components(separatedBy: "\u{1b}[6n").count - 1,
                 "primaryAttributes": text.components(separatedBy: "\u{1b}[c").count - 1,
-            ])
+                "primaryAttributesZero": text.components(separatedBy: "\u{1b}[0c").count - 1,
+                "secondaryAttributes": text.components(separatedBy: "\u{1b}[>c").count - 1,
+            ], allowedWords.filter { words.contains($0) }, phrases.filter { text.contains($0) }, bytes.count)
         }
     }
 }
 
 private actor RealAcceptanceToolchain {
     private var newRun = true
+    private let diagnosticNoHostileExtras: Bool
+    init(diagnosticNoHostileExtras: Bool = false) { self.diagnosticNoHostileExtras = diagnosticNoHostileExtras }
     func useResume() { newRun = false }
-    func extras(root: String) -> [String] {
-        guard newRun else { return [] }
+    func extras() -> [String] {
+        guard newRun && !diagnosticNoHostileExtras else { return [] }
         return ["-c", "approvals_reviewer=\"auto_review\"",
-                "-c", "sandbox_workspace_write.network_access=true",
-                "-c", "sandbox_workspace_write.writable_roots=[\"\(root)/extra-root\"]"]
+                "-c", "sandbox_workspace_write.network_access=true"]
     }
 }
 
@@ -171,6 +196,10 @@ private struct RealAcceptanceEvidence: Encodable {
     var errorType: String? = nil
     var terminalSignals: [String] = []
     var terminalQueryCounts: [String: Int] = [:]
+    var terminalErrorWords: [String] = []
+    var terminalErrorPhrases: [String] = []
+    var terminalByteCount = 0
+    var fixtureExtraMode = "hostile"
     var errorSignals: [String] = []
     var kind = "first-prompt-acceptance"
     var note = "No raw provider output, account data, credentials, or environment values recorded. Auxiliary model activity is unknown."
@@ -211,7 +240,9 @@ struct RealCodexDraftAcceptanceTests {
     @Test func oneDraftApprovalStopResumeAndQuit() async {
         var result = RealAcceptanceEvidence()
         let diagnosticOnly = ProcessInfo.processInfo.environment["LOOM_ACC_REAL_CODEX_ZERO_INPUT"] == "1"
+        let noHostile = diagnosticOnly && ProcessInfo.processInfo.environment["LOOM_ACC_REAL_CODEX_ZERO_NO_HOSTILE"] == "1"
         if diagnosticOnly { result.kind = "zero-input-startup-diagnostic"; result.submittedUserInputs = 0 }
+        if noHostile { result.fixtureExtraMode = "none-zero-input-only" }
         var runtime: SessionRuntime?
         var supervisor: ProcessSupervisor?
         var bundleRoot: URL?
@@ -250,7 +281,7 @@ struct RealCodexDraftAcceptanceTests {
             let processSupervisor = try await ProcessSupervisor.restoring(catalog: catalog,
                 scopeLauncher: RunScopeLauncher(hostBundle: bundle, socketDirectory: socketDir.appendingPathComponent("r")))
             supervisor = processSupervisor
-            let phase = RealAcceptanceToolchain()
+            let phase = RealAcceptanceToolchain(diagnosticNoHostileExtras: noHostile)
             let resolver: ProviderToolchainResolver = { provider in
                 guard provider == .codex else { throw RealAcceptanceFailure("unexpected-provider") }
                 return ProviderToolchain(provider: .codex, executable: value.executable,
@@ -258,7 +289,7 @@ struct RealCodexDraftAcceptanceTests {
                                                        serverHelp: "--listen <URL>"),
                     environment: ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "HOME": localHome.path,
                                   "TMPDIR": localTemp.path, "TERM": "xterm-256color"],
-                    profileDirectory: value.profile, extraArguments: await phase.extras(root: runtimeDir.path))
+                    profileDirectory: value.profile, extraArguments: await phase.extras())
             }
             let models = [ModelCatalogEntry(harness: .codex, id: "gpt-6-luna", title: "GPT-6 Luna", efforts: ["low"])]
             let instance = SessionRuntime(supervisor: processSupervisor, catalog: catalog,
@@ -279,7 +310,7 @@ struct RealCodexDraftAcceptanceTests {
             try value.consumeReservation()
             reservationConsumed = true
             result.reservationTime = Date()
-            result.submission = "unknown-after-reservation"
+            result.submission = diagnosticOnly ? "no-user-input-provided" : "unknown-after-reservation"
             result.phase = "new-draft"
             let launch = try await instance.startConversation(provider: .codex, projectID: project.id, outputSink: screen,
                 draft: diagnosticOnly ? nil : NewSessionLaunch(firstMessage: prompt, choices: choices))
@@ -431,6 +462,9 @@ struct RealCodexDraftAcceptanceTests {
         let diagnostic = screen.diagnostics()
         result.terminalSignals = diagnostic.signals
         result.terminalQueryCounts = diagnostic.queries
+        result.terminalErrorWords = diagnostic.errorWords
+        result.terminalErrorPhrases = diagnostic.errorPhrases
+        result.terminalByteCount = diagnostic.byteCount
         if let bundleRoot, result.quitResult == "verified", result.cleanup != "failed-or-unknown" {
             RunScopeLauncher.removeOwnedBundle(in: bundleRoot)
         }
@@ -484,11 +518,19 @@ struct RealCodexDraftAcceptanceTests {
         return RealAcceptanceWitness(requested: socket, hashed: hashed, identities: identities, server: server, tui: tui)
     }
 
+    private static func isExactOwnedDirectory(_ candidate: String?, cwd: String) -> Bool {
+        guard let candidate, candidate.hasPrefix("/"), cwd.hasPrefix("/") else { return false }
+        func resolved(_ path: String) -> String {
+            URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
+        }
+        return resolved(candidate) == resolved(cwd)
+    }
+
     private static func requireSafeSettings(_ value: JSONValue, threadID: String, cwd: String) throws {
         let response = value.object ?? [:]
         let thread = response["thread"]?.object ?? [:]
         let sandbox = response["sandbox"]?.object ?? [:]
-        try requireAcceptance(thread["id"]?.string == threadID && response["cwd"]?.string == cwd &&
+        try requireAcceptance(thread["id"]?.string == threadID && isExactOwnedDirectory(response["cwd"]?.string, cwd: cwd) &&
             response["model"]?.string == "gpt-6-luna" && response["reasoningEffort"]?.string == "low" &&
             response["approvalPolicy"]?.string == "on-request" && response["approvalsReviewer"]?.string == "user" &&
             sandbox["type"]?.string == "readOnly" && sandbox["networkAccess"]?.bool == false &&
@@ -512,7 +554,8 @@ struct RealCodexDraftAcceptanceTests {
         try requireAcceptance(request.kind == .commandExecution && request.method == "item/commandExecution/requestApproval" &&
             request.threadID == threadID && pending.binding.threadID == threadID &&
             pending.binding.sessionID == launch.sessionID && pending.binding.managedRunID == launch.runID &&
-            pending.binding.workingDirectory == cwd && params["cwd"]?.string == cwd &&
+            isExactOwnedDirectory(pending.binding.workingDirectory, cwd: cwd) &&
+            isExactOwnedDirectory(params["cwd"]?.string, cwd: cwd) &&
             params["turnId"]?.string != nil && decisions.contains(.string("accept")) && noExtraAuthority &&
             (direct || knownDisplay),
             "approval-action-mismatch")

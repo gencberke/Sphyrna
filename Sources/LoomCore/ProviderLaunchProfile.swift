@@ -413,12 +413,10 @@ struct CodexLaunchSettings: Equatable, Sendable {
         }
     }
 
-    /// D1 config-zero: these per-invocation keys prevent broader native
-    /// reviewer, network and additional-root defaults in the observed server.
+    /// Keep the reviewer and network floor on both the server and the new TUI.
     private static let safePermissionArguments = [
         "-c", "approvals_reviewer=\"user\"",
         "-c", "sandbox_workspace_write.network_access=false",
-        "-c", "sandbox_workspace_write.writable_roots=[]",
     ]
 
     var serverArguments: [String] {
@@ -428,6 +426,9 @@ struct CodexLaunchSettings: Equatable, Sendable {
         if let sandbox {
             result += ["-c", "sandbox_mode=\"\(sandbox)\"", "-c", "approval_policy=\"on-request\""]
             result += Self.safePermissionArguments
+            // Codex --remote rejects this override on its TUI. Keep it on
+            // the owned server, before the TUI can send the first message.
+            result += ["-c", "sandbox_workspace_write.writable_roots=[]"]
         }
         return result
     }
