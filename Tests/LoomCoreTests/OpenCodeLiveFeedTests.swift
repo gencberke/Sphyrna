@@ -64,7 +64,9 @@ private final class OpenCodeFeedWaitResult: @unchecked Sendable {
             if value == nil { signal.finish() }
         }
         feed.didDisconnect()
-        #expect(await SessionRuntimeTests.waitUntil(0.5) { signal.finished })
+        // The finish is synchronous; only the observer's task resuming takes time, and under the full gate's parallel load
+        // that took longer than half a second (both waits failed in `150456-76010`). The wait returns as soon as it holds.
+        #expect(await SessionRuntimeTests.waitUntil(5) { signal.finished })
         pending.cancel()
         _ = await pending.value
 
@@ -75,7 +77,7 @@ private final class OpenCodeFeedWaitResult: @unchecked Sendable {
             let value = await iterator.next()
             if value == nil { lateSignal.finish() }
         }
-        #expect(await SessionRuntimeTests.waitUntil(0.5) { lateSignal.finished })
+        #expect(await SessionRuntimeTests.waitUntil(5) { lateSignal.finished })
         waiting.cancel()
         _ = await waiting.value
     }
