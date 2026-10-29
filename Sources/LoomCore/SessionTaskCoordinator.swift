@@ -856,6 +856,13 @@ public actor SessionTaskCoordinator {
         return try store.latestEvents(taskID: taskID, limit: limit)
     }
 
+    /// App-only rounds of one task, oldest first, for the development flavor's acceptance report (ids and phases).
+    func roundsForUser(taskID: UUID, limit: Int) throws -> [SessionTaskRound] {
+        guard (1...SessionTaskLimits.pageSize).contains(limit) else { throw SessionTaskError.invalidPage }
+        guard try store.task(taskID) != nil else { throw SessionTaskError.notFound }
+        return try store.rounds(taskID: taskID, after: 0, limit: limit)
+    }
+
     func identity(for claim: SessionTaskClaim) async throws -> SessionTaskBinding { try await authenticated(claim) }
 
     func projectionForChild(_ sessionID: UUID) throws -> SessionTaskProjection? {
