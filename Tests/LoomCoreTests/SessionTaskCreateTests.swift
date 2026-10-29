@@ -255,6 +255,77 @@ struct SessionTaskCreateTests {
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
+    @Test func deletingParentAfterTheManagedFactoryFailsBeforeSpawn() async throws {
+        let context = try await SessionRuntimeTests.makeContext(scoped: true, durableLedger: true, claudeVersion: "2.0.0",
+            managedClaudeControllerFactory: { _, _ in throw LoomError.message("synthetic factory refusal") })
+        defer { context.cleanup() }
+        do {
+            let folder = context.root.appendingPathComponent("task-factory-refused", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let project = try await context.catalog.addProject(path: folder.path).project
+            let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id)
+            let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+            let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
+            #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                    message: "No process is started", harness: "claude").0 == 0)
+            let childID = try #require(await context.runtime.openRequestSnapshot().first?.task?.childID)
+            await #expect(throws: SessionTaskError.self) {
+                _ = try await context.runtime.approveManagedTaskRequest(taskID, expectedProvider: .claude)
+            }
+            #expect(await context.runtime.taskLaunchContexts[taskID]?.managedRun == nil)
+            #expect(await context.supervisor.session(id: childID)?.currentRun == nil)
+            #expect((await context.supervisor.ledgerSnapshot()).managedTaskScopes?.isEmpty != false)
+            do { try await context.runtime.removeFromLoomOnly(id: parent.sessionID) }
+            catch { Issue.record("Never-spawned managed child blocked parent deletion: \(error)") }
+            #expect(try await context.catalog.session(id: parent.sessionID) == nil)
+            #expect(try await context.runtime.sessionTaskProjection(id: taskID) == nil)
+        } catch { Issue.record("Factory refusal deletion fixture failed: \(error)") }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test(arguments: [ManagedSession.Provider.claude, .codex])
+    func parentDeletionWaitsForAnOpeningManagedScope(provider: ManagedSession.Provider) async throws {
+        let gate = ManagedClaudeFixtureInputGate()
+        let context = try await SessionRuntimeTests.makeContext(scoped: true, durableLedger: true, claudeVersion: "2.0.0",
+            managedClaudeControllerFactory: { run, ingress in ManagedClaudeFixtureController(run: run, ingress: ingress) })
+        defer { context.cleanup() }
+        do {
+            await context.runtime.observeManagedScopeOpenedForTesting { _ in await gate.hold() }
+            let folder = context.root.appendingPathComponent("task-opening-scope", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let project = try await context.catalog.addProject(path: folder.path).project
+            let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id)
+            let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+            let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
+            let harness = provider == .claude ? "claude" : "codex"
+            #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                    message: "No child input is admitted", harness: harness).0 == 0)
+            let childID = try #require(await context.runtime.openRequestSnapshot().first?.task?.childID)
+            let approval = Task { try? await context.runtime.approveManagedTaskRequest(taskID, expectedProvider: provider) }
+            try #require(await SessionRuntimeTests.waitUntil(5) { await gate.entered })
+            await #expect(throws: SessionRuntimeError.self) {
+                try await context.runtime.removeFromLoomOnly(id: parent.sessionID)
+            }
+            let held = try #require(try await context.runtime.sessionTaskProjection(id: taskID))
+            #expect(held.lifecycle != .stopped && held.childBinding == nil)
+            #expect(try await context.runtime.pendingDeletions().contains { $0.id == parent.sessionID })
+            #expect(await context.supervisor.session(id: childID)?.currentRun == nil)
+            await gate.release()
+            _ = await approval.value
+            try await context.runtime.removeFromLoomOnly(id: parent.sessionID)
+            #expect(try await context.runtime.sessionTaskProjection(id: taskID) == nil)
+            #expect(await context.supervisor.session(id: childID)?.currentRun == nil)
+            let methods = (try? String(contentsOf: context.state.appendingPathComponent("codex-methods.log"), encoding: .utf8)) ?? ""
+            #expect(!methods.split(separator: "\n").contains("turn/start"))
+        } catch {
+            await gate.release()
+            Issue.record("Opening scope deletion fixture failed: \(error)")
+        }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
     @Test func unverifiedChildStopKeepsTaskUntilDeletionRetry() async throws {
         let context = try await SessionRuntimeTests.makeContext(extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1",
             "LOOM_FAKE_TASK_HOLD_FIRST": "1"], scoped: true, durableLedger: true, claudeVersion: "2.0.0")

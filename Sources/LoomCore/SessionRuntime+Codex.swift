@@ -332,10 +332,33 @@ extension SessionRuntime {
         // Unique per server and short: Unix socket paths are limited to ~100 bytes.
         let socket = configuration.socketDirectory
             .appendingPathComponent("c-\(UUID().uuidString.prefix(8)).sock").path
+        var managedCoordinator: SessionTaskCoordinator?
+        if let run = managedRun {
+            guard supervisor.runScopesEnabled, let coordinator = taskCoordinator, run.sessionID == card else {
+                throw SessionTaskError.unverified
+            }
+            try await coordinator.beginManagedLaunch(taskID: run.taskID, childID: card,
+                                                       runID: run.runID, generation: run.generation)
+            guard await mayOpenManagedTaskScope(run) else {
+                try? await coordinator.confirmManagedLaunchNoEffect(taskID: run.taskID, childID: card,
+                                                                    runID: run.runID, generation: run.generation)
+                throw SessionTaskError.unverified
+            }
+            managedCoordinator = coordinator
+        }
         var scope: RunScope?
         if supervisor.runScopesEnabled {
             scope = try await supervisor.openScope()
-            if shuttingDown {
+            if let run = managedRun, let coordinator = managedCoordinator {
+                await managedScopeOpenedForTesting?(run)
+                guard await mayOpenManagedTaskScope(run) else {
+                    if (await supervisor.releaseScope(scope!)).isEmpty {
+                        try? await coordinator.confirmManagedLaunchNoEffect(taskID: run.taskID, childID: card,
+                                                                            runID: run.runID, generation: run.generation)
+                    }
+                    throw SessionTaskError.unverified
+                }
+            } else if shuttingDown {
                 _ = await supervisor.releaseScope(scope!)
                 throw SessionRuntimeError.shuttingDown
             }
@@ -344,7 +367,10 @@ extension SessionRuntime {
             guard let scope, let coordinator = taskCoordinator, managedRun.sessionID == card,
                   let plan = taskRunPlans[card], plan.claim.managedRunID == managedRun.runID,
                   plan.claim.generation == managedRun.generation, plan.lease.isEnabled else {
-                if let scope { _ = await supervisor.releaseScope(scope) }
+                if let scope, (await supervisor.releaseScope(scope)).isEmpty, let coordinator = managedCoordinator {
+                    try? await coordinator.confirmManagedLaunchNoEffect(taskID: managedRun.taskID, childID: card,
+                                                                        runID: managedRun.runID, generation: managedRun.generation)
+                }
                 throw SessionTaskError.unverified
             }
             let binding = ManagedTaskScopeBinding(taskID: managedRun.taskID, sessionID: card, runID: managedRun.runID,
@@ -359,6 +385,8 @@ extension SessionRuntime {
             } catch {
                 let failures = await supervisor.releaseScope(scope)
                 if !failures.isEmpty { throw LoomError.message("Managed task scope cleanup could not be verified") }
+                try? await coordinator.confirmManagedLaunchNoEffect(taskID: managedRun.taskID, childID: card,
+                                                                    runID: managedRun.runID, generation: managedRun.generation)
                 throw error
             }
         }

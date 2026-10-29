@@ -676,27 +676,52 @@ extension SessionRuntime {
             guard context.childID == childSessionID else { return .unknown }
             context.stopRequested = true
             taskLaunchContexts[taskID] = context
-            guard let run = context.managedRun, binding == nil ||
-                  (binding?.sessionID == run.sessionID && binding?.managedRunID == run.runID &&
-                   binding?.generation == run.generation) else { return .unknown }
-            let current = await supervisor.session(id: childSessionID)
-            if let active = current?.currentRun {
-                guard active.id == run.runID else { return .unknown }
-                do {
-                    let report = try await stopConversation(sessionID: childSessionID, expectedRunID: run.runID)
-                    let after = await supervisor.session(id: childSessionID)
-                    return report.sessionID == childSessionID && report.runID == run.runID && report.succeeded &&
-                        after?.currentRun == nil && taskRunPlans[childSessionID] == nil ? .verified : .unknown
-                } catch { return .unknown }
+            if let run = context.managedRun {
+                guard binding == nil || (binding?.sessionID == run.sessionID && binding?.managedRunID == run.runID &&
+                      binding?.generation == run.generation) else { return .unknown }
+                let current = await supervisor.session(id: childSessionID)
+                if let active = current?.currentRun {
+                    if active.id == run.runID {
+                        do {
+                            let report = try await stopConversation(sessionID: childSessionID, expectedRunID: run.runID)
+                            let after = await supervisor.session(id: childSessionID)
+                            return report.sessionID == childSessionID && report.runID == run.runID && report.succeeded &&
+                                after?.currentRun == nil && taskRunPlans[childSessionID] == nil ? .verified : .unknown
+                        } catch { return .unknown }
+                    }
+                    // A later ordinary run is never a Stop target for this
+                    // task; only the old binding's durable proof can settle it.
+                    guard binding != nil else { return .unknown }
+                }
+                revokeTaskRun(sessionID: childSessionID, runID: run.runID)
+            } else {
+                guard binding == nil else { return .unknown }
+                if let plan = taskRunPlans[childSessionID] {
+                    revokeTaskRun(sessionID: childSessionID, runID: plan.claim.managedRunID)
+                }
             }
-            revokeTaskRun(sessionID: childSessionID, runID: run.runID)
         }
-        // After restart only the exact persisted scope receipt can settle a
-        // child; an absent in-memory run alone is never evidence of Stop.
-        guard let coordinator = taskCoordinator,
+        // Settle the durable never-opened reservation atomically against a
+        // late start. Otherwise only an exact stopped scope receipt can prove
+        // the child is gone; an absent in-memory run is never enough.
+        guard let coordinator = taskCoordinator else { return .unknown }
+        if let binding {
+            guard binding.sessionID == childSessionID,
+                  taskRunPlans[childSessionID]?.claim.managedRunID != binding.managedRunID,
+                  await supervisor.runContext(runID: binding.managedRunID) == nil,
+                  (try? await coordinator.managedChildStopped(taskID: taskID, sessionID: childSessionID, binding: binding)) == true,
+                  taskRunPlans[childSessionID]?.claim.managedRunID != binding.managedRunID,
+                  await supervisor.runContext(runID: binding.managedRunID) == nil else { return .unknown }
+            return .verified
+        }
+        guard
               await supervisor.session(id: childSessionID)?.currentRun == nil,
-              taskRunPlans[childSessionID] == nil,
-              (try? await coordinator.managedChildStopped(taskID: taskID, sessionID: childSessionID, binding: binding)) == true,
+              taskRunPlans[childSessionID] == nil else { return .unknown }
+        var verified = (try? await coordinator.settleUnstartedManagedLaunch(taskID: taskID, childID: childSessionID)) == true
+        if !verified {
+            verified = (try? await coordinator.managedChildStopped(taskID: taskID, sessionID: childSessionID, binding: nil)) == true
+        }
+        guard verified,
               await supervisor.session(id: childSessionID)?.currentRun == nil,
               taskRunPlans[childSessionID] == nil else { return .unknown }
         return .verified

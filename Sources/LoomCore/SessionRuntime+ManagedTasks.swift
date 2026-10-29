@@ -11,6 +11,17 @@ struct ManagedTaskControllerState: Sendable {
 }
 
 extension SessionRuntime {
+    func mayOpenManagedTaskScope(_ run: ManagedTaskRun) async -> Bool {
+        guard !shuttingDown, let context = taskLaunchContexts[run.taskID], context.managedRun == run,
+              !context.stopRequested, let reservation = taskChildReservations[run.taskID],
+              reservation.childID == run.sessionID, let plan = taskRunPlans[run.sessionID],
+              plan.claim.managedRunID == run.runID, plan.claim.generation == run.generation, plan.lease.isEnabled,
+              await authenticateTaskRun(reservation.parent) != nil else { return false }
+        return !shuttingDown && taskLaunchContexts[run.taskID]?.managedRun == run &&
+            taskLaunchContexts[run.taskID]?.stopRequested == false &&
+            taskRunPlans[run.sessionID]?.lease === plan.lease && plan.lease.isEnabled
+    }
+
     func publishManagedTaskPresentation(_ value: ManagedTaskPresentation) async {
         managedTaskPresentations[value.run.taskID] = value
         await supervisor.events.publish(sessionID: value.run.sessionID, change: .managedTaskChanged(value.run.taskID))

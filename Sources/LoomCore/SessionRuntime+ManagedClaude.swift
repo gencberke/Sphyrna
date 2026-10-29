@@ -211,12 +211,27 @@ extension SessionRuntime {
                 return try await self.startClaude(sessionID: sessionID, projectID: context.projectID,
                     directory: directory, toolchain: toolchain, opening: opening, draft: nil, face: .managedTask) { profile in
                     await self.harnesses.claude.handOverWorkState(runID: runID)
+                    guard let coordinator = self.taskCoordinator else { throw SessionTaskError.unverified }
+                    try await coordinator.beginManagedLaunch(taskID: taskID, childID: sessionID,
+                                                              runID: runID, generation: run.generation)
+                    guard await self.mayOpenManagedTaskScope(run) else {
+                        try? await coordinator.confirmManagedLaunchNoEffect(taskID: taskID, childID: sessionID,
+                                                                           runID: runID, generation: run.generation)
+                        throw SessionTaskError.unverified
+                    }
                     let scope = try await self.supervisor.openScope()
+                    await self.managedScopeOpenedForTesting?(run)
+                    guard await self.mayOpenManagedTaskScope(run) else {
+                        if (await self.supervisor.releaseScope(scope)).isEmpty {
+                            try? await coordinator.confirmManagedLaunchNoEffect(taskID: taskID, childID: sessionID,
+                                                                               runID: runID, generation: run.generation)
+                        }
+                        throw SessionTaskError.unverified
+                    }
                     let scoped = ManagedTaskScopeBinding(taskID: taskID, sessionID: sessionID, runID: runID,
                         generation: plan.claim.generation, ownerRunID: self.supervisor.ownershipRunID, scope: scope.record)
                     do {
                         try await self.supervisor.registerManagedScope(scoped, scope: scope)
-                        guard let coordinator = self.taskCoordinator else { throw SessionTaskError.unverified }
                         try await coordinator.prepareManagedScope(scoped)
                         guard await self.supervisor.managedScopeIsOpen(scoped, scope: scope),
                               self.taskLaunchContexts[taskID]?.stopRequested == false, !self.shuttingDown,
@@ -238,6 +253,8 @@ extension SessionRuntime {
                         } else {
                             let errors = await self.supervisor.releaseScope(scope)
                             if !errors.isEmpty { throw LoomError.message("Managed task scope cleanup could not be verified") }
+                            try? await coordinator.confirmManagedLaunchNoEffect(taskID: taskID, childID: sessionID,
+                                                                               runID: runID, generation: run.generation)
                         }
                         throw error
                     }

@@ -421,6 +421,10 @@ public actor SessionRuntime {
     func observeCodexSetupForTesting(_ observer: @escaping @Sendable (CodexSetupPhase) async -> Void) {
         codexSetupObserverForTesting = observer
     }
+    var managedScopeOpenedForTesting: (@Sendable (ManagedTaskRun) async -> Void)?
+    func observeManagedScopeOpenedForTesting(_ observer: @escaping @Sendable (ManagedTaskRun) async -> Void) {
+        managedScopeOpenedForTesting = observer
+    }
 
     public init(
         supervisor: ProcessSupervisor, catalog: SessionCatalog,

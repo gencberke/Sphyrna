@@ -17,6 +17,9 @@ public actor SessionTaskCoordinator {
     private var wakeLeases: [UUID: SessionTaskWakeLease] = [:]
     private var interruptLeases: [UUID: SessionTaskInterruptLease] = [:]
     private var inputLeases: [UUID: SessionTaskInputLease] = [:]
+    /// In-memory only: a durable `.stopping` with no live call is retryable
+    /// after restart, but two calls on this coordinator must not overlap.
+    private var stopsInFlight: Set<UUID> = []
     private var deletionFences: Set<UUID> = []
     private var deletionsInProgress: Set<UUID> = []
     private var activeCreations: [UUID: Int] = [:]
@@ -38,6 +41,22 @@ public actor SessionTaskCoordinator {
 
     func prepareManagedScope(_ binding: ManagedTaskScopeBinding) throws {
         try store.transaction { try store.prepareManagedScope(binding) }
+    }
+
+    func beginManagedLaunch(taskID: UUID, childID: UUID, runID: UUID, generation: UUID) throws {
+        try store.transaction {
+            try store.beginManagedLaunch(taskID: taskID, childID: childID, runID: runID, generation: generation)
+        }
+    }
+
+    func settleUnstartedManagedLaunch(taskID: UUID, childID: UUID) throws -> Bool {
+        try store.transaction { try store.settleUnstartedManagedLaunch(taskID: taskID, childID: childID) }
+    }
+
+    func confirmManagedLaunchNoEffect(taskID: UUID, childID: UUID, runID: UUID, generation: UUID) throws {
+        try store.transaction {
+            try store.confirmManagedLaunchNoEffect(taskID: taskID, childID: childID, runID: runID, generation: generation)
+        }
     }
 
     func recordManagedScopeStopped(_ binding: ManagedTaskScopeBinding) throws {
@@ -656,6 +675,7 @@ public actor SessionTaskCoordinator {
         // cancel the live wake admission before beginning the stop transaction.
         _ = try authorizedTask(taskID, parent: principal, allowRevoked: true)
         if let prior = try sameOperation(operationID, fingerprint: fingerprint) { return prior }
+        guard !stopsInFlight.contains(taskID) else { throw SessionTaskError.unverified }
         inputLeases[taskID]?.cancel()
         wakeLeases[taskID]?.cancel()
         interruptLeases[taskID]?.cancel()
@@ -668,7 +688,6 @@ public actor SessionTaskCoordinator {
                                           reserveForStop: true)
                 return (receipt, nil, false, task.authorityEpoch)
             }
-            guard task.lifecycle != .stopping else { throw SessionTaskError.unverified }
             let hadUncertainStart: Bool
             if let pending = task.pendingRoundID, let round = try store.round(pending) { hadUncertainStart = round.phase == .deliveringUnknown }
             else { hadUncertainStart = false }
@@ -686,6 +705,8 @@ public actor SessionTaskCoordinator {
         }
         changed(taskID)
         guard prepared.1 != nil || prepared.2 else { return prepared.0 }
+        guard stopsInFlight.insert(taskID).inserted else { throw SessionTaskError.unverified }
+        defer { stopsInFlight.remove(taskID) }
         let outcome: SessionTaskEffect
         if let binding = prepared.1 { outcome = await host.stopChild(taskID: taskID, binding: binding) }
         else {
@@ -950,13 +971,13 @@ public actor SessionTaskCoordinator {
     }
 
     private func stopOwnedChildForDeletion(_ taskID: UUID) async throws {
+        guard !stopsInFlight.contains(taskID) else { throw SessionTaskError.unverified }
         inputLeases[taskID]?.cancel()
         wakeLeases[taskID]?.cancel()
         interruptLeases[taskID]?.cancel()
         let prepared: (SessionTaskBinding?, UUID, Bool, Int64)? = try store.transaction {
             guard var task = try store.task(taskID) else { return nil }
             if task.lifecycle == .stopped { return nil }
-            guard task.lifecycle != .stopping else { throw SessionTaskError.unverified }
             let unknownStart: Bool
             if let pending = task.pendingRoundID, let round = try store.round(pending) {
                 unknownStart = round.phase == .deliveringUnknown
@@ -971,6 +992,8 @@ public actor SessionTaskCoordinator {
         }
         changed(taskID)
         guard let prepared else { return }
+        guard stopsInFlight.insert(taskID).inserted else { throw SessionTaskError.unverified }
+        defer { stopsInFlight.remove(taskID) }
         let outcome: SessionTaskEffect
         if let binding = prepared.0 { outcome = await host.stopChild(taskID: taskID, binding: binding) }
         else if prepared.2 { outcome = await host.stopUnknownChild(taskID: taskID, childSessionID: prepared.1) }

@@ -42,6 +42,9 @@ struct ManagedTaskScopeRecoveryTests {
             let binding = ManagedTaskScopeBinding(taskID: fixture.taskID, sessionID: fixture.childID,
                 runID: fixture.child.managedRunID, generation: fixture.child.generation,
                 ownerRunID: context.supervisor.ownershipRunID, scope: scope.record)
+            _ = try await fixture.input("scope fixture")
+            try await fixture.coordinator.beginManagedLaunch(taskID: binding.taskID, childID: binding.sessionID,
+                                                              runID: binding.runID, generation: binding.generation)
             await context.supervisor.setManagedScopeReceiptWriter { _ in throw SessionTaskError.storage }
             try await context.supervisor.registerManagedScope(binding, scope: scope)
             try await fixture.coordinator.prepareManagedScope(binding)
@@ -74,8 +77,10 @@ struct ManagedTaskScopeRecoveryTests {
             let binding = ManagedTaskScopeBinding(taskID: fixture.taskID, sessionID: fixture.childID,
                 runID: fixture.child.managedRunID, generation: fixture.child.generation, ownerRunID: owner, scope: scope.record)
             _ = try await fixture.input("persisted work")
-            _ = try await fixture.coordinator.deliverPending(taskID: fixture.taskID)
+            try await fixture.coordinator.beginManagedLaunch(taskID: binding.taskID, childID: binding.sessionID,
+                                                              runID: binding.runID, generation: binding.generation)
             try await fixture.coordinator.prepareManagedScope(binding)
+            _ = try await fixture.coordinator.deliverPending(taskID: fixture.taskID)
             let (runs, previous) = try previousLedger(root: fixture.root, binding: binding)
             let resumed = try await SessionTaskCoordinator.open(url: fixture.url, host: SessionTaskRuntimeHost(runtime: context.runtime))
             await context.runtime.installRecoveredTaskCoordinatorForTest(resumed)
@@ -123,6 +128,9 @@ struct ManagedTaskScopeRecoveryTests {
             let owner = UUID()
             let binding = ManagedTaskScopeBinding(taskID: fixture.taskID, sessionID: fixture.childID,
                 runID: fixture.child.managedRunID, generation: fixture.child.generation, ownerRunID: owner, scope: scope.record)
+            _ = try await fixture.input("scope fixture")
+            try await fixture.coordinator.beginManagedLaunch(taskID: binding.taskID, childID: binding.sessionID,
+                                                              runID: binding.runID, generation: binding.generation)
             try await fixture.coordinator.prepareManagedScope(binding)
             let (runs, previous) = try previousLedger(root: fixture.root, binding: binding)
             scope.dropConnectionForTesting()
@@ -134,6 +142,130 @@ struct ManagedTaskScopeRecoveryTests {
         } catch {
             _ = await context.runtime.shutdown()
             throw error
+        }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test func restartCanForgetAChildWhoseScopeWasNeverOpened() async throws {
+        let fixture = try await TaskFixture.make(recoveryLayout: true)
+        let context = try await SessionRuntimeTests.makeContext(startRuntime: false, scoped: true)
+        defer { context.cleanup(); fixture.clean() }
+        do {
+            await fixture.host.setUnknown(true)
+            _ = try await fixture.input("never opened")
+            #expect(try await fixture.coordinator.deliverPending(taskID: fixture.taskID).delivery == .unknown)
+            let reopened = try await SessionTaskCoordinator.open(url: fixture.url, host: SessionTaskRuntimeHost(runtime: context.runtime))
+            await context.runtime.installRecoveredTaskCoordinatorForTest(reopened)
+            try await context.runtime.forgetRecoveredParentForTest(fixture.parent.sessionID)
+            #expect(try await reopened.projectionForUser(taskID: fixture.taskID) == nil)
+        } catch { Issue.record("Never-opened restart cleanup failed: \(error)") }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test func noEffectSettlementFencesLateLaunchAndDoesNotCoverAnOpeningScope() async throws {
+        let unstarted = try await TaskFixture.make(), opening = try await TaskFixture.make()
+        defer { unstarted.clean(); opening.clean() }
+        _ = try await unstarted.input("no effect")
+        let store = try SessionTaskStore(url: unstarted.url)
+        try store.transaction {
+            var task = try #require(try store.task(unstarted.taskID))
+            task.lifecycle = .stopping
+            try store.save(task)
+        }
+        #expect(try await unstarted.coordinator.settleUnstartedManagedLaunch(taskID: unstarted.taskID,
+                                                                              childID: unstarted.childID))
+        try store.transaction {
+            var task = try #require(try store.task(unstarted.taskID))
+            task.lifecycle = .active
+            try store.save(task)
+        }
+        let reopened = try await SessionTaskCoordinator.open(url: unstarted.url, host: unstarted.host)
+        #expect(try await reopened.managedChildStopped(taskID: unstarted.taskID, sessionID: unstarted.childID, binding: nil))
+        await #expect(throws: SessionTaskError.self) {
+            try await reopened.beginManagedLaunch(taskID: unstarted.taskID, childID: unstarted.childID,
+                                                 runID: UUID(), generation: UUID())
+        }
+        _ = try await opening.input("opening")
+        try await opening.coordinator.beginManagedLaunch(taskID: opening.taskID, childID: opening.childID,
+                                                          runID: UUID(), generation: UUID())
+        let openingStore = try SessionTaskStore(url: opening.url)
+        try openingStore.transaction {
+            var task = try #require(try openingStore.task(opening.taskID))
+            task.lifecycle = .stopping
+            try openingStore.save(task)
+        }
+        #expect(try await opening.coordinator.settleUnstartedManagedLaunch(taskID: opening.taskID, childID: opening.childID) == false)
+        #expect(try await opening.coordinator.managedChildStopped(taskID: opening.taskID, sessionID: opening.childID, binding: nil) == false)
+    }
+
+    @Test(arguments: [true, false])
+    func interruptedStopUsesRecoveredProofWithoutTouchingASuccessor(receiptFirst: Bool) async throws {
+        let fixture = try await TaskFixture.make(recoveryLayout: true)
+        let context = try await SessionRuntimeTests.makeContext(startRuntime: false, scoped: true)
+        defer { context.cleanup(); fixture.clean() }
+        var pendingStop: Task<SessionTaskReceipt, Error>?
+        do {
+            let scope = try await context.supervisor.openScope(), owner = UUID()
+            let binding = ManagedTaskScopeBinding(taskID: fixture.taskID, sessionID: fixture.childID,
+                runID: fixture.child.managedRunID, generation: fixture.child.generation, ownerRunID: owner, scope: scope.record)
+            _ = try await fixture.input("work before interrupted stop")
+            try await fixture.coordinator.beginManagedLaunch(taskID: binding.taskID, childID: binding.sessionID,
+                                                              runID: binding.runID, generation: binding.generation)
+            try await fixture.coordinator.prepareManagedScope(binding)
+            _ = try await fixture.coordinator.deliverPending(taskID: fixture.taskID)
+            let (runs, previous) = try previousLedger(root: fixture.root, binding: binding)
+            await fixture.host.holdStop()
+            let stopID = UUID()
+            let stop = Task { try await fixture.coordinator.stopChild(taskID: fixture.taskID, parent: fixture.parent, operationID: stopID) }
+            pendingStop = stop
+            try #require(await SessionRuntimeTests.waitUntil(3) { await fixture.host.hasEnteredStop() })
+            #expect(try await fixture.coordinator.projectionForUser(taskID: fixture.taskID)?.lifecycle == .stopping)
+            await #expect(throws: SessionTaskError.unverified) {
+                _ = try await fixture.coordinator.stopChild(taskID: fixture.taskID, parent: fixture.parent, operationID: UUID())
+            }
+            let reopened = try await SessionTaskCoordinator.open(url: fixture.url, host: SessionTaskRuntimeHost(runtime: context.runtime))
+            await context.runtime.installRecoveredTaskCoordinatorForTest(reopened)
+            try await context.supervisor.createSession(ManagedSession(id: fixture.childID, provider: .codex,
+                                                                       workingDirectory: fixture.root.path))
+            let successorID = UUID()
+            let environment = LaunchEnvironment.make(base: ["PATH": "/usr/bin:/bin"],
+                runID: context.supervisor.ownershipRunID, sessionID: fixture.childID)
+            _ = try await context.supervisor.launch(sessionID: fixture.childID, executable: "/bin/sleep", arguments: ["30"],
+                                                     environment: environment, managedRunID: successorID)
+            if !receiptFirst {
+                await #expect(throws: SessionTaskError.unverified) {
+                    try await context.runtime.forgetRecoveredParentForTest(fixture.parent.sessionID)
+                }
+                #expect(try await reopened.projectionForUser(taskID: fixture.taskID)?.lifecycle == .stopUnverified)
+                #expect(await context.supervisor.session(id: fixture.childID)?.currentRun?.id == successorID)
+            }
+            let beforeRecovery = try SessionTaskStore(url: fixture.url)
+            #expect(try beforeRecovery.operation(stopID)?.receipt.delivery == .unknown)
+            let null = open("/dev/null", O_RDWR | O_CLOEXEC)
+            try #require(null >= 0)
+            defer { close(null) }
+            let child = try await scope.spawn(executable: "/bin/sleep", arguments: ["30"], environment: ["PATH": "/usr/bin:/bin"],
+                                              directory: fixture.root.path, stdio: .descriptors(input: null, output: null, error: null))
+            defer {
+                if let member = RunScopeTable.lineage(pid: child), member.identity.pid == child {
+                    try? RunScopeTable.signal(member, coalitionID: scope.coalitionID, SIGKILL)
+                }
+            }
+            try RunScopeTable.signal(scope.host, coalitionID: scope.coalitionID, SIGKILL)
+            let report = await PreviousRunRecovery.recover(runsDirectory: runs, current: nil, scopeTimeout: 5)
+            #expect(report.leftovers.isEmpty && !FileManager.default.fileExists(atPath: previous.path))
+            #expect(try await reopened.managedScopeStopped(binding))
+            try await context.runtime.forgetRecoveredParentForTest(fixture.parent.sessionID)
+            #expect(try await reopened.projectionForUser(taskID: fixture.taskID) == nil)
+            #expect(await context.supervisor.session(id: fixture.childID)?.currentRun?.id == successorID)
+            await fixture.host.releaseStop()
+            _ = try? await stop.value
+            pendingStop = nil
+            #expect(try await context.supervisor.stop(sessionID: fixture.childID).succeeded)
+        } catch {
+            await fixture.host.releaseStop()
+            _ = try? await pendingStop?.value
+            Issue.record("Interrupted stop recovery fixture failed: \(error)")
         }
         #expect((await context.runtime.shutdown()).succeeded)
     }

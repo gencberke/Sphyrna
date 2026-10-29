@@ -43,6 +43,9 @@ actor TaskFakeHost: SessionTaskHost {
     var interruptContinuation: CheckedContinuation<Void, Never>?
     var interruptEffectProbe: (@Sendable () -> Bool)?
     var interruptEffects = 0
+    var pauseStop = false
+    var stopEntered = false
+    var stopContinuation: CheckedContinuation<Void, Never>?
     var duringSubmit: (@Sendable (SessionTaskInputIntent) async -> Void)?
     var pauseSubmit = false
     var submitEntered = false
@@ -159,13 +162,21 @@ actor TaskFakeHost: SessionTaskHost {
         if interruptVerified { native = .ready; return .verified }
         return .unknown
     }
-    func stopChild(taskID: UUID, binding: SessionTaskBinding) -> SessionTaskEffect {
+    func stopChild(taskID: UUID, binding: SessionTaskBinding) async -> SessionTaskEffect {
         stops += 1
+        if pauseStop {
+            stopEntered = true
+            await withCheckedContinuation { stopContinuation = $0 }
+        }
         if binding == child && stopVerified { native = .stopped; return .verified }
         return .unknown
     }
-    func stopUnknownChild(taskID: UUID, childSessionID: UUID) -> SessionTaskEffect {
+    func stopUnknownChild(taskID: UUID, childSessionID: UUID) async -> SessionTaskEffect {
         stops += 1
+        if pauseStop {
+            stopEntered = true
+            await withCheckedContinuation { stopContinuation = $0 }
+        }
         if childSessionID == child.sessionID && stopVerified { native = .stopped; return .verified }
         return .unknown
     }
@@ -179,6 +190,9 @@ actor TaskFakeHost: SessionTaskHost {
     func setUnknown(_ value: Bool) { submitOutcomeUnknown = value }
     func setStartedOnly(_ value: Bool) { submitStartedOnly = value }
     func setStopVerified(_ value: Bool) { stopVerified = value }
+    func holdStop() { pauseStop = true }
+    func hasEnteredStop() -> Bool { stopEntered }
+    func releaseStop() { pauseStop = false; stopContinuation?.resume(); stopContinuation = nil }
     func setWakeUnknown(_ value: Bool) { wakeUnknown = value }
     func deferWakeAfterPause() { wakeDeferredAfterPause = true }
     func usePromptProofOnly() { proofKind = .providerPrompt }

@@ -29,6 +29,15 @@ final class SessionTaskStore {
         let binding: ManagedTaskScopeBinding
         var verifiedStopped: Bool
     }
+    private struct StoredManagedLaunch: Codable {
+        enum Phase: String, Codable { case unstarted, opening, scoped, noEffect }
+        let childID: UUID
+        var phase: Phase
+        var runID: UUID? = nil
+        var generation: UUID? = nil
+        var roundID: UUID? = nil
+        var operationID: UUID? = nil
+    }
 
     private let db: OpaquePointer
     private let encoder: JSONEncoder
@@ -104,6 +113,10 @@ final class SessionTaskStore {
                   task TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, body TEXT NOT NULL)
                 """)
             try exec("CREATE INDEX IF NOT EXISTS managed_scopes_task ON managed_scopes(task)")
+            try exec("""
+                CREATE TABLE IF NOT EXISTS managed_launches(task TEXT PRIMARY KEY
+                  REFERENCES tasks(id) ON DELETE CASCADE, body TEXT NOT NULL)
+                """)
             guard try scalarText("PRAGMA quick_check") == "ok",
                   try scalarText("PRAGMA journal_mode = WAL").lowercased() == "wal" else { throw SessionTaskError.storage }
             try exec("PRAGMA synchronous = FULL")
@@ -135,6 +148,9 @@ final class SessionTaskStore {
         try run("INSERT INTO tasks(id,parent,child,body) VALUES(?,?,?,?)", [task.id.uuidString,
             task.parentSessionID.uuidString, task.childSessionID.uuidString,
             try json(task, limit: Self.maximumTaskBytes)])
+        let launch = StoredManagedLaunch(childID: task.childSessionID, phase: .unstarted)
+        try run("INSERT INTO managed_launches(task,body) VALUES(?,?)",
+                [task.id.uuidString, try json(launch, limit: Self.maximumOperationBytes)])
     }
 
     func save(_ task: SessionTaskProjection) throws {
@@ -145,10 +161,67 @@ final class SessionTaskStore {
         try exists("SELECT 1 FROM tasks WHERE child=? LIMIT 1", [id.uuidString])
     }
 
+    /// Reserve before opening even the scope host. A settled no-effect
+    /// record makes any later launch attempt fail in this same transaction.
+    func beginManagedLaunch(taskID: UUID, childID: UUID, runID: UUID, generation: UUID) throws {
+        guard let task = try task(taskID), task.childSessionID == childID, task.childBinding == nil,
+              task.lifecycle == .active, let roundID = task.pendingRoundID, let round = try round(roundID),
+              round.taskID == taskID, round.phase == .queued || round.phase == .deliveringUnknown,
+              var launch = try get("SELECT body FROM managed_launches WHERE task=?", [taskID.uuidString],
+                                   as: StoredManagedLaunch.self),
+              launch.childID == childID, launch.phase == .unstarted else { throw SessionTaskError.unverified }
+        launch.phase = .opening
+        launch.runID = runID; launch.generation = generation
+        launch.roundID = roundID; launch.operationID = round.operationID
+        try saveManagedLaunch(launch, taskID: taskID)
+    }
+
+    func settleUnstartedManagedLaunch(taskID: UUID, childID: UUID) throws -> Bool {
+        guard let task = try task(taskID), task.childSessionID == childID, task.childBinding == nil,
+              task.lifecycle == .stopping || task.lifecycle == .stopUnverified,
+              var launch = try get("SELECT body FROM managed_launches WHERE task=?", [taskID.uuidString],
+                                   as: StoredManagedLaunch.self),
+              launch.childID == childID, launch.phase == .unstarted || launch.phase == .noEffect,
+              try !exists("SELECT 1 FROM managed_scopes WHERE task=? LIMIT 1", [taskID.uuidString]) else { return false }
+        if launch.phase == .unstarted {
+            launch.phase = .noEffect
+            try saveManagedLaunch(launch, taskID: taskID)
+        }
+        return true
+    }
+
+    /// Only the runtime calls this after it has proved that an opening
+    /// attempt never started, or that its empty scope was fully released.
+    func confirmManagedLaunchNoEffect(taskID: UUID, childID: UUID, runID: UUID, generation: UUID) throws {
+        guard let task = try task(taskID), task.childSessionID == childID, task.childBinding == nil,
+              var launch = try get("SELECT body FROM managed_launches WHERE task=?", [taskID.uuidString],
+                                   as: StoredManagedLaunch.self),
+              launch.childID == childID, launch.phase == .opening,
+              launch.runID == runID, launch.generation == generation,
+              try !exists("SELECT 1 FROM managed_scopes WHERE task=? LIMIT 1", [taskID.uuidString]) else {
+            throw SessionTaskError.unverified
+        }
+        launch.phase = .noEffect
+        try saveManagedLaunch(launch, taskID: taskID)
+    }
+
+    private func saveManagedLaunch(_ launch: StoredManagedLaunch, taskID: UUID) throws {
+        try run("UPDATE managed_launches SET body=? WHERE task=?",
+                [try json(launch, limit: Self.maximumOperationBytes), taskID.uuidString])
+    }
+
     func prepareManagedScope(_ binding: ManagedTaskScopeBinding) throws {
         guard let task = try task(binding.taskID), task.childSessionID == binding.sessionID,
-              task.lifecycle == .active else { throw SessionTaskError.staleBinding }
+              task.lifecycle == .active,
+              var launch = try get("SELECT body FROM managed_launches WHERE task=?", [binding.taskID.uuidString],
+                                   as: StoredManagedLaunch.self),
+              launch.childID == binding.sessionID, launch.phase == .opening,
+              launch.runID == binding.runID, launch.generation == binding.generation,
+              task.pendingRoundID == launch.roundID, let roundID = launch.roundID,
+              let round = try round(roundID), round.operationID == launch.operationID else { throw SessionTaskError.staleBinding }
         try saveManagedScope(binding, verifiedStopped: false)
+        launch.phase = .scoped
+        try saveManagedLaunch(launch, taskID: binding.taskID)
     }
 
     /// Only a supervisor/recovery caller that verified the exact scope empty
@@ -169,6 +242,10 @@ final class SessionTaskStore {
     func managedChildStopped(taskID: UUID, sessionID: UUID, binding: SessionTaskBinding?) throws -> Bool {
         let rows = try list("SELECT body FROM managed_scopes WHERE task=? LIMIT 17", [taskID.uuidString],
                             as: StoredManagedScope.self)
+        if rows.isEmpty, binding == nil,
+           let launch = try get("SELECT body FROM managed_launches WHERE task=?", [taskID.uuidString],
+                                as: StoredManagedLaunch.self),
+           launch.childID == sessionID, launch.phase == .noEffect { return true }
         guard !rows.isEmpty, rows.count <= 16, rows.allSatisfy({
             $0.binding.taskID == taskID && $0.binding.sessionID == sessionID && $0.verifiedStopped
         }) else { return false }
