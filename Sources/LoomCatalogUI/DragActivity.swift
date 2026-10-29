@@ -19,6 +19,13 @@ final class DragActivity {
     /// The targets the pointer is over that take the drag, by key (`Self.key`); empty: the drag is over nothing that takes it.
     private(set) var over: Set<String> = []
     @ObservationIgnored private var watch: Task<Void, Never>?
+    /// Whether a mouse button is down now: the real buttons, of the whole system. Tests give a mouse of their own, because the
+    /// person at the Mac can press a button at any moment.
+    private let buttonsDown: @MainActor () -> Bool
+
+    init(buttonsDown: @escaping @MainActor () -> Bool = { NSEvent.pressedMouseButtons != 0 }) {
+        self.buttonsDown = buttonsDown
+    }
 
     /// How long the button is let be seen released before the drag is called over: a drag starts after the mouse is down.
     static let settle: Duration = .milliseconds(300)
@@ -41,7 +48,7 @@ final class DragActivity {
         watch?.cancel()
         watch = Task { @MainActor [weak self] in
             try? await Task.sleep(for: Self.settle)
-            while !Task.isCancelled, NSEvent.pressedMouseButtons != 0 { try? await Task.sleep(for: Self.poll) }
+            while !Task.isCancelled, self?.buttonsDown() == true { try? await Task.sleep(for: Self.poll) }
             guard !Task.isCancelled else { return }
             self?.end(why: "button up")
         }
