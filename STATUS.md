@@ -1,6 +1,6 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-29, 22:15 +03.
+- **Updated:** 2026-10-30, 01:10 +03. Overnight run under D-120; plan: `~/Library/Caches/loom-v2/evidence/r9/overnight-20261030/PLAN.md`.
 - **State:** `in continuation` (Claude as planner-reviewer and optimizer, D-118). The original D-112 daily-use 1.8.0 goal is **incomplete**. Pi is deferred (D-113). No public release, installed-app replacement, push, tag or PR authority.
 - **Accepted source:** local `v2` through `0f48daf`: `3ac3b1e` plus the continuation's fixes. They are: the AX crash `ca1a71e`, socket test oracles `d3f3066`, icon-only menus `5f9e1cd`, stale expectations `0dabf49`/`244e478`/`c2d081a`, the empty Agents list `5cfd1af`, mixed-project usage `80e828b`/`61449e6`, the opening window `1e88c0a`, the cooperative-pool blockers `dec1b63`/`bcd59d5` with the test fixtures `1769c1b`/`e98d153`, window tests run apart `16a9158`, per-model popover state `cb06749`, the mailbox test `92d6129`, and the drag test's real-mouse dependency `0f48daf`.
 - **Current verification:** the full release gate on `ed4d00d` (the code of `92d6129`; `211315-91632`) passed everything it ran but one test. The release build and the staged release tree PASS. The main run is 4,098 tests in the six targets, with no stall: one issue, in `DragActivityTests`, a test that read the Mac's real mouse buttons through `DragActivity.shared` and checked after a fixed 700 ms while the Mac was in use. `0f48daf` gives `DragActivity` its button reader and each test its own mouse; mutation-checked (D-119's standard). The window tests did not run there (`check.sh` stops at the first failing step); run alone afterwards in an idle window (`220618-13191`, debug, on `e0ed8ad`), the whole `WindowEventTests` namespace and the five standalone tests PASS, 37 tests. One whole `--full --idle` run with every part green is still owed. Gate history: 69 issues (15:04), 48 (`e58c2c9`), 6 (`16a9158`), 1 (`ed4d00d`). Triage: `evidence/r9/claude-continuation-20261029/gate-e58c2c9/REPORT.md`. No daily-use readiness claim.
@@ -25,14 +25,15 @@
 | Tree | Branch / checkpoint | Owner / state |
 | --- | --- | --- |
 | `~/Library/Caches/loom-v2/wt/v2` | local `v2`, `0f48daf` (+ this STATUS commit) | Claude planner continuation; clean after each commit |
-| `wt/r9-tests` | `slice/r9-tests`, from `ed4d00d` | running: the test revision (D-119), session `test-infra-review`; scratch `build/r9-tests` |
+| `wt/r9-tests` | `slice/r9-tests` (first stop integrated, `v2` = `0e4ff16`) | running: the test revision's step 5 (D-119), session `test-infra-review` |
+| `wt/r9-pool`, `wt/r9-f2`, `wt/r9-e1r` | `slice/r9-<id>` from `0e4ff16` | running (D-120): the three pool waits; F2 (Changes to a terminal session); opencode as a terminal session, time-boxed |
 | `wt/r9-m1` | `slice/r9-m1`, `ae9774b`, clean | c4 completed; integrated, report in `r9/m1` |
 | `wt/r9-resource` | `slice/r9-resource`, `9ef909c`, clean | b3 completed; integrated, report in `r9/resource` |
 | `wt/r9-m1-ui`, `wt/r9-x2`, `wt/r9-e2`, `wt/r9-e1-native`, `wt/r9-f1`, `wt/r9-e1` | `9091534`, `ba830ea`, `f0cad4d`, `c97a34c`, `8dc5e95`, `d09e18a` | completed warm history; recovery/source-equivalence cleanup remains planner-owned, no active writes |
 | `~/Documents/github/loom-dev` | `swarm/1` | guarded canonical/reference mirror; never Sources/build/commit |
 | `~/Documents/github/loom` | `main` | public release tree, release-script-only; untouched |
 
-File locks: the test revision holds `Tests/**`, `Package.swift` (test targets and `LoomTestSupport`), `scripts/check.sh` and the test guards and ledger, DEVELOPMENT §2 and §3.1, and three product seams (`OwnThread.swift`'s access, the `ChatPresentation` verifier, the git-hook and join timeouts as parameters). The planner keeps the three `Task.detached` waits. Do not restart completed workers or repeat accepted slices. Canonical/reference final writes are finished; Claude takes the planner role after the authorized brief is submitted.
+File locks: the test revision holds `Tests/**`, `Package.swift` (test targets and `LoomTestSupport`), `scripts/check.sh` and the test guards and ledger, DEVELOPMENT §2 and §3.1, and three product seams (`OwnThread.swift`'s access, the `ChatPresentation` verifier, the git-hook and join timeouts as parameters). `r9-pool` holds the three `Task.detached` sites and ARCHITECTURE's owned-helpers paragraph; `r9-f2` F2's brief write set; `r9-e1r` E.md's opencode write set. Do not restart completed workers or repeat accepted slices. Canonical/reference final writes are finished; Claude takes the planner role after the authorized brief is submitted.
 
 ## Next actions by role
 
