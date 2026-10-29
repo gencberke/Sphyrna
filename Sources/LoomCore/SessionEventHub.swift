@@ -157,6 +157,8 @@ public struct SessionViewState: Equatable, Sendable {
     /// Revision only: managed-task text and permission payloads stay with the
     /// runtime and are fetched for the selected task, never broadcast here.
     public var managedTaskRevision: UInt64
+    /// The task-only route for this session, retained after its managed run stops.
+    public var managedTaskID: UUID?
     /// The live run's requests that wait for the user (provider-independent; the Chat face publishes them).
     /// Cleared by a new run and by the end of the run.
     public var pendingRequests: [ProviderPendingRequest]
@@ -187,7 +189,7 @@ public struct SessionViewState: Equatable, Sendable {
         userRequests: [ProviderUserRequest] = [], subagents: [SubagentRecord] = [], reason: StatusReason? = nil,
         runEndpoint: RunEndpointKind? = nil, pendingRequests: [ProviderPendingRequest] = [],
         permissionMode: String? = nil, effort: String? = nil, turnStartedAt: Date? = nil,
-        managedTaskRevision: UInt64 = 0
+        managedTaskRevision: UInt64 = 0, managedTaskID: UUID? = nil
     ) {
         self.turnStartedAt = turnStartedAt
         self.permissionMode = permissionMode
@@ -207,6 +209,7 @@ public struct SessionViewState: Equatable, Sendable {
         self.issue = issue
         self.userRequests = userRequests
         self.managedTaskRevision = managedTaskRevision
+        self.managedTaskID = managedTaskID
         self.subagents = subagents
         self.reason = reason
     }
@@ -259,6 +262,8 @@ public enum SessionEventChange: Equatable, Sendable {
     /// The selected task's bounded presentation changed; fetch it from the
     /// runtime. Frames carry a revision, not progress or permission contents.
     case managedTaskChanged(UUID)
+    /// The same session has resumed in an ordinary terminal face.
+    case managedTaskDetached(UUID)
     /// The conversation's subagents changed (a start, a stop, details read, the next turn).
     case subagents([SubagentRecord])
     /// The reason for the conversation's status changed (a permission request, a stop, a failure, a
@@ -420,8 +425,18 @@ public actor SessionEventHub {
             if Self.isAtPromptPeriod(state.status?.activity) { state.waitingAcknowledged = true }
         case let .issue(value): state.issue = value
         case let .userRequests(value): state.userRequests = value
-        case .managedTaskChanged:
+        case let .managedTaskChanged(id):
+            // A resumed terminal owns the face after detachment. An older
+            // queued presentation must not bring the managed route back.
+            guard state.managedTaskID == id ||
+                    (state.managedTaskID == nil && state.managedTaskRevision == 0) else { return }
+            state.managedTaskID = id
             if state.managedTaskRevision < .max { state.managedTaskRevision += 1 }
+        case let .managedTaskDetached(id):
+            if state.managedTaskID == id {
+                state.managedTaskID = nil
+                if state.managedTaskRevision < .max { state.managedTaskRevision += 1 }
+            }
         case let .runEndpoint(run, kind):
             guard state.runID == run else { return }
             state.runEndpoint = kind

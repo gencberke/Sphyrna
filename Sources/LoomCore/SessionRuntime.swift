@@ -365,6 +365,7 @@ public actor SessionRuntime {
     var peerApprovalWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
     var taskChildReservations: [UUID: SessionTaskChildReservation] = [:]
     var taskLaunchContexts: [UUID: SessionTaskLaunchContext] = [:]
+    var managedTaskPresentations: [UUID: ManagedTaskPresentation] = [:]
     var taskDeliveriesInFlight: Set<UUID> = []
     var taskDeliveriesRequested: Set<UUID> = []
     var tasksNeedingDelivery: Set<UUID> = []

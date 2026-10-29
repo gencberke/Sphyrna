@@ -17,6 +17,25 @@ struct SessionEventHubTests {
         #expect(latest.sessions[session]?.runID == nil)
     }
 
+    @Test func managedRouteCannotReturnAfterTakeOver() async {
+        let hub = SessionEventHub(), session = UUID(), task = UUID(), unrelated = UUID(), run = UUID()
+        await hub.publish(sessionID: session, change: .managedTaskChanged(task))
+        await hub.publish(sessionID: session, change: .runStarted(run))
+        #expect(await hub.snapshot().sessions[session]?.managedTaskID == task)
+        await hub.publish(sessionID: session, change: .runEnded(run, .requested))
+        #expect(await hub.snapshot().sessions[session]?.managedTaskID == task)
+        await hub.publish(sessionID: session, change: .managedTaskDetached(unrelated))
+        #expect(await hub.snapshot().sessions[session]?.managedTaskID == task)
+        await hub.publish(sessionID: session, change: .managedTaskDetached(task))
+        let detached = await hub.snapshot()
+        #expect(detached.sessions[session]?.managedTaskID == nil)
+        await hub.publish(sessionID: session, change: .managedTaskChanged(task))
+        await hub.publish(sessionID: session, change: .managedTaskChanged(unrelated))
+        let afterLateEvents = await hub.snapshot()
+        #expect(afterLateEvents.sessions[session]?.managedTaskID == nil)
+        #expect(afterLateEvents.sequence == detached.sequence)
+    }
+
     @Test func fastConsumerSeesTypedChangesInOrder() async throws {
         let hub = SessionEventHub()
         let sessionID = UUID(), runID = UUID()
