@@ -154,9 +154,9 @@ struct SidebarParityTests {
     @Test(.renderProbe) func hoveringAnUnselectedCardIncludesItsChildRows() async throws {
         enableAccessibilityTree()
         let rig = try await rig()
-        defer { LookEvidence.setHover(nil); rig.model.stop(); try? FileManager.default.removeItem(at: rig.root) }
+        defer { rig.model.stop(); try? FileManager.default.removeItem(at: rig.root) }
         rig.model.showHome()
-        LookEvidence.arm()
+        RenderProbeExclusive.armHover()
         for appearance in [NSAppearance.Name.darkAqua, .aqua] {
             let hosting = NSHostingController(rootView: SidebarView(model: rig.model))
             hosting.sizingOptions = []
@@ -167,7 +167,7 @@ struct SidebarParityTests {
             window.appearance = NSAppearance(named: appearance)
             window.contentViewController = hosting
             window.setContentSize(NSSize(width: 300, height: 800))
-            LookEvidence.setHover(nil)
+            RenderProbeExclusive.holdHover(nil)
             try await settle(window)
             let card = try #require(element("Parent session,", role: .button, in: hosting.view))
             let child = try #require(element("Subagent explorer,", role: .button, in: hosting.view))
@@ -191,7 +191,7 @@ struct SidebarParityTests {
                     abs(a.blueComponent - b.blueComponent))
             }
             let before = try samples()
-            LookEvidence.setHover("sidebar-card:\(rig.parent)")
+            RenderProbeExclusive.holdHover("sidebar-card:\(rig.parent)")
             try await settle(window)
             let after = try samples()
             #expect(difference(before.0, after.0) > 0.015, "the unselected card actually takes its hover fill")

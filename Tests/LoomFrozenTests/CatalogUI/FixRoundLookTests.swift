@@ -65,15 +65,14 @@ struct FixRoundLookTests {
 
     /// A pointer entering or leaving a user row used to evaluate the row's body, which ran `isLong` twice over the whole
     /// message. The hover lives in an object only the footer reads: the footer evaluates, the message does not.
-    @Test func aHoverEvaluatesTheFooterAndNeverScansTheText() async throws {
+    @Test(.renderProbe) func aHoverEvaluatesTheFooterAndNeverScansTheText() async throws {
         let text = String(repeating: "paste ", count: 4_000) // long, and light enough to lay out
         let model = ChatFixture.model([ChatFixture.user(text, uuid: "u-long")])
         let entry = try #require(model.entries.first)
         let key = ChatUserMessageView.highlightKey(entry.id)
 
-        LookEvidence.arm()
-        ChatUserText.resetProbe()
-        ChatUserText.watchedID = entry.id
+        RenderProbeExclusive.armHover()
+        RenderProbeExclusive.watchUserText(entry.id)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 400), styleMask: [.borderless],
                               backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -83,9 +82,6 @@ struct FixRoundLookTests {
         hosting.frame = NSRect(x: 0, y: 0, width: 640, height: 400)
         window.contentView = hosting
         defer {
-            LookEvidence.setHover(nil)
-            ChatUserText.watchedID = nil
-            ChatUserText.resetProbe()
             window.close()
         }
 
@@ -100,20 +96,20 @@ struct FixRoundLookTests {
         try await settle { ChatUserText.footerBodies > 0 }
         #expect(ChatUserText.bubbleBodies >= 1 && ChatUserText.footerBodies >= 1, "the row drew")
 
-        ChatUserText.resetProbe()
+        RenderProbeExclusive.watchUserText(entry.id)
         hover.isOver = true
         try await settle { ChatUserText.footerBodies > 0 }
         #expect(ChatUserText.footerBodies >= 1, "the hover reached the footer")
         #expect(ChatUserText.bubbleBodies == 0, "a hover evaluated (and scanned) the message \(ChatUserText.bubbleBodies) times")
 
-        ChatUserText.resetProbe()
+        RenderProbeExclusive.watchUserText(entry.id)
         hover.isOver = false
         try await settle { ChatUserText.footerBodies > 0 }
         #expect(ChatUserText.footerBodies >= 1 && ChatUserText.bubbleBodies == 0, "leaving scans nothing either")
 
         // The evidence run's held hover (`hover:`) takes the same path.
-        ChatUserText.resetProbe()
-        LookEvidence.setHover(key)
+        RenderProbeExclusive.watchUserText(entry.id)
+        RenderProbeExclusive.holdHover(key)
         try await settle { ChatUserText.footerBodies > 0 }
         #expect(ChatUserText.footerBodies >= 1 && ChatUserText.bubbleBodies == 0)
     }

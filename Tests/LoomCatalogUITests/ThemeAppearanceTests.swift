@@ -5,6 +5,7 @@ import SwiftUI
 import Testing
 import LoomTerminal
 @testable import LoomCatalogUI
+@testable import LoomCatalogUITestRigs
 
 /// Themes (D-63, V26) and Ink's contrast floors (DESIGN §3 Contrast): every rule in both appearances (Ink, Paper) and for
 /// every tone (Neutral, Warm, Cool), the way a token resolves (appearance, tone, the terminal face's dark scope), and the
@@ -741,12 +742,12 @@ struct ThemeSettingsModelTests {
         #expect(self.model(at: root).appearance == .system, "a new window reads what was saved")
     }
 
-    @Test func theToneAppliesLiveToTheViewsAndTheTerminalAndIsKept() throws {
+    /// The tone and the terminal's background are process-wide: the probe lock holds them, and lets them go when it ends.
+    @Test(.renderProbe) func theToneAppliesLiveToTheViewsAndTheTerminalAndIsKept() throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let state = LoomTheme.ThemeState.shared
-        let (tone, background) = (state.tone, TerminalTheme.backgroundRGB)
-        defer { state.tone = tone; TerminalTheme.setBackground(background) }
+        RenderProbeExclusive.holdTone(.neutral)
         let model = model(at: root)
         model.installTheme()
         #expect(model.paneTone == .neutral && state.tone == .neutral)
@@ -764,7 +765,7 @@ struct ThemeSettingsModelTests {
         #expect(applied == 2, "no change, no signal")
 
         // A launch installs the stored tone; a model made by a test touches no global.
-        state.tone = .neutral
+        RenderProbeExclusive.holdTone(.neutral)
         let again = self.model(at: root)
         #expect(again.paneTone == .cool && state.tone == .neutral)
         again.installTheme()

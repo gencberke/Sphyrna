@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCatalogUI
+import LoomTerminal
 import LoomTestSupport
 
 /// `SidebarRenderProbe` is one global: `watch` replaces what is watched and `reset` clears every count. Swift Testing runs
@@ -22,7 +23,14 @@ struct RenderProbeExclusive: TestTrait, SuiteTrait, TestScoping {
         // both the suite and the test) must not wait for itself.
         guard !test.isSuite, !Self.isHeld else { return try await function() }
         try await RenderProbeLock.shared.exclusive {
-            try await Self.$isHeld.withValue(true) { try await function() }
+            try await Self.$isHeld.withValue(true) {
+                // What the test held or watched is let go before the next test takes the lock, however it ended.
+                do { try await function() } catch {
+                    await Self.release()
+                    throw error
+                }
+                await Self.release()
+            }
         }
     }
 }
@@ -43,9 +51,61 @@ extension RenderProbeExclusive {
     }
 }
 
+/// The other switches a test sets for the whole process, behind the same lock: the pane tone every view reads
+/// (`LoomTheme.ThemeState`, and the terminal's background with it), the evidence run's held hover (`HoverForce`, through
+/// `LookEvidence`), the user row's body counters (`ChatUserText.watchedID`) and the drag-source probe (`SessionDragProbe`). Each helper checks the lock first, and the trait lets everything go when the test ends, so a test
+/// running beside it never draws a forced hover or counts into it.
+extension RenderProbeExclusive {
+    /// Arms the held hover (`LookEvidence.arm`): rows drawn from now on read it. Before the rows draw, as the evidence run does.
+    @MainActor static func armHover(sourceLocation: SourceLocation = #_sourceLocation) {
+        #expect(isHeld, "a test that holds a hover holds the probe lock (.renderProbe)", sourceLocation: sourceLocation)
+        HoverForce.shared.armed = true
+    }
+
+    /// Holds the hover on the row with this key (nil: none), as the evidence run's `hover:` command does.
+    @MainActor static func holdHover(_ key: String?, sourceLocation: SourceLocation = #_sourceLocation) {
+        #expect(isHeld, "a test that holds a hover holds the probe lock (.renderProbe)", sourceLocation: sourceLocation)
+        HoverForce.shared.armed = true
+        HoverForce.shared.hold(key)
+    }
+
+    /// Starts counting the body evaluations of one user row (`ChatUserText`) from zero.
+    @MainActor static func watchUserText(_ id: String, sourceLocation: SourceLocation = #_sourceLocation) {
+        #expect(isHeld, "a test that watches the user row's counters holds the probe lock (.renderProbe)", sourceLocation: sourceLocation)
+        ChatUserText.resetProbe()
+        ChatUserText.watchedID = id
+    }
+
+    /// Starts recording which sessions' views carry a drag source (`SessionDragProbe`), from none.
+    @MainActor static func watchDragSources(sourceLocation: SourceLocation = #_sourceLocation) {
+        #expect(isHeld, "a test that watches the drag sources holds the probe lock (.renderProbe)", sourceLocation: sourceLocation)
+        SessionDragProbe.watch()
+    }
+
+    /// Sets the pane tone every view reads (`LoomTheme.ThemeState`) and returns the one it replaced.
+    @discardableResult
+    @MainActor static func holdTone(_ tone: PaneTone, sourceLocation: SourceLocation = #_sourceLocation) -> PaneTone {
+        #expect(isHeld, "a test that sets the pane tone holds the probe lock (.renderProbe)", sourceLocation: sourceLocation)
+        let previous = LoomTheme.ThemeState.shared.tone
+        LoomTheme.ThemeState.shared.tone = tone
+        return previous
+    }
+
+    @MainActor static func release() {
+        LoomTheme.ThemeState.shared.tone = .neutral
+        let canvas = LoomTheme.Surface.terminalBackground(tone: .neutral).bytes
+        TerminalTheme.setBackground(TerminalRGB(red: UInt8(canvas.0), green: UInt8(canvas.1), blue: UInt8(canvas.2)))
+        HoverForce.shared.hold(nil)
+        HoverForce.shared.armed = false
+        ChatUserText.watchedID = nil
+        ChatUserText.resetProbe()
+        SessionDragProbe.stop()
+    }
+}
+
 extension Trait where Self == RenderProbeExclusive {
     /// Runs the test alone among the tests that watch or reset a render probe (`SidebarRenderProbe`, `ChatRenderProbe`,
-    /// `HeaderRenderProbe`).
+    /// `HeaderRenderProbe`) or set another development switch (the held hover, `ChatUserText`, `SessionDragProbe`).
     static var renderProbe: Self { RenderProbeExclusive() }
 }
 
