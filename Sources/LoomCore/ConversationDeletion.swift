@@ -145,6 +145,7 @@ extension SessionRuntime {
         if try await catalog.isDeletionPending(id) { return try await retryDeletion(id: id) }
         guard !startingSessions.contains(id) else { throw SessionRuntimeError.alreadyStarting(id) }
         guard deletionsInFlight.insert(id).inserted else { throw SessionRuntimeError.deletionInProgress(id) }
+        await claudeLimitObserver?.forget(sessionID: id)
         defer { deletionsInFlight.remove(id) }
         // The session's side chats go first, each through this same path (V22): none may outlive its parent.
         try await deleteSideChats(of: id)

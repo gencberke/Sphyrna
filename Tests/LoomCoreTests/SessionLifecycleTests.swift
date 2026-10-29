@@ -634,7 +634,7 @@ struct SessionLifecycleTests {
         #expect(await context.supervisor.providerWorkState(sessionID: id)?.activity == .unknown)
         var iterator = ingress.stream.makeAsyncIterator()
         let latest = try #require(await iterator.next())
-        _ = try await context.claude.receive(latest)
+        _ = try await context.claude.receive(latest.envelope)
         _ = try await context.claude.receive(try hook(launchSessionID: id, runID: runID, conversationID: "B", event: "Stop"))
         #expect(await context.supervisor.activeSessionID(runID: runID) == id)
         #expect(await context.claude.status(sessionID: id)?.activity == .unknown)

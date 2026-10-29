@@ -61,8 +61,9 @@ public struct LimitResetNotice: Equatable, Sendable {
     }
 
     public func receive(_ signal: ClaudeLimitResetSignal, reading: HarnessReading, accountRevision: UInt64,
-                        authorization: NotificationAuthorization, now: Date) async {
-        guard enabled else { return }
+                        authorization: NotificationAuthorization, now: Date,
+                        isCurrent: @Sendable () -> Bool = { true }) async {
+        guard enabled, isCurrent() else { return }
         if let old = self.accountRevision, old != accountRevision { invalidateAll() }
         self.accountRevision = accountRevision
         guard authorization == .authorized, reading.provider == ClaudeLimitResetSignal.provider,
@@ -86,7 +87,8 @@ public struct LimitResetNotice: Equatable, Sendable {
         let token = UUID()
         entries[identifier] = Entry(notice: notice, token: token)
         let scheduled = await scheduler.scheduleReset(notice)
-        guard entries[identifier]?.token == token else {
+        guard entries[identifier]?.token == token, isCurrent() else {
+            entries[identifier] = nil
             if scheduled { scheduler.cancelResets([identifier]) }
             return
         }

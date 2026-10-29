@@ -18,13 +18,13 @@ extension SessionRuntime {
         let token = UUID().uuidString + UUID().uuidString
         // One ordered path from the socket to the reducers: hook events of a
         // run are applied in arrival order, never in racing tasks.
-        let ingress = ClaudeHookIngress(adapter: harnesses.claude.adapter)
+        let ingress = ClaudeHookIngress(adapter: harnesses.claude.adapter, limitObserver: limitResetObserver())
         let events = ingress.stream
         let server = try ClaudeHookServer(socketPath: socket, authenticationToken: token) { envelope in
             ingress.receive(envelope)
         }
         hookTask = Task { [weak self] in
-            for await envelope in events { await self?.deliver(hook: envelope) }
+            for await record in events { await self?.deliver(hook: record.envelope, limitRevision: record.limitRevision) }
         }
         hookServer = server
         // The request/response socket of `loom-hook open` (D-40), next to the hook socket and
@@ -58,7 +58,7 @@ extension SessionRuntime {
         return value
     }
 
-    private func deliver(hook envelope: ClaudeHookEnvelope) async {
+    private func deliver(hook envelope: ClaudeHookEnvelope, limitRevision: UInt64?) async {
         do {
             let disposition = try await harnesses.claude.adapter.receive(envelope)
             let event = try? ClaudeHookEvent(payload: envelope.payload)
@@ -71,15 +71,18 @@ extension SessionRuntime {
                 }
             }
             if case .applied = disposition {
+                if let event { await noteLimitHook(event, envelope: envelope, revision: limitRevision) }
                 HookDiagnostics.note(.applied)
                 LoomLog.debug(.claudeHooks, "applied \(name)")
                 return
             }
             // Event and reason names only: a dropped event is otherwise invisible in a daily build.
+            claudeLimitObserver?.discard(runID: envelope.managedRunID, revision: limitRevision)
             let reason = String(describing: disposition)
             HookDiagnostics.noteDropped(reason: reason)
             Self.hookLog.info("dropped \(name, privacy: .public): \(reason, privacy: .public)")
         } catch {
+            claudeLimitObserver?.discard(runID: envelope.managedRunID, revision: limitRevision)
             HookDiagnostics.noteDropped(reason: "error")
             LoomLog.error(.claudeHooks, key: "hook-error", "A hook event could not be processed (\(LoomLog.category(of: error)))")
             guard let sessionID = await supervisor.activeSessionID(runID: envelope.managedRunID) else { return }

@@ -233,7 +233,7 @@ Limits appear in three places, each read with no model call and no credential:
 - **Spec:** [SPEC §6.2, §6.6, §6.7](../SPEC.md) · **Status:** Live · **Already after T3 Code:** D-99
 - **Orca:** A 24 pt status bar along the window's bottom: one segment per provider (mark, 48 × 6 meter, windows' figures), a 360-wide popover with details and refresh, plus keep-awake, ports and resource segments (`components/status-bar/StatusBarSurface.tsx:116`, `StatusBarProviderSegment.tsx`, `InlineProviderUsage.tsx`).
 - **T3 Code:** Settings' usage page (already Sphyrna's model, D-99).
-- **Sphyrna takes:** Orca's status bar replaces the sidebar footer (FEEDBACK-7 Q7, B3; implemented on `v2`); model-scoped windows and the reset notification remain H1.
+- **Sphyrna takes:** Orca's status bar replaces the sidebar footer (FEEDBACK-7 Q7, B3; implemented on `v2`); H1 adds reported model-scoped windows, explicit partial coverage, local Codex reasoning/day totals and an off-by-default quiet limit-reset notice. The authenticated bounded native-error path is wired; OS/native and resource acceptance remain in the final pool.
 
 ### F15. Models
 One model catalog feeds the draft's picker, the popover and the header. Models are shown by their full release names,

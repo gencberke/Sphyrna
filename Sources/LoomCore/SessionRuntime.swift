@@ -58,6 +58,8 @@ public struct SessionRuntimeConfiguration: Sendable {
     public var openedDefaultMode: (@Sendable (UUID?, HarnessID) async -> HarnessMode?)?
     /// How long a failed capability probe waits before its one retry (`SessionRuntime.toolchain(for:)`).
     public var toolchainProbeRetryPause: Duration
+    /// Verified native limit errors only; no probe or model request is made here.
+    public var onClaudeLimitReset: ClaudeLimitResetCallbacks?
 
     public init(
         toolchains: @escaping ProviderToolchainResolver, hookHelperPath: String,
@@ -79,7 +81,8 @@ public struct SessionRuntimeConfiguration: Sendable {
         defaultOpenedMode: (@Sendable (UUID?) async -> String?)? = nil,
         openedModels: (@Sendable (HarnessID) async -> [ModelCatalogEntry])? = nil,
         openedDefaultMode: (@Sendable (UUID?, HarnessID) async -> HarnessMode?)? = nil,
-        toolchainProbeRetryPause: Duration = .seconds(1)
+        toolchainProbeRetryPause: Duration = .seconds(1),
+        onClaudeLimitReset: ClaudeLimitResetCallbacks? = nil
     ) {
         self.toolchains = toolchains
         self.hookHelperPath = hookHelperPath
@@ -104,6 +107,7 @@ public struct SessionRuntimeConfiguration: Sendable {
         self.openedModels = openedModels
         self.openedDefaultMode = openedDefaultMode
         self.toolchainProbeRetryPause = toolchainProbeRetryPause
+        self.onClaudeLimitReset = onClaudeLimitReset
     }
 }
 
@@ -219,21 +223,26 @@ public enum ProviderRequestDecision: Sendable {
 /// Bounded authority ingress; isolated here so paused-consumer behavior can
 /// be tested against the same transport path used by the runtime.
 final class ClaudeHookIngress: Sendable {
-    let stream: AsyncStream<ClaudeHookEnvelope>
-    private let continuation: AsyncStream<ClaudeHookEnvelope>.Continuation
+    struct Record: Sendable { let envelope: ClaudeHookEnvelope; let limitRevision: UInt64? }
+    let stream: AsyncStream<Record>
+    private let continuation: AsyncStream<Record>.Continuation
     private let adapter: ClaudeSessionAdapter
+    private let limitObserver: ClaudeLimitResetObserver?
 
-    init(adapter: ClaudeSessionAdapter, capacity: Int = 1_024) {
+    init(adapter: ClaudeSessionAdapter, capacity: Int = 1_024, limitObserver: ClaudeLimitResetObserver? = nil) {
         self.adapter = adapter
-        let pair = AsyncStream<ClaudeHookEnvelope>.makeStream(bufferingPolicy: .bufferingNewest(capacity))
+        self.limitObserver = limitObserver
+        let pair = AsyncStream<Record>.makeStream(bufferingPolicy: .bufferingNewest(capacity))
         stream = pair.stream
         continuation = pair.continuation
     }
 
     func receive(_ envelope: ClaudeHookEnvelope) {
         adapter.noteHookArrival(runID: envelope.managedRunID)
-        if case let .dropped(dropped) = continuation.yield(envelope) {
-            adapter.noteHookLoss(runID: dropped.managedRunID)
+        let revision = limitObserver?.arrived(runID: envelope.managedRunID)
+        if case let .dropped(dropped) = continuation.yield(Record(envelope: envelope, limitRevision: revision)) {
+            limitObserver?.discard(runID: dropped.envelope.managedRunID, revision: dropped.limitRevision)
+            adapter.noteHookLoss(runID: dropped.envelope.managedRunID)
         }
     }
 }
@@ -287,6 +296,7 @@ public actor SessionRuntime {
     /// stop can refuse late input atomically (see `TerminalInputGate`).
     public nonisolated let inputGate: TerminalInputGate
     let configuration: SessionRuntimeConfiguration
+    var claudeLimitObserver: ClaudeLimitResetObserver?
     /// The read model of this runtime's sessions: the catalog's listed sessions with the hub's live state (`SessionDirectory`).
     public nonisolated var directory: SessionDirectory {
         SessionDirectory(catalog: catalog, events: supervisor.events,
@@ -714,6 +724,7 @@ public actor SessionRuntime {
     /// first; a failed shutdown stays failed so the caller can offer a retry.
     public func shutdown() async -> ShutdownReport {
         shuttingDown = true
+        await claudeLimitObserver?.cancelAll()
         let liveRuns = runs.count
         LoomLog.notice(.quit, "Shutdown started (\(liveRuns) live run(s))")
         let servers = codexServers
@@ -887,6 +898,7 @@ public actor SessionRuntime {
     /// A start failed: read the CLI again before the next one.
     func invalidateToolchain(_ provider: ManagedSession.Provider) async {
         staleToolchains.insert(provider)
+        if case .claude = provider { await claudeLimitObserver?.cancelAll() }
         await configuration.toolchainInvalidator?(provider)
     }
 
@@ -992,6 +1004,7 @@ public actor SessionRuntime {
             // Reentrant callers (the observer, Stop, a launch) race on the same
             // ended run: only the one that removes the record handles it.
             guard let record = runs.removeValue(forKey: snapshot.runID) else { continue }
+            await claudeLimitObserver?.forget(runID: snapshot.runID)
             if let harness = harnesses[record.provider] { await harness.runEnded(runID: record.runID, in: self) }
             // A start still waiting for this run's identity can stop waiting now.
             if record.server != nil, let (reservation, coordinator) = reservations[record.launchSessionID],

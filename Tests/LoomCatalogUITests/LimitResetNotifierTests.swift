@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import SwiftUI
 import Testing
+import Synchronization
 @testable import LoomCore
 @testable import LoomCatalogUI
 
@@ -50,6 +51,26 @@ import Testing
     private func reading(reset: Date, account: HarnessAccount? = .subscription(email: "person@example.invalid", plan: "max")) -> HarnessReading {
         HarnessReading(provider: .claude, account: account, windows: [HarnessLimitWindow(id: "five_hour", name: "5-hour",
             durationMinutes: 300, usedPercent: 100, resetsAt: reset)], readAt: now)
+    }
+
+    @Test func aRevokedObservationCannotSurviveAsynchronousScheduling() async throws {
+        let scheduler = SlowScheduler(), validity = Mutex(true)
+        var opened: [UUID] = []
+        let notifier = LimitResetNotifier(scheduler: scheduler) { opened.append($0) }
+        notifier.setEnabled(true)
+        let reset = now.addingTimeInterval(3_600)
+        let signal = signal(id: UUID(), reset: reset), reading = reading(reset: reset)
+        let pending = Task { await notifier.receive(signal, reading: reading, accountRevision: 1,
+            authorization: .authorized, now: now, isCurrent: { validity.withLock { $0 } }) }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while scheduler.pending == nil, ContinuousClock.now < deadline { await Task.yield() }
+        let notice = try #require(scheduler.added)
+        validity.withLock { $0 = false }
+        scheduler.pending?.resume(returning: true)
+        await pending.value
+        #expect(scheduler.cancelled.contains(notice.identifier))
+        notifier.activate(identifier: notice.identifier)
+        #expect(opened.isEmpty)
     }
 
     @Test func resetPreferenceDefaultsOffAndSurvivesRelaunchWithoutChangingOtherPreferences() throws {

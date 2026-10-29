@@ -106,20 +106,20 @@ final class ApprovalNotifier {
     }
 
     /// The owner wires a typed signal only after the authenticated hook and bounded transcript read agree.
-    func verifiedLimitReached(_ signal: ClaudeLimitResetSignal) {
+    func verifiedLimitReached(_ signal: ClaudeLimitResetSignal, isCurrent: @escaping @Sendable () -> Bool) {
         guard let resetNotifier, let reading = model.usage?.readings[.claude] else { return }
         let authorization = model.integration.notificationAuthorization
         let revision = resetAccountRevision
         Task { [weak self] in
             guard let self, self.resetAccountRevision == revision, self.model.usage?.readings[.claude] == reading,
-                  self.model.integration.notifyLimitResets else { return }
+                  self.model.integration.notifyLimitResets, isCurrent() else { return }
             await resetNotifier.receive(signal, reading: reading, accountRevision: revision,
-                                        authorization: authorization, now: Date())
+                                        authorization: authorization, now: Date(), isCurrent: isCurrent)
         }
     }
 
     func limitReadingChanged(previous: HarnessReading?, current: HarnessReading?) {
-        if let before = previous?.account, let after = current?.account, before != after {
+        if previous?.account != current?.account {
             resetAccountRevision &+= 1
             resetNotifier?.accountChanged()
         }

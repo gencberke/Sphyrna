@@ -1,9 +1,46 @@
 import Foundation
 import Testing
+import Synchronization
 @testable import LoomCore
 
 @Suite struct ClaudeLimitResetSignalReaderTests {
     private let now = Date(timeIntervalSince1970: 1_791_600_000)
+
+    @Test func aQueuedNativeFailureIsReadAfterAnActualFileEvent() async throws {
+        let rig = try rig()
+        defer { try? FileManager.default.removeItem(at: rig.root) }
+        try write([user(rig)], to: rig.file)
+        let attempts = Mutex(0)
+        let task = Task { await ClaudeLimitResetSignalReader.waitForSignal(rig.context, onRead: {
+            attempts.withLock { $0 += 1 }
+        }) }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while attempts.withLock({ $0 }) == 0, ContinuousClock.now < deadline { await Task.yield() }
+        #expect(attempts.withLock { $0 } == 1)
+        // Atomic replacement exercises the directory and inode reattachment,
+        // not only a write notification on the original descriptor.
+        try write([user(rig), failure(rig)], to: rig.file)
+        let signal = await task.value
+        #expect(signal?.promptID == rig.context.promptID && signal?.windowID == "five_hour")
+        #expect((2...8).contains(attempts.withLock { $0 }))
+    }
+
+    @Test func aCanceledFailureWatchFinishesWithoutWaitingForItsDeadline() async throws {
+        let rig = try rig()
+        defer { try? FileManager.default.removeItem(at: rig.root) }
+        try write([user(rig)], to: rig.file)
+        let attempts = Mutex(0)
+        let task = Task { await ClaudeLimitResetSignalReader.waitForSignal(rig.context, onRead: {
+            attempts.withLock { $0 += 1 }
+        }) }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while attempts.withLock({ $0 }) == 0, ContinuousClock.now < deadline { await Task.yield() }
+        #expect(attempts.withLock { $0 } == 1)
+        let start = ContinuousClock.now
+        task.cancel()
+        #expect(await task.value == nil)
+        #expect(start.duration(to: .now) < .seconds(1))
+    }
 
     private func line(_ value: [String: Any]) throws -> String {
         String(decoding: try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]), as: UTF8.self) + "\n"

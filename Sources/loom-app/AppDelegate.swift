@@ -597,7 +597,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             },
             openedDefaultMode: { [weak model] projectID, harness in
                 await MainActor.run { model?.openedDefaultMode(projectID: projectID, harness: harness) }
-            }
+            },
+            onClaudeLimitReset: .init(enabled: { [weak model] in
+                await MainActor.run {
+                    guard let model else { return false }
+                    return model.integration.notifyLimitResets
+                        && model.integration.notificationAuthorization == .authorized
+                        && LimitResetNotifier.hasStableAccount(model.usage?.readings[.claude]?.account)
+                }
+            }, receive: { [weak self] delivery in
+                await MainActor.run {
+                    self?.approvalNotifier?.verifiedLimitReached(delivery.signal, isCurrent: delivery.isCurrent)
+                }
+            })
         )
     }
 
