@@ -101,6 +101,18 @@ extension ProcessSupervisor {
         }
     }
 
+    /// Runs a helper or shell job on a thread of its own, never on a thread of Swift's cooperative pool, as `GitWorkspace.run`
+    /// does: the job sleeps and polls until its child exits or its deadline passes, and a few at once (the harness probes, a
+    /// slow login shell) held every pool thread, so all other async work of the app stood still until they ended.
+    private static func onOwnThread<Value: Sendable>(_ job: @escaping @Sendable () throws -> Value) async throws -> Value {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Value, any Error>) in
+            let thread = Thread { continuation.resume(with: Result { try job() }) }
+            thread.name = "loom.helper"
+            thread.qualityOfService = .userInitiated
+            thread.start()
+        }
+    }
+
     fileprivate func runHelperJob<Result: Sendable>(
         in scope: RunScope?,
         _ operation: @escaping @Sendable (UUID, EnvironmentResolutionJob, HelperSpawner) throws -> Result
@@ -113,7 +125,7 @@ extension ProcessSupervisor {
         defer { environmentJobs[jobID] = nil }
         let spawner = scope.map(HelperSpawner.scoped) ?? .local
         do {
-            let result = try await Task.detached { try operation(runID, job, spawner) }.value
+            let result = try await Self.onOwnThread { try operation(runID, job, spawner) }
             if scopeLauncher == nil { ledger.recordDescendants(Array(job.observedIdentities())) }
             _ = try sampleOwnership()
             guard !stopping else { throw SessionManagementError.shutdownStarted }
@@ -167,9 +179,7 @@ extension ProcessSupervisor {
         let spawner = scope.map(HelperSpawner.scoped) ?? .local
         var finished = false // the environment job's use of its scope ends exactly once
         do {
-            let result = try await Task.detached {
-                try operation(runID, job, spawner)
-            }.value
+            let result = try await Self.onOwnThread { try operation(runID, job, spawner) }
             if scopeLauncher == nil { ledger.recordDescendants(Array(job.observedIdentities())) }
             _ = try sampleOwnership()
             if kind == .perCall, let scope {

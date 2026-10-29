@@ -52,6 +52,33 @@ struct ProviderToolchainTests {
         #expect((await supervisor.shutdown()).succeeded)
     }
 
+    /// A helper's wait (sleeps and polls until the child exits) runs on a thread of its own. More slow helpers than the
+    /// cooperative pool has threads must leave it free: on the pool they held every thread, and all other async work stood
+    /// still until they ended (in the full test run, every test of the process at once).
+    @Test func slowHelpersLeaveTheCooperativePoolFree() async throws {
+        let supervisor = try supervisor()
+        let clock = ContinuousClock()
+        let start = clock.now
+        let hop = try await withThrowingTaskGroup(of: Duration?.self) { group in
+            for _ in 0..<(ProcessInfo.processInfo.activeProcessorCount + 2) {
+                group.addTask {
+                    _ = try await supervisor.captureHelper("/bin/sleep", ["3"], environment: [:], timeout: 10)
+                    return nil
+                }
+            }
+            group.addTask {
+                try await Task.sleep(for: .milliseconds(200))
+                return clock.now - start
+            }
+            var hop: Duration?
+            for try await value in group where value != nil { hop = value }
+            return hop
+        }
+        let waited = try #require(hop)
+        #expect(waited < .seconds(1.5), "an unrelated task resumed after \(waited), behind the helpers")
+        #expect((await supervisor.shutdown()).succeeded)
+    }
+
     @Test func aSlowHelperTimesOutAndIsKilled() async throws {
         let supervisor = try supervisor()
         let file = pidFile()
