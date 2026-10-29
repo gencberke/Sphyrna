@@ -96,7 +96,7 @@ extension SessionRuntime {
                 if foreign { throw DeletionStepFailure("native_descendants") }
                 for nativeID in nativeIDs {
                     do { try await client.deleteThread(nativeID) }
-                    catch let error as CodexAppServerError where error.isThreadNotFound {
+                    catch let error where CodexAppServerClient.isAbsentThreadAnswer(error, threadID: nativeID) {
                         // Deleted before (an interrupted attempt), or by another id's subtree: verified below.
                     } catch { throw DeletionStepFailure("native_delete_failed") }
                 }

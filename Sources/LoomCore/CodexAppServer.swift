@@ -713,8 +713,19 @@ public actor CodexAppServerClient {
         return try CodexResumeSettings.decodeNative(result, threadID: threadID, workingDirectory: workingDirectory)
     }
 
+    /// Whether `error` is the server's answer that `threadID` does not exist, and nothing else. Codex 0.164 answers a
+    /// `thread/read` of an id it has no record of with "thread not loaded: <id>" (an existing thread that is not loaded is
+    /// read, with status `notLoaded`), and a `thread/delete` of one with "no rollout found for thread id <id>" or
+    /// "thread not found: <id>" (D2x REAL.md). Only these exact answers about this exact id count.
+    public static func isAbsentThreadAnswer(_ error: any Error, threadID: String) -> Bool {
+        guard case let .rpc(_, message, _)? = error as? CodexAppServerError else { return false }
+        let id = threadID.lowercased()
+        return ["thread not loaded: \(id)", "thread not found: \(id)", "no rollout found for thread id \(id)"]
+            .contains(message.lowercased().trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     /// Whether the server still has the persisted thread: a history-free `thread/read` that answers it (true) or answers
-    /// that there is no such thread (false). Any other answer or error is thrown, never read as absent.
+    /// that there is no such thread (false, `isAbsentThreadAnswer`). Any other answer or error is thrown, never read as absent.
     public func threadExists(_ threadID: String, timeout: TimeInterval = 20) async throws -> Bool {
         do {
             let result = try await request(method: "thread/read",
@@ -723,7 +734,7 @@ public actor CodexAppServerClient {
                 throw CodexAppServerError.protocolViolation("thread/read returned a missing or different thread identity")
             }
             return true
-        } catch let error as CodexAppServerError where error.isThreadNotFound { return false }
+        } catch let error where Self.isAbsentThreadAnswer(error, threadID: threadID) { return false }
     }
 
     /// Every native thread spawned from `threadID` at any depth, active and archived (`thread/list` with

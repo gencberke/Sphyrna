@@ -86,6 +86,20 @@ struct CodexDataInventoryTests {
         }
     }
 
+    @Test func onlyCodexsOwnAnswersAboutThisIDMeanTheThreadIsGone() {
+        let id = UUID().uuidString.lowercased(), other = UUID().uuidString.lowercased()
+        func rpc(_ message: String) -> CodexAppServerError { .rpc(code: -32600, message: message, data: nil) }
+        // The answers Codex 0.164 gave in the real deletion (REAL.md), and the fake server's.
+        for message in ["thread not loaded: \(id)", "no rollout found for thread id \(id)", "thread not found: \(id.uppercased())"] {
+            #expect(CodexAppServerClient.isAbsentThreadAnswer(rpc(message), threadID: id), "\(message)")
+        }
+        for error: any Error in [rpc("thread not loaded: \(other)"), rpc("failed to delete thread: rollout not found"),
+                                 rpc("thread \(id) already has an active writer"), CodexAppServerError.closed,
+                                 CodexAppServerError.timeout("thread/read")] {
+            #expect(!CodexAppServerClient.isAbsentThreadAnswer(error, threadID: id), "\(error)")
+        }
+    }
+
     @Test func aWalkThatRunsOutOfItsBudgetIsIncompleteNotEmpty() throws {
         let home = try Self.makeHome()
         defer { try? FileManager.default.removeItem(at: home) }

@@ -713,7 +713,8 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
                     }
                 }
             }
-            guard known(threadID) || !rollouts.isEmpty else { failure(-32600, "thread not found: \(threadID)"); return }
+            // Codex 0.164's own answer for an id it has no rollout of.
+            guard known(threadID) || !rollouts.isEmpty else { failure(-32600, "no rollout found for thread id \(threadID)"); return }
             threads[threadID] = nil
             if let state {
                 for suffix in ["cwd", "settings"] {
