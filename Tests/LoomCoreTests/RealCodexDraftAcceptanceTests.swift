@@ -156,6 +156,9 @@ private struct RealAcceptanceEvidence: Encodable {
     var resumedObservedProcessCount = 0
     var resumedObservedProcesses: [ProcessIdentity] = []
     var errorPhase: String? = nil
+    var errorType: String? = nil
+    var errorSignals: [String] = []
+    var kind = "first-prompt-acceptance"
     var note = "No raw provider output, account data, credentials, or environment values recorded. Auxiliary model activity is unknown."
 }
 
@@ -193,6 +196,8 @@ struct RealCodexDraftAcceptanceTests {
 
     @Test func oneDraftApprovalStopResumeAndQuit() async {
         var result = RealAcceptanceEvidence()
+        let diagnosticOnly = ProcessInfo.processInfo.environment["LOOM_ACC_REAL_CODEX_ZERO_INPUT"] == "1"
+        if diagnosticOnly { result.kind = "zero-input-startup-diagnostic"; result.submittedUserInputs = 0 }
         var runtime: SessionRuntime?
         var supervisor: ProcessSupervisor?
         var bundleRoot: URL?
@@ -263,7 +268,7 @@ struct RealCodexDraftAcceptanceTests {
             result.submission = "unknown-after-reservation"
             result.phase = "new-draft"
             let launch = try await instance.startConversation(provider: .codex, projectID: project.id, outputSink: screen,
-                draft: NewSessionLaunch(firstMessage: prompt, choices: choices))
+                draft: diagnosticOnly ? nil : NewSessionLaunch(firstMessage: prompt, choices: choices))
             result.sessionID = launch.sessionID.uuidString
             guard let threadID = try await catalog.session(id: launch.sessionID)?.session.providerConversationID,
                   UUID(uuidString: threadID) != nil else { throw RealAcceptanceFailure("identity") }
@@ -282,106 +287,118 @@ struct RealCodexDraftAcceptanceTests {
             result.observedProcesses = firstWitness.identities.sorted { $0.pid < $1.pid }
             result.firstSocket = firstWitness.requested
             result.firstHashedSocket = firstWitness.hashed
-            try requireAcceptance(lstat(marker.path, &markerInfo) != 0 && errno == ENOENT, "write-before-approval")
-            result.phase = "approval"
-            let deadline = ProcessInfo.processInfo.systemUptime + 60
-            var pending: CodexPendingRequest?
-            repeat {
+            if diagnosticOnly {
+                result.submission = "no-user-input-provided"
+                result.taskResult = "startup-only-verified"
+                result.phase = "quit"
+            } else {
                 try requireAcceptance(lstat(marker.path, &markerInfo) != 0 && errno == ENOENT, "write-before-approval")
-                let snapshot = await coordinator.pendingRequestSnapshot()
-                try requireAcceptance(snapshot.pending.count <= 1, "multiple-requests")
-                if let request = snapshot.pending.first { pending = request; break }
-                try await Task.sleep(for: .milliseconds(100))
-            } while ProcessInfo.processInfo.systemUptime < deadline
-            guard let pending else { throw RealAcceptanceFailure("approval-not-observed") }
-            let allowed: Set<String> = ["threadId", "turnId", "itemId", "command", "cwd", "availableDecisions", "reason"]
-            let parameters = pending.request.params.object ?? [:]
-            result.approvalParameterKeys = parameters.keys.sorted()
-            result.approvalNonNullExtraKeys = parameters.filter { !allowed.contains($0.key) && $0.value != .null }.keys.sorted()
-            try Self.requireExactApproval(pending, launch: launch, threadID: threadID, cwd: value.work.path, script: script)
-            result.turnID = pending.request.params.object?["turnId"]?.string
-            let published = await Self.waitUntil(5) {
-                await processSupervisor.events.snapshot().sessions[launch.sessionID]?.userRequests
-                    .contains { $0.id == pending.id.uuidString && $0.kind == .command } == true
+                result.phase = "approval"
+                let deadline = ProcessInfo.processInfo.systemUptime + 60
+                var pending: CodexPendingRequest?
+                repeat {
+                    try requireAcceptance(lstat(marker.path, &markerInfo) != 0 && errno == ENOENT, "write-before-approval")
+                    let snapshot = await coordinator.pendingRequestSnapshot()
+                    try requireAcceptance(snapshot.pending.count <= 1, "multiple-requests")
+                    if let request = snapshot.pending.first { pending = request; break }
+                    try await Task.sleep(for: .milliseconds(100))
+                } while ProcessInfo.processInfo.systemUptime < deadline
+                guard let pending else { throw RealAcceptanceFailure("approval-not-observed") }
+                let allowed: Set<String> = ["threadId", "turnId", "itemId", "command", "cwd", "availableDecisions", "reason"]
+                let parameters = pending.request.params.object ?? [:]
+                result.approvalParameterKeys = parameters.keys.sorted()
+                result.approvalNonNullExtraKeys = parameters.filter { !allowed.contains($0.key) && $0.value != .null }.keys.sorted()
+                try Self.requireExactApproval(pending, launch: launch, threadID: threadID, cwd: value.work.path, script: script)
+                result.turnID = pending.request.params.object?["turnId"]?.string
+                let published = await Self.waitUntil(5) {
+                    await processSupervisor.events.snapshot().sessions[launch.sessionID]?.userRequests
+                        .contains { $0.id == pending.id.uuidString && $0.kind == .command } == true
+                }
+                try requireAcceptance(published, "approval-not-published")
+                try await instance.respond(sessionID: launch.sessionID, requestID: pending.id.uuidString, decision: .accept)
+                result.approvalResult = "accepted-exact-occurrence-once"
+                result.approvalTime = Date()
+                result.phase = "turn-completion"
+                let completed = await Self.waitUntil(120) {
+                    let activity = await processSupervisor.providerWorkState(sessionID: launch.sessionID)?.activity
+                    return activity == .turnComplete
+                }
+                let latest = try await client.readThread(threadID)
+                switch latest.lastTurnOutcome {
+                case .completed: result.sourceOutcome = "completed"
+                case .interrupted: result.sourceOutcome = "interrupted"
+                case .failed: result.sourceOutcome = "failed"
+                case .unknown: result.sourceOutcome = "unknown"
+                case nil: result.sourceOutcome = "missing"
+                }
+                try requireAcceptance(completed && Self.markerEquals(marker, expected: Self.fileMarker),
+                                      "turn-or-marker-incomplete")
+                try requireAcceptance(latest.threadID == threadID && latest.lastTurnID == result.turnID &&
+                                      latest.lastTurnOutcome == .completed &&
+                                      latest.lastAssistantMessage == Self.completionMarker, "completion-message")
+                // A new TUI thread may have no rollout until this turn persists.
+                // The exact owned approval is safe independently of a pre-turn
+                // metadata read; verify the actual settings once persistence exists.
+                result.phase = "effective-settings"
+                let settings = try await client.request(method: "thread/resume",
+                    params: .object(["threadId": .string(threadID), "excludeTurns": .bool(true)]), timeout: 12)
+                try Self.requireSafeSettings(settings, threadID: threadID, cwd: value.work.path)
+                result.settingsResult = "verified-after-first-prompt"
+                let history = try await client.request(method: "thread/read", params: .object([
+                    "threadId": .string(threadID), "includeTurns": .bool(true),
+                ]), timeout: 12)
+                try Self.requireFirstMessage(history, threadID: threadID, turnID: result.turnID, prompt: prompt)
+                result.submission = "observed-in-owned-thread"
+                result.submittedUserInputs = 1
+                result.inputObservedTime = Date()
+                result.taskResult = "verified"
+                result.phase = "stop"
+                firstWitness.identities.formUnion(try scope.members().filter { !$0.launchdSpawned }.map(\.identity))
+                witnesses[0] = firstWitness
+                result.observedProcessCount = firstWitness.identities.count
+                result.observedProcesses = firstWitness.identities.sorted { $0.pid < $1.pid }
+                let stopped = try await instance.stopConversation(sessionID: launch.sessionID)
+                try requireAcceptance(stopped.succeeded && stopped.remainingCountVerified == true, "stop-report")
+                try requireAcceptance(try firstWitness.absent(), "stop-owned-cleanup")
+                result.stopResult = "verified"
+                await phase.useResume()
+                await instance.invalidateToolchain(.codex)
+                result.phase = "resume"
+                let resumed = try await instance.resumeConversation(sessionID: launch.sessionID, outputSink: RealAcceptanceScreen())
+                try requireAcceptance(resumed.sessionID == launch.sessionID && resumed.runID != launch.runID, "resume-session")
+                let identityAfter = try await catalog.session(id: launch.sessionID)?.session.providerConversationID
+                try requireAcceptance(identityAfter == threadID, "resume-identity")
+                guard let effective = await instance.codexResumeSettings(forSession: launch.sessionID) else {
+                    throw RealAcceptanceFailure("resume-settings")
+                }
+                try requireAcceptance(effective.model == "gpt-6-luna" && effective.effort == "low" &&
+                                      effective.mode == .askBeforeEdits, "resume-settings")
+                guard let (_, resumedSocket, resumedScope, resumedServerID) = await instance.acceptanceConnection(for: launch.sessionID)
+                else { throw RealAcceptanceFailure("resume-connection") }
+                let resumedWitness = try await Self.witness(socket: resumedSocket, scope: resumedScope,
+                    supervisor: processSupervisor, sessionID: launch.sessionID, serverID: resumedServerID)
+                witnesses.append(resumedWitness)
+                result.resumedServerPID = resumedWitness.server.pid
+                result.resumedTuiPID = resumedWitness.tui.pid
+                result.resumedSocket = resumedWitness.requested
+                result.resumedHashedSocket = resumedWitness.hashed
+                result.resumedObservedProcessCount = resumedWitness.identities.count
+                result.resumedObservedProcesses = resumedWitness.identities.sorted { $0.pid < $1.pid }
+                result.resumeResult = "verified-same-thread-no-input"
+                result.phase = "quit"
             }
-            try requireAcceptance(published, "approval-not-published")
-            try await instance.respond(sessionID: launch.sessionID, requestID: pending.id.uuidString, decision: .accept)
-            result.approvalResult = "accepted-exact-occurrence-once"
-            result.approvalTime = Date()
-            result.phase = "turn-completion"
-            let completed = await Self.waitUntil(120) {
-                let activity = await processSupervisor.providerWorkState(sessionID: launch.sessionID)?.activity
-                return activity == .turnComplete
-            }
-            let latest = try await client.readThread(threadID)
-            switch latest.lastTurnOutcome {
-            case .completed: result.sourceOutcome = "completed"
-            case .interrupted: result.sourceOutcome = "interrupted"
-            case .failed: result.sourceOutcome = "failed"
-            case .unknown: result.sourceOutcome = "unknown"
-            case nil: result.sourceOutcome = "missing"
-            }
-            try requireAcceptance(completed && Self.markerEquals(marker, expected: Self.fileMarker),
-                                  "turn-or-marker-incomplete")
-            try requireAcceptance(latest.threadID == threadID && latest.lastTurnID == result.turnID &&
-                                  latest.lastTurnOutcome == .completed &&
-                                  latest.lastAssistantMessage == Self.completionMarker, "completion-message")
-            // A new TUI thread may have no rollout until this turn persists.
-            // The exact owned approval is safe independently of a pre-turn
-            // metadata read; verify the actual settings once persistence exists.
-            result.phase = "effective-settings"
-            let settings = try await client.request(method: "thread/resume",
-                params: .object(["threadId": .string(threadID), "excludeTurns": .bool(true)]), timeout: 12)
-            try Self.requireSafeSettings(settings, threadID: threadID, cwd: value.work.path)
-            result.settingsResult = "verified-after-first-prompt"
-            let history = try await client.request(method: "thread/read", params: .object([
-                "threadId": .string(threadID), "includeTurns": .bool(true),
-            ]), timeout: 12)
-            try Self.requireFirstMessage(history, threadID: threadID, turnID: result.turnID, prompt: prompt)
-            result.submission = "observed-in-owned-thread"
-            result.submittedUserInputs = 1
-            result.inputObservedTime = Date()
-            result.taskResult = "verified"
-            result.phase = "stop"
-            firstWitness.identities.formUnion(try scope.members().filter { !$0.launchdSpawned }.map(\.identity))
-            witnesses[0] = firstWitness
-            result.observedProcessCount = firstWitness.identities.count
-            result.observedProcesses = firstWitness.identities.sorted { $0.pid < $1.pid }
-            let stopped = try await instance.stopConversation(sessionID: launch.sessionID)
-            try requireAcceptance(stopped.succeeded && stopped.remainingCountVerified == true, "stop-report")
-            try requireAcceptance(try firstWitness.absent(), "stop-owned-cleanup")
-            result.stopResult = "verified"
-            await phase.useResume()
-            await instance.invalidateToolchain(.codex)
-            result.phase = "resume"
-            let resumed = try await instance.resumeConversation(sessionID: launch.sessionID, outputSink: RealAcceptanceScreen())
-            try requireAcceptance(resumed.sessionID == launch.sessionID && resumed.runID != launch.runID, "resume-session")
-            let identityAfter = try await catalog.session(id: launch.sessionID)?.session.providerConversationID
-            try requireAcceptance(identityAfter == threadID, "resume-identity")
-            guard let effective = await instance.codexResumeSettings(forSession: launch.sessionID) else {
-                throw RealAcceptanceFailure("resume-settings")
-            }
-            try requireAcceptance(effective.model == "gpt-6-luna" && effective.effort == "low" &&
-                                  effective.mode == .askBeforeEdits, "resume-settings")
-            guard let (_, resumedSocket, resumedScope, resumedServerID) = await instance.acceptanceConnection(for: launch.sessionID)
-            else { throw RealAcceptanceFailure("resume-connection") }
-            let resumedWitness = try await Self.witness(socket: resumedSocket, scope: resumedScope,
-                supervisor: processSupervisor, sessionID: launch.sessionID, serverID: resumedServerID)
-            witnesses.append(resumedWitness)
-            result.resumedServerPID = resumedWitness.server.pid
-            result.resumedTuiPID = resumedWitness.tui.pid
-            result.resumedSocket = resumedWitness.requested
-            result.resumedHashedSocket = resumedWitness.hashed
-            result.resumedObservedProcessCount = resumedWitness.identities.count
-            result.resumedObservedProcesses = resumedWitness.identities.sorted { $0.pid < $1.pid }
-            result.resumeResult = "verified-same-thread-no-input"
-            result.phase = "quit"
         } catch let failure as RealAcceptanceFailure {
             result.errorPhase = failure.phase
         } catch {
             // Provider errors and process output may contain user data: classify
             // by the current fixed stage and do not log the error itself.
             result.errorPhase = result.phase + "-error"
+            result.errorType = String(reflecting: type(of: error))
+            let description = String(describing: error).lowercased()
+            let signals = ["startup", "exited", "signal", "socket", "not private", "not owned", "permission denied",
+                           "invalid configuration", "unrecognized startup output", "unexpected argument", "no such file",
+                           "scope", "identity", "code sign", "service", "timed out", "unsupported", "profile", "model"]
+            result.errorSignals = signals.filter { description.contains($0) }
         }
 
         // This runs after every failure or success once the runtime exists.
@@ -407,9 +424,14 @@ struct RealCodexDraftAcceptanceTests {
         if let phase = result.errorPhase { Issue.record("Real acceptance stopped at \(phase); submission: \(result.submission)") }
         if result.cleanup == "failed-or-unknown" { Issue.record("Owned process or socket cleanup could not be verified") }
         if result.errorPhase == nil {
-            #expect(result.taskResult == "verified")
-            #expect(result.stopResult == "verified")
-            #expect(result.resumeResult == "verified-same-thread-no-input")
+            if diagnosticOnly {
+                #expect(result.taskResult == "startup-only-verified")
+                #expect(result.submittedUserInputs == 0)
+            } else {
+                #expect(result.taskResult == "verified")
+                #expect(result.stopResult == "verified")
+                #expect(result.resumeResult == "verified-same-thread-no-input")
+            }
             #expect(result.quitResult == "verified")
             #expect(result.cleanup == "verified-owned-observations")
         }
