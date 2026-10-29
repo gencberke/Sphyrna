@@ -13,6 +13,13 @@ actor ManagedClaudeFixtureInputGate {
     func release() { released = true; waiter?.resume(); waiter = nil }
 }
 
+final class ManagedClaudeFixtureAudit: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String] = []
+    func note(_ value: String) { lock.withLock { values.append(value) } }
+    var summary: String { lock.withLock { values.joined(separator: ",") } }
+}
+
 /// Test-only stream adapter. It proves the runtime's contract using the fake
 /// process's actual init, started and replay records, never a write receipt.
 private final class ManagedClaudeFixtureSink: PipeOutputSink, @unchecked Sendable {
@@ -46,8 +53,10 @@ actor ManagedClaudeFixtureController: ManagedTaskController {
     nonisolated let outputSink: any PipeOutputSink
     private let sink: ManagedClaudeFixtureSink
     private let run: ManagedTaskRun
+    private let audit: ManagedClaudeFixtureAudit?
     private let ingress: ManagedTaskIngress
     private let inputGate: ManagedClaudeFixtureInputGate?
+    private let resultGate: ManagedClaudeFixtureInputGate?
     private let readyStream: AsyncStream<Bool>
     private let readyContinuation: AsyncStream<Bool>.Continuation
     private var reader: Task<Void, Never>?
@@ -59,10 +68,13 @@ actor ManagedClaudeFixtureController: ManagedTaskController {
     private var interruptState: (id: String, input: UUID, ack: Bool, ended: Bool,
                                  continuation: AsyncStream<Bool>.Continuation)?
 
-    init(run: ManagedTaskRun, ingress: ManagedTaskIngress, inputGate: ManagedClaudeFixtureInputGate? = nil) {
+    init(run: ManagedTaskRun, ingress: ManagedTaskIngress, inputGate: ManagedClaudeFixtureInputGate? = nil,
+         resultGate: ManagedClaudeFixtureInputGate? = nil, audit: ManagedClaudeFixtureAudit? = nil) {
         self.run = run
         self.ingress = ingress
         self.inputGate = inputGate
+        self.resultGate = resultGate
+        self.audit = audit
         let sink = ManagedClaudeFixtureSink(ingress: ingress)
         self.sink = sink
         outputSink = sink
@@ -123,9 +135,9 @@ actor ManagedClaudeFixtureController: ManagedTaskController {
         guard let encoded = try? JSONEncoder().encode(request) else { interruptState = nil; return .deferred }
         let outcome = await pipe.writeManaged(encoded + Data([0x0a]), admission: admission)
         switch outcome {
-        case .deferred: interruptState = nil; return .deferred
-        case .unknown: interruptState = nil; return .unknown
-        case .submitted: break
+        case .deferred: audit?.note("write-deferred"); interruptState = nil; return .deferred
+        case .unknown: audit?.note("write-unknown"); interruptState = nil; return .unknown
+        case .submitted: audit?.note("write-submitted")
         }
         let verified = await withTaskGroup(of: Bool.self) { group in
             group.addTask { for await value in stream { return value }; return false }
@@ -135,6 +147,7 @@ actor ManagedClaudeFixtureController: ManagedTaskController {
             return result
         }
         interruptState = nil
+        audit?.note(verified ? "end-verified" : "end-unknown")
         return verified ? .verified : .unknown
     }
     func close() async {
@@ -162,6 +175,7 @@ actor ManagedClaudeFixtureController: ManagedTaskController {
             if var current = interruptState, response["request_id"]?.string == current.id {
                 guard response["subtype"]?.string == "success" else { current.continuation.yield(false); return }
                 current.ack = true
+                audit?.note("ack")
                 interruptState = current
                 if current.ended { current.continuation.yield(true) }
                 return
@@ -199,8 +213,12 @@ actor ManagedClaudeFixtureController: ManagedTaskController {
         case "result":
             if var current = interruptState, current.input == pending?.clientMessageID {
                 current.ended = true
+                audit?.note("result")
                 interruptState = current
-                if current.ack { current.continuation.yield(true) }
+                if current.ack {
+                    current.continuation.yield(true)
+                    await resultGate?.hold()
+                }
             }
             pending = nil; started = false
             await ingress.emit(.init(run: run, kind: .status(.ready)))

@@ -190,9 +190,12 @@ struct SessionTaskRoundIntegrationTests {
     func managedClaudeInterruptRequiresItsExactTurnToEnd(providerStops: Bool) async throws {
         var environment = ["LOOM_FAKE_TASK_ROUNDS": "1", "LOOM_FAKE_CLAUDE_TASK_INTERRUPT": "1"]
         if !providerStops { environment["LOOM_FAKE_CHAT_IGNORE_INTERRUPT"] = "1" }
+        let audit = ManagedClaudeFixtureAudit()
+        let resultGate = ManagedClaudeFixtureInputGate()
         let context = try await SessionRuntimeTests.makeContext(extraEnvironment: environment,
             scoped: true, durableLedger: true, claudeVersion: "2.0.0", managedClaudeControllerFactory: { run, ingress in
-                ManagedClaudeFixtureController(run: run, ingress: ingress)
+                ManagedClaudeFixtureController(run: run, ingress: ingress,
+                                               resultGate: providerStops ? resultGate : nil, audit: audit)
             })
         defer { context.cleanup() }
         do {
@@ -219,13 +222,25 @@ struct SessionTaskRoundIntegrationTests {
             let before = try await coordinator.status(taskID: task, parent: claim)
             let first = try #require(before.activeRound?.id)
             #expect(before.nativeStatus == .working)
-            let reply = try Self.helper(["interrupt", "--task", task.uuidString, "--round", first.uuidString,
-                "--operation", UUID().uuidString, "--next-operation", UUID().uuidString, "--message", "-"],
-                claim: claim, socket: socket, input: "fixture-round-2")
+            let parentPlan = try #require(await context.runtime.taskRunPlans[parent.sessionID])
+            let childPlan = try #require(await context.runtime.taskRunPlans[childID])
+            try #require(await SessionRuntimeTests.waitUntil(3) {
+                parentPlan.lease.permits({ true }) != nil && childPlan.lease.permits({ true }) != nil
+            })
+            let arguments = ["interrupt", "--task", task.uuidString, "--round", first.uuidString,
+                "--operation", UUID().uuidString, "--next-operation", UUID().uuidString, "--message", "-"]
+            let pending = Task.detached { try Self.helper(arguments, claim: claim, socket: socket, input: "fixture-round-2") }
+            if providerStops {
+                #expect(await SessionRuntimeTests.waitUntil(3) { await resultGate.entered }, "audit=\(audit.summary)")
+                #expect(await SessionRuntimeTests.waitUntil(3) { await context.runtime.taskProofWaiters.count > 0 },
+                        "post-interrupt proof must wait while native ingress is held; audit=\(audit.summary)")
+                await resultGate.release()
+            }
+            let reply = try await pending.value
             let value = try #require(try JSONSerialization.jsonObject(with: Data(reply.1.utf8)) as? [String: Any])
             let delivery = (value["receipt"] as? [String: Any])?["delivery"] as? String
             #expect(reply.0 == 0 && delivery == (providerStops ? "verified" : "unverified"),
-                    "providerStops=\(providerStops), exit=\(reply.0), delivery=\(delivery ?? "nil")")
+                    "providerStops=\(providerStops), exit=\(reply.0), delivery=\(delivery ?? "nil"), audit=\(audit.summary)")
             if providerStops {
                 let result = try await Self.waitForEvent(task: task, coordinator: coordinator, claim: claim, socket: socket, cursor: 0)
                 #expect(result.0 != first && result.1 == "fixture-result: fixture-round-2")
@@ -240,7 +255,10 @@ struct SessionTaskRoundIntegrationTests {
             #expect(stale.delivery == .alreadySettled)
             #expect(try await context.runtime.stopConversation(sessionID: childID).succeeded)
             #expect(try await context.runtime.stopConversation(sessionID: parent.sessionID).succeeded)
-        } catch { Issue.record("managed Claude task interrupt fixture failed: \(error)") }
+        } catch {
+            await resultGate.release()
+            Issue.record("managed Claude task interrupt fixture failed: \(error); audit=\(audit.summary)")
+        }
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
