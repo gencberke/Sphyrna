@@ -615,6 +615,30 @@ struct RunScopeTests {
         #expect((await supervisor.shutdown()).succeeded)
     }
 
+    /// The launch handshake waits for its host (`poll` on the listener, up to the handshake deadline) on a thread of its
+    /// own, not on the cooperative pool. On the pool, more silent hosts than it has threads queued in waves: the last
+    /// launches began to wait only when the first had timed out.
+    @Test func silentHostsTimeOutTogetherOffTheCooperativePool() async throws {
+        let root = scratch.folder("loom-scope-pool")
+        let bundle = try RunScopeLauncher.assembleOwnedBundle(executable: URL(fileURLWithPath: "/usr/bin/true"), in: root)
+        let launcher = RunScopeLauncher(hostBundle: bundle, socketDirectory: root.appendingPathComponent("s"),
+                                        handshakeTimeout: 2.5)
+        let count = ProcessInfo.processInfo.activeProcessorCount + 2
+        var failures = 0
+        let elapsed = await ContinuousClock().measure {
+            failures = await withTaskGroup(of: Bool.self) { group in
+                for _ in 0..<count {
+                    group.addTask {
+                        do { _ = try await launcher.launch(); return false } catch { return error is RunScopeError }
+                    }
+                }
+                return await group.reduce(0) { $0 + ($1 ? 1 : 0) }
+            }
+        }
+        #expect(failures == count)
+        #expect(elapsed < .seconds(3.75), "\(count) launches whose hosts never connect (2.5 s each) took \(elapsed): they queued for pool threads")
+    }
+
     /// SR1-F6: a scope with a live run cannot be released; after the run's own
     /// stop the scope is gone.
     @Test func sharedScopeReleaseWaitsForItsRuns() async throws {

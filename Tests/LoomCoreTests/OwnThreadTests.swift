@@ -16,6 +16,14 @@ struct OwnThreadTests {
         let watchdogFired = Mutex(false)
     }
 
+    /// The work's thread runs at the quality of service the caller gives, `.userInitiated` unless it says otherwise.
+    @Test func theWorkRunsAtTheGivenQualityOfService() async throws {
+        let standard = try await onOwnThread("loom.test.qos-default") { Thread.current.qualityOfService }
+        let utility = try await onOwnThread("loom.test.qos-utility", qualityOfService: .utility) { Thread.current.qualityOfService }
+        #expect(standard == .userInitiated)
+        #expect(utility == .utility)
+    }
+
     @Test func blockingWorkOnItsOwnThreadsLeavesTheCooperativePoolFree() async throws {
         let blocked = 2 * ProcessInfo.processInfo.activeProcessorCount
         let gate = DispatchSemaphore(value: 0)

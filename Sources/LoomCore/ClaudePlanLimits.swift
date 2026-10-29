@@ -280,7 +280,10 @@ public struct ClaudePlanLimitsFetcher: PlanLimitsFetching {
             workingDirectory: workingDirectory, timeout: timeout, grace: grace)
         let cancelled = CancelFlag()
         let run: LimitsRun = await withTaskCancellationHandler {
-            await Task.detached(priority: .utility) { exchange.run(cancelled: cancelled) }.value
+            // The exchange polls the child's stdout until its deadline: never on the cooperative pool (`onOwnThread`).
+            // Background work: `.utility`, as it ran before. `run` does not throw, so the fallback is never taken.
+            (try? await onOwnThread("loom.plan-limits", qualityOfService: .utility) { exchange.run(cancelled: cancelled) })
+                ?? LimitsRun(outcome: .failure(.spawnFailed))
         } onCancel: {
             cancelled.set()
         }

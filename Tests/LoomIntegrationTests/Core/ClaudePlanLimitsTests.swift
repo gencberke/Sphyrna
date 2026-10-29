@@ -148,6 +148,59 @@ struct ClaudePlanLimitsTests {
         #expect(await waitUntilGone(pid))
     }
 
+    /// The exchange waits for its child's answer (`poll` against its deadline) on a thread of its own, not on the
+    /// cooperative pool. On the pool, more silent children than it has threads queued in waves: the last asks began to wait
+    /// only when the first had timed out.
+    @Test func silentChildrenTimeOutTogetherOffTheCooperativePool() async throws {
+        let rigs = try (0..<(ProcessInfo.processInfo.activeProcessorCount + 2)).map { _ in try rig("hang", timeout: 2.5, grace: 0.1) }
+        defer { for rig in rigs { try? FileManager.default.removeItem(at: rig.root) } }
+        let fetchers = rigs.map(\.fetcher)
+        let elapsed = await ContinuousClock().measure {
+            await withTaskGroup(of: Void.self) { group in
+                for fetcher in fetchers { group.addTask { _ = await fetcher.fetch() } }
+            }
+        }
+        #expect(rigs.allSatisfy { $0.fetcher.lastFailure?.category == .timedOut })
+        #expect(elapsed < .seconds(3.75), "\(rigs.count) asks whose children never answer (2.5 s each) took \(elapsed): they queued for pool threads")
+    }
+
+    /// The exchange is background work: its thread runs at `.utility` (base priority 20), not at `onOwnThread`'s default
+    /// `.userInitiated` (31 in a test run). Read from the kernel's view of the live thread, by its name.
+    @Test func theExchangeThreadRunsAtUtility() async throws {
+        let rig = try rig("hang", timeout: 3, grace: 0.1)
+        defer { try? FileManager.default.removeItem(at: rig.root) }
+        let fetch = Task { await rig.fetcher.fetch() }
+        let priority = await waitFor("the loom.plan-limits thread", within: .seconds(3),
+                                     observe: { Self.basePriority(ofThreadNamed: "loom.plan-limits") }, until: { $0 != nil })
+        _ = await fetch.value
+        #expect(priority == 20, "the exchange's thread has base priority \(String(describing: priority)); .utility is 20")
+    }
+
+    /// The base scheduling priority of this process's thread named `name`, nil when there is none.
+    private static func basePriority(ofThreadNamed name: String) -> Int32? {
+        var threads: thread_act_array_t?
+        var count: mach_msg_type_number_t = 0
+        guard task_threads(mach_task_self_, &threads, &count) == KERN_SUCCESS, let threads else { return nil }
+        defer {
+            for index in 0..<Int(count) { mach_port_deallocate(mach_task_self_, threads[index]) }
+            vm_deallocate(mach_task_self_, vm_address_t(UInt(bitPattern: threads)),
+                          vm_size_t(Int(count) * MemoryLayout<thread_t>.stride))
+        }
+        for index in 0..<Int(count) {
+            var info = thread_extended_info_data_t()
+            var size = mach_msg_type_number_t(MemoryLayout<thread_extended_info_data_t>.size / MemoryLayout<natural_t>.size)
+            let read = withUnsafeMutablePointer(to: &info) {
+                $0.withMemoryRebound(to: integer_t.self, capacity: Int(size)) {
+                    thread_info(threads[index], thread_flavor_t(THREAD_EXTENDED_INFO), $0, &size)
+                }
+            }
+            guard read == KERN_SUCCESS else { continue }
+            let threadName = withUnsafeBytes(of: info.pth_name) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+            if threadName == name { return info.pth_priority }
+        }
+        return nil
+    }
+
     @Test func aChildThatKeepsRunningAfterItsAnswerIsTerminated() async throws {
         let rig = try rig("stubborn", grace: 0.1)
         defer { try? FileManager.default.removeItem(at: rig.root) }
