@@ -177,6 +177,24 @@ public struct SessionTaskStatus: Sendable {
 public struct SessionTaskInputIntent: Sendable {
     public let task: SessionTaskProjection
     public let round: SessionTaskRound
+    let lease: SessionTaskInputLease
+
+    /// The pending round's authority is checked around the actual input write.
+    public func attemptDelivery(_ admit: () -> Bool) -> Bool { lease.attempt(admit) }
+}
+
+final class SessionTaskInputLease: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+    func attempt(_ admit: () -> Bool) -> Bool { lock.withLock { !cancelled && admit() } }
+    func cancel() { lock.withLock { cancelled = true } }
+    func cancelIfChanged(_ mutation: () throws -> Bool) rethrows -> Bool {
+        try lock.withLock {
+            let changed = try mutation()
+            if changed { cancelled = true }
+            return changed
+        }
+    }
 }
 
 /// A nudge carries only a task pointer and count. Payloads are read explicitly

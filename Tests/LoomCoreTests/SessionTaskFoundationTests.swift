@@ -47,6 +47,10 @@ actor TaskFakeHost: SessionTaskHost {
     var pauseSubmit = false
     var submitEntered = false
     var submitContinuation: CheckedContinuation<Void, Never>?
+    var pauseBeforeInput = false
+    var beforeInputEntered = false
+    var beforeInputContinuation: CheckedContinuation<Void, Never>?
+    private var inputEffects = 0
     var returnedBinding: SessionTaskBinding?
     var pauseWake = false
     var wakeEntered = false
@@ -97,6 +101,11 @@ actor TaskFakeHost: SessionTaskHost {
             }
             return .started(binding: returnedBinding ?? child)
         }
+        if pauseBeforeInput {
+            beforeInputEntered = true
+            await withCheckedContinuation { beforeInputContinuation = $0 }
+        }
+        guard intent.attemptDelivery({ inputEffects += 1; return true }) else { return .deferred }
         native = .working
         let nativeTurn = proofKind == .nativeTurn ? "provider-turn-\(UUID().uuidString)" : nil
         let execution: SessionTaskExecutionReference
@@ -198,6 +207,10 @@ actor TaskFakeHost: SessionTaskHost {
     func holdSubmit() { pauseSubmit = true }
     func hasEnteredSubmit() -> Bool { submitEntered }
     func releaseSubmit() { pauseSubmit = false; submitContinuation?.resume(); submitContinuation = nil }
+    func holdBeforeInput() { pauseBeforeInput = true }
+    func hasEnteredBeforeInput() -> Bool { beforeInputEntered }
+    func releaseBeforeInput() { pauseBeforeInput = false; beforeInputContinuation?.resume(); beforeInputContinuation = nil }
+    func actualInputEffects() -> Int { inputEffects }
     func hasEnteredInterrupt() -> Bool { interruptEntered }
     func releaseInterrupt() { pauseInterrupt = false; interruptContinuation?.resume(); interruptContinuation = nil }
     func setInterruptEffectProbe(_ effect: @escaping @Sendable () -> Bool) { interruptEffectProbe = effect }
@@ -238,11 +251,12 @@ struct TaskFixture {
     let taskID: UUID
     let childID: UUID
 
-    static func make(parentHarness: HarnessID = .claude, childHarness: HarnessID = .codex) async throws -> Self {
+    static func make(parentHarness: HarnessID = .claude, childHarness: HarnessID = .codex,
+                     recoveryLayout: Bool = false) async throws -> Self {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("task-foundation-\(UUID())")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
-        let url = root.appendingPathComponent("tasks.sqlite")
+        let url = recoveryLayout ? root.appendingPathComponent("session-tasks/tasks.sqlite3") : root.appendingPathComponent("tasks.sqlite")
         let parent = SessionTaskBinding(sessionID: UUID(), nativeSessionID: "parent-\(parentHarness.rawValue)",
                                         managedRunID: UUID(), generation: UUID())
         let child = SessionTaskBinding(sessionID: UUID(), nativeSessionID: "child-\(childHarness.rawValue)",
@@ -275,6 +289,20 @@ struct TaskFixture {
 
 @Suite(.serialized)
 struct SessionTaskFoundationTests {
+    @Test func stopWinsBeforeTheExactRoundInputBoundary() async throws {
+        let f = try await TaskFixture.make()
+        defer { f.clean() }
+        await f.host.holdBeforeInput()
+        _ = try await f.input("first")
+        let delivery = Task { try await f.coordinator.deliverPending(taskID: f.taskID) }
+        #expect(await SessionRuntimeTests.waitUntil(2) { await f.host.hasEnteredBeforeInput() })
+        let stop = try await f.coordinator.stopChild(taskID: f.taskID, parent: f.parent, operationID: UUID())
+        #expect(stop.delivery == .verified)
+        await f.host.releaseBeforeInput()
+        #expect(try await delivery.value.delivery == .cancelled)
+        #expect(await f.host.actualInputEffects() == 0)
+    }
+
     @Test func taskEventCapacityKeepsReceiptsAndAllowsStop() async throws {
         let f = try await TaskFixture.make()
         defer { f.clean() }

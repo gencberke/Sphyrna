@@ -16,6 +16,7 @@ public actor SessionTaskCoordinator {
     private var waiters: [UUID: Waiter] = [:]
     private var wakeLeases: [UUID: SessionTaskWakeLease] = [:]
     private var interruptLeases: [UUID: SessionTaskInterruptLease] = [:]
+    private var inputLeases: [UUID: SessionTaskInputLease] = [:]
     private var deletionFences: Set<UUID> = []
     private var deletionsInProgress: Set<UUID> = []
     private var activeCreations: [UUID: Int] = [:]
@@ -33,6 +34,22 @@ public actor SessionTaskCoordinator {
     public static func open(url: URL, host: any SessionTaskHost,
                             now: @escaping @Sendable () -> Date = { Date() }) async throws -> SessionTaskCoordinator {
         try await Task.detached { try SessionTaskCoordinator(url: url, host: host, now: now) }.value
+    }
+
+    func prepareManagedScope(_ binding: ManagedTaskScopeBinding) throws {
+        try store.transaction { try store.prepareManagedScope(binding) }
+    }
+
+    func recordManagedScopeStopped(_ binding: ManagedTaskScopeBinding) throws {
+        try store.transaction { try store.verifyManagedScopeStopped(binding) }
+    }
+
+    func managedScopeStopped(_ binding: ManagedTaskScopeBinding) throws -> Bool {
+        try store.managedScopeStopped(binding)
+    }
+
+    func managedChildStopped(taskID: UUID, sessionID: UUID, binding: SessionTaskBinding?) throws -> Bool {
+        try store.managedChildStopped(taskID: taskID, sessionID: sessionID, binding: binding)
     }
 
     /// Called by the app only after an explicit delegation approval. The host
@@ -193,7 +210,10 @@ public actor SessionTaskCoordinator {
         let (initialTask, initialRound, initialOperation, shouldSubmit) = prepared
         guard shouldSubmit else { return initialOperation.receipt }
         changed(taskID)
-        let outcome = await host.submitIfReady(SessionTaskInputIntent(task: initialTask, round: initialRound))
+        let lease = SessionTaskInputLease()
+        inputLeases[taskID] = lease
+        let outcome = await host.submitIfReady(SessionTaskInputIntent(task: initialTask, round: initialRound, lease: lease))
+        if inputLeases[taskID] === lease { inputLeases[taskID] = nil }
         let receipt = try store.transaction {
             guard var task = try store.task(taskID), var round = try store.round(initialRound.id),
                   var operation = try store.operation(initialRound.operationID) else { throw SessionTaskError.notFound }
@@ -567,6 +587,7 @@ public actor SessionTaskCoordinator {
             try requireGrant(current, remaining: current.childInputsUsed < current.childInputLimit)
             guard current.pendingRoundID == nil, candidate.binding != nil else { throw SessionTaskError.pendingInput }
             guard try store.operation(nextOperationID) == nil else { throw SessionTaskError.conflictingOperation }
+            inputLeases[taskID]?.cancel()
             wakeLeases[taskID]?.cancel()
         }
         let interruptLease = SessionTaskInterruptLease()
@@ -635,6 +656,7 @@ public actor SessionTaskCoordinator {
         // cancel the live wake admission before beginning the stop transaction.
         _ = try authorizedTask(taskID, parent: principal, allowRevoked: true)
         if let prior = try sameOperation(operationID, fingerprint: fingerprint) { return prior }
+        inputLeases[taskID]?.cancel()
         wakeLeases[taskID]?.cancel()
         interruptLeases[taskID]?.cancel()
         let prepared: (SessionTaskReceipt, SessionTaskBinding?, Bool, Int64) = try store.transaction {
@@ -708,8 +730,12 @@ public actor SessionTaskCoordinator {
             if let lease = self.wakeLeases[taskID] { return try lease.cancelIfChanged(mutation) }
             return try mutation()
         }
-        if let lease = interruptLeases[taskID] { _ = try lease.cancelIfChanged(fencedWake) }
-        else { _ = try fencedWake() }
+        let fencedInput = {
+            if let lease = self.inputLeases[taskID] { return try lease.cancelIfChanged(fencedWake) }
+            return try fencedWake()
+        }
+        if let lease = interruptLeases[taskID] { _ = try lease.cancelIfChanged(fencedInput) }
+        else { _ = try fencedInput() }
         changed(taskID)
     }
 
@@ -924,6 +950,7 @@ public actor SessionTaskCoordinator {
     }
 
     private func stopOwnedChildForDeletion(_ taskID: UUID) async throws {
+        inputLeases[taskID]?.cancel()
         wakeLeases[taskID]?.cancel()
         interruptLeases[taskID]?.cancel()
         let prepared: (SessionTaskBinding?, UUID, Bool, Int64)? = try store.transaction {

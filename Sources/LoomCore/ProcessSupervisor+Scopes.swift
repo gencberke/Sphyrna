@@ -15,20 +15,29 @@ extension ProcessSupervisor {
         let live = Set(liveScopes.keys)
         let boot = ProcessTable.bootSessionID()
         for record in ledger.scopes ?? [] where !live.contains(record.coalitionID) {
+            if !(ledger.managedTaskScopes ?? []).filter({ $0.scope == record }).isEmpty,
+               (boot == nil || boot?.isEmpty == true || record.bootSessionID.isEmpty) {
+                errors.append("Managed task scope boot identity is unavailable")
+                continue
+            }
             if record.bootSessionID == boot {
                 let deadline = ProcessInfo.processInfo.systemUptime + 10
                 var members: [RunScopeMember] = []
+                var membershipVerified = true
                 repeat {
                     do { members = try RunScopeTable.members(coalitionID: record.coalitionID).filter { !$0.zombie } }
-                    catch { errors.append(String(describing: error)); break }
+                    catch { membershipVerified = false; errors.append(String(describing: error)); break }
                     if members.isEmpty { break }
                     try? await Task.sleep(for: .milliseconds(20))
                 } while ProcessInfo.processInfo.systemUptime < deadline
+                guard membershipVerified else { continue }
                 guard members.isEmpty else {
                     errors.append("Recovered run scope \(record.coalitionID) is not empty: \(members.count) process(es)")
                     continue
                 }
             }
+            let receipts = await persistManagedScopeStops(record)
+            guard receipts.isEmpty else { errors += receipts; continue }
             ledger.remove(scope: record)
         }
         do { try persistLedger() } catch { errors.append(String(describing: error)) }
@@ -38,6 +47,42 @@ extension ProcessSupervisor {
     /// True when runs start in LaunchServices run scopes (the app); false in
     /// narrowed test supervisors, where `openScope` is unavailable.
     public nonisolated var runScopesEnabled: Bool { scopeLauncherConfigured }
+
+    func setManagedScopeReceiptWriter(_ writer: @escaping @Sendable (ManagedTaskScopeBinding) async throws -> Void) {
+        managedScopeReceiptWriter = writer
+    }
+
+    /// Persist the exact task/run/scope association before any provider spawn.
+    /// A managed run is unavailable without a durable ownership ledger.
+    func registerManagedScope(_ binding: ManagedTaskScopeBinding, scope: RunScope) throws {
+        guard !stopping, ledgerURL != nil, binding.ownerRunID == ownershipRunID,
+              binding.scope == scope.record, liveScopes[scope.coalitionID] === scope,
+              !releasingScopes.contains(scope.coalitionID), (scopeRuns[scope.coalitionID] ?? []).isEmpty,
+              let session = sessions[binding.sessionID], session.currentRun == nil else { throw SessionTaskError.unverified }
+        let before = ledger
+        do {
+            try ledger.register(managedTask: binding)
+            try persistLedger()
+        } catch {
+            ledger = before
+            throw error
+        }
+    }
+
+    func managedScopeIsOpen(_ binding: ManagedTaskScopeBinding, scope: RunScope) -> Bool {
+        !stopping && liveScopes[scope.coalitionID] === scope && !releasingScopes.contains(scope.coalitionID) &&
+            (ledger.managedTaskScopes ?? []).contains(binding) && (scopeRuns[scope.coalitionID] ?? []).isEmpty
+    }
+
+    private func persistManagedScopeStops(_ scope: RunScopeRecord) async -> [String] {
+        let bindings = (ledger.managedTaskScopes ?? []).filter { $0.scope == scope }
+        guard !bindings.isEmpty else { return [] }
+        guard let writer = managedScopeReceiptWriter else { return ["Managed task stop receipt writer is unavailable"] }
+        do {
+            for binding in bindings { try await writer(binding) }
+            return []
+        } catch { return ["Managed task stop receipt could not be saved"] }
+    }
 
     /// Opens a run scope and records it durably before anything is spawned in
     /// it. Codex uses one scope for its per-session server and TUI.
@@ -80,6 +125,8 @@ extension ProcessSupervisor {
             LoomLog.error(.scope, key: "release-\(scope.coalitionID)", "Run scope \(scope.coalitionID) could not be released (\(errors.count) error(s))")
             return errors
         }
+        let receipts = await persistManagedScopeStops(scope.record)
+        guard receipts.isEmpty else { return receipts }
         LoomLog.debug(.scope, "Run scope \(scope.coalitionID) released")
         liveScopes[scope.coalitionID] = nil
         scopeRuns[scope.coalitionID] = nil

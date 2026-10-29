@@ -25,6 +25,10 @@ final class SessionTaskStore {
         let sequence: Int64
         let event: SessionTaskEvent
     }
+    private struct StoredManagedScope: Codable {
+        let binding: ManagedTaskScopeBinding
+        var verifiedStopped: Bool
+    }
 
     private let db: OpaquePointer
     private let encoder: JSONEncoder
@@ -95,6 +99,11 @@ final class SessionTaskStore {
             // Version-one stores created before this index need it as well:
             // deleting a task cascades to operations by task, not by id.
             try exec("CREATE INDEX IF NOT EXISTS operations_task ON operations(task)")
+            try exec("""
+                CREATE TABLE IF NOT EXISTS managed_scopes(run TEXT PRIMARY KEY,
+                  task TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, body TEXT NOT NULL)
+                """)
+            try exec("CREATE INDEX IF NOT EXISTS managed_scopes_task ON managed_scopes(task)")
             guard try scalarText("PRAGMA quick_check") == "ok",
                   try scalarText("PRAGMA journal_mode = WAL").lowercased() == "wal" else { throw SessionTaskError.storage }
             try exec("PRAGMA synchronous = FULL")
@@ -134,6 +143,56 @@ final class SessionTaskStore {
 
     func childExists(_ id: UUID) throws -> Bool {
         try exists("SELECT 1 FROM tasks WHERE child=? LIMIT 1", [id.uuidString])
+    }
+
+    func prepareManagedScope(_ binding: ManagedTaskScopeBinding) throws {
+        guard let task = try task(binding.taskID), task.childSessionID == binding.sessionID,
+              task.lifecycle == .active else { throw SessionTaskError.staleBinding }
+        try saveManagedScope(binding, verifiedStopped: false)
+    }
+
+    /// Only a supervisor/recovery caller that verified the exact scope empty
+    /// invokes this. It can fill the pre-spawn crash window before prepare.
+    func verifyManagedScopeStopped(_ binding: ManagedTaskScopeBinding) throws {
+        guard let task = try task(binding.taskID), task.childSessionID == binding.sessionID else {
+            throw SessionTaskError.staleBinding
+        }
+        try saveManagedScope(binding, verifiedStopped: true)
+    }
+
+    func managedScopeStopped(_ binding: ManagedTaskScopeBinding) throws -> Bool {
+        guard let stored = try get("SELECT body FROM managed_scopes WHERE run=?", [binding.runID.uuidString],
+                                   as: StoredManagedScope.self) else { return false }
+        return stored.binding == binding && stored.verifiedStopped
+    }
+
+    func managedChildStopped(taskID: UUID, sessionID: UUID, binding: SessionTaskBinding?) throws -> Bool {
+        let rows = try list("SELECT body FROM managed_scopes WHERE task=? LIMIT 17", [taskID.uuidString],
+                            as: StoredManagedScope.self)
+        guard !rows.isEmpty, rows.count <= 16, rows.allSatisfy({
+            $0.binding.taskID == taskID && $0.binding.sessionID == sessionID && $0.verifiedStopped
+        }) else { return false }
+        guard let binding else { return true }
+        return binding.sessionID == sessionID && rows.contains {
+            $0.binding.runID == binding.managedRunID && $0.binding.generation == binding.generation
+        }
+    }
+
+    private func saveManagedScope(_ binding: ManagedTaskScopeBinding, verifiedStopped: Bool) throws {
+        if var stored = try get("SELECT body FROM managed_scopes WHERE run=?", [binding.runID.uuidString],
+                                as: StoredManagedScope.self) {
+            guard stored.binding == binding else { throw SessionTaskError.conflictingOperation }
+            if verifiedStopped && !stored.verifiedStopped {
+                stored.verifiedStopped = true
+                try run("UPDATE managed_scopes SET body=? WHERE run=?",
+                        [try json(stored, limit: Self.maximumOperationBytes), binding.runID.uuidString])
+            }
+            return
+        }
+        try requireRoom("managed_scopes", taskID: binding.taskID, maximum: 16)
+        let stored = StoredManagedScope(binding: binding, verifiedStopped: verifiedStopped)
+        try run("INSERT INTO managed_scopes(run,task,body) VALUES(?,?,?)", [binding.runID.uuidString,
+            binding.taskID.uuidString, try json(stored, limit: Self.maximumOperationBytes)])
     }
 
     func taskForChild(_ id: UUID) throws -> SessionTaskProjection? {

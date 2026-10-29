@@ -47,6 +47,7 @@ public actor ProcessSupervisor {
     /// released when this reaches zero.
     var environmentScopeJobs: [UInt64: Int] = [:]
     var scopeRuns: [UInt64: Set<UUID>] = [:]
+    var managedScopeReceiptWriter: (@Sendable (ManagedTaskScopeBinding) async throws -> Void)?
     let catalog: SessionCatalog?
     var sessions: [UUID: ManagedSession] = [:]
     /// Provider conversation ids (lowercase) of conversations deleted in this process.
@@ -204,6 +205,10 @@ public actor ProcessSupervisor {
 
     public func lastStopReport(sessionID: UUID) -> SessionStopReport? {
         lastStopReports[sessionID]
+    }
+
+    func lastStopReport(runID: UUID) -> SessionStopReport? {
+        lastStopReports.values.first { $0.runID == runID }
     }
 
     /// Conversations that currently own a live run.

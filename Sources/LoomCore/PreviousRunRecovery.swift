@@ -56,7 +56,28 @@ public enum PreviousRunRecovery {
             at: runsDirectory, includingPropertiesForKeys: [.contentModificationDateKey]
         ) else { return report }
         let boot = ProcessTable.bootSessionID()
-        let live = Set((try? ProcessTable.snapshot())?.map(\.identity) ?? [])
+        let live: Set<ProcessIdentity>
+        do { live = Set(try ProcessTable.snapshot().map(\.identity)) }
+        catch {
+            report.leftovers.append("Previous run owners could not be verified")
+            return report
+        }
+        let taskDatabase = runsDirectory.deletingLastPathComponent().appendingPathComponent("session-tasks/tasks.sqlite3")
+        var taskStore: SessionTaskStore?
+        var taskStoreAttempted = false
+        func persistManagedStop(_ binding: ManagedTaskScopeBinding) -> Bool {
+            if !taskStoreAttempted {
+                taskStoreAttempted = true
+                if fileManager.fileExists(atPath: taskDatabase.path) {
+                    taskStore = try? SessionTaskStore(url: taskDatabase)
+                }
+            }
+            guard let taskStore else { return false }
+            do {
+                try taskStore.transaction { try taskStore.verifyManagedScopeStopped(binding) }
+                return true
+            } catch { return false }
+        }
         for directory in entries where directory.standardizedFileURL != current?.standardizedFileURL
             && directory.lastPathComponent != quarantineName {
             let ownerURL = directory.appendingPathComponent("owner.json")
@@ -72,14 +93,40 @@ public enum PreviousRunRecovery {
             var clean = true
             var unreadableLedger = false
             if let ledger = try? OwnershipLedger.load(from: ledgerURL) {
-                for scope in ledger.scopes ?? [] where scope.bootSessionID == boot {
-                    switch drain(scope.coalitionID, timeout: scopeTimeout) {
-                    case let .empty(stopped):
-                        report.verifiedScopes += 1
-                        report.stoppedProcesses += stopped
-                    case let .notEmpty(detail):
-                        clean = false
-                        report.leftovers.append("Previous run scope \(scope.coalitionID): \(detail)")
+                let scopes = ledger.scopes ?? []
+                let managed = ledger.managedTaskScopes ?? []
+                if managed.contains(where: { $0.ownerRunID != ledger.runID || !scopes.contains($0.scope) }) {
+                    clean = false
+                    report.leftovers.append("Previous managed task scope identity is invalid")
+                }
+                for scope in scopes {
+                    let bindings = managed.filter { $0.scope == scope && $0.ownerRunID == ledger.runID }
+                    var verified = false
+                    if scope.bootSessionID == boot, boot != nil {
+                        switch drain(scope.coalitionID, timeout: scopeTimeout) {
+                        case let .empty(stopped):
+                            report.verifiedScopes += 1
+                            report.stoppedProcesses += stopped
+                            verified = true
+                        case let .notEmpty(detail):
+                            clean = false
+                            report.leftovers.append("Previous run scope \(scope.coalitionID): \(detail)")
+                        }
+                    } else if !bindings.isEmpty {
+                        if let boot, !boot.isEmpty, !scope.bootSessionID.isEmpty {
+                            // A scope from another boot cannot still contain work.
+                            report.verifiedScopes += 1
+                            verified = true
+                        } else {
+                            clean = false
+                            report.leftovers.append("Previous managed task scope boot identity is unavailable")
+                        }
+                    }
+                    if verified {
+                        for binding in bindings where !persistManagedStop(binding) {
+                            clean = false
+                            report.leftovers.append("Previous managed task stop receipt could not be saved")
+                        }
                     }
                 }
             } else if fileManager.fileExists(atPath: ledgerURL.path) {

@@ -10,6 +10,9 @@ public struct OwnershipLedger: Codable, Equatable, Sendable {
     /// Run scopes recorded before any process was spawned into them, so a
     /// later launch can verify and clean them within the same boot.
     public private(set) var scopes: [RunScopeRecord]? = []
+    /// Managed-task scope identities, recorded before their provider spawn.
+    /// The matching durable stop receipt must exist before a scope is removed.
+    private(set) var managedTaskScopes: [ManagedTaskScopeBinding]? = []
 
     private struct Metadata: Sendable {
         let matchesRunID: Bool
@@ -18,14 +21,14 @@ public struct OwnershipLedger: Codable, Equatable, Sendable {
     private var metadataCache: [ProcessIdentity: Metadata] = [:]
 
     private enum CodingKeys: String, CodingKey {
-        case runID, observationIssue, outsideOwnership, sessionLeaders, descendants, scopes
+        case runID, observationIssue, outsideOwnership, sessionLeaders, descendants, scopes, managedTaskScopes
     }
 
     public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.runID == rhs.runID
             && lhs.observationIssue == rhs.observationIssue && lhs.outsideOwnership == rhs.outsideOwnership
             && lhs.sessionLeaders == rhs.sessionLeaders && lhs.descendants == rhs.descendants
-            && lhs.scopes == rhs.scopes
+            && lhs.scopes == rhs.scopes && (lhs.managedTaskScopes ?? []) == (rhs.managedTaskScopes ?? [])
     }
 
     /// The app's own coalition is never an ownership seed (Apple service
@@ -42,7 +45,21 @@ public struct OwnershipLedger: Codable, Equatable, Sendable {
         scopes = current
     }
 
-    mutating func remove(scope: RunScopeRecord) { scopes = (scopes ?? []).filter { $0 != scope } }
+    mutating func register(managedTask binding: ManagedTaskScopeBinding) throws {
+        guard binding.ownerRunID == runID, !binding.scope.bootSessionID.isEmpty,
+              (scopes ?? []).contains(binding.scope) else { throw SessionTaskError.unverified }
+        var current = managedTaskScopes ?? []
+        guard !current.contains(where: { ($0.scope == binding.scope || $0.runID == binding.runID) && $0 != binding }) else {
+            throw SessionTaskError.conflictingOperation
+        }
+        if !current.contains(binding) { current.append(binding) }
+        managedTaskScopes = current
+    }
+
+    mutating func remove(scope: RunScopeRecord) {
+        scopes = (scopes ?? []).filter { $0 != scope }
+        managedTaskScopes = (managedTaskScopes ?? []).filter { $0.scope != scope }
+    }
 
     /// Scopes recorded in this boot; coalition IDs from another boot mean nothing.
     func currentBootScopes() -> [RunScopeRecord] {
