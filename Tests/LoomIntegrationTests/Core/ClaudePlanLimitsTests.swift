@@ -148,6 +148,22 @@ struct ClaudePlanLimitsTests {
         #expect(await waitUntilGone(pid))
     }
 
+    /// The exchange waits for its child's answer (`poll` against its deadline) on a thread of its own, not on the
+    /// cooperative pool. On the pool, more silent children than it has threads queued in waves: the last asks began to wait
+    /// only when the first had timed out.
+    @Test func silentChildrenTimeOutTogetherOffTheCooperativePool() async throws {
+        let rigs = try (0..<(ProcessInfo.processInfo.activeProcessorCount + 2)).map { _ in try rig("hang", timeout: 2.5, grace: 0.1) }
+        defer { for rig in rigs { try? FileManager.default.removeItem(at: rig.root) } }
+        let fetchers = rigs.map(\.fetcher)
+        let elapsed = await ContinuousClock().measure {
+            await withTaskGroup(of: Void.self) { group in
+                for fetcher in fetchers { group.addTask { _ = await fetcher.fetch() } }
+            }
+        }
+        #expect(rigs.allSatisfy { $0.fetcher.lastFailure?.category == .timedOut })
+        #expect(elapsed < .seconds(3.75), "\(rigs.count) asks whose children never answer (2.5 s each) took \(elapsed): they queued for pool threads")
+    }
+
     @Test func aChildThatKeepsRunningAfterItsAnswerIsTerminated() async throws {
         let rig = try rig("stubborn", grace: 0.1)
         defer { try? FileManager.default.removeItem(at: rig.root) }
