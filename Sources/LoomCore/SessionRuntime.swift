@@ -197,6 +197,8 @@ public struct SessionOpening: Equatable, Sendable {
     /// What the agent asked for with `open --model`, `--effort` and `--mode` (Q3, D-103); all nil leaves Loom's defaults.
     public let choices: HarnessLaunchChoices
     public let modeFromUserDefault: Bool
+    /// Created only from a previously approved in-process task relationship.
+    let approvedTask: (taskID: UUID, childID: UUID)?
 
     public init(title: String, firstMessage: String, openedBy: UUID,
                 choices: HarnessLaunchChoices = HarnessLaunchChoices(), modeFromUserDefault: Bool = false) {
@@ -205,6 +207,22 @@ public struct SessionOpening: Equatable, Sendable {
         self.openedBy = openedBy
         self.choices = choices
         self.modeFromUserDefault = modeFromUserDefault
+        self.approvedTask = nil
+    }
+
+    init(approvedTask task: SessionTaskProjection, firstMessage: String, modeFromUserDefault: Bool = false) {
+        self.title = task.childName
+        self.firstMessage = firstMessage
+        self.openedBy = task.parentSessionID
+        self.choices = task.requestedChoices
+        self.modeFromUserDefault = modeFromUserDefault
+        self.approvedTask = (task.id, task.childSessionID)
+    }
+
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.title == rhs.title && lhs.firstMessage == rhs.firstMessage && lhs.openedBy == rhs.openedBy &&
+        lhs.choices == rhs.choices && lhs.modeFromUserDefault == rhs.modeFromUserDefault &&
+        lhs.approvedTask?.taskID == rhs.approvedTask?.taskID && lhs.approvedTask?.childID == rhs.approvedTask?.childID
     }
 
     public init(title: String, firstMessage: String, openedBy: UUID, choices: ClaudeLaunchChoices) {
@@ -330,6 +348,8 @@ public actor SessionRuntime {
     var taskSocketPath: String?
     var taskRunPlans: [UUID: SessionTaskRunPlan] = [:]
     var taskExpectedInputs: [UUID: SessionTaskExpectedInput] = [:]
+    var taskChildReservations: [UUID: SessionTaskChildReservation] = [:]
+    var startingTaskChildren: Set<UUID> = []
     let taskIngress = SessionTaskIngressRegistry()
 
     private var toolchains: [ManagedSession.Provider: ProviderToolchain] = [:]
@@ -487,7 +507,25 @@ public actor SessionRuntime {
         guard let harness = harnesses[provider] else {
             throw SessionRuntimeError.unsupportedProvider(provider)
         }
-        let sessionID = UUID(), runID = UUID()
+        let sessionID = opening?.approvedTask?.childID ?? UUID(), runID = UUID()
+        if opening?.approvedTask != nil {
+            guard startingTaskChildren.insert(sessionID).inserted else { throw SessionTaskError.childAlreadyOwned }
+        }
+        defer { if opening?.approvedTask != nil { startingTaskChildren.remove(sessionID) } }
+        if let task = opening?.approvedTask {
+            guard let taskCoordinator, let projection = try await taskCoordinator.projectionForUser(taskID: task.taskID),
+                  projection.lifecycle == .active, projection.childSessionID == sessionID,
+                  projection.parentSessionID == opening?.openedBy, projection.requestedChoices == opening?.choices,
+                  let reservation = taskChildReservations[task.taskID], reservation.childID == sessionID,
+                  await authenticateTaskRun(reservation.parent) == projection.parentBinding,
+                  try await catalog.session(id: sessionID) == nil,
+                  await supervisor.session(id: sessionID) == nil,
+                  let current = taskChildReservations[task.taskID], current.childID == sessionID,
+                  await authenticateTaskRun(current.parent) == projection.parentBinding else { throw SessionTaskError.unauthorized }
+            guard !shuttingDown, taskChildReservations[task.taskID]?.childID == sessionID else {
+                throw SessionTaskError.unauthorized
+            }
+        }
         beginTaskRun(sessionID: sessionID, runID: runID)
         do {
             return try await withNewStart(provider: provider, projectID: projectID, opening: opening, draft: draft) {
@@ -768,6 +806,7 @@ public actor SessionRuntime {
         }
         taskRunPlans.removeAll()
         taskExpectedInputs.removeAll()
+        taskChildReservations.removeAll()
         taskReadFence?.stop()
         taskReadFence = nil
         await claudeLimitObserver?.cancelAll()

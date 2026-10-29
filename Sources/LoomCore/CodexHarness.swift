@@ -26,7 +26,8 @@ struct CodexHarness: Harness {
             do {
                 profile = try runtime.codexNewProfile(
                     toolchain: start.toolchain, sessionID: start.sessionID, directory: prepared.folder, server: server,
-                    choices: effective, firstMessage: start.draft?.firstMessage ?? start.opening?.firstMessage
+                    choices: effective, firstMessage: start.opening?.approvedTask == nil
+                        ? start.draft?.firstMessage ?? start.opening?.firstMessage : nil
                 )
                 try await runtime.supervisor.createSession(
                     ManagedSession(id: start.sessionID, provider: .codex, workingDirectory: prepared.folder),

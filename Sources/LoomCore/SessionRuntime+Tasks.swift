@@ -22,6 +22,33 @@ extension SessionRuntime {
         }
     }
 
+    /// The reservation is app-owned, bounded and cannot adopt an existing row.
+    func reserveTaskChild(taskID: UUID, childID: UUID, parent: SessionTaskClaim) async throws {
+        guard !shuttingDown, taskChildReservations.count < OpenSessionCoordinator.maximumEntries,
+              taskChildReservations[taskID] == nil, !taskChildReservations.values.contains(where: { $0.childID == childID }),
+              parent.sessionID != childID,
+              await authenticateTaskRun(parent) != nil,
+              try await catalog.session(id: childID) == nil,
+              await supervisor.session(id: childID) == nil else { throw SessionTaskError.unauthorized }
+        guard !shuttingDown, taskChildReservations[taskID] == nil,
+              !taskChildReservations.values.contains(where: { $0.childID == childID }),
+              await authenticateTaskRun(parent) != nil else { throw SessionTaskError.unauthorized }
+        guard !shuttingDown, taskChildReservations[taskID] == nil,
+              !taskChildReservations.values.contains(where: { $0.childID == childID }) else { throw SessionTaskError.unauthorized }
+        taskChildReservations[taskID] = SessionTaskChildReservation(parent: parent, childID: childID)
+    }
+
+    func ownsReservedTaskChild(taskID: UUID, parent: SessionTaskBinding, childID: UUID) async -> Bool {
+        guard !shuttingDown, let reservation = taskChildReservations[taskID], reservation.childID == childID,
+              await authenticateTaskRun(reservation.parent) == parent else { return false }
+        do { guard try await catalog.session(id: childID) == nil else { return false } }
+        catch { return false }
+        guard await supervisor.session(id: childID) == nil,
+              let current = taskChildReservations[taskID], current.childID == childID,
+              await authenticateTaskRun(current.parent) == parent else { return false }
+        return !shuttingDown && taskChildReservations[taskID]?.childID == childID
+    }
+
     func beginTaskRun(sessionID: UUID, runID: UUID) {
         guard taskSocketPath != nil, !shuttingDown else { return }
         if let old = taskRunPlans[sessionID] {

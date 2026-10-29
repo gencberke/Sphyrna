@@ -91,6 +91,11 @@ struct SessionTaskRunPlan: Sendable {
     }
 }
 
+struct SessionTaskChildReservation: Sendable {
+    let parent: SessionTaskClaim
+    let childID: UUID
+}
+
 struct SessionTaskExpectedInput: Sendable {
     enum Purpose: Sendable, Equatable {
         case child(taskID: UUID, roundID: UUID, operationID: UUID)
@@ -110,7 +115,9 @@ final class SessionTaskRuntimeHost: SessionTaskHost, @unchecked Sendable {
     init(runtime: SessionRuntime) { self.runtime = runtime }
 
     func authenticate(_ claim: SessionTaskClaim) async -> SessionTaskBinding? { await runtime?.authenticateTaskRun(claim) }
-    func ownsNewChild(taskID: UUID, parent: SessionTaskBinding, childID: UUID) async -> Bool { false }
+    func ownsNewChild(taskID: UUID, parent: SessionTaskBinding, childID: UUID) async -> Bool {
+        await runtime?.ownsReservedTaskChild(taskID: taskID, parent: parent, childID: childID) ?? false
+    }
     func observedChildExecution(_ target: SessionTaskRoundTarget) async -> SessionTaskExecutionReference? { nil }
     func observedWakeExecution(taskID: UUID, operationID: UUID, binding: SessionTaskBinding) async -> SessionTaskExecutionReference? { nil }
     func nativeStatus(binding: SessionTaskBinding) async -> SessionTaskNativeStatus { .unknown }
