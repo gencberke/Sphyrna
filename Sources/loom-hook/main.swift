@@ -43,7 +43,9 @@ struct LoomHook {
             exit(1)
         }
         let envelope = ClaudeHookEnvelope(
-            sessionID: sessionID, managedRunID: managedRunID, payload: payload
+            sessionID: sessionID, managedRunID: managedRunID, payload: payload,
+            taskGeneration: environment["SPHYRNA_TASK_GENERATION"].flatMap(UUID.init(uuidString:)),
+            taskCredential: environment["SPHYRNA_TASK_TOKEN"]
         )
         do {
             try ClaudeHookClient.send(

@@ -1,4 +1,5 @@
 import Darwin
+import CryptoKit
 import Foundation
 import Testing
 @testable import LoomCore
@@ -27,6 +28,17 @@ private final class HookEnvelopeCollector: @unchecked Sendable {
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct ClaudeHookTests {
+    @Test func taskPromptProofContainsOnlyABoundedNonSyntheticDigest() throws {
+        let real = try ClaudeHookEvent(payload: payload(event: "UserPromptSubmit", fields: ["prompt": "owned pointer"]))
+        #expect(real.taskPromptDigest == Data(SHA256.hash(data: Data("owned pointer".utf8))))
+        let oversized = try ClaudeHookEvent(payload: payload(event: "UserPromptSubmit",
+            fields: ["prompt": String(repeating: "x", count: SessionTaskLimits.payloadBytes + 1)]))
+        #expect(oversized.taskPromptDigest == nil)
+        let synthetic = try ClaudeHookEvent(payload: payload(event: "UserPromptSubmit",
+            fields: ["prompt": "<task-notification>fixture</task-notification>"]))
+        #expect(synthetic.promptIsSynthetic && synthetic.taskPromptDigest == nil)
+    }
+
     @Test func denialMetadataCanResolveApprovalWithoutAStopHook() async throws {
         let session = UUID(), run = UUID()
         let tracker = ClaudeHookStateTracker(sessionID: session, managedRunID: run)
@@ -87,7 +99,7 @@ struct ClaudeHookTests {
             handler: collector.append
         )
         defer { server.stop() }
-        let sessionID = UUID(), runID = UUID()
+        let sessionID = UUID(), runID = UUID(), generation = UUID()
         let input = try payload(event: "SessionStart", fields: ["source": "startup"])
         let pipe = Pipe()
         let process = Process()
@@ -98,6 +110,8 @@ struct ClaudeHookTests {
             "LOOM_HOOK_TOKEN": "helper-token",
             "LOOM_SESSION_ID": sessionID.uuidString,
             "LOOM_MANAGED_RUN_ID": runID.uuidString,
+            "SPHYRNA_TASK_GENERATION": generation.uuidString,
+            "SPHYRNA_TASK_TOKEN": "synthetic-run-secret",
         ]
         process.standardInput = pipe
         let output = Pipe()
@@ -112,6 +126,7 @@ struct ClaudeHookTests {
         let received = try #require(collector.waitForCount(1, timeout: 1).first)
         #expect(received.sessionID == sessionID)
         #expect(received.managedRunID == runID)
+        #expect(received.taskGeneration == generation && received.taskCredential == "synthetic-run-secret")
         #expect(received.payload == input)
     }
 

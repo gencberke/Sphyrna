@@ -1,4 +1,5 @@
 import Darwin
+import CryptoKit
 import Foundation
 
 public struct ClaudeHookEnvelope: Codable, Equatable, Sendable {
@@ -9,14 +10,19 @@ public struct ClaudeHookEnvelope: Codable, Equatable, Sendable {
     public let managedRunID: UUID
     public let payload: Data
     public let sentAt: Date
+    /// Optional run-local task evidence, separate from the shared hook token.
+    public let taskGeneration: UUID?
+    public let taskCredential: String?
 
     public init(sessionID: UUID, managedRunID: UUID, payload: Data,
-                sentAt: Date = Date()) {
+                sentAt: Date = Date(), taskGeneration: UUID? = nil, taskCredential: String? = nil) {
         version = Self.protocolVersion
         self.sessionID = sessionID
         self.managedRunID = managedRunID
         self.payload = payload
         self.sentAt = sentAt
+        self.taskGeneration = taskGeneration
+        self.taskCredential = taskCredential
     }
 }
 
@@ -395,6 +401,9 @@ public struct ClaudeHookEvent: Equatable, Sendable {
     /// automatic, it is not the user's use of the session and it does not start a new turn from the
     /// user's point of view.
     public let promptIsSynthetic: Bool
+    /// Digest only, for correlating an exact bounded task pointer. Raw user
+    /// prompt text is not retained by this event.
+    public let taskPromptDigest: Data?
     /// `Stop` only: what Claude lists as still running (S0: `shell` and `subagent` tasks, plus crons).
     public let work: BackgroundWork
     /// The reason this event states for the session's status, built here so that no payload text is kept
@@ -462,6 +471,10 @@ public struct ClaudeHookEvent: Equatable, Sendable {
         listsRunningWorkflow = eventName == "Stop" && BackgroundSubagentTask.listsWorkflow(object["background_tasks"])
         let prompt = eventName == "UserPromptSubmit" ? object["prompt"] as? String : nil
         promptIsSynthetic = prompt.map(Self.isSyntheticPrompt) == true
+        if let prompt, !promptIsSynthetic, prompt.utf8.count <= SessionTaskLimits.payloadBytes,
+           !prompt.utf8.contains(0) {
+            taskPromptDigest = Data(SHA256.hash(data: Data(prompt.utf8)))
+        } else { taskPromptDigest = nil }
         work = eventName == "Stop"
             ? BackgroundWork.parse(tasks: object["background_tasks"], scheduled: object["session_crons"]) : BackgroundWork()
         permissionMode = (object["permission_mode"] as? String).flatMap { Self.knownPermissionModes.contains($0) ? $0 : nil }
