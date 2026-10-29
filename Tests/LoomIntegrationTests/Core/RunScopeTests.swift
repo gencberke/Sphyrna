@@ -4,6 +4,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import LoomCore
+@testable import LoomCoreTestRigs
 import LoomTestSupport
 
 /// The temporary folders of one test: run host folders and the test child's copy. A suite instance
@@ -56,9 +57,7 @@ struct RunScopeTests {
 
     private func launcher(hostBundle: URL? = nil) throws -> RunScopeLauncher {
         let root = scratch.folder("loom-scope")
-        let bundle = try hostBundle ?? RunScopeLauncher.assembleOwnedBundle(
-            executable: productsDirectory.appendingPathComponent("loom-run-host"), in: root
-        )
+        let bundle = try hostBundle ?? SharedRunHost.bundle(for: productsDirectory.appendingPathComponent("loom-run-host"))
         return RunScopeLauncher(hostBundle: bundle,
                                 socketDirectory: root.appendingPathComponent("s"))
     }

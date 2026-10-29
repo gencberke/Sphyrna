@@ -46,9 +46,7 @@ enum SessionRuntimeRig {
             let copy = bin.appendingPathComponent("loom-fake-provider")
             try FileManager.default.copyItem(atPath: fakePath, toPath: copy.path)
             fakePath = copy.path
-            let bundle = try RunScopeLauncher.assembleOwnedBundle(
-                executable: RuntimeFixture.binaries.appendingPathComponent("loom-run-host"), in: root
-            )
+            let bundle = try SharedRunHost.bundle(for: RuntimeFixture.binaries.appendingPathComponent("loom-run-host"))
             supervisor = try await ProcessSupervisor.restoring(
                 ledgerURL: durableLedger ? root.appendingPathComponent("ledger.json") : nil, catalog: catalog,
                 scopeLauncher: RunScopeLauncher(hostBundle: bundle, socketDirectory: socketDirectory.appendingPathComponent("rs"))

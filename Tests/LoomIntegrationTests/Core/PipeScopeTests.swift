@@ -4,6 +4,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import LoomCore
+@testable import LoomCoreTestRigs
 import LoomTestSupport
 
 /// Temporary folders of one test (run host bundles, the test child's copy),
@@ -120,9 +121,7 @@ struct PipeScopeTests {
 
     private func makeSupervisor() throws -> ProcessSupervisor {
         let root = scratch.folder("loom-pipe-scope")
-        let bundle = try RunScopeLauncher.assembleOwnedBundle(
-            executable: productsDirectory.appendingPathComponent("loom-run-host"), in: root
-        )
+        let bundle = try SharedRunHost.bundle(for: productsDirectory.appendingPathComponent("loom-run-host"))
         return try ProcessSupervisor(scopeLauncher: RunScopeLauncher(
             hostBundle: bundle, socketDirectory: root.appendingPathComponent("s")
         ))
