@@ -289,6 +289,8 @@ private struct RealAcceptanceEvidence: Encodable {
     var resumedHashedSocket: String? = nil
     var resumedObservedProcessCount = 0
     var resumedObservedProcesses: [ProcessIdentity] = []
+    var resumedFrontendRepliesQueued = 0
+    var resumedTerminalByteCount = 0
     var errorPhase: String? = nil
     var errorType: String? = nil
     var terminalSignals: [String] = []
@@ -533,7 +535,22 @@ struct RealCodexDraftAcceptanceTests {
                 await phase.useResume()
                 await instance.invalidateToolchain(.codex)
                 result.phase = "resume"
-                let resumed = try await instance.resumeConversation(sessionID: launch.sessionID, outputSink: RealAcceptanceScreen())
+                let resumedScreen = RealAcceptanceScreen()
+                resumedScreen.configureFrontend(work: value.work, diagnosticOnly: false)
+                defer { resumedScreen.finish() }
+                let resumed = try await instance.resumeConversation(sessionID: launch.sessionID, outputSink: resumedScreen)
+                if frontend {
+                    resumedScreen.attach(resumed.terminal) {
+                        _ = try? await instance.stopConversation(sessionID: resumed.sessionID)
+                    }
+                    let exchanged = await Self.waitUntil(8) {
+                        resumedScreen.frontendEvidence().replies > 0 && resumedScreen.diagnostics().byteCount > 0
+                    }
+                    try requireAcceptance(exchanged, "resume-terminal-protocol")
+                    resumedScreen.identityArrived()
+                    result.resumedFrontendRepliesQueued = resumedScreen.frontendEvidence().replies
+                    result.resumedTerminalByteCount = resumedScreen.diagnostics().byteCount
+                }
                 try requireAcceptance(resumed.sessionID == launch.sessionID && resumed.runID != launch.runID, "resume-session")
                 let identityAfter = try await catalog.session(id: launch.sessionID)?.session.providerConversationID
                 try requireAcceptance(identityAfter == threadID, "resume-identity")
