@@ -220,6 +220,24 @@ public struct SessionTaskRoundTarget: Sendable {
     public let binding: SessionTaskBinding
     public let nativeTurnID: String?
     public let execution: SessionTaskExecutionReference?
+    var interruptLease: SessionTaskInterruptLease? = nil
+
+    /// Only the coordinator's currently live exact-round effect may write.
+    public func attemptInterrupt(_ admit: () -> Bool) -> Bool { interruptLease?.attempt(admit) ?? false }
+}
+
+final class SessionTaskInterruptLease: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+    func attempt(_ admit: () -> Bool) -> Bool { lock.withLock { !cancelled && admit() } }
+    func cancel() { lock.withLock { cancelled = true } }
+    func cancelIfChanged(_ mutation: () throws -> Bool) rethrows -> Bool {
+        try lock.withLock {
+            let changed = try mutation()
+            if changed { cancelled = true }
+            return changed
+        }
+    }
 }
 
 public enum SessionTaskInputEffect: Sendable {

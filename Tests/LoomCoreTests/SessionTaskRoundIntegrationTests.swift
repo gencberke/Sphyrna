@@ -201,6 +201,202 @@ struct SessionTaskRoundIntegrationTests {
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
+    @Test func reportedResultWakesACleanReadyParentWithOnlyATaskPointer() async throws {
+        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1"],
+                                                                claudeVersion: "2.0.0")
+        defer { context.cleanup() }
+        do {
+            let folder = context.root.appendingPathComponent("task-wake", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let project = try await context.catalog.addProject(path: folder.path).project
+            let parentScreen = SessionRuntimeTests.Screen()
+            let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id, outputSink: parentScreen)
+            parentScreen.attach(parent.terminal)
+            let gate = context.runtime.inputGate
+            gate.register(runID: parent.runID, queue: TerminalInputQueue(endpoint: parent.terminal, onError: { _ in }))
+            let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+            let socket = try #require(await context.runtime.taskSocketPath)
+            let coordinator = try #require(await context.runtime.taskCoordinator)
+            let task = UUID()
+            let create = try Self.helper(["create", "--task", task.uuidString, "--operation", UUID().uuidString,
+                "--name", "Fixture child", "--harness", "codex", "--message", "-"],
+                claim: claim, socket: socket, input: "fixture-round-1")
+            #expect(create.0 == 0 && create.1.contains("pending"))
+            let childScreen = SessionRuntimeTests.Screen()
+            let child = try await context.runtime.approveOpenRequest(task, outputSink: childScreen, expectedProvider: .codex,
+                onTerminalReady: { launch in
+                    childScreen.attach(launch.terminal)
+                    gate.register(runID: launch.runID, queue: TerminalInputQueue(endpoint: launch.terminal, onError: { _ in }))
+                })
+            #expect(await parentScreen.contains("Sphyrna updates:", timeout: 6))
+            #expect(try await SessionRuntimeTests.waitUntil(4) {
+                let status = try await coordinator.status(taskID: task, parent: claim)
+                return status.task.parentWakesUsed == 1 && status.task.parentWakesConsumed == 1
+            })
+            #expect(!parentScreen.snapshot.contains("fixture-result: fixture-round-1"))
+            let read = try Self.helper(["read", "--task", task.uuidString], claim: claim, socket: socket)
+            #expect(read.0 == 0 && read.1.contains("fixture-result: fixture-round-1"))
+            let final = try await coordinator.status(taskID: task, parent: claim)
+            #expect(final.task.parentWakesUsed == 1 && final.task.parentWakesConsumed == 1)
+            #expect(try await context.runtime.stopConversation(sessionID: child.sessionID).succeeded)
+            #expect(try await context.runtime.stopConversation(sessionID: parent.sessionID).succeeded)
+        } catch { Issue.record("task wake fixture failed: \(error)") }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test func manuallySubmittedParentRequestCanReceiveItsDelegatedResult() async throws {
+        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1"],
+                                                                claudeVersion: "2.0.0")
+        defer { context.cleanup() }
+        do {
+            let folder = context.root.appendingPathComponent("manual-task-wake", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let project = try await context.catalog.addProject(path: folder.path).project
+            let screen = SessionRuntimeTests.Screen(), gate = context.runtime.inputGate
+            let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id, outputSink: screen)
+            screen.attach(parent.terminal)
+            let queue = TerminalInputQueue(endpoint: parent.terminal, onError: { _ in })
+            gate.register(runID: parent.runID, queue: queue)
+            let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+            let coordinator = try #require(await context.runtime.taskCoordinator), task = UUID()
+            let line = "/fake-sphyrna-task-create \(task.uuidString) \(UUID().uuidString) codex\r"
+            #expect(queue.enqueue(Data(line.utf8)))
+            #expect(await screen.contains("FAKE-TASK-CREATE-OK"))
+            let childScreen = SessionRuntimeTests.Screen()
+            let child = try await context.runtime.approveOpenRequest(task, outputSink: childScreen, expectedProvider: .codex,
+                onTerminalReady: { launch in
+                    childScreen.attach(launch.terminal)
+                    gate.register(runID: launch.runID, queue: TerminalInputQueue(endpoint: launch.terminal, onError: { _ in }))
+                })
+            #expect(await screen.contains("Sphyrna updates:", timeout: 6))
+            #expect(try await SessionRuntimeTests.waitUntil(4) {
+                let status = try await coordinator.status(taskID: task, parent: claim)
+                return status.task.parentWakesUsed == 1 && status.task.parentWakesConsumed == 1
+            })
+            #expect(try await context.runtime.stopConversation(sessionID: child.sessionID).succeeded)
+            #expect(try await context.runtime.stopConversation(sessionID: parent.sessionID).succeeded)
+        } catch { Issue.record("manual parent task wake fixture failed: \(error)") }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test func aLiveWaitReturnsAndAcknowledgesTheResultWithoutAnotherParentInput() async throws {
+        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: [
+            "LOOM_FAKE_TASK_ROUNDS": "1", "LOOM_FAKE_TASK_WAIT_REPORT": "1"
+        ], claudeVersion: "2.0.0")
+        defer { context.cleanup() }
+        do {
+            let folder = context.root.appendingPathComponent("task-wait", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let project = try await context.catalog.addProject(path: folder.path).project
+            let screen = SessionRuntimeTests.Screen(), gate = context.runtime.inputGate
+            let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id, outputSink: screen)
+            screen.attach(parent.terminal)
+            gate.register(runID: parent.runID, queue: TerminalInputQueue(endpoint: parent.terminal, onError: { _ in }))
+            let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+            let socket = try #require(await context.runtime.taskSocketPath)
+            let coordinator = try #require(await context.runtime.taskCoordinator)
+            let task = UUID()
+            let create = try Self.helper(["create", "--task", task.uuidString, "--operation", UUID().uuidString,
+                "--name", "Fixture child", "--harness", "codex", "--message", "-"],
+                claim: claim, socket: socket, input: "fixture-round-1")
+            #expect(create.0 == 0)
+            let childScreen = SessionRuntimeTests.Screen()
+            let child = try await context.runtime.approveOpenRequest(task, outputSink: childScreen, expectedProvider: .codex,
+                onTerminalReady: { launch in
+                    childScreen.attach(launch.terminal)
+                    gate.register(runID: launch.runID, queue: TerminalInputQueue(endpoint: launch.terminal, onError: { _ in }))
+                })
+            let waiting = context.state.appendingPathComponent("task-report-waiting")
+            #expect(try await SessionRuntimeTests.waitUntil(4) { FileManager.default.fileExists(atPath: waiting.path) })
+            let revision = try await coordinator.status(taskID: task, parent: claim).task.revision
+            let waiter = Task.detached {
+                try Self.helper(["wait", "--task", task.uuidString, "--revision", String(revision), "--seconds", "6"],
+                                claim: claim, socket: socket)
+            }
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.taskReadFence?.hasReader(taskID: task) == true })
+            try "release".write(to: context.state.appendingPathComponent("task-report-release"), atomically: true, encoding: .utf8)
+            let answer = try await waiter.value
+            #expect(answer.0 == 0 && answer.1.contains("fixture-result: fixture-round-1"))
+            let status = try await coordinator.status(taskID: task, parent: claim)
+            #expect(status.task.parentWakesUsed == 0 && status.task.parentWakesConsumed == 0)
+            #expect(!screen.snapshot.contains("Sphyrna updates:"))
+            #expect(try await context.runtime.stopConversation(sessionID: child.sessionID).succeeded)
+            #expect(try await context.runtime.stopConversation(sessionID: parent.sessionID).succeeded)
+        } catch { Issue.record("task wait fixture failed: \(error)") }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test func aChildCanReceiveItsOwnChildsWakeAndStillReportItsOriginalRound() async throws {
+        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: [
+            "LOOM_FAKE_TASK_ROUNDS": "1", "LOOM_FAKE_CODEX_TASK_YIELD": "1", "LOOM_FAKE_CODEX_JOIN": "blank"
+        ], claudeVersion: "2.0.0")
+        defer { context.cleanup() }
+        do {
+            let folder = context.root.appendingPathComponent("nested-task-wake", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let project = try await context.catalog.addProject(path: folder.path).project
+            let topScreen = SessionRuntimeTests.Screen(), gate = context.runtime.inputGate
+            let top = try await context.runtime.startConversation(provider: .claude, projectID: project.id, outputSink: topScreen)
+            topScreen.attach(top.terminal)
+            let topClaim = try #require(await context.runtime.taskRunPlans[top.sessionID]?.claim)
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(topClaim) != nil })
+            let socket = try #require(await context.runtime.taskSocketPath)
+            let coordinator = try #require(await context.runtime.taskCoordinator)
+            let outer = UUID()
+            let outerCreate = try Self.helper(["create", "--task", outer.uuidString, "--operation", UUID().uuidString,
+                "--name", "Middle", "--harness", "codex", "--message", "-"],
+                claim: topClaim, socket: socket, input: "fixture-round-1")
+            #expect(outerCreate.0 == 0)
+            let middleScreen = SessionRuntimeTests.Screen()
+            let middle = try await context.runtime.approveOpenRequest(outer, outputSink: middleScreen, expectedProvider: .codex,
+                onTerminalReady: { launch in
+                    middleScreen.attach(launch.terminal)
+                    gate.register(runID: launch.runID, queue: TerminalInputQueue(endpoint: launch.terminal, onError: { _ in }))
+                })
+            #expect(try await SessionRuntimeTests.waitUntil(5) {
+                let status = try await coordinator.status(taskID: outer, parent: topClaim)
+                return status.activeRound != nil && status.nativeStatus == .ready
+            })
+            let original = try #require(try await coordinator.status(taskID: outer, parent: topClaim).activeRound)
+            let middleClaim = try #require(await context.runtime.taskRunPlans[middle.sessionID]?.claim)
+            let inner = UUID()
+            let innerCreate = try Self.helper(["create", "--task", inner.uuidString, "--operation", UUID().uuidString,
+                "--name", "Leaf", "--harness", "claude", "--message", "-"],
+                claim: middleClaim, socket: socket, input: "fixture-round-1")
+            #expect(innerCreate.0 == 0)
+            let leafScreen = SessionRuntimeTests.Screen()
+            let leaf = try await context.runtime.approveOpenRequest(inner, outputSink: leafScreen, expectedProvider: .claude,
+                onTerminalReady: { launch in
+                    leafScreen.attach(launch.terminal)
+                    gate.register(runID: launch.runID, queue: TerminalInputQueue(endpoint: launch.terminal, onError: { _ in }))
+                })
+            #expect(try await SessionRuntimeTests.waitUntil(6) {
+                let status = try await coordinator.status(taskID: inner, parent: middleClaim)
+                return status.task.parentWakesUsed == 1 && status.task.parentWakesConsumed == 1
+            })
+            let report = try Self.helper(["report", "--task", outer.uuidString, "--round", original.id.uuidString,
+                "--operation", UUID().uuidString, "--kind", "completed", "--message", "-"],
+                claim: middleClaim, socket: socket, input: "nested result")
+            #expect(report.0 == 0)
+            let result = try Self.helper(["read", "--task", outer.uuidString], claim: topClaim, socket: socket)
+            #expect(result.0 == 0 && result.1.contains("nested result"))
+            let middleBinding = try #require(await context.runtime.authenticateTaskRun(middleClaim))
+            let target = SessionTaskRoundTarget(taskID: outer, roundID: original.id, inputOperationID: original.operationID,
+                                                binding: middleBinding, nativeTurnID: original.nativeTurnID, execution: nil)
+            let host = SessionTaskRuntimeHost(runtime: context.runtime)
+            #expect(await host.observedChildExecution(target) != nil)
+            gate.noteUnclassifiedInput(runID: middle.runID)
+            #expect(await host.observedChildExecution(target) == nil)
+            #expect(try await context.runtime.stopConversation(sessionID: leaf.sessionID).succeeded)
+            #expect(try await context.runtime.stopConversation(sessionID: middle.sessionID).succeeded)
+            #expect(try await context.runtime.stopConversation(sessionID: top.sessionID).succeeded)
+        } catch { Issue.record("nested task wake fixture failed: \(error)") }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
     @Test(arguments: [ManagedSession.Provider.claude, .codex])
     func threeRoundsUseOneOwnedChildAndItsRealHelperInBothDirections(parentProvider: ManagedSession.Provider) async throws {
         var environment = ["LOOM_FAKE_TASK_ROUNDS": "1"]

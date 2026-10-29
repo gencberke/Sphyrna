@@ -15,6 +15,7 @@ public actor SessionTaskCoordinator {
     private let now: @Sendable () -> Date
     private var waiters: [UUID: Waiter] = [:]
     private var wakeLeases: [UUID: SessionTaskWakeLease] = [:]
+    private var interruptLeases: [UUID: SessionTaskInterruptLease] = [:]
     private var deletionFences: Set<UUID> = []
     private var deletionsInProgress: Set<UUID> = []
     private var activeCreations: [UUID: Int] = [:]
@@ -206,6 +207,7 @@ public actor SessionTaskCoordinator {
                         if binding != bound || !Self.validMetadata(turn) ||
                             (turn != nil && round.nativeTurnID != nil && turn != round.nativeTurnID) {
                             wakeLeases[taskID]?.cancel()
+                            interruptLeases[taskID]?.cancel()
                             try retireRounds(&task)
                             task.lifecycle = .identityChanged; task.authorityEpoch += 1; task.revision += 1
                             try store.save(task)
@@ -222,6 +224,7 @@ public actor SessionTaskCoordinator {
                         }
                     case .deferred, .started:
                         wakeLeases[taskID]?.cancel()
+                        interruptLeases[taskID]?.cancel()
                         try retireRounds(&task)
                         task.lifecycle = .revoked; task.authorityEpoch += 1; task.revision += 1
                         try store.save(task)
@@ -273,6 +276,7 @@ public actor SessionTaskCoordinator {
                     operation.receipt.delivery = .unknown
                     if sameAuthority {
                         wakeLeases[taskID]?.cancel()
+                        interruptLeases[taskID]?.cancel()
                         task.lifecycle = .identityChanged
                         task.authorityEpoch += 1
                     }
@@ -299,6 +303,7 @@ public actor SessionTaskCoordinator {
                         // The host should have fenced this at the write. Keep
                         // its receipt, but never claim the new ask was answered.
                         wakeLeases[taskID]?.cancel()
+                        interruptLeases[taskID]?.cancel()
                         task.pendingRoundID = nil; task.lifecycle = .revoked; task.authorityEpoch += 1
                     }
                 }
@@ -564,6 +569,7 @@ public actor SessionTaskCoordinator {
             guard try store.operation(nextOperationID) == nil else { throw SessionTaskError.conflictingOperation }
             wakeLeases[taskID]?.cancel()
         }
+        let interruptLease = SessionTaskInterruptLease()
         let prepared: (SessionTaskReceipt, SessionTaskRoundTarget?, Int64) = try store.transaction {
             var task = try authorizedTask(taskID, parent: principal, allowRevoked: true)
             if let prior = try sameOperation(operationID, fingerprint: fingerprint) { return (prior, nil, task.authorityEpoch) }
@@ -590,19 +596,28 @@ public actor SessionTaskCoordinator {
             try store.createOperation(nextOperationID, taskID: taskID,
                 operation: .init(fingerprint: Self.fingerprint(["input", taskID.uuidString, message, ""]), receipt: nextReceipt))
             return (receipt, SessionTaskRoundTarget(taskID: taskID, roundID: roundID, inputOperationID: old.operationID,
-                                                    binding: binding, nativeTurnID: old.nativeTurnID, execution: old.execution),
+                                                    binding: binding, nativeTurnID: old.nativeTurnID, execution: old.execution,
+                                                    interruptLease: interruptLease),
                     task.authorityEpoch)
         }
         guard let target = prepared.1 else { return prepared.0 }
+        interruptLeases[taskID] = interruptLease
         changed(taskID)
         let outcome = await host.interrupt(target)
+        if interruptLeases[taskID] === interruptLease { interruptLeases[taskID] = nil }
         let receipt = try store.transaction {
             guard var task = try store.task(taskID), var operation = try store.operation(operationID) else { throw SessionTaskError.notFound }
             if case .verified = outcome {
                 task.uncertainChildEffects = max(0, task.uncertainChildEffects - 1)
                 if task.lifecycle == .revoked && task.authorityEpoch == prepared.2 { task.lifecycle = .active }
                 operation.receipt.delivery = .verified
-            } else { operation.receipt.delivery = .unverified }
+            } else {
+                // Deferred means the guarded boundary admitted no bytes. It
+                // must not reactivate the retired round, but is not an unknown
+                // provider effect that prevents a later explicit rebind.
+                if case .deferred = outcome { task.uncertainChildEffects = max(0, task.uncertainChildEffects - 1) }
+                operation.receipt.delivery = .unverified
+            }
             task.revision += 1
             try store.save(task); try store.saveOperation(operationID, operation: operation)
             return operation.receipt
@@ -621,6 +636,7 @@ public actor SessionTaskCoordinator {
         _ = try authorizedTask(taskID, parent: principal, allowRevoked: true)
         if let prior = try sameOperation(operationID, fingerprint: fingerprint) { return prior }
         wakeLeases[taskID]?.cancel()
+        interruptLeases[taskID]?.cancel()
         let prepared: (SessionTaskReceipt, SessionTaskBinding?, Bool, Int64) = try store.transaction {
             var task = try authorizedTask(taskID, parent: principal, allowRevoked: true)
             if let prior = try sameOperation(operationID, fingerprint: fingerprint) { return (prior, nil, false, task.authorityEpoch) }
@@ -686,7 +702,12 @@ public actor SessionTaskCoordinator {
                 return true
             }
         }
-        if let lease = wakeLeases[taskID] { _ = try lease.cancelIfChanged(mutation) } else { _ = try mutation() }
+        let fencedWake = {
+            if let lease = self.wakeLeases[taskID] { return try lease.cancelIfChanged(mutation) }
+            return try mutation()
+        }
+        if let lease = interruptLeases[taskID] { _ = try lease.cancelIfChanged(fencedWake) }
+        else { _ = try fencedWake() }
         changed(taskID)
     }
 
@@ -902,6 +923,7 @@ public actor SessionTaskCoordinator {
 
     private func stopOwnedChildForDeletion(_ taskID: UUID) async throws {
         wakeLeases[taskID]?.cancel()
+        interruptLeases[taskID]?.cancel()
         let prepared: (SessionTaskBinding?, UUID, Bool, Int64)? = try store.transaction {
             guard var task = try store.task(taskID) else { return nil }
             if task.lifecycle == .stopped { return nil }

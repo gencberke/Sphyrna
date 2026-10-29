@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 public enum TerminalInputError: Error, CustomStringConvertible, Equatable, Sendable {
@@ -32,6 +33,7 @@ private struct AutomaticInputWithdrawn: Error {}
 /// by `capacity`; there is no work while the queue is empty.
 public final class TerminalInputQueue: @unchecked Sendable {
     enum AutomaticWriteOutcome: Equatable, Sendable { case written, notWritten, unknown }
+    enum ManualInputConfirmation: Sendable { case confirmed, pendingDrain, unverified }
     struct AutomaticInputTicket: Equatable, Sendable {
         let id = UUID()
         fileprivate let completion = AutomaticWriteCompletion()
@@ -66,6 +68,12 @@ public final class TerminalInputQueue: @unchecked Sendable {
     // Mixed terminal input is not evidence of a clean editor. Automatic input
     // is admitted only at an explicitly established fresh/verified boundary.
     private var unclassifiedGeneration: UInt64 = 0
+    // A bounded streaming digest of one plain submitted line. Control/edit
+    // sequences invalidate it; no prompt text is retained here.
+    private var manualDigest = SHA256()
+    private var manualBytes = 0
+    private var manualValid = true
+    private var manualSubmission: (digest: Data, generation: UInt64, end: Int, writtenAt: UInt64?)?
     private var automaticClean = false
     private var automaticEverUsed = false
     private var automaticOutstanding: (ticket: AutomaticInputTicket, generation: UInt64)?
@@ -112,6 +120,7 @@ public final class TerminalInputQueue: @unchecked Sendable {
         lock.withLock {
             unclassifiedGeneration &+= 1
             automaticClean = false
+            manualSubmission = nil
         }
     }
 
@@ -132,10 +141,12 @@ public final class TerminalInputQueue: @unchecked Sendable {
                 return (false, false, .overflow(pending: queued, rejected: bytes.count,
                                                 capacity: capacity))
             }
+            let start = pending.count
             pending.append(contentsOf: bytes)
             if unclassified {
                 unclassifiedGeneration &+= 1
                 automaticClean = false
+                recordManualInput(bytes, start: start)
             }
             lastAcceptedUptime = ProcessInfo.processInfo.systemUptime
             lastAccepted = Date()
@@ -185,6 +196,47 @@ public final class TerminalInputQueue: @unchecked Sendable {
                   pending.count == sent, failure == nil, closedReason == nil else { return false }
             automaticClean = true
             return true
+        }
+    }
+
+    /// Called under the queue lock as bytes enter the single ordered path.
+    /// A native input observation must later match the final digest and the
+    /// same generation; a write acknowledgement alone proves nothing.
+    private func recordManualInput<Bytes: Collection>(_ bytes: Bytes, start: Int) where Bytes.Element == UInt8 {
+        guard bytes.count <= SessionTaskLimits.payloadBytes + 1 else {
+            manualValid = false; manualSubmission = nil
+            return
+        }
+        for (offset, value) in bytes.enumerated() {
+            if value == 0x0d {
+                manualSubmission = manualValid && manualBytes > 0
+                    ? (Data(manualDigest.finalize()), unclassifiedGeneration, start + offset + 1, nil) : nil
+                manualDigest = SHA256(); manualBytes = 0; manualValid = true
+            } else {
+                manualSubmission = nil
+                guard value >= 0x20, value != 0x7f, manualBytes < SessionTaskLimits.payloadBytes else {
+                    manualValid = false
+                    continue
+                }
+                if manualValid {
+                    var byte = value
+                    withUnsafeBytes(of: &byte) { manualDigest.update(bufferPointer: $0) }
+                    manualBytes += 1
+                }
+            }
+        }
+    }
+
+    func confirmManualInput(digest: Data, observedAt: UInt64) -> ManualInputConfirmation {
+        lock.withLock {
+            guard digest.count == 32, let submission = manualSubmission, submission.digest == digest,
+                  submission.generation == unclassifiedGeneration, automaticOutstanding == nil,
+                  failure == nil, closedReason == nil else { return .unverified }
+            guard !draining, pending.count == sent else { return .pendingDrain }
+            guard let writtenAt = submission.writtenAt, observedAt > writtenAt else { return .unverified }
+            manualSubmission = nil
+            automaticClean = true
+            return .confirmed
         }
     }
 
@@ -281,14 +333,24 @@ public final class TerminalInputQueue: @unchecked Sendable {
     /// The owner calls this only after an exact provider-input observation.
     /// Later mixed bytes make the editor unknown again, even if that proof is late.
     func confirmAutomaticInput(_ ticket: AutomaticInputTicket) -> Bool {
+        confirmAutomaticInputGeneration(ticket) != nil
+    }
+
+    /// Return the user-input generation in the same critical section as the
+    /// clean confirmation, so later use of this proof can detect any edit.
+    func confirmAutomaticInputGeneration(_ ticket: AutomaticInputTicket) -> UInt64? {
         lock.withLock {
-            guard let outstanding = automaticOutstanding, outstanding.ticket == ticket else { return false }
+            guard let outstanding = automaticOutstanding, outstanding.ticket == ticket else { return nil }
             automaticOutstanding = nil
             automaticExternalEffect = false
-            guard outstanding.generation == unclassifiedGeneration, failure == nil, closedReason == nil else { return false }
+            guard outstanding.generation == unclassifiedGeneration, failure == nil, closedReason == nil else { return nil }
             automaticClean = true
-            return true
+            return unclassifiedGeneration
         }
+    }
+
+    func hasInputGeneration(_ generation: UInt64) -> Bool {
+        lock.withLock { unclassifiedGeneration == generation && failure == nil && closedReason == nil }
     }
 
     /// Called only inside the caller's run/read lease, directly around the
@@ -300,7 +362,14 @@ public final class TerminalInputQueue: @unchecked Sendable {
                   outstanding.generation == unclassifiedGeneration, failure == nil, closedReason == nil else {
                 throw AutomaticInputWithdrawn()
             }
-            return try write()
+            do {
+                let count = try write()
+                if count > 0 { automaticExternalEffect = true }
+                return count
+            } catch {
+                automaticExternalEffect = true
+                throw error
+            }
         }
     }
 
@@ -385,6 +454,10 @@ public final class TerminalInputQueue: @unchecked Sendable {
                             let started = sent > 0
                             let start = pending.startIndex + sent, end = pending.startIndex + segment.end
                             pending.removeSubrange(start..<end)
+                            if var submission = manualSubmission, submission.writtenAt == nil {
+                                if submission.end > segment.end { submission.end -= segment.end - sent; manualSubmission = submission }
+                                else if submission.end > sent { manualSubmission = nil }
+                            }
                             automaticSegment = nil
                             if let outstanding = automaticOutstanding, outstanding.ticket == segment.ticket {
                                 automaticOutstanding = nil
@@ -402,12 +475,20 @@ public final class TerminalInputQueue: @unchecked Sendable {
                     idleWrites = 0
                     lock.withLock {
                         sent = min(pending.count, sent + min(written, chunk.count))
+                        if var submission = manualSubmission, submission.writtenAt == nil, sent >= submission.end {
+                            submission.writtenAt = DispatchTime.now().uptimeNanoseconds
+                            manualSubmission = submission
+                        }
                         if let segment = automaticSegment, sent >= segment.end {
                             automaticSegment = nil
                             segment.ticket.completion.finish(.written)
                         }
                         // Compact occasionally instead of shifting on every write.
                         if sent >= 256 * 1024, sent * 2 >= pending.count {
+                            if var submission = manualSubmission, submission.writtenAt == nil {
+                                submission.end -= sent
+                                manualSubmission = submission
+                            }
                             pending.removeFirst(sent)
                             sent = 0
                         }

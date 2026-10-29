@@ -133,6 +133,19 @@ struct SessionTaskExpectedInput: Sendable {
         case child(taskID: UUID, roundID: UUID, operationID: UUID)
         case wake(taskID: UUID, operationID: UUID)
     }
+    struct RetainedChildProof: Sendable {
+        let purpose: Purpose
+        let binding: SessionTaskBinding
+        let digest: Data
+        let ticket: TerminalInputQueue.AutomaticInputTicket?
+        let effect: SessionTaskInputEffectMarker
+        let requiresNativeReceipt: Bool
+        let clientMessageID: String?
+        let observation: SessionTaskExecutionReference
+        let expectedNativeTurn: String?
+        let lastSequence: UInt64
+        let generation: UInt64
+    }
     let purpose: Purpose
     let binding: SessionTaskBinding
     let digest: Data
@@ -147,6 +160,27 @@ struct SessionTaskExpectedInput: Sendable {
     var observed: SessionTaskExecutionReference?
     var expectedNativeTurn: String?
     var lastSequence: UInt64 = 0
+    var acceptedGeneration: UInt64?
+    var retainedChild: RetainedChildProof?
+
+    func retainedChildProof() -> RetainedChildProof? {
+        guard case .child = purpose, let observation = confirmedObservation, let generation = acceptedGeneration else { return nil }
+        return .init(purpose: purpose, binding: binding, digest: digest, ticket: ticket, effect: effect,
+                     requiresNativeReceipt: requiresNativeReceipt, clientMessageID: clientMessageID,
+                     observation: observation, expectedNativeTurn: expectedNativeTurn, lastSequence: lastSequence,
+                     generation: generation)
+    }
+
+    static func restoring(_ proof: RetainedChildProof) -> SessionTaskExpectedInput {
+        var result = SessionTaskExpectedInput(purpose: proof.purpose, binding: proof.binding, digest: proof.digest,
+            ticket: proof.ticket, effect: proof.effect, requiresNativeReceipt: proof.requiresNativeReceipt,
+            clientMessageID: proof.clientMessageID, rolloutCandidate: nil)
+        result.observed = proof.observation
+        result.expectedNativeTurn = proof.expectedNativeTurn
+        result.lastSequence = proof.lastSequence
+        result.acceptedGeneration = proof.generation
+        return result
+    }
 
     var confirmedObservation: SessionTaskExecutionReference? {
         guard let observed else { return nil }
@@ -206,7 +240,9 @@ final class SessionTaskRuntimeHost: SessionTaskHost, @unchecked Sendable {
     func submitIfReady(_ intent: SessionTaskInputIntent) async -> SessionTaskInputEffect {
         await runtime?.submitTaskInput(intent) ?? .unknown
     }
-    func wakeIfReady(_ intent: SessionTaskWakeIntent) async -> SessionTaskEffect { .deferred }
+    func wakeIfReady(_ intent: SessionTaskWakeIntent) async -> SessionTaskEffect {
+        await runtime?.deliverTaskWake(intent) ?? .unknown
+    }
     func interrupt(_ target: SessionTaskRoundTarget) async -> SessionTaskEffect {
         await runtime?.interruptTaskRound(target) ?? .unknown
     }

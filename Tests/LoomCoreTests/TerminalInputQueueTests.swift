@@ -1,4 +1,5 @@
 import Darwin
+import CryptoKit
 import Foundation
 import Testing
 @testable import LoomCore
@@ -126,6 +127,50 @@ struct TerminalInputQueueTests {
         try await waitUntilIdle(queue)
         #expect(writer.received == Data("user draft".utf8))
         #expect(queue.enqueueAutomatic(Data("another\r".utf8), transaction: { try $0() }) == nil)
+    }
+
+    @Test func aWrittenTerminalPointerCannotBeReleasedBeforeProviderObservation() async throws {
+        let queue = TerminalInputQueue(capacity: 1024, writer: { $0.count },
+            automaticWriter: { bytes, transaction in try transaction { bytes.count } }, onError: { _ in })
+        #expect(queue.establishFreshCleanInput())
+        let ticket = try #require(queue.reserveAutomaticInput())
+        let accepted = queue.enqueueReservedAutomatic(ticket, bytes: Data("pointer\r".utf8), transaction: { try $0() })
+        #expect(accepted)
+        #expect(await ticket.writeOutcome() == .written)
+        queue.releaseReservedAutomatic(ticket)
+        #expect(queue.reserveAutomaticInput() == nil)
+        #expect(queue.confirmAutomaticInput(ticket))
+    }
+
+    @Test func onlyALaterExactPlainSubmissionCanRestoreTheManualInputBoundary() async throws {
+        let queue = TerminalInputQueue(capacity: 1024, writer: { $0.count }, onError: { _ in })
+        #expect(queue.enqueue(Data("plain request\r".utf8)))
+        try await waitUntilIdle(queue)
+        let digest = Data(SHA256.hash(data: Data("plain request".utf8)))
+        if case .unverified = queue.confirmManualInput(digest: digest, observedAt: 0) {} else {
+            Issue.record("An old provider event must not clear a later submission")
+        }
+        #expect(queue.reserveAutomaticInput() == nil)
+        if case .confirmed = queue.confirmManualInput(digest: digest, observedAt: .max) {} else {
+            Issue.record("The exact later input observation should restore the clean boundary")
+        }
+        let ticket = try #require(queue.reserveAutomaticInput())
+        queue.releaseReservedAutomatic(ticket)
+        #expect(queue.enqueue(Data("new draft".utf8)))
+        #expect(queue.reserveAutomaticInput() == nil)
+    }
+
+    @Test func editedOrMultilineManualBytesNeverCreateAPlainSubmissionProof() async throws {
+        for bytes in [Data("abc\u{7f}d\r".utf8), Data("first\nsecond\r".utf8)] {
+            let queue = TerminalInputQueue(capacity: 1024, writer: { $0.count }, onError: { _ in })
+            #expect(queue.enqueue(bytes))
+            try await waitUntilIdle(queue)
+            let digest = Data(SHA256.hash(data: Data("abd".utf8)))
+            if case .unverified = queue.confirmManualInput(digest: digest, observedAt: .max) {} else {
+                Issue.record("Edited or multiline bytes cannot prove a plain input")
+            }
+            #expect(queue.reserveAutomaticInput() == nil)
+        }
     }
 
     @Test func providerEventAfterPartialTaskWriteIsUnknownAndNeverRetried() async throws {

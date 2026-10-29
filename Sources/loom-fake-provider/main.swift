@@ -72,7 +72,7 @@ func fakeSphyrnaTaskCreate(_ command: String) -> Bool {
     return result?.0 == 0 && result?.1.contains("pending") == true
 }
 
-func fakeSphyrnaTaskRound(_ pointer: String) -> Bool {
+func fakeSphyrnaTaskRound(_ pointer: String, report: Bool = true) -> Bool {
     guard ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_ROUNDS"] == "1" else { return false }
     let words = pointer.split(separator: " ").map(String.init)
     guard words.count == 16, Array(words.prefix(7)) == ["Sphyrna", "task:", "run", "\"$SPHYRNA_CLI\"", "task", "input", "--task"],
@@ -86,6 +86,7 @@ func fakeSphyrnaTaskRound(_ pointer: String) -> Bool {
                                                  "--operation", operation.uuidString.lowercased()]), received.0 == 0 else { return false }
     let message = received.1.trimmingCharacters(in: .whitespacesAndNewlines)
     guard message.hasPrefix("fixture-round-"), message.utf8.count <= 64 else { return false }
+    if !report { return true }
     let result = fakeSphyrnaTaskCommand(["task", "report", "--task", taskID, "--round", roundID,
         "--operation", UUID().uuidString.lowercased(), "--kind", "completed", "--message", "-"],
         input: "fixture-result: \(message)")
@@ -425,6 +426,12 @@ struct FakeClaude {
         currentPrompt = line
         defer { currentPrompt = nil }
         switch line.split(separator: " ").first.map(String.init) ?? "" {
+            case "/fake-registry-busy" where environment["LOOM_FAKE_TASK_REGISTRY_CONTROL"] == "1":
+                registry("busy")
+                out("FAKE-REGISTRY-BUSY\r\n")
+            case "/fake-registry-idle" where environment["LOOM_FAKE_TASK_REGISTRY_CONTROL"] == "1":
+                registry("idle")
+                out("FAKE-REGISTRY-IDLE\r\n")
             case "/fake-sphyrna-task-create" where environment["LOOM_FAKE_TASK_ROUNDS"] == "1":
                 hook("UserPromptSubmit", ["prompt_id": "p\(promptCount)"])
                 out(fakeSphyrnaTaskCreate(line) ? "FAKE-TASK-CREATE-OK\r\n" : "FAKE-TASK-CREATE-REFUSED\r\n")

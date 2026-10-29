@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 import SQLite3
 import Testing
@@ -40,6 +41,8 @@ actor TaskFakeHost: SessionTaskHost {
     var pauseInterrupt = false
     var interruptEntered = false
     var interruptContinuation: CheckedContinuation<Void, Never>?
+    var interruptEffectProbe: (@Sendable () -> Bool)?
+    var interruptEffects = 0
     var duringSubmit: (@Sendable (SessionTaskInputIntent) async -> Void)?
     var pauseSubmit = false
     var submitEntered = false
@@ -142,6 +145,8 @@ actor TaskFakeHost: SessionTaskHost {
             interruptEntered = true
             await withCheckedContinuation { interruptContinuation = $0 }
         }
+        guard target.attemptInterrupt({ interruptEffectProbe?() ?? true }) else { return .deferred }
+        interruptEffects += 1
         if interruptVerified { native = .ready; return .verified }
         return .unknown
     }
@@ -195,6 +200,8 @@ actor TaskFakeHost: SessionTaskHost {
     func releaseSubmit() { pauseSubmit = false; submitContinuation?.resume(); submitContinuation = nil }
     func hasEnteredInterrupt() -> Bool { interruptEntered }
     func releaseInterrupt() { pauseInterrupt = false; interruptContinuation?.resume(); interruptContinuation = nil }
+    func setInterruptEffectProbe(_ effect: @escaping @Sendable () -> Bool) { interruptEffectProbe = effect }
+    func actualInterruptEffects() -> Int { interruptEffects }
     func allowForget() { forgetting = true }
     func replaceParent(_ value: SessionTaskBinding) { parent = value }
     func replaceChild(_ value: SessionTaskBinding) { child = value }
@@ -854,7 +861,7 @@ struct SessionTaskFoundationTests {
         let oldChild = await f.host.child
         try await f.coordinator.fence(taskID: f.taskID, binding: oldChild)
         await f.host.releaseInterrupt()
-        #expect(try await interrupt.value.delivery == .verified)
+        #expect(try await interrupt.value.delivery == .unverified)
         let fenced = try await f.coordinator.status(taskID: f.taskID, parent: f.parent)
         #expect(fenced.task.lifecycle == .revoked && fenced.pendingRound == nil && fenced.activeRound == nil)
         let resumed = SessionTaskBinding(sessionID: oldChild.sessionID, nativeSessionID: oldChild.nativeSessionID,
@@ -874,6 +881,38 @@ struct SessionTaskFoundationTests {
         await #expect(throws: SessionTaskError.staleBinding) {
             _ = try await f.coordinator.rebindAndApprove(taskID: f.taskID, parent: f.parent, child: differentClaim)
         }
+    }
+
+    @Test func stopWinsBeforeTheExactInterruptSocketWrite() async throws {
+        let f = try await TaskFixture.make()
+        defer { f.clean() }
+        var sockets: [Int32] = [0, 0]
+        try #require(socketpair(AF_UNIX, SOCK_STREAM, 0, &sockets) == 0)
+        let output = sockets[0], input = sockets[1]
+        defer { close(output); close(input) }
+        _ = fcntl(input, F_SETFL, O_NONBLOCK)
+        await f.host.setInterruptEffectProbe {
+            var byte: UInt8 = 0x1b
+            return Darwin.send(output, &byte, 1, 0) == 1
+        }
+        let first = try #require(try await f.input("first").roundID)
+        _ = try await f.coordinator.deliverPending(taskID: f.taskID)
+        await f.host.holdInterrupt()
+        let interrupt = Task { try await f.coordinator.interruptAndUpdate(taskID: f.taskID, parent: f.parent,
+            roundID: first, operationID: UUID(), nextOperationID: UUID(), message: "replacement") }
+        for _ in 0..<100 {
+            if await f.host.hasEnteredInterrupt() { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await f.host.hasEnteredInterrupt())
+        #expect(try await f.coordinator.stopChild(taskID: f.taskID, parent: f.parent, operationID: UUID()).delivery == .verified)
+        await f.host.releaseInterrupt()
+        #expect(try await interrupt.value.delivery == .unverified)
+        var received: UInt8 = 0
+        #expect(Darwin.recv(input, &received, 1, 0) == -1 && errno == EAGAIN)
+        #expect(await f.host.actualInterruptEffects() == 0)
+        let status = try await f.coordinator.status(taskID: f.taskID, parent: f.parent)
+        #expect(status.task.lifecycle == .stopped && status.pendingRound == nil)
     }
 
     @Test func unknownStartAndWakeStayFencedUntilOwnerVerifiesStop() async throws {

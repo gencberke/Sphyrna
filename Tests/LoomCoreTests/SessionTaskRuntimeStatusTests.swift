@@ -63,4 +63,24 @@ struct SessionTaskRuntimeStatusTests {
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
+    @Test func claudeReadinessFollowsTheOwnedRegistryEvenWithoutANewHook() async throws {
+        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: ["LOOM_FAKE_TASK_REGISTRY_CONTROL": "1"])
+        defer { context.cleanup() }
+        let screen = SessionRuntimeTests.Screen()
+        let launch = try await context.runtime.startConversation(provider: .claude, projectID: nil, outputSink: screen)
+        screen.attach(launch.terminal)
+        let claim = try #require(await context.runtime.taskRunPlans[launch.sessionID]?.claim)
+        #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+        let binding = try #require(await context.runtime.authenticateTaskRun(claim))
+        let host = SessionTaskRuntimeHost(runtime: context.runtime)
+        #expect(try await SessionRuntimeTests.waitUntil(3) { await host.nativeStatus(binding: binding) == .ready })
+        try await screen.send("/fake-registry-busy")
+        #expect(await screen.contains("FAKE-REGISTRY-BUSY"))
+        #expect(try await SessionRuntimeTests.waitUntil(3) { await host.nativeStatus(binding: binding) != .ready })
+        try await screen.send("/fake-registry-idle")
+        #expect(await screen.contains("FAKE-REGISTRY-IDLE"))
+        #expect(try await SessionRuntimeTests.waitUntil(3) { await host.nativeStatus(binding: binding) == .ready })
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
 }

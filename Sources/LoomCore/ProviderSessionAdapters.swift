@@ -10,7 +10,7 @@ public actor ClaudeSessionAdapter {
     private var transitioningRuns: Set<UUID> = []
     private struct RegistryObservation {
         let watch: ClaudeRegistryWatch
-        let continuation: AsyncStream<(UUID, UUID?, ClaudeRegistryRead)>.Continuation
+        let continuation: AsyncStream<(UUID, UUID?, ClaudeRegistryRead, UInt64)>.Continuation
         let consumer: Task<Void, Never>
     }
     private var registryWatches: [UUID: RegistryObservation] = [:]
@@ -49,17 +49,19 @@ public actor ClaudeSessionAdapter {
     static let hookSilenceIssue =
         "Sphyrna is not receiving events from Claude, so this session's status may be wrong. The session itself is not affected."
 
-    func observeRegistry(runID: UUID, reader: ClaudeRegistryReader) async {
+    func observeRegistry(runID: UUID, reader: ClaudeRegistryReader,
+                         taskPending: @escaping @Sendable () -> Void = {},
+                         taskSettled: @escaping @Sendable () -> Void = {}) async {
         stopRegistry(runID: runID, discardTracker: false)
         // These are replaceable full snapshots, not identity/permission deltas.
-        let pair = AsyncStream<(UUID, UUID?, ClaudeRegistryRead)>.makeStream(bufferingPolicy: .bufferingNewest(1))
-        let watch = ClaudeRegistryWatch(reader: reader) { watchID, generation, result in
-            pair.continuation.yield((watchID, generation, result))
+        let pair = AsyncStream<(UUID, UUID?, ClaudeRegistryRead, UInt64)>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let watch = ClaudeRegistryWatch(reader: reader, taskPending: taskPending, taskSettled: taskSettled) { watchID, generation, result, revision in
+            pair.continuation.yield((watchID, generation, result, revision))
         }
         let consumer = Task { [weak self] in
-            for await (watchID, generation, result) in pair.stream {
+            for await (watchID, generation, result, revision) in pair.stream {
                 guard !Task.isCancelled else { break }
-                await self?.receiveRegistry(runID: runID, watchID: watchID, generation: generation, result: result)
+                await self?.receiveRegistry(runID: runID, watchID: watchID, generation: generation, result: result, revision: revision)
             }
         }
         registryWatches[runID] = RegistryObservation(watch: watch, continuation: pair.continuation, consumer: consumer)
@@ -81,7 +83,10 @@ public actor ClaudeSessionAdapter {
         }
     }
 
-    private func receiveRegistry(runID: UUID, watchID: UUID, generation: UUID?, result: ClaudeRegistryRead) async {
+    private func receiveRegistry(runID: UUID, watchID: UUID, generation: UUID?, result: ClaudeRegistryRead,
+                                 revision: UInt64) async {
+        guard let observation = registryWatches[runID], observation.watch.id == watchID else { return }
+        defer { observation.watch.acknowledgeTaskObservation(revision) }
         // A stream child's entry (`entrypoint: sdk-cli`) says nothing its driver does not know first.
         if isDriverRun(runID) { return }
         if case let .snapshot(snapshot) = result, snapshot.isStreamChild { return }
@@ -234,6 +239,18 @@ public actor ClaudeSessionAdapter {
         default: status.activity = .unknown; status.reason = nil
         }
         return status
+    }
+
+    func taskIdleProof(runID: UUID, nativeSessionID: String, workingDirectory: String) async -> ClaudeHookStateTracker.TaskIdleProof? {
+        guard registryWatches[runID] != nil, supervisor.providerWorkStateIsReliable(runID: runID),
+              let tracker = trackers[runID] else { return nil }
+        return await tracker.taskIdleProof(nativeSessionID: nativeSessionID, workingDirectory: workingDirectory)
+    }
+
+    func taskCurrentPrompt(runID: UUID) async -> (generation: UUID, promptID: String?)? {
+        guard registryWatches[runID] != nil, supervisor.providerWorkStateIsReliable(runID: runID),
+              let tracker = trackers[runID] else { return nil }
+        return await tracker.taskCurrentPrompt()
     }
 
     @discardableResult

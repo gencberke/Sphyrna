@@ -169,9 +169,11 @@ struct CodexTaskInputObservation: Equatable, Sendable {
     let turnID: String?
     let digest: Data?
     let clientID: String?
-    init(sequence: UInt64, threadID: String?, turnID: String?, digest: Data?, clientID: String? = nil) {
+    let receivedUptime: UInt64?
+    init(sequence: UInt64, threadID: String?, turnID: String?, digest: Data?, clientID: String? = nil,
+         receivedUptime: UInt64? = nil) {
         self.sequence = sequence; self.threadID = threadID; self.turnID = turnID
-        self.digest = digest; self.clientID = clientID
+        self.digest = digest; self.clientID = clientID; self.receivedUptime = receivedUptime
     }
 }
 
@@ -742,7 +744,7 @@ public actor CodexAppServerClient {
             sequence &+= 1
             let params = object["params"] ?? .object([:])
             if object["id"] == nil, method == "item/started", let observer = taskInputObserver {
-                if let observation = Self.taskInput(params: params, sequence: sequence) {
+                if let observation = Self.taskInput(params: params, sequence: sequence, receivedUptime: frame.receivedUptime) {
                     ingressLease?.beginCodexEvent(sequence)
                     observer(observation)
                 }
@@ -913,7 +915,7 @@ public actor CodexAppServerClient {
         }
     }
 
-    static func taskInput(params: JSONValue, sequence: UInt64) -> CodexTaskInputObservation? {
+    static func taskInput(params: JSONValue, sequence: UInt64, receivedUptime: UInt64? = nil) -> CodexTaskInputObservation? {
         guard let value = params.object, let item = value["item"]?.object,
               item["type"]?.string == "userMessage" else { return nil }
         func identifier(_ value: JSONValue?) -> String? {
@@ -930,7 +932,7 @@ public actor CodexAppServerClient {
             digest = Data(SHA256.hash(data: Data(text.utf8)))
         }
         return CodexTaskInputObservation(sequence: sequence, threadID: thread, turnID: turn, digest: digest,
-                                         clientID: identifier(item["clientId"]))
+                                         clientID: identifier(item["clientId"]), receivedUptime: receivedUptime)
     }
 
     private static func decodeStatus(_ value: JSONValue?) -> CodexThreadStatus {
@@ -978,6 +980,7 @@ public actor CodexAppServerClient {
 struct CodexReceivedFrame: Sendable {
     let data: Data
     let lease: SessionTaskRunLease?
+    let receivedUptime: UInt64
     func finish() { lease?.finishHook() }
 }
 
@@ -986,6 +989,7 @@ final class CodexWebSocketTransport: @unchecked Sendable {
     private var descriptor: Int32 = -1
     private let limit = 16 * 1024 * 1024
     private var input: [UInt8] = []
+    private var inputFirstUptime: UInt64?
     private var fragments: [UInt8]?
     private var closed = false
     private var readSource: (any DispatchSourceRead)?
@@ -998,6 +1002,7 @@ final class CodexWebSocketTransport: @unchecked Sendable {
     init(descriptor: Int32, bufferedFrames: [UInt8]) throws {
         self.descriptor = descriptor
         input = bufferedFrames
+        if !bufferedFrames.isEmpty { inputFirstUptime = DispatchTime.now().uptimeNanoseconds }
         do {
             var enabled: Int32 = 1
             guard fcntl(descriptor, F_SETFL, O_NONBLOCK) == 0,
@@ -1219,6 +1224,7 @@ final class CodexWebSocketTransport: @unchecked Sendable {
                     guard input.count + count <= limit + 14 else {
                         throw CodexAppServerError.protocolViolation("receive buffer exceeds 16 MiB")
                     }
+                    if inputFirstUptime == nil { inputFirstUptime = DispatchTime.now().uptimeNanoseconds }
                     input.append(contentsOf: bytes.prefix(count))
                     try parseFramesLocked(into: &messages)
                 } else if count == 0 {
@@ -1230,13 +1236,15 @@ final class CodexWebSocketTransport: @unchecked Sendable {
             }
             let frames = messages.map { data in
                 lease?.beginHook()
-                return CodexReceivedFrame(data: data, lease: lease)
+                return CodexReceivedFrame(data: data, lease: lease,
+                                          receivedUptime: inputFirstUptime ?? DispatchTime.now().uptimeNanoseconds)
             }
             if !input.isEmpty || fragments != nil {
                 if partialIngress == nil { lease?.beginHook(); partialIngress = lease }
             } else {
                 partialIngress?.finishHook()
                 partialIngress = nil
+                inputFirstUptime = nil
             }
             return frames
         } catch {

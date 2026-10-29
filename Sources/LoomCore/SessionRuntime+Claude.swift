@@ -214,9 +214,11 @@ extension SessionRuntime {
         if let leader = launch.session.currentRun?.leader {
             let config = profile.environment["CLAUDE_CONFIG_DIR"].map { URL(fileURLWithPath: $0) }
                 ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude", isDirectory: true)
-            await harnesses.claude.observeRegistry(runID: runID, reader: ClaudeRegistryReader(
+            let ingress = taskIngress
+            await harnesses.claude.adapter.observeRegistry(runID: runID, reader: ClaudeRegistryReader(
                 config: config.resolvingSymlinksInPath(), leader: leader,
-                directory: URL(fileURLWithPath: launch.session.workingDirectory).resolvingSymlinksInPath().standardizedFileURL.path))
+                directory: URL(fileURLWithPath: launch.session.workingDirectory).resolvingSymlinksInPath().standardizedFileURL.path),
+                taskPending: { ingress.begin(runID: runID) }, taskSettled: { ingress.finish(runID: runID) })
         }
         let registered = await register(launch, runID: runID, provider: .claude, server: nil, tee: tee)
         if askReplaced {

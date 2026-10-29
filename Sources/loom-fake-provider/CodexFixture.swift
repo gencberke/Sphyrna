@@ -717,6 +717,14 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
             } else { reply(["turn": ["id": turn.id, "status": "inProgress"]]) }
             broadcast("turn/started", ["threadId": threadID, "turn": ["id": turn.id, "status": "inProgress"]])
             announceStatus(thread)
+            if ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_ROUNDS"] == "1", text.hasPrefix("Sphyrna updates:") {
+                broadcast("item/started", ["threadId": threadID, "turnId": turn.id, "item": [
+                    "type": "userMessage", "clientId": clientID.map { $0 as Any } ?? NSNull(),
+                    "content": [["type": "text", "text": text, "text_elements": []]]
+                ]])
+                complete(threadID, turnID: turn.id, status: "completed", message: "FAKE-TASK-WAKE")
+                return
+            }
             if ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_ROUNDS"] == "1",
                text.hasPrefix("Sphyrna task:") || text.hasPrefix("/fake-sphyrna-task-create ") {
                 broadcast("item/started", ["threadId": threadID, "turnId": turn.id, "item": [
@@ -729,8 +737,16 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
                 }
                 let turnID = turn.id
                 DispatchQueue.global().async {
+                    if ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_WAIT_REPORT"] == "1", let state {
+                        let waiting = state.appendingPathComponent("task-report-waiting")
+                        let release = state.appendingPathComponent("task-report-release")
+                        try? "waiting".write(to: waiting, atomically: true, encoding: .utf8)
+                        let deadline = Date().addingTimeInterval(8)
+                        while Date() < deadline && !FileManager.default.fileExists(atPath: release.path) { usleep(10_000) }
+                    }
                     let isCreate = text.hasPrefix("/fake-sphyrna-task-create ")
-                    let succeeded = isCreate ? fakeSphyrnaTaskCreate(text) : fakeSphyrnaTaskRound(text)
+                    let skipReport = ProcessInfo.processInfo.environment["LOOM_FAKE_CODEX_TASK_YIELD"] == "1"
+                    let succeeded = isCreate ? fakeSphyrnaTaskCreate(text) : fakeSphyrnaTaskRound(text, report: !skipReport)
                     let kind = isCreate ? "CREATE" : "ROUND"
                     taskCompletions.add(thread: threadID, turn: turnID,
                                         message: "FAKE-TASK-\(kind)-\(succeeded ? "OK" : "REFUSED")")

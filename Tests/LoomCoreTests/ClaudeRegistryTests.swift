@@ -39,6 +39,49 @@ struct ClaudeRegistryTests {
         #expect(await tracker.status().activity == .unknown)
     }
 
+    @Test func taskIdleRequiresTheCurrentOwnedSessionDirectoryAndFreshPrompt() async throws {
+        let run = UUID(), launch = UUID(), date = Date(timeIntervalSince1970: 1_000)
+        let tracker = ClaudeHookStateTracker(sessionID: launch, managedRunID: run)
+        _ = try await tracker.receive(envelope("SessionStart", run: run, launch: launch, at: date))
+        func sample(_ status: String, _ updated: Double, session: String = "native", cwd: String = "/tmp/owned",
+                    waiting: String? = nil) -> ClaudeRegistryRead {
+            .snapshot(ClaudeRegistrySnapshot(sessionID: session, startedAt: 1_000_001, status: status,
+                statusUpdatedAt: updated, workingDirectory: cwd, waitingFor: waiting))
+        }
+        _ = await tracker.receiveRegistry(sample("idle", 999_990), generation: nil, now: date.addingTimeInterval(2))
+        #expect(await tracker.taskIdleProof(nativeSessionID: "native", workingDirectory: "/tmp/owned") != nil)
+        #expect(await tracker.taskIdleProof(nativeSessionID: "other", workingDirectory: "/tmp/owned") == nil)
+        #expect(await tracker.taskIdleProof(nativeSessionID: "native", workingDirectory: "/tmp/other") == nil)
+        _ = try await tracker.receive(envelope("UserPromptSubmit", run: run, launch: launch,
+                                               at: date.addingTimeInterval(0.1), fields: ["prompt_id": "prompt-1"]))
+        #expect(await tracker.taskIdleProof(nativeSessionID: "native", workingDirectory: "/tmp/owned") == nil)
+        let generation = await tracker.registryGeneration()
+        _ = await tracker.receiveRegistry(sample("idle", 1_000_099), generation: generation, now: date.addingTimeInterval(2))
+        #expect(await tracker.taskIdleProof(nativeSessionID: "native", workingDirectory: "/tmp/owned") == nil)
+        _ = await tracker.receiveRegistry(sample("idle", 1_000_120, waiting: "permission prompt"), generation: generation, now: date.addingTimeInterval(2))
+        #expect(await tracker.taskIdleProof(nativeSessionID: "native", workingDirectory: "/tmp/owned") == nil)
+        _ = await tracker.receiveRegistry(sample("idle", 1_000_121), generation: generation, now: date.addingTimeInterval(2))
+        #expect(await tracker.taskIdleProof(nativeSessionID: "native", workingDirectory: "/tmp/owned")?.promptGeneration != nil)
+        _ = await tracker.receiveRegistry(sample("busy", 1_000_122), generation: generation, now: date.addingTimeInterval(2))
+        #expect(await tracker.taskIdleProof(nativeSessionID: "native", workingDirectory: "/tmp/owned") == nil)
+        _ = await tracker.receiveRegistry(.unavailable, generation: generation, now: date.addingTimeInterval(2))
+        #expect(await tracker.taskIdleProof(nativeSessionID: "native", workingDirectory: "/tmp/owned") == nil)
+    }
+
+    @Test func malformedNativeWaitingFieldCannotEstablishIdle() throws {
+        let identity = ProcessIdentity(pid: 97823, startSeconds: 1_790_762_096, startMicroseconds: 704705)
+        let reader = ClaudeRegistryReader(config: URL(fileURLWithPath: "/tmp/owned"), leader: identity, directory: "/tmp/owned")
+        for waiting in [NSNull(), NSNumber(value: 1)] as [Any] {
+            let data = try JSONSerialization.data(withJSONObject: ["pidDomain": "darwin", "kind": "interactive",
+                "cwd": "/tmp/owned", "sessionId": "native", "startedAt": 1_790_762_096_895,
+                "procStart": "Wed Sep 30 09:54:56 2026", "status": "idle", "statusUpdatedAt": 1_790_762_099_289,
+                "waitingFor": waiting])
+            guard case .unavailable = reader.decode(data, now: Date(timeIntervalSince1970: 1_790_762_100)) else {
+                Issue.record("Malformed native waiting state must not establish task readiness"); continue
+            }
+        }
+    }
+
     @Test func delayedPermissionUsesEmissionWatermarkAndNeverInventsCompletion() async throws {
         let (tracker, _, _, date) = try await tracker()
         let generation = await tracker.registryGeneration()
@@ -255,7 +298,7 @@ struct ClaudeRegistryTests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: container) }
         let reader = try reader(root), collector = RegistryCollector()
-        var watch: ClaudeRegistryWatch? = ClaudeRegistryWatch(reader: reader) { _, _, result in collector.append(result) }
+        var watch: ClaudeRegistryWatch? = ClaudeRegistryWatch(reader: reader) { _, _, result, _ in collector.append(result) }
         for _ in 0..<100 where collector.count == 0 { try await Task.sleep(for: .milliseconds(5)) }
         try #require(collector.count > 0)
         let initial = collector.count
@@ -309,7 +352,7 @@ struct ClaudeRegistryTests {
         defer { try? FileManager.default.removeItem(at: container) }
         let root = container.appendingPathComponent("config")
         let reader = try reader(root), collector = RegistryCollector()
-        let watch = ClaudeRegistryWatch(reader: reader) { _, _, result in collector.append(result) }
+        let watch = ClaudeRegistryWatch(reader: reader) { _, _, result, _ in collector.append(result) }
         defer { watch.stop() }
         try await waitUntil { collector.count > 0 }
         try await Task.sleep(for: .milliseconds(300)) // retries of the initial missing read
@@ -340,7 +383,7 @@ struct ClaudeRegistryTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let reader = try reader(root), collector = RegistryCollector()
         write(try bytes(reader), to: sessions.appendingPathComponent("\(getpid()).json").path)
-        let watch = ClaudeRegistryWatch(reader: reader) { _, _, result in collector.append(result) }
+        let watch = ClaudeRegistryWatch(reader: reader) { _, _, result, _ in collector.append(result) }
         defer { watch.stop() }
         try await waitUntil { collector.hasIdle }
         try #require(collector.hasIdle)
@@ -363,6 +406,38 @@ struct ClaudeRegistryTests {
         write(try bytes(reader), to: sessions.appendingPathComponent("\(getpid()).json").path)
         try await waitUntil { watch.readCount > before }
         #expect(watch.readCount > before)
+    }
+
+    @Test func pendingRegistryReadsFenceAdmissionUntilTheNewestSnapshotIsApplied() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-registry-fence-\(UUID())")
+        let sessions = root.appendingPathComponent("sessions")
+        try FileManager.default.createDirectory(at: sessions, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let reader = try reader(root), lease = SessionTaskRunLease(), revisions = Mutex<[UInt64]>([])
+        write(try bytes(reader), to: sessions.appendingPathComponent("\(getpid()).json").path)
+        let watch = ClaudeRegistryWatch(reader: reader, taskPending: { lease.beginHook() }, taskSettled: { lease.finishHook() }) {
+            _, _, _, revision in revisions.withLock { $0.append(revision) }
+        }
+        defer { watch.stop() }
+        try await waitUntil { !revisions.withLock { $0.isEmpty } }
+        let first = try #require(revisions.withLock { $0.last })
+        #expect(lease.admit { $0 } == nil)
+        // A sibling vnode change with the same owned-file fingerprint must
+        // not release the still-unapplied first snapshot.
+        write(Data("{}".utf8), to: sessions.appendingPathComponent("unrelated.json").path)
+        try await waitUntil { revisions.withLock { ($0.last ?? first) > first } }
+        let afterVnode = try #require(revisions.withLock { $0.last })
+        watch.acknowledgeTaskObservation(first)
+        #expect(lease.admit { $0 } == nil)
+        watch.acknowledgeTaskObservation(afterVnode)
+        #expect(lease.admit { $0 } != nil)
+        watch.request(generation: nil)
+        try await waitUntil { revisions.withLock { ($0.last ?? afterVnode) > afterVnode } }
+        let latest = try #require(revisions.withLock { $0.last })
+        watch.acknowledgeTaskObservation(afterVnode)
+        #expect(lease.admit { $0 } == nil)
+        watch.acknowledgeTaskObservation(latest)
+        #expect(lease.admit { $0 } != nil)
     }
 
     // MARK: H1-B: tolerance and clock

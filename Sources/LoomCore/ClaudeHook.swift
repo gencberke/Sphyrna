@@ -13,6 +13,13 @@ public struct ClaudeHookEnvelope: Codable, Equatable, Sendable {
     /// Optional run-local task evidence, separate from the shared hook token.
     public let taskGeneration: UUID?
     public let taskCredential: String?
+    /// Stamped only after this process reads the authenticated socket; never
+    /// decoded from an agent-controlled wire message.
+    var taskIngressUptime: UInt64? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case version, sessionID, managedRunID, payload, sentAt, taskGeneration, taskCredential
+    }
 
     public init(sessionID: UUID, managedRunID: UUID, payload: Data,
                 sentAt: Date = Date(), taskGeneration: UUID? = nil, taskCredential: String? = nil) {
@@ -23,6 +30,18 @@ public struct ClaudeHookEnvelope: Codable, Equatable, Sendable {
         self.sentAt = sentAt
         self.taskGeneration = taskGeneration
         self.taskCredential = taskCredential
+    }
+
+    fileprivate func receivedLocally(at uptime: UInt64) -> ClaudeHookEnvelope {
+        var copy = self
+        copy.taskIngressUptime = uptime
+        return copy
+    }
+
+    public static func == (lhs: ClaudeHookEnvelope, rhs: ClaudeHookEnvelope) -> Bool {
+        lhs.version == rhs.version && lhs.sessionID == rhs.sessionID && lhs.managedRunID == rhs.managedRunID &&
+            lhs.payload == rhs.payload && lhs.sentAt == rhs.sentAt && lhs.taskGeneration == rhs.taskGeneration &&
+            lhs.taskCredential == rhs.taskCredential
     }
 }
 
@@ -311,11 +330,13 @@ public final class ClaudeHookServer: @unchecked Sendable {
         defer { Darwin.close(connection) }
         let deadline = ProcessInfo.processInfo.systemUptime + 1
         var data = Data()
+        var firstByteAt: UInt64?
         while true {
             guard ProcessInfo.processInfo.systemUptime < deadline else { return }
             var buffer = [UInt8](repeating: 0, count: 16 * 1024)
             let count = Darwin.recv(connection, &buffer, buffer.count, 0)
             if count > 0 {
+                if firstByteAt == nil { firstByteAt = DispatchTime.now().uptimeNanoseconds }
                 guard data.count + count <= ClaudeHookClient.maximumWireByteCount else { return }
                 data.append(contentsOf: buffer.prefix(count))
             } else if count == 0 {
@@ -363,7 +384,8 @@ public final class ClaudeHookServer: @unchecked Sendable {
             return
         }
         HookDiagnostics.note(.received)
-        handler(wire.envelope)
+        guard let firstByteAt else { return }
+        handler(wire.envelope.receivedLocally(at: firstByteAt))
     }
 }
 
@@ -580,6 +602,69 @@ public enum ClaudeHookDisposition: Equatable, Sendable {
 /// state. A new run must be selected explicitly; late events from an older run
 /// are observable but cannot overwrite the active status.
 public actor ClaudeHookStateTracker {
+    struct TaskIdleProof: Equatable, Sendable {
+        let promptGeneration: UUID?
+        let updatedAt: Double
+    }
+    private struct TaskRegistryProof {
+        let sessionID: String
+        let directory: String
+        let idle: TaskIdleProof
+    }
+    private var taskPromptGeneration: UUID?
+    private var taskPromptID: String?
+    private var taskGateWatermark: Double?
+    private var taskRegistryTimestamp: Double?
+    private var taskRegistryProof: TaskRegistryProof?
+
+    /// This task-only proof never changes the user-facing hook outcome. The
+    /// reader has already verified the current owned process and file.
+    func taskIdleProof(nativeSessionID: String, workingDirectory: String) -> TaskIdleProof? {
+        guard let proof = taskRegistryProof,
+              proof.sessionID.caseInsensitiveCompare(nativeSessionID) == .orderedSame,
+              URL(fileURLWithPath: proof.directory).resolvingSymlinksInPath().standardizedFileURL.path ==
+                URL(fileURLWithPath: workingDirectory).resolvingSymlinksInPath().standardizedFileURL.path,
+              proof.idle.promptGeneration == taskPromptGeneration else { return nil }
+        return proof.idle
+    }
+
+    func taskCurrentPrompt() -> (generation: UUID, promptID: String?)? {
+        taskPromptGeneration.map { ($0, taskPromptID) }
+    }
+
+    private func noteTaskRegistry(_ result: ClaudeRegistryRead, generation: UUID?, now: Date) {
+        taskRegistryProof = nil
+        guard generation == inputGeneration, case let .snapshot(snapshot) = result,
+              snapshot.sessionID.caseInsensitiveCompare(activeProviderSessionID ?? "") == .orderedSame,
+              let directory = snapshot.workingDirectory, let updated = snapshot.statusUpdatedAt,
+              !inputClockAmbiguous, updated.isFinite, updated <= now.timeIntervalSince1970 * 1_000,
+              taskRegistryTimestamp.map({ updated >= $0 }) ?? true else { return }
+        taskRegistryTimestamp = updated
+        guard snapshot.status == "idle", snapshot.waitingFor?.isEmpty ?? true,
+              taskGateWatermark.map({ updated > $0 }) ?? true else { return }
+        taskRegistryProof = TaskRegistryProof(sessionID: snapshot.sessionID, directory: directory,
+            idle: TaskIdleProof(promptGeneration: taskPromptGeneration, updatedAt: updated))
+    }
+
+    private func noteTaskHook(_ event: ClaudeHookEvent, sentAt: Date) {
+        switch event.kind {
+        case .sessionStart:
+            taskPromptGeneration = nil; taskPromptID = nil; taskGateWatermark = nil
+            taskRegistryTimestamp = nil; taskRegistryProof = nil
+        case .userPromptSubmit:
+            taskPromptGeneration = UUID(); taskPromptID = event.promptID
+            taskGateWatermark = sentAt.timeIntervalSince1970 * 1_000
+            taskRegistryProof = nil
+        case .permissionRequest, .notification(type: "elicitation_dialog"),
+             .notification(type: "permission_prompt"), .notification(type: "agent_needs_input"):
+            let at = sentAt.timeIntervalSince1970 * 1_000
+            taskGateWatermark = max(taskGateWatermark ?? at, at)
+            taskRegistryProof = nil
+        case .sessionEnd, .unknown:
+            taskRegistryProof = nil
+        default: break
+        }
+    }
     public let sessionID: UUID
     private var managedRunID: UUID
     private var currentStatus = ClaudeSessionStatus()
@@ -622,6 +707,7 @@ public actor ClaudeHookStateTracker {
     /// Millisecond provider metadata is a bounded freshness aid, not a total
     /// order. Ambiguous clocks remain unknown and cannot permit automatic idle.
     func receiveRegistry(_ result: ClaudeRegistryRead, generation: UUID?, now: Date) -> String? {
+        noteTaskRegistry(result, generation: generation, now: now)
         let issue = applyRegistry(result, generation: generation, now: now)
         dropStaleReason()
         return issue
@@ -703,6 +789,8 @@ public actor ClaudeHookStateTracker {
     public func beginRun(_ runID: UUID) {
         managedRunID = runID
         currentStatus = ClaudeSessionStatus()
+        taskPromptGeneration = nil; taskPromptID = nil; taskGateWatermark = nil
+        taskRegistryTimestamp = nil; taskRegistryProof = nil
         activeProviderSessionID = nil
         retiredSessionIDs.removeAll()
         inputGeneration = nil; inputWatermark = nil
@@ -770,6 +858,7 @@ public actor ClaudeHookStateTracker {
             return disposition
         }
         if event.isSubagentPermissionPrompt {
+            noteTaskHook(event, sentAt: envelope.sentAt)
             waitingSubagentID = event.agentID
             if subagentApprovalReturn == nil, currentStatus.activity != .waitingForApproval {
                 subagentApprovalReturn = SubagentApprovalReturn(
@@ -785,6 +874,7 @@ public actor ClaudeHookStateTracker {
             currentStatus.reason = event.reason
             return disposition
         }
+        if case .sessionStart = event.kind {} else { noteTaskHook(event, sentAt: envelope.sentAt) }
         let promotesLostApproval = event.kind == .notification(type: "permission_prompt")
             && currentStatus.activity == .working && !permissionRequestSeen
         if case let .notification(type) = event.kind, !promotesLostApproval,
@@ -812,6 +902,7 @@ public actor ClaudeHookStateTracker {
                 currentStatus.lastEventAt = receivedAt
                 return disposition
             }
+            noteTaskHook(event, sentAt: envelope.sentAt)
             currentStatus = ClaudeSessionStatus()
             subagents = SubagentLedger()
         }

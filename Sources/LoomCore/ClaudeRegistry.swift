@@ -14,6 +14,8 @@ struct ClaudeRegistrySnapshot: Sendable, Equatable {
     let startedAt: Double
     let status: String?
     let statusUpdatedAt: Double?
+    var workingDirectory: String? = nil
+    var waitingFor: String? = nil
     /// `cli` for the TUI, `sdk-cli` for a stream-json child (`claude -p`, the Chat face; spike S1 Q7).
     var entrypoint: String? = nil
 
@@ -100,8 +102,11 @@ struct ClaudeRegistryReader: Sendable {
         }
         let updated = number(object["statusUpdatedAt"])
         guard status == nil || updated != nil else { return .unavailable }
+        let waiting = object["waitingFor"] as? String
+        guard object["waitingFor"] == nil || waiting != nil else { return .unavailable }
         return .snapshot(ClaudeRegistrySnapshot(sessionID: session, startedAt: started,
-            status: status, statusUpdatedAt: updated, entrypoint: object["entrypoint"] as? String))
+            status: status, statusUpdatedAt: updated, workingDirectory: cwd, waitingFor: waiting,
+            entrypoint: object["entrypoint"] as? String))
     }
 
     private func number(_ value: Any?) -> Double? { ClaudeRegistryFields.number(value) }
@@ -179,17 +184,54 @@ final class ClaudeRegistryWatch: @unchecked Sendable {
     var readCount: Int { reads.withLock { $0 } }
     private var sources: [String: DispatchSourceFileSystemObject] = [:]
     private var pending: DispatchWorkItem?
-    private let deliver: @Sendable (UUID, UUID?, ClaudeRegistryRead) -> Void
+    private let deliver: @Sendable (UUID, UUID?, ClaudeRegistryRead, UInt64) -> Void
+    private let taskPending: (@Sendable () -> Void)?
+    private let taskSettled: (@Sendable () -> Void)?
+    private let taskFence = Mutex<(revision: UInt64, held: Bool, stopped: Bool)>((0, false, false))
 
-    init(reader: ClaudeRegistryReader, deliver: @escaping @Sendable (UUID, UUID?, ClaudeRegistryRead) -> Void) {
+    init(reader: ClaudeRegistryReader, taskPending: (@Sendable () -> Void)? = nil,
+         taskSettled: (@Sendable () -> Void)? = nil,
+         deliver: @escaping @Sendable (UUID, UUID?, ClaudeRegistryRead, UInt64) -> Void) {
         self.reader = reader
+        self.taskPending = taskPending
+        self.taskSettled = taskSettled
         self.deliver = deliver
         request(generation: nil)
+    }
+
+    @discardableResult
+    private func noteTaskPending() -> (revision: UInt64, wasHeld: Bool) {
+        guard let taskPending else { return (0, false) }
+        return taskFence.withLock { value in
+            let wasHeld = value.held
+            guard !value.stopped else { return (value.revision, wasHeld) }
+            if value.revision == .max {
+                if !value.held { taskPending(); value.held = true }
+                value.stopped = true
+                return (value.revision, wasHeld)
+            }
+            value.revision += 1
+            if !value.held { taskPending(); value.held = true }
+            return (value.revision, wasHeld)
+        }
+    }
+
+    private var taskRevision: UInt64 { taskFence.withLock { $0.revision } }
+
+    /// Only the newest consumed snapshot can reopen task admission. A newer
+    /// vnode event or hook request holds the same fence until its own result.
+    func acknowledgeTaskObservation(_ revision: UInt64) {
+        taskFence.withLock { value in
+            guard !value.stopped, value.held, value.revision == revision else { return }
+            value.held = false
+            taskSettled?()
+        }
     }
 
     func request(generation: UUID?) {
         let enqueue = state.withLock { value in
             guard !value.stopped else { return false }
+            noteTaskPending()
             value.generation = generation
             value.explicit = true
             guard !value.queued else { return false }
@@ -206,6 +248,10 @@ final class ClaudeRegistryWatch: @unchecked Sendable {
 
     func stop() {
         state.withLock { $0.stopped = true; $0.generation = nil }
+        taskFence.withLock { value in
+            if value.held { value.held = false; taskSettled?() }
+            value.stopped = true
+        }
         queue.async { [weak self] in
             self?.pending?.cancel(); self?.pending = nil
             self?.sources.values.forEach { $0.cancel() }; self?.sources.removeAll()
@@ -239,17 +285,18 @@ final class ClaudeRegistryWatch: @unchecked Sendable {
             source.setCancelHandler { close(fd) }
             source.setEventHandler { [weak self, weak source] in
                 guard let self, let source else { return }
+                let pending = self.noteTaskPending()
                 if !source.data.intersection([.rename, .delete, .revoke]).isEmpty {
                     self.sources[path] = nil; source.cancel()
                 }
-                self.scheduleRead(vnode: true)
+                self.scheduleRead(vnode: true, revision: pending.revision, force: pending.wasHeld)
             }
             sources[path] = source
             source.resume()
         }
     }
 
-    private func scheduleRead(vnode: Bool = false) {
+    private func scheduleRead(vnode: Bool = false, revision: UInt64? = nil, force: Bool = false) {
         guard !state.withLock({ $0.stopped }) else { return }
         attach()
         // A hook-driven request always reads; a vnode notification reads only
@@ -260,18 +307,22 @@ final class ClaudeRegistryWatch: @unchecked Sendable {
         }
         guard pending == nil else { return }
         let seen = reader.fingerprint()
-        if !explicit, let lastRead, lastRead.fingerprint == seen { return }
+        if !explicit, !force, let lastRead, lastRead.fingerprint == seen {
+            if let revision { acknowledgeTaskObservation(revision) }
+            return
+        }
         read(attempt: 0, generation: state.withLock { $0.generation }, seen: seen)
     }
 
     private func read(attempt: Int, generation: UUID?, seen: ClaudeRegistryReader.FileFingerprint?) {
         let generation = state.withLock { $0.generation }
         guard !state.withLock({ $0.stopped }) else { return }
+        let revision = taskRevision
         reads.withLock { $0 += 1 }
         let result = reader.read()
         if case let .snapshot(snapshot) = result, snapshot.status != nil || generation == nil {
             lastRead = Seen(fingerprint: seen)
-            pending = nil; deliver(id, generation, result); return
+            pending = nil; deliver(id, generation, result, revision); return
         }
         if attempt < 2 {
             let work = DispatchWorkItem { [weak self] in self?.pending = nil; self?.read(attempt: attempt + 1, generation: generation, seen: seen) }
@@ -282,7 +333,7 @@ final class ClaudeRegistryWatch: @unchecked Sendable {
             case .unavailable: lastRead = nil
             case .snapshot, .missing: lastRead = Seen(fingerprint: seen)
             }
-            pending = nil; deliver(id, generation, result)
+            pending = nil; deliver(id, generation, result, revision)
         }
     }
 

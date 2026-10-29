@@ -29,6 +29,35 @@ struct SessionTaskRuntimeProofTests {
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
+    @Test func laterUserInputPreventsTheEarlierTicketFromProvingACleanInput() async throws {
+        let context = try await SessionRuntimeTests.makeContext()
+        defer { context.cleanup() }
+        let screen = SessionRuntimeTests.Screen()
+        let launch = try await context.runtime.startConversation(provider: .claude, projectID: nil, outputSink: screen)
+        screen.attach(launch.terminal)
+        let claim = try #require(await context.runtime.taskRunPlans[launch.sessionID]?.claim)
+        #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+        let binding = try #require(await context.runtime.authenticateTaskRun(claim))
+        let queue = TerminalInputQueue(endpoint: launch.terminal, onError: { _ in })
+        context.runtime.inputGate.register(runID: launch.runID, queue: queue)
+        #expect(context.runtime.inputGate.establishFreshCleanInput(runID: launch.runID))
+        let ticket = try #require(context.runtime.inputGate.reserveAutomaticInput(runID: launch.runID))
+        let task = UUID(), round = UUID(), operation = UUID()
+        let target = SessionTaskRoundTarget(taskID: task, roundID: round, inputOperationID: operation,
+                                            binding: binding, nativeTurnID: nil, execution: nil)
+        let purpose = SessionTaskExpectedInput.Purpose.child(taskID: task, roundID: round, operationID: operation)
+        let effect = SessionTaskInputEffectMarker(); _ = effect.write { 1 }
+        let digest = Data(SHA256.hash(data: Data("owned synthetic pointer".utf8)))
+        #expect(await context.runtime.prepareTaskInput(purpose: purpose, binding: binding, digest: digest,
+                                                       effect: effect, ticket: ticket))
+        context.runtime.inputGate.noteUnclassifiedInput(runID: launch.runID)
+        try await screen.send("owned synthetic pointer")
+        #expect(await screen.contains("echo: owned synthetic pointer"))
+        let host = SessionTaskRuntimeHost(runtime: context.runtime)
+        #expect(await host.observedChildExecution(target) == nil)
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
     @Test func codexInputObservationMustMatchTheOwnedTurnStartReceipt() async throws {
         let context = try await SessionRuntimeTests.makeContext()
         defer { context.cleanup() }

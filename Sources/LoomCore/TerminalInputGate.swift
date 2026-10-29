@@ -111,4 +111,16 @@ public final class TerminalInputGate: @unchecked Sendable {
     func confirmAutomaticInput(runID: UUID, ticket: TerminalInputQueue.AutomaticInputTicket) -> Bool {
         lock.withLock { queues[runID]?.confirmAutomaticInput(ticket) ?? false }
     }
+
+    func confirmAutomaticInputGeneration(runID: UUID, ticket: TerminalInputQueue.AutomaticInputTicket) -> UInt64? {
+        lock.withLock { queues[runID]?.confirmAutomaticInputGeneration(ticket) }
+    }
+
+    func hasInputGeneration(runID: UUID, generation: UInt64) -> Bool {
+        lock.withLock { queues[runID]?.hasInputGeneration(generation) ?? false }
+    }
+
+    func confirmManualInput(runID: UUID, digest: Data, observedAt: UInt64) -> TerminalInputQueue.ManualInputConfirmation {
+        lock.withLock { queues[runID]?.confirmManualInput(digest: digest, observedAt: observedAt) ?? .unverified }
+    }
 }

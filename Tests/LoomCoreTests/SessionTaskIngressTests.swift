@@ -4,6 +4,13 @@ import Testing
 
 @Suite(.serialized)
 struct SessionTaskIngressTests {
+    @Test func hookWireCannotSupplyTheLocalIngressTimestamp() throws {
+        let envelope = ClaudeHookEnvelope(sessionID: UUID(), managedRunID: UUID(), payload: Data())
+        var object = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(envelope)) as? [String: Any])
+        object["taskIngressUptime"] = UInt64.max
+        let decoded = try JSONDecoder().decode(ClaudeHookEnvelope.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(decoded.taskIngressUptime == nil)
+    }
     @Test func claudeHookIngressFencesAdmissionUntilConsumptionAndOverflowStaysClosed() async throws {
         let supervisor = try ProcessSupervisor()
         let adapter = ClaudeSessionAdapter(supervisor: supervisor)
