@@ -2,10 +2,16 @@ import CryptoKit
 import Darwin
 import Foundation
 import Testing
+import SwiftTerm
 @testable import LoomCore
 
 // The only provider input in this suite is the first positional message of a
 // new draft. Discovery and a normal test run never start a provider.
+private final class RealAcceptanceBundleAnchor: NSObject {}
+private enum RealAcceptanceFixture {
+    static var binaries: URL { Bundle(for: RealAcceptanceBundleAnchor.self).bundleURL.deletingLastPathComponent() }
+}
+
 private enum RealCodexAcceptanceGate {
     static let required = [
         "LOOM_ACC_REAL_CODEX_HOME", "LOOM_ACC_REAL_CODEX_EXECUTABLE", "LOOM_ACC_REAL_CODEX_WORK_ROOT",
@@ -100,13 +106,71 @@ private struct RealAcceptanceInputs {
 
 /// Provider output is used only in memory to detect an eventual final state;
 /// it is bounded and never printed or written to evidence.
-private final class RealAcceptanceScreen: TerminalOutputSink, @unchecked Sendable {
-    private let lock = NSLock()
+private final class RealAcceptanceScreen: TerminalOutputSink, TerminalDelegate, @unchecked Sendable {
+    private let lock = NSRecursiveLock()
     private var bytes = Data()
+    private var input: TerminalInputQueue?
+    private lazy var engine = SwiftTerm.Terminal(delegate: self, options: TerminalOptions(cols: 120, rows: 40, scrollback: 0))
+    private var pendingReplies = Data()
+    private var frontendReplies = 0
+    private var trustAccepted = false
+    private var inputFailed = false
+    private var trustedPaths: [String] = []
+    private var watchdog: Task<Void, Never>?
+
+    func configureFrontend(work: URL) {
+        lock.withLock {
+            trustedPaths = [work.path, work.resolvingSymlinksInPath().path,
+                            work.path.replacingOccurrences(of: "/private/tmp/", with: "/tmp/")]
+        }
+    }
+
+    /// Only terminal protocol replies and the native trust menu for the exact
+    /// disposable workspace are accepted here. No prompt or approval is sent.
+    func attach(_ endpoint: TerminalEndpoint, timedOut: @escaping @Sendable () async -> Void) {
+        let replies = lock.withLock {
+            input = TerminalInputQueue(endpoint: endpoint, capacity: 32 * 1024) { [weak self] _ in
+                self?.lock.withLock { self?.inputFailed = true }
+            }
+            watchdog = Task {
+                do { try await Task.sleep(for: .seconds(45)) } catch { return }
+                await timedOut()
+            }
+            let result = pendingReplies
+            pendingReplies.removeAll(keepingCapacity: true)
+            return result
+        }
+        if !replies.isEmpty { lock.withLock { _ = input?.enqueue(replies) } }
+    }
+
+    func identityArrived() { lock.withLock { watchdog?.cancel(); watchdog = nil } }
+    func finish() { lock.withLock { watchdog?.cancel(); watchdog = nil; input?.close(reason: "Acceptance finished"); input = nil } }
+    func frontendEvidence() -> (replies: Int, trusted: Bool) { lock.withLock { (frontendReplies, trustAccepted) } }
+
+    func send(source: SwiftTerm.Terminal, data: ArraySlice<UInt8>) {
+        // Called synchronously by the same product VT parser that answers a
+        // real terminal. Clipboard reads use the delegate's denying default.
+        pendingReplies.append(contentsOf: data)
+        frontendReplies += 1
+    }
+
     func receive(_ data: Data) {
         lock.withLock {
             bytes.append(data)
             if bytes.count > 64 * 1024 { bytes = Data(bytes.suffix(64 * 1024)) }
+            guard !trustedPaths.isEmpty else { return }
+            engine.feed(byteArray: Array(data))
+            let text = (0..<engine.rows).compactMap { engine.getLine(row: $0)?.translateToString(trimRight: true) }
+                .joined(separator: "\n").lowercased()
+            if !trustAccepted, text.contains("trust this folder?"), text.contains("trust and continue"), text.contains("quit"),
+               trustedPaths.contains(where: { text.contains($0.lowercased()) }) {
+                trustAccepted = true
+                pendingReplies.append(contentsOf: "\r".utf8)
+            }
+            if let input, !pendingReplies.isEmpty {
+                _ = input.enqueue(pendingReplies)
+                pendingReplies.removeAll(keepingCapacity: true)
+            }
         }
     }
 
@@ -199,6 +263,8 @@ private struct RealAcceptanceEvidence: Encodable {
     var terminalErrorWords: [String] = []
     var terminalErrorPhrases: [String] = []
     var terminalByteCount = 0
+    var frontendRepliesQueued = 0
+    var trustChoiceQueued = false
     var fixtureExtraMode = "hostile"
     var errorSignals: [String] = []
     var kind = "first-prompt-acceptance"
@@ -231,7 +297,7 @@ private extension SessionRuntime {
     }
 }
 
-@Suite(.serialized, .processHeavy, .timeLimit(.minutes(6)),
+@Suite(.serialized, .timeLimit(.minutes(6)),
        .enabled(if: RealCodexAcceptanceGate.enabled, "Explicit isolated real-Codex acceptance inputs are required"))
 struct RealCodexDraftAcceptanceTests {
     private static let fileMarker = "LOOM_D1_REAL_FILE_OK\n"
@@ -250,9 +316,12 @@ struct RealCodexDraftAcceptanceTests {
         var witnesses: [RealAcceptanceWitness] = []
         var inputs: RealAcceptanceInputs?
         let screen = RealAcceptanceScreen()
+        defer { screen.finish() }
         do {
             let value = try RealAcceptanceInputs.read()
             inputs = value
+            let frontend = ProcessInfo.processInfo.environment["LOOM_ACC_REAL_CODEX_FRONTEND"] == "1"
+            if frontend { screen.configureFrontend(work: value.work) }
             let marker = value.work.appendingPathComponent("p0-d1-real-acceptance.txt")
             var markerInfo = stat()
             try requireAcceptance(lstat(marker.path, &markerInfo) != 0 && errno == ENOENT, "marker-preexists")
@@ -275,7 +344,7 @@ struct RealCodexDraftAcceptanceTests {
             // A deliberately broader root outside the work folder: the model
             // is not authorized to use it, and it remains as test evidence.
             let bundle = try RunScopeLauncher.assembleOwnedBundle(
-                executable: RuntimeFixture.binaries.appendingPathComponent("loom-run-host"), in: hostDir)
+                executable: RealAcceptanceFixture.binaries.appendingPathComponent("loom-run-host"), in: hostDir)
             let socketDir = localDir.appendingPathComponent("s", isDirectory: true)
             let catalog = try SessionCatalog(url: runtimeDir.appendingPathComponent("catalog.sqlite3"))
             let processSupervisor = try await ProcessSupervisor.restoring(catalog: catalog,
@@ -294,7 +363,7 @@ struct RealCodexDraftAcceptanceTests {
             let models = [ModelCatalogEntry(harness: .codex, id: "gpt-6-luna", title: "GPT-6 Luna", efforts: ["low"])]
             let instance = SessionRuntime(supervisor: processSupervisor, catalog: catalog,
                 configuration: SessionRuntimeConfiguration(toolchains: resolver,
-                    hookHelperPath: RuntimeFixture.binaries.appendingPathComponent("loom-hook").path,
+                    hookHelperPath: RealAcceptanceFixture.binaries.appendingPathComponent("loom-hook").path,
                     socketDirectory: socketDir, homeDirectory: value.work.path,
                     codexIdentityTimeout: 45, codexServerStartupTimeout: 15, resumeDiagnosticsWindow: 2,
                     claudeTemporaryRoot: nil, claudeEnvironment: [:], catalogBackupDelay: nil,
@@ -312,8 +381,18 @@ struct RealCodexDraftAcceptanceTests {
             result.reservationTime = Date()
             result.submission = diagnosticOnly ? "no-user-input-provided" : "unknown-after-reservation"
             result.phase = "new-draft"
-            let launch = try await instance.startConversation(provider: .codex, projectID: project.id, outputSink: screen,
-                draft: diagnosticOnly ? nil : NewSessionLaunch(firstMessage: prompt, choices: choices))
+            let terminalReady: (@MainActor @Sendable (RuntimeLaunch) async -> Void)?
+            if frontend {
+                terminalReady = { @MainActor @Sendable launch in
+                    screen.attach(launch.terminal) {
+                        _ = try? await instance.stopConversation(sessionID: launch.sessionID)
+                    }
+                }
+            } else { terminalReady = nil }
+            let launch = try await instance.startConversation(provider: .codex, projectID: project.id, rows: 40, columns: 120, outputSink: screen,
+                draft: diagnosticOnly ? nil : NewSessionLaunch(firstMessage: prompt, choices: choices),
+                onTerminalReady: terminalReady)
+            screen.identityArrived()
             result.sessionID = launch.sessionID.uuidString
             guard let threadID = try await catalog.session(id: launch.sessionID)?.session.providerConversationID,
                   UUID(uuidString: threadID) != nil else { throw RealAcceptanceFailure("identity") }
@@ -465,6 +544,9 @@ struct RealCodexDraftAcceptanceTests {
         result.terminalErrorWords = diagnostic.errorWords
         result.terminalErrorPhrases = diagnostic.errorPhrases
         result.terminalByteCount = diagnostic.byteCount
+        let frontend = screen.frontendEvidence()
+        result.frontendRepliesQueued = frontend.replies
+        result.trustChoiceQueued = frontend.trusted
         if let bundleRoot, result.quitResult == "verified", result.cleanup != "failed-or-unknown" {
             RunScopeLauncher.removeOwnedBundle(in: bundleRoot)
         }
