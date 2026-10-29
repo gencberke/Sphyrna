@@ -45,6 +45,13 @@ final class SessionTaskRunLease: @unchecked Sendable {
     func permits(revision admitted: UInt64) -> Bool {
         lock.withLock { enabled && reliable && hooksInFlight == 0 && codexEvents.isEmpty && revision == admitted }
     }
+    /// Keep provider ingress and revocation ordered with the actual syscall.
+    func withAdmission(revision admitted: UInt64, _ write: () throws -> Int) rethrows -> Int? {
+        try lock.withLock {
+            guard enabled, reliable, hooksInFlight == 0, codexEvents.isEmpty, revision == admitted else { return nil }
+            return try write()
+        }
+    }
     var isEnabled: Bool { lock.withLock { enabled } }
 }
 

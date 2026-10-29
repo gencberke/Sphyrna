@@ -21,6 +21,10 @@ public enum TerminalInputError: Error, CustomStringConvertible, Equatable, Senda
     }
 }
 
+/// A short synchronous fence around one actual nonblocking write. A nil
+/// result means no write was attempted.
+typealias TerminalWriteTransaction = @Sendable (@Sendable () throws -> Int) throws -> Int?
+
 /// One ordered write path per run for keystrokes, paste and terminal replies.
 /// `enqueue` appends synchronously, so caller order is byte order; one drain
 /// task finishes short writes before taking the next bytes. Memory is bounded
@@ -36,16 +40,18 @@ public final class TerminalInputQueue: @unchecked Sendable {
     private struct AutomaticSegment: Sendable {
         let end: Int
         let ticket: AutomaticInputTicket
-        let permit: @Sendable () -> Bool
+        let transaction: TerminalWriteTransaction
     }
     private enum DrainChunk: Sendable {
         case automatic(Data, AutomaticSegment)
         case ordinary(Data)
     }
     public typealias Writer = @Sendable (Data) async throws -> Int
+    typealias AutomaticWriter = @Sendable (Data, @escaping TerminalWriteTransaction) async throws -> Int?
 
     public let capacity: Int
     private let writer: Writer
+    private let automaticWriter: AutomaticWriter?
     private let onError: @Sendable (TerminalInputError) -> Void
     private let lock = NSLock()
     // Guarded by lock.
@@ -70,12 +76,25 @@ public final class TerminalInputQueue: @unchecked Sendable {
         precondition(capacity > 0)
         self.capacity = capacity
         self.writer = writer
+        self.automaticWriter = nil
+        self.onError = onError
+    }
+
+    init(capacity: Int, writer: @escaping Writer, automaticWriter: @escaping AutomaticWriter,
+         onError: @escaping @Sendable (TerminalInputError) -> Void) {
+        precondition(capacity > 0)
+        self.capacity = capacity
+        self.writer = writer
+        self.automaticWriter = automaticWriter
         self.onError = onError
     }
 
     public convenience init(endpoint: TerminalEndpoint, capacity: Int = 4 * 1024 * 1024,
                             onError: @escaping @Sendable (TerminalInputError) -> Void) {
-        self.init(capacity: capacity, writer: { try await endpoint.write($0) }, onError: onError)
+        self.init(capacity: capacity, writer: { try await endpoint.write($0) },
+                  automaticWriter: { bytes, transaction in
+                      try await endpoint.writeAutomatically(bytes, transaction: transaction)
+                  }, onError: onError)
     }
 
     /// Returns false when the payload was not accepted; the reason is reported
@@ -147,18 +166,18 @@ public final class TerminalInputQueue: @unchecked Sendable {
 
     /// Admit a single printable pointer and Return atomically with the clean
     /// check. Anything else, including a multiline payload, is deferred whole.
-    func enqueueAutomatic(_ bytes: Data, permit: @escaping @Sendable () -> Bool = { true }) -> AutomaticInputTicket? {
+    func enqueueAutomatic(_ bytes: Data, transaction: @escaping TerminalWriteTransaction) -> AutomaticInputTicket? {
         guard bytes.count > 1, bytes.count <= 16 * 1024, bytes.last == 0x0d,
               bytes.dropLast().allSatisfy({ (0x20...0x7e).contains($0) }) else { return nil }
         let ticket = lock.withLock { () -> AutomaticInputTicket? in
-            guard automaticClean, automaticOutstanding == nil, failure == nil, closedReason == nil,
+            guard automaticWriter != nil, automaticClean, automaticOutstanding == nil, failure == nil, closedReason == nil,
                   !draining, pending.count == sent, bytes.count <= capacity else { return nil }
             let ticket = AutomaticInputTicket()
             automaticOutstanding = (ticket, unclassifiedGeneration)
             automaticClean = false
             automaticEverUsed = true
             pending.append(bytes)
-            automaticSegment = AutomaticSegment(end: pending.count, ticket: ticket, permit: permit)
+            automaticSegment = AutomaticSegment(end: pending.count, ticket: ticket, transaction: transaction)
             lastAcceptedUptime = ProcessInfo.processInfo.systemUptime
             lastAccepted = Date()
             draining = true
@@ -238,31 +257,35 @@ public final class TerminalInputQueue: @unchecked Sendable {
             }
             next.onIdle?()
             guard let work = next.work else { return }
-            let chunk: Data
-            switch work {
-            case let .ordinary(bytes): chunk = bytes
-            case let .automatic(bytes, segment):
-                guard segment.permit() else {
-                    let outcome: AutomaticWriteOutcome? = lock.withLock {
-                        guard automaticSegment?.ticket == segment.ticket else { return nil }
-                        let started = sent > 0
-                        let start = pending.startIndex + sent, end = pending.startIndex + segment.end
-                        pending.removeSubrange(start..<end)
-                        automaticSegment = nil
-                        if let outstanding = automaticOutstanding, outstanding.ticket == segment.ticket {
-                            automaticOutstanding = nil
-                            automaticClean = !started && outstanding.generation == unclassifiedGeneration
-                                && failure == nil && closedReason == nil
-                        }
-                        return started ? .unknown : .notWritten
-                    }
-                    if let outcome { segment.ticket.completion.finish(outcome) }
-                    continue
-                }
-                chunk = bytes
-            }
             do {
-                let written = try await writer(chunk)
+                let chunk: Data
+                let written: Int
+                switch work {
+                case let .ordinary(bytes):
+                    chunk = bytes
+                    written = try await writer(bytes)
+                case let .automatic(bytes, segment):
+                    chunk = bytes
+                    guard let automaticWriter,
+                          let count = try await automaticWriter(bytes, segment.transaction) else {
+                        let outcome: AutomaticWriteOutcome? = lock.withLock {
+                            guard automaticSegment?.ticket == segment.ticket else { return nil }
+                            let started = sent > 0
+                            let start = pending.startIndex + sent, end = pending.startIndex + segment.end
+                            pending.removeSubrange(start..<end)
+                            automaticSegment = nil
+                            if let outstanding = automaticOutstanding, outstanding.ticket == segment.ticket {
+                                automaticOutstanding = nil
+                                automaticClean = !started && outstanding.generation == unclassifiedGeneration
+                                    && failure == nil && closedReason == nil
+                            }
+                            return started ? .unknown : .notWritten
+                        }
+                        if let outcome { segment.ticket.completion.finish(outcome) }
+                        continue
+                    }
+                    written = count
+                }
                 if written > 0 {
                     idleWrites = 0
                     lock.withLock {

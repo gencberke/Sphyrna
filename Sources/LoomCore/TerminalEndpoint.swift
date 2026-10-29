@@ -130,6 +130,12 @@ public final class TerminalEndpoint: @unchecked Sendable {
         try await transport.write(data)
     }
 
+    /// The transaction runs on the PTY's serial queue around the actual
+    /// nonblocking write, not around the earlier async enqueue.
+    func writeAutomatically(_ data: Data, transaction: @escaping TerminalWriteTransaction) async throws -> Int? {
+        try await transport.writeAutomatically(data, transaction: transaction)
+    }
+
     public func resize(rows: UInt16, columns: UInt16) async throws {
         try await transport.resize(rows: rows, columns: columns)
     }

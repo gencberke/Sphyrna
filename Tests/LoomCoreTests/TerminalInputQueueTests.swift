@@ -1,13 +1,15 @@
+import Darwin
 import Foundation
 import Testing
 @testable import LoomCore
 
 /// Scripted PTY writer: each call accepts at most the next scripted count
 /// (0 models EAGAIN), recording exactly the accepted prefix.
-private actor ScriptedWriter {
+private final class ScriptedWriter: @unchecked Sendable {
+    private let lock = NSLock()
     private var script: [Int]
-    private(set) var received = Data()
-    private(set) var calls = 0
+    private var stored = Data()
+    private var count = 0
     private let failAfter: Int?
 
     init(script: [Int], failAfter: Int? = nil) {
@@ -16,15 +18,17 @@ private actor ScriptedWriter {
     }
 
     func write(_ data: Data) throws -> Int {
-        calls += 1
-        if let failAfter, received.count >= failAfter {
-            throw LoomError.message("terminal closed")
+        try lock.withLock {
+            count += 1
+            if let failAfter, stored.count >= failAfter { throw LoomError.message("terminal closed") }
+            let limit = script.isEmpty ? data.count : script.removeFirst()
+            let accepted = min(limit, data.count)
+            stored.append(data.prefix(accepted))
+            return accepted
         }
-        let limit = script.isEmpty ? data.count : script.removeFirst()
-        let accepted = min(limit, data.count)
-        received.append(data.prefix(accepted))
-        return accepted
     }
+    var received: Data { lock.withLock { stored } }
+    var calls: Int { lock.withLock { count } }
 }
 
 private final class ErrorLog: @unchecked Sendable {
@@ -50,6 +54,13 @@ private final class PausedTaskWrite: @unchecked Sendable {
     func release() { condition.withLock { released = true; condition.broadcast() } }
 }
 
+private final class PTYOutput: @unchecked Sendable {
+    private let lock = NSLock()
+    private var bytes = Data()
+    func append(_ value: Data) { lock.withLock { bytes.append(value) } }
+    var data: Data { lock.withLock { bytes } }
+}
+
 private final class IdleResult: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [Bool] = []
@@ -67,31 +78,91 @@ private final class PermitOnce: @unchecked Sendable {
 struct TerminalInputQueueTests {
     @Test func providerEventBeforeWriteCancelsOnlyTheAutomaticChunk() async throws {
         let writer = ScriptedWriter(script: [])
-        let queue = TerminalInputQueue(capacity: 1024, writer: { try await writer.write($0) }, onError: { _ in })
+        let queue = TerminalInputQueue(capacity: 1024, writer: { try writer.write($0) },
+            automaticWriter: { bytes, transaction in try transaction { try writer.write(bytes) } }, onError: { _ in })
         let pause = PausedTaskWrite()
         #expect(queue.establishFreshCleanInput())
-        let ticket = try #require(queue.enqueueAutomatic(Data("task pointer\r".utf8), permit: pause.permit))
+        let proposed = queue.enqueueAutomatic(Data("task pointer\r".utf8), transaction: { write in
+            guard pause.permit() else { return nil }
+            return try write()
+        })
+        let ticket = try #require(proposed)
         #expect(try await SessionRuntimeTests.waitUntil(2) { pause.isEntered })
         #expect(queue.enqueue(Data("user draft".utf8)))
         pause.release()
         #expect(await ticket.writeOutcome() == .notWritten)
         try await waitUntilIdle(queue)
-        #expect(await writer.received == Data("user draft".utf8))
-        #expect(queue.enqueueAutomatic(Data("another\r".utf8)) == nil)
+        #expect(writer.received == Data("user draft".utf8))
+        #expect(queue.enqueueAutomatic(Data("another\r".utf8), transaction: { try $0() }) == nil)
     }
 
     @Test func providerEventAfterPartialTaskWriteIsUnknownAndNeverRetried() async throws {
         let writer = ScriptedWriter(script: [1])
-        let queue = TerminalInputQueue(capacity: 1024, writer: { try await writer.write($0) }, onError: { _ in })
+        let queue = TerminalInputQueue(capacity: 1024, writer: { try writer.write($0) },
+            automaticWriter: { bytes, transaction in try transaction { try writer.write(bytes) } }, onError: { _ in })
         let permit = PermitOnce()
         #expect(queue.establishFreshCleanInput())
-        let ticket = try #require(queue.enqueueAutomatic(Data("pointer\r".utf8), permit: permit.check))
+        let proposed = queue.enqueueAutomatic(Data("pointer\r".utf8), transaction: { write in
+            guard permit.check() else { return nil }
+            return try write()
+        })
+        let ticket = try #require(proposed)
         #expect(await ticket.writeOutcome() == .unknown)
         try await waitUntilIdle(queue)
         #expect(queue.enqueue(Data("user".utf8)))
         try await waitUntilIdle(queue)
-        #expect(await writer.received == Data("puser".utf8))
-        #expect(queue.enqueueAutomatic(Data("retry\r".utf8)) == nil)
+        #expect(writer.received == Data("puser".utf8))
+        #expect(queue.enqueueAutomatic(Data("retry\r".utf8), transaction: { try $0() }) == nil)
+    }
+
+    @Test func ingressAfterAsyncEnqueueStillFencesTheActualWrite() async throws {
+        let writer = ScriptedWriter(script: []), pause = PausedTaskWrite(), lease = SessionTaskRunLease()
+        let queue = TerminalInputQueue(capacity: 1024, writer: { try writer.write($0) },
+            automaticWriter: { bytes, transaction in
+                _ = pause.permit()
+                return try transaction { try writer.write(bytes) }
+            }, onError: { _ in })
+        let revision = try #require(lease.admit { $0 })
+        #expect(queue.establishFreshCleanInput())
+        let proposed = queue.enqueueAutomatic(Data("task pointer\r".utf8), transaction: { write in
+            try lease.withAdmission(revision: revision, write)
+        })
+        let ticket = try #require(proposed)
+        #expect(try await SessionRuntimeTests.waitUntil(2) { pause.isEntered })
+        lease.beginHook()
+        lease.finishHook()
+        #expect(queue.enqueue(Data("user draft".utf8)))
+        pause.release()
+        #expect(await ticket.writeOutcome() == .notWritten)
+        try await waitUntilIdle(queue)
+        #expect(writer.received == Data("user draft".utf8))
+    }
+
+    @Test func realPTYTransactionRefusesBeforeSyscallAndOrdinaryInputStillFlows() async throws {
+        let process = try PTYProcess(executable: "/bin/cat", arguments: [], environment: ["PATH": "/usr/bin:/bin"],
+                                     directory: "/tmp", rows: 24, columns: 80)
+        defer { _ = Darwin.kill(process.pid, SIGKILL); _ = Darwin.waitpid(process.pid, nil, WNOHANG) }
+        let output = PTYOutput(), pause = PausedTaskWrite(), lease = SessionTaskRunLease()
+        let transport = EventDrivenPTYProcess(process: process, onOutput: { output.append($0) }, onExit: { _ in })
+        let revision = try #require(lease.admit { $0 })
+        let attempt = Task {
+            try await transport.writeAutomatically(Data("unexpected\n".utf8), transaction: { write in
+                _ = pause.permit()
+                return try lease.withAdmission(revision: revision, write)
+            })
+        }
+        #expect(try await SessionRuntimeTests.waitUntil(2) { pause.isEntered })
+        lease.beginHook()
+        lease.finishHook()
+        pause.release()
+        #expect(try await attempt.value == nil)
+        #expect(try await transport.write(Data("ordinary\n".utf8)) == 9)
+        #expect(try await SessionRuntimeTests.waitUntil(2) {
+            String(decoding: output.data, as: UTF8.self).contains("ordinary")
+        })
+        #expect(!String(decoding: output.data, as: UTF8.self).contains("unexpected"))
+        _ = Darwin.kill(process.pid, SIGTERM)
+        _ = try await transport.finish(outputDrainSeconds: 2)
     }
 
     private func waitUntilIdle(_ queue: TerminalInputQueue) async throws {
@@ -107,50 +178,55 @@ struct TerminalInputQueueTests {
 
     @Test func automaticInputNeverAppendsToUnclassifiedTerminalBytes() async throws {
         let writer = ScriptedWriter(script: [])
-        let queue = TerminalInputQueue(capacity: 1024, writer: { try await writer.write($0) }, onError: { _ in })
+        let queue = TerminalInputQueue(capacity: 1024, writer: { try writer.write($0) },
+            automaticWriter: { bytes, transaction in try transaction { try writer.write(bytes) } }, onError: { _ in })
         let gate = TerminalInputGate(), runID = UUID()
         gate.register(runID: runID, queue: queue)
         #expect(gate.establishFreshCleanInput(runID: runID))
         #expect(queue.enqueue(Data("unsent draft".utf8)))
         try await waitUntilIdle(queue)
-        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("task pointer\r".utf8)) == nil)
+        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("task pointer\r".utf8), transaction: { try $0() }) == nil)
         try await waitUntilIdle(queue)
-        #expect(await writer.received == Data("unsent draft".utf8))
+        #expect(writer.received == Data("unsent draft".utf8))
     }
 
     @Test func automaticProofCannotClearLaterUnclassifiedInput() async throws {
         let writer = ScriptedWriter(script: [])
-        let queue = TerminalInputQueue(capacity: 1024, writer: { try await writer.write($0) }, onError: { _ in })
+        let queue = TerminalInputQueue(capacity: 1024, writer: { try writer.write($0) },
+            automaticWriter: { bytes, transaction in try transaction { try writer.write(bytes) } }, onError: { _ in })
         let gate = TerminalInputGate(), runID = UUID()
         gate.register(runID: runID, queue: queue)
         #expect(gate.establishFreshCleanInput(runID: runID))
-        let ticket = try #require(gate.enqueueAutomatic(runID: runID, bytes: Data("first\r".utf8)))
+        let proposed = gate.enqueueAutomatic(runID: runID, bytes: Data("first\r".utf8), transaction: { try $0() })
+        let ticket = try #require(proposed)
         try await waitUntilIdle(queue)
         #expect(queue.enqueue(Data("next draft".utf8)))
         try await waitUntilIdle(queue)
         #expect(!gate.confirmAutomaticInput(runID: runID, ticket: ticket))
-        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("second\r".utf8)) == nil)
+        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("second\r".utf8), transaction: { try $0() }) == nil)
         try await waitUntilIdle(queue)
-        #expect(await writer.received == Data("first\rnext draft".utf8))
+        #expect(writer.received == Data("first\rnext draft".utf8))
     }
 
     @Test func automaticInputRequiresAProvenCleanBoundaryAndOnePrintableLine() async throws {
         let writer = ScriptedWriter(script: [])
-        let queue = TerminalInputQueue(capacity: 1024, writer: { try await writer.write($0) }, onError: { _ in })
+        let queue = TerminalInputQueue(capacity: 1024, writer: { try writer.write($0) },
+            automaticWriter: { bytes, transaction in try transaction { try writer.write(bytes) } }, onError: { _ in })
         let gate = TerminalInputGate(), runID = UUID()
         gate.register(runID: runID, queue: queue)
-        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("first\r".utf8)) == nil)
+        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("first\r".utf8), transaction: { try $0() }) == nil)
         #expect(gate.establishFreshCleanInput(runID: runID))
-        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("first\nsecond\r".utf8)) == nil)
-        let first = try #require(gate.enqueueAutomatic(runID: runID, bytes: Data("first\r".utf8)))
+        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("first\nsecond\r".utf8), transaction: { try $0() }) == nil)
+        let proposed = gate.enqueueAutomatic(runID: runID, bytes: Data("first\r".utf8), transaction: { try $0() })
+        let first = try #require(proposed)
         try await waitUntilIdle(queue)
-        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("second\r".utf8)) == nil)
+        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("second\r".utf8), transaction: { try $0() }) == nil)
         #expect(gate.confirmAutomaticInput(runID: runID, ticket: first))
-        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("second\r".utf8)) != nil)
+        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("second\r".utf8), transaction: { try $0() }) != nil)
         try await waitUntilIdle(queue)
-        #expect(await writer.received == Data("first\rsecond\r".utf8))
+        #expect(writer.received == Data("first\rsecond\r".utf8))
         gate.unregister(runID: runID)
-        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("third\r".utf8)) == nil)
+        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("third\r".utf8), transaction: { try $0() }) == nil)
     }
 
     @Test func idleCallbackRechecksFreshBoundaryWithoutLosingDrainRace() async throws {
@@ -172,27 +248,29 @@ struct TerminalInputQueueTests {
 
     @Test func parserRepliesDoNotDirtyAnOtherwiseFreshInputQueue() async throws {
         let writer = ScriptedWriter(script: [])
-        let queue = TerminalInputQueue(capacity: 1024, writer: { try await writer.write($0) }, onError: { _ in })
+        let queue = TerminalInputQueue(capacity: 1024, writer: { try writer.write($0) },
+            automaticWriter: { bytes, transaction in try transaction { try writer.write(bytes) } }, onError: { _ in })
         #expect(queue.enqueueTerminalResponse(Data("\u{1b}[1;1R".utf8)))
         try await waitUntilIdle(queue)
         #expect(queue.establishFreshCleanInput())
-        #expect(await writer.received == Data("\u{1b}[1;1R".utf8))
+        #expect(writer.received == Data("\u{1b}[1;1R".utf8))
     }
 
     @Test func priorUnclassifiedInputCannotBeDeclaredFresh() async throws {
         let writer = ScriptedWriter(script: [])
-        let queue = TerminalInputQueue(capacity: 1024, writer: { try await writer.write($0) }, onError: { _ in })
+        let queue = TerminalInputQueue(capacity: 1024, writer: { try writer.write($0) },
+            automaticWriter: { bytes, transaction in try transaction { try writer.write(bytes) } }, onError: { _ in })
         #expect(queue.enqueue(Data("\u{1b}[1;1R".utf8)))
         try await waitUntilIdle(queue)
         #expect(!queue.establishFreshCleanInput())
-        #expect(queue.enqueueAutomatic(Data("pointer\r".utf8)) == nil)
-        #expect(await writer.received == Data("\u{1b}[1;1R".utf8))
+        #expect(queue.enqueueAutomatic(Data("pointer\r".utf8), transaction: { try $0() }) == nil)
+        #expect(writer.received == Data("\u{1b}[1;1R".utf8))
     }
 
     @Test func shortAndBlockedWritesKeepEveryByteInCallerOrder() async throws {
         let writer = ScriptedWriter(script: [1, 0, 3, 0, 0, 2, 7, 1])
         let errors = ErrorLog()
-        let queue = TerminalInputQueue(capacity: 1024, writer: { try await writer.write($0) },
+        let queue = TerminalInputQueue(capacity: 1024, writer: { try writer.write($0) },
                                        onError: errors.append)
         var expected = Data()
         for index in 0..<50 {
@@ -203,7 +281,7 @@ struct TerminalInputQueueTests {
             expected.append(payload)
         }
         try await waitUntilIdle(queue)
-        #expect(await writer.received == expected)
+        #expect(writer.received == expected)
         #expect(queue.pendingByteCount == 0)
         #expect(errors.values.isEmpty)
     }
@@ -211,27 +289,27 @@ struct TerminalInputQueueTests {
     @Test func overflowRejectsWholePayloadAndLaterInputStillFlows() async throws {
         let writer = ScriptedWriter(script: Array(repeating: 0, count: 5))
         let errors = ErrorLog()
-        let queue = TerminalInputQueue(capacity: 8, writer: { try await writer.write($0) },
+        let queue = TerminalInputQueue(capacity: 8, writer: { try writer.write($0) },
                                        onError: errors.append)
         #expect(queue.enqueue(Data("12345".utf8)))
         #expect(!queue.enqueue(Data("6789".utf8)))
         #expect(queue.enqueue(Data("abc".utf8)))
         try await waitUntilIdle(queue)
-        #expect(await writer.received == Data("12345abc".utf8))
+        #expect(writer.received == Data("12345abc".utf8))
         #expect(errors.values == [.overflow(pending: 5, rejected: 4, capacity: 8)])
     }
 
     @Test func writeFailureIsReportedAndLaterInputIsRefused() async throws {
         let writer = ScriptedWriter(script: [], failAfter: 3)
         let errors = ErrorLog()
-        let queue = TerminalInputQueue(capacity: 64, writer: { try await writer.write($0) },
+        let queue = TerminalInputQueue(capacity: 64, writer: { try writer.write($0) },
                                        onError: errors.append)
         #expect(queue.enqueue(Data("abc".utf8)))
         try await waitUntilIdle(queue)
         #expect(queue.enqueue(Data("def".utf8)))
         try await waitUntilIdle(queue)
         #expect(!queue.enqueue(Data("ghi".utf8)))
-        #expect(await writer.received == Data("abc".utf8))
+        #expect(writer.received == Data("abc".utf8))
         let values = errors.values
         #expect(values.count == 2)
         #expect(values.allSatisfy { if case .writeFailed = $0 { true } else { false } })

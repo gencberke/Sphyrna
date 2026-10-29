@@ -94,7 +94,7 @@ struct TerminalSurfaceTests {
         let gate = TerminalInputGate(), probe = RegistrationAdmissionProbe()
         gate.observeRegistrations { id in
             let fresh = gate.establishFreshCleanInput(runID: id)
-            let accepted = fresh && gate.enqueueAutomatic(runID: id, bytes: Data("unexpected pointer\r".utf8)) != nil
+            let accepted = fresh && gate.enqueueAutomatic(runID: id, bytes: Data("unexpected pointer\r".utf8), transaction: { try $0() }) != nil
             probe.record(accepted)
         }
         surface.attach(runID: runID, endpoint: launched.terminal, inputGate: gate)

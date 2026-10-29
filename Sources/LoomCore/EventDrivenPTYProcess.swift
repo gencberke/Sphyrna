@@ -155,20 +155,31 @@ final class EventDrivenPTYProcess: @unchecked Sendable {
         processSource.cancel()
     }
 
+    // Must be called on terminalQueue; the descriptor is nonblocking.
+    private func writeNow(_ data: Data) throws -> Int {
+        guard terminalOpen else { throw TerminalTransportError.closed }
+        let count = data.withUnsafeBytes { Darwin.write(terminalFD, $0.baseAddress, $0.count) }
+        if count < 0 {
+            if errno == EAGAIN || errno == EINTR { return 0 }
+            throw LoomError.system("PTY write", errno)
+        }
+        return count
+    }
+
     func write(_ data: Data) async throws -> Int {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Int, any Error>) in
             terminalQueue.async { [self] in
-                guard terminalOpen else {
-                    continuation.resume(throwing: TerminalTransportError.closed)
-                    return
-                }
-                let count = data.withUnsafeBytes { Darwin.write(terminalFD, $0.baseAddress, $0.count) }
-                if count < 0 {
-                    if errno == EAGAIN || errno == EINTR { continuation.resume(returning: 0) }
-                    else { continuation.resume(throwing: LoomError.system("PTY write", errno)) }
-                } else {
-                    continuation.resume(returning: count)
-                }
+                do { continuation.resume(returning: try writeNow(data)) }
+                catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
+
+    func writeAutomatically(_ data: Data, transaction: @escaping TerminalWriteTransaction) async throws -> Int? {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Int?, any Error>) in
+            terminalQueue.async { [self] in
+                do { continuation.resume(returning: try transaction { try self.writeNow(data) }) }
+                catch { continuation.resume(throwing: error) }
             }
         }
     }

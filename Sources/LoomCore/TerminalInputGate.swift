@@ -76,8 +76,8 @@ public final class TerminalInputGate: @unchecked Sendable {
     }
 
     func enqueueAutomatic(runID: UUID, bytes: Data,
-                          permit: @escaping @Sendable () -> Bool = { true }) -> TerminalInputQueue.AutomaticInputTicket? {
-        lock.withLock { queues[runID]?.enqueueAutomatic(bytes, permit: permit) }
+                          transaction: @escaping TerminalWriteTransaction) -> TerminalInputQueue.AutomaticInputTicket? {
+        lock.withLock { queues[runID]?.enqueueAutomatic(bytes, transaction: transaction) }
     }
 
     func confirmAutomaticInput(runID: UUID, ticket: TerminalInputQueue.AutomaticInputTicket) -> Bool {

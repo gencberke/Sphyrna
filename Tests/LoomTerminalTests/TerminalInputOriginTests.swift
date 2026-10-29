@@ -86,7 +86,8 @@ struct TerminalInputOriginTests {
     @Test func focusAndVisibilityAfterReadyDoNotDirtyTheComposer() async throws {
         let capture = TerminalOriginCapture()
         let terminal = Terminal(delegate: capture, options: TerminalSurfaceLimits.options)
-        let queue = TerminalInputQueue(capacity: 1024, writer: { $0.count }, onError: { _ in })
+        let queue = TerminalInputQueue(capacity: 1024, writer: { $0.count },
+            automaticWriter: { bytes, transaction in try transaction { bytes.count } }, onError: { _ in })
         capture.onInput = { bytes, origin in
             if origin == .protocolResponse { queue.enqueueTerminalResponse(bytes) }
             else { queue.enqueue(bytes) }
@@ -104,7 +105,7 @@ struct TerminalInputOriginTests {
         while queue.isDraining && ProcessInfo.processInfo.systemUptime < deadline {
             try await Task.sleep(for: .milliseconds(2))
         }
-        #expect(queue.enqueueAutomatic(Data("task pointer\r".utf8)) != nil)
+        #expect(queue.enqueueAutomatic(Data("task pointer\r".utf8), transaction: { try $0() }) != nil)
     }
 
     @Test func legacyDelegateStillReceivesParserReplies() {
