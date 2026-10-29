@@ -87,7 +87,8 @@ def _string(b, i, out):
         hashes += 1
         out.append(' ')
         i += 1
-    multiline = i + 2 < n and b[i + 1] == '"' and b[i + 2] == '"'
+    # A multi-line literal's `"""` ends its line; `#""""#` on one line is a raw string holding `""`.
+    multiline = i + 2 < n and b[i + 1] == '"' and b[i + 2] == '"' and b[i + 3:b.find('\n', i) if '\n' in b[i:] else n].strip() == ''
     delimiter = 3 if multiline else 1
     out.append(' ' * delimiter)
     i += delimiter

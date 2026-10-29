@@ -499,6 +499,8 @@ def self_test():
     check(swift.words('Task.sleep', blanked) == 1 and swift.words('Timer', blanked) == 0, 'blanker: Task.sleep in code, Timer in a comment')
     check(swift.calls('briefIfDue', planted) > 2, 'blanker: a naive scan counts more')
     check(blanked.count('\n') == planted.count('\n'), 'blanker: line numbers survive')
+    raw_quotes = swift.code('let quotes = #""""#\nlet after = briefIfDue(again: true)\n')
+    check(swift.calls('briefIfDue', raw_quotes) == 1, 'blanker: `#""""#` is a one-line raw string; the next line is code')
 
     # The log call scanner.
     calls = log_calls('LoomLog.error(.chat, "A (b) failed (\\(LoomLog.category(of: error))) (\\(x))") ; other(error)\n'

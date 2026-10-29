@@ -235,6 +235,7 @@ sleep	Tests/LoomCoreTests/SessionServiceTests.swift	4
 sleep	Tests/LoomCoreTests/SessionTaskFoundationTests.swift	12
 sleep	Tests/LoomCoreTests/StatusReasonTests.swift	1
 sleep	Tests/LoomCoreTests/SubagentTests.swift	1
+sleep	Tests/LoomCoreTests/SubagentTranscriptTests.swift	12
 sleep	Tests/LoomCoreTests/Support/RuntimeFixture.swift	1
 sleep	Tests/LoomCoreTests/TerminalInputQueueTests.swift	1
 sleep	Tests/LoomCoreTests/UsageTranscriptWatcherTests.swift	10
@@ -326,6 +327,7 @@ wait-helper	Tests/LoomCoreTests/SessionRuntimeCodexTests.swift	1
 wait-helper	Tests/LoomCoreTests/SessionRuntimeTests.swift	1
 wait-helper	Tests/LoomCoreTests/SessionServiceTests.swift	1
 wait-helper	Tests/LoomCoreTests/SessionTaskRoundIntegrationTests.swift	1
+wait-helper	Tests/LoomCoreTests/SubagentTranscriptTests.swift	1
 wait-helper	Tests/LoomCoreTests/TerminalInputQueueTests.swift	1
 wait-helper	Tests/LoomCoreTests/UsageTranscriptWatcherTests.swift	1
 wait-helper	Tests/LoomTerminalTests/RealCodexDraftAcceptanceTests.swift	1
@@ -387,6 +389,7 @@ silent-wait	Tests/LoomChatTests/ChatSideQuestionDriverTests.swift	4
 silent-wait	Tests/LoomChatTests/ManagedClaudeRuntimeIntegrationTests.swift	4
 silent-wait	Tests/LoomChatTests/RealClaudeSmokeTests.swift	4
 silent-wait	Tests/LoomCoreTests/ClaudePlanLimitsTests.swift	4
+silent-wait	Tests/LoomCoreTests/SubagentTranscriptTests.swift	12
 silent-wait	Tests/LoomCoreTests/UsageTranscriptWatcherTests.swift	3
 key-window	Tests/LoomCatalogUITests/InspectorTestSupport.swift	1
 key-window	Tests/LoomCatalogUITests/SidebarStatusTests.swift	2
