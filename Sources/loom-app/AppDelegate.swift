@@ -492,6 +492,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 await model.installRemora(runtime: created, dataRoot: root, toolchain: { try await slot.claude() },
                                           profile: usageProfileLayout(root: root))
                 try await created.start()
+                model.setSessionTaskUIBridge(SessionTaskUIBridge(
+                    projections: { parent, after, limit in
+                        let page = try await created.sessionTaskProjections(
+                            parentSessionID: parent, after: after, limit: limit)
+                        return .init(items: page.items, next: page.next)
+                    },
+                    updates: { await created.sessionTaskProjectionUpdates() },
+                    latestEvents: { task, limit in
+                        try await created.sessionTaskLatestEvents(id: task, limit: limit)
+                    }
+                ))
                 // The one session service: it holds the Chat host (made with the model's closures), the controller keeps the
                 // terminals for it, and the model reads its state and the host through it. D-100: while the Chat face is
                 // frozen (`ChatFreeze`) there is no host, so every Claude session runs in the terminal.
