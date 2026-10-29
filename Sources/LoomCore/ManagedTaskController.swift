@@ -134,6 +134,45 @@ public struct ManagedTaskProgress: Equatable, Sendable {
     }
 }
 
+/// A selected managed child's transient presentation. The runtime, not the
+/// view, owns the run and verifies every identity and request occurrence.
+public struct ManagedTaskPresentation: Equatable, Sendable {
+    public static let maximumProgressRows = 32
+    public static let maximumProgressBytes = 64 * 1_024
+    public static let maximumPermissions = 8
+
+    public let run: ManagedTaskRun
+    public let binding: SessionTaskBinding?
+    public let effectiveSettings: ManagedTaskEffectiveSettings?
+    public let status: SessionTaskNativeStatus
+    public let progress: [ManagedTaskProgress]
+    public let permissions: [ManagedTaskPermissionOccurrence]
+    public let canTakeOver: Bool
+
+    public init(run: ManagedTaskRun, binding: SessionTaskBinding?,
+                effectiveSettings: ManagedTaskEffectiveSettings?, status: SessionTaskNativeStatus,
+                progress: [ManagedTaskProgress], permissions: [ManagedTaskPermissionOccurrence],
+                canTakeOver: Bool) throws {
+        guard progress.count <= Self.maximumProgressRows,
+              progress.reduce(0, { $0 + $1.text.utf8.count }) <= Self.maximumProgressBytes,
+              permissions.count <= Self.maximumPermissions,
+              Set(permissions.map(\.id)).count == permissions.count,
+              [effectiveSettings?.model, effectiveSettings?.effort, effectiveSettings?.permissionMode].allSatisfy({
+                  $0.map { !$0.isEmpty && $0.utf8.count <= 256 && !$0.utf8.contains(0) } ?? true
+              }),
+              binding.map({ actual in
+                  actual.sessionID == run.sessionID && actual.managedRunID == run.runID &&
+                  actual.generation == run.generation && !actual.nativeSessionID.isEmpty &&
+                  actual.nativeSessionID.utf8.count <= 256 && !actual.nativeSessionID.utf8.contains(0) &&
+                  (run.expectedNativeSessionID.map { $0.caseInsensitiveCompare(actual.nativeSessionID) == .orderedSame } ?? true)
+              }) ?? true,
+              permissions.allSatisfy({ $0.taskID == run.taskID && $0.binding == binding }),
+              !canTakeOver || binding != nil else { throw SessionTaskError.invalidPayload }
+        self.run = run; self.binding = binding; self.effectiveSettings = effectiveSettings
+        self.status = status; self.progress = progress; self.permissions = permissions; self.canTakeOver = canTakeOver
+    }
+}
+
 /// Every event is scoped to the factory's exact run and generation. The host
 /// revalidates the binding and the corresponding operation before using it.
 public struct ManagedTaskControllerEvent: Sendable {
