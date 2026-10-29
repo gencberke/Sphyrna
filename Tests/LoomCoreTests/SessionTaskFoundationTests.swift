@@ -31,6 +31,7 @@ private actor TaskFakeHost: SessionTaskHost {
     var interruptVerified = true
     var forgetting = false
     var wakeUnknown = false
+    var wakeDeferredAfterPause = false
     private var proofKind = ProofKind.nativeTurn
     private var childObservations: [UUID: ChildObservation] = [:]
     private var wakeObservations: [UUID: WakeObservation] = [:]
@@ -46,6 +47,10 @@ private actor TaskFakeHost: SessionTaskHost {
     var pauseWake = false
     var wakeEntered = false
     var wakeContinuation: CheckedContinuation<Void, Never>?
+    var pauseWakeBeforeEffect = false
+    var wakeBeforeEffectEntered = false
+    var wakeBeforeEffectContinuation: CheckedContinuation<Void, Never>?
+    var wakeEffects = 0
     private(set) var submissions: [SessionTaskInputIntent] = []
     private(set) var wakes: [SessionTaskWakeIntent] = []
     private(set) var interrupts: [SessionTaskRoundTarget] = []
@@ -102,6 +107,13 @@ private actor TaskFakeHost: SessionTaskHost {
     func wakeIfReady(_ intent: SessionTaskWakeIntent) async -> SessionTaskEffect {
         guard parentReady, intent.parentBinding == parent else { return .deferred }
         wakes.append(intent)
+        if pauseWakeBeforeEffect {
+            wakeBeforeEffectEntered = true
+            await withCheckedContinuation { wakeBeforeEffectContinuation = $0 }
+        }
+        if wakeDeferredAfterPause { return .deferred }
+        guard intent.attemptDelivery({ true }) else { return .deferred }
+        wakeEffects += 1
         let execution: SessionTaskExecutionReference
         switch proofKind {
         case .nativeTurn: execution = .nativeTurn("provider-wake-\(UUID().uuidString)")
@@ -145,6 +157,7 @@ private actor TaskFakeHost: SessionTaskHost {
     func setUnknown(_ value: Bool) { submitOutcomeUnknown = value }
     func setStopVerified(_ value: Bool) { stopVerified = value }
     func setWakeUnknown(_ value: Bool) { wakeUnknown = value }
+    func deferWakeAfterPause() { wakeDeferredAfterPause = true }
     func usePromptProofOnly() { proofKind = .providerPrompt }
     func useAppInputProofOnly() { proofKind = .appInput }
     func childReference(_ roundID: UUID) -> SessionTaskExecutionReference? { childObservations[roundID]?.execution }
@@ -162,6 +175,12 @@ private actor TaskFakeHost: SessionTaskHost {
     func holdWake() { pauseWake = true }
     func hasEnteredWake() -> Bool { wakeEntered }
     func releaseWake() { pauseWake = false; wakeContinuation?.resume(); wakeContinuation = nil }
+    func holdWakeBeforeEffect() { pauseWakeBeforeEffect = true }
+    func hasEnteredWakeBeforeEffect() -> Bool { wakeBeforeEffectEntered }
+    func releaseWakeBeforeEffect() {
+        pauseWakeBeforeEffect = false; wakeBeforeEffectContinuation?.resume(); wakeBeforeEffectContinuation = nil
+    }
+    func actualWakeEffects() -> Int { wakeEffects }
     func holdSubmit() { pauseSubmit = true }
     func hasEnteredSubmit() -> Bool { submitEntered }
     func releaseSubmit() { pauseSubmit = false; submitContinuation?.resume(); submitContinuation = nil }
@@ -234,6 +253,160 @@ private struct TaskFixture {
 
 @Suite(.serialized)
 struct SessionTaskFoundationTests {
+    @Test func acknowledgedTaskEventDoesNotTriggerAnExtraWake() async throws {
+        let f = try await TaskFixture.make()
+        defer { f.clean() }
+        let round = try #require(try await f.input("work").roundID)
+        _ = try await f.coordinator.deliverPending(taskID: f.taskID)
+        _ = try await f.report(round, payload: "result")
+        let page = try await f.coordinator.events(taskID: f.taskID, parent: f.parent)
+        let event = try #require(page.items.first)
+        try await f.coordinator.acknowledgeEvents(taskID: f.taskID, parent: f.parent, eventIDs: [event.id])
+        await #expect(throws: SessionTaskError.notReady) {
+            _ = try await f.coordinator.wakePending(taskID: f.taskID, operationID: UUID())
+        }
+        let status = try await f.coordinator.status(taskID: f.taskID, parent: f.parent)
+        #expect(status.task.parentWakesUsed == 0 && status.task.parentWakesConsumed == 0)
+        #expect((await f.host.counts()).1 == 0)
+    }
+
+    @Test func readingAClaimedEventSurvivesADeferredWake() async throws {
+        let f = try await TaskFixture.make()
+        defer { f.clean() }
+        let round = try #require(try await f.input("work").roundID)
+        _ = try await f.coordinator.deliverPending(taskID: f.taskID)
+        _ = try await f.report(round)
+        let event = try #require(try await f.coordinator.events(taskID: f.taskID, parent: f.parent).items.first)
+        await f.host.holdWakeBeforeEffect()
+        let pending = Task { try await f.coordinator.wakePending(taskID: f.taskID, operationID: UUID()) }
+        for _ in 0..<100 {
+            if await f.host.hasEnteredWakeBeforeEffect() { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await f.host.hasEnteredWakeBeforeEffect())
+        try await f.coordinator.acknowledgeEvents(taskID: f.taskID, parent: f.parent, eventIDs: [event.id])
+        await f.host.deferWakeAfterPause()
+        await f.host.releaseWakeBeforeEffect()
+        #expect(try await pending.value.delivery == .deferred)
+        await #expect(throws: SessionTaskError.notReady) {
+            _ = try await f.coordinator.wakePending(taskID: f.taskID, operationID: UUID())
+        }
+        let status = try await f.coordinator.status(taskID: f.taskID, parent: f.parent)
+        #expect(status.task.parentWakesUsed == 0 && status.task.parentWakesConsumed == 0)
+    }
+
+    @Test func readWinsBeforeAnInFlightWakeWrites() async throws {
+        let f = try await TaskFixture.make()
+        defer { f.clean() }
+        let round = try #require(try await f.input("work").roundID)
+        _ = try await f.coordinator.deliverPending(taskID: f.taskID)
+        _ = try await f.report(round)
+        let event = try #require(try await f.coordinator.events(taskID: f.taskID, parent: f.parent).items.first)
+        await f.host.holdWakeBeforeEffect()
+        let pending = Task { try await f.coordinator.wakePending(taskID: f.taskID, operationID: UUID()) }
+        for _ in 0..<100 {
+            if await f.host.hasEnteredWakeBeforeEffect() { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await f.host.hasEnteredWakeBeforeEffect())
+        try await f.coordinator.acknowledgeEvents(taskID: f.taskID, parent: f.parent, eventIDs: [event.id])
+        await f.host.releaseWakeBeforeEffect()
+        #expect(try await pending.value.delivery == .deferred)
+        #expect(await f.host.actualWakeEffects() == 0)
+        let status = try await f.coordinator.status(taskID: f.taskID, parent: f.parent)
+        #expect(status.task.parentWakesUsed == 0 && status.task.parentWakesConsumed == 0)
+    }
+
+    @Test func stoppingTheChildFencesAnInFlightWakeBeforeItWrites() async throws {
+        let f = try await TaskFixture.make()
+        defer { f.clean() }
+        let round = try #require(try await f.input("work").roundID)
+        _ = try await f.coordinator.deliverPending(taskID: f.taskID)
+        _ = try await f.report(round)
+        await f.host.holdWakeBeforeEffect()
+        let pending = Task { try await f.coordinator.wakePending(taskID: f.taskID, operationID: UUID()) }
+        for _ in 0..<100 {
+            if await f.host.hasEnteredWakeBeforeEffect() { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await f.host.hasEnteredWakeBeforeEffect())
+        #expect(try await f.coordinator.stopChild(taskID: f.taskID, parent: f.parent, operationID: UUID()).delivery == .verified)
+        await f.host.releaseWakeBeforeEffect()
+        #expect(try await pending.value.delivery == .deferred)
+        #expect(await f.host.actualWakeEffects() == 0)
+    }
+
+    @Test func interruptAndUpdateFencesAnInFlightWakeBeforeItWrites() async throws {
+        let f = try await TaskFixture.make()
+        defer { f.clean() }
+        let round = try #require(try await f.input("work").roundID)
+        _ = try await f.coordinator.deliverPending(taskID: f.taskID)
+        _ = try await f.report(round, kind: .needsParentInput, payload: "question")
+        await f.host.holdWakeBeforeEffect()
+        let pending = Task { try await f.coordinator.wakePending(taskID: f.taskID, operationID: UUID()) }
+        for _ in 0..<100 {
+            if await f.host.hasEnteredWakeBeforeEffect() { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await f.host.hasEnteredWakeBeforeEffect())
+        let interrupted = try await f.coordinator.interruptAndUpdate(taskID: f.taskID, parent: f.parent,
+            roundID: round, operationID: UUID(), nextOperationID: UUID(), message: "update")
+        #expect(interrupted.delivery == .verified)
+        await f.host.releaseWakeBeforeEffect()
+        #expect(try await pending.value.delivery == .deferred)
+        #expect(await f.host.actualWakeEffects() == 0)
+    }
+
+    @Test(arguments: [false, true])
+    func lifecycleFenceStopsAnInFlightWakeBeforeItWrites(identityChanged: Bool) async throws {
+        let f = try await TaskFixture.make()
+        defer { f.clean() }
+        let round = try #require(try await f.input("work").roundID)
+        _ = try await f.coordinator.deliverPending(taskID: f.taskID)
+        _ = try await f.report(round)
+        await f.host.holdWakeBeforeEffect()
+        let pending = Task { try await f.coordinator.wakePending(taskID: f.taskID, operationID: UUID()) }
+        for _ in 0..<100 {
+            if await f.host.hasEnteredWakeBeforeEffect() { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await f.host.hasEnteredWakeBeforeEffect())
+        let child = await f.host.child
+        try await f.coordinator.fence(taskID: f.taskID, binding: child, identityChanged: identityChanged)
+        await f.host.releaseWakeBeforeEffect()
+        #expect(try await pending.value.delivery == .deferred)
+        #expect(await f.host.actualWakeEffects() == 0)
+    }
+
+    @Test func readDuringAnUnknownWakeIsNotRequeuedAfterVerifiedStop() async throws {
+        let f = try await TaskFixture.make()
+        defer { f.clean() }
+        let round = try #require(try await f.input("work").roundID)
+        _ = try await f.coordinator.deliverPending(taskID: f.taskID)
+        _ = try await f.report(round)
+        let event = try #require(try await f.coordinator.events(taskID: f.taskID, parent: f.parent).items.first)
+        await f.host.setWakeUnknown(true)
+        await f.host.holdWake()
+        let wakeID = UUID()
+        let pending = Task { try await f.coordinator.wakePending(taskID: f.taskID, operationID: wakeID) }
+        for _ in 0..<100 {
+            if await f.host.hasEnteredWake() { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await f.host.hasEnteredWake())
+        try await f.coordinator.acknowledgeEvents(taskID: f.taskID, parent: f.parent, eventIDs: [event.id])
+        await f.host.releaseWake()
+        #expect(try await pending.value.delivery == .unknown)
+        await f.host.confirmWakeStopped()
+        #expect(try await f.coordinator.verifyUnknownWakeStopped(taskID: f.taskID, operationID: wakeID).delivery == .unverified)
+        try await f.coordinator.requeueUnknownWakeAfterApproval(taskID: f.taskID, operationID: wakeID)
+        await #expect(throws: SessionTaskError.notReady) {
+            _ = try await f.coordinator.wakePending(taskID: f.taskID, operationID: UUID())
+        }
+        let status = try await f.coordinator.status(taskID: f.taskID, parent: f.parent)
+        #expect(status.task.parentWakesUsed == 1 && status.task.parentWakesConsumed == 0)
+    }
+
     @Test(arguments: [false, true])
     func providerPromptProofDoesNotInventNativeTurnIDs(appInputOnly: Bool) async throws {
         let f = try await TaskFixture.make(parentHarness: .claude, childHarness: .claude)

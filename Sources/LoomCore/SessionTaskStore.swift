@@ -203,8 +203,26 @@ final class SessionTaskStore {
         }
     }
 
+    /// A read during a claimed wake stays read even if that wake defers or is
+    /// later cleared as unknown. Its operation remains recorded until settled.
+    func acknowledgeEvents(_ ids: [UUID], taskID: UUID) throws -> Bool {
+        var changed = false
+        for id in ids {
+            guard let event = try event(id), event.taskID == taskID else { throw SessionTaskError.notFound }
+            try run("""
+                UPDATE events SET state=CASE state WHEN 'pending' THEN 'read' ELSE 'readClaimed' END
+                WHERE id=? AND task=? AND state IN ('pending','claimed')
+                """, [id.uuidString, taskID.uuidString])
+            changed = changed || sqlite3_changes(db) > 0
+        }
+        return changed
+    }
+
     func settleEvents(operationID: UUID, delivered: Bool) throws {
-        try run("UPDATE events SET state=?,wake_operation=NULL WHERE wake_operation=? AND state='claimed'",
+        try run("""
+                UPDATE events SET state=CASE state WHEN 'readClaimed' THEN 'read' ELSE ? END, wake_operation=NULL
+                WHERE wake_operation=? AND state IN ('claimed','readClaimed')
+                """,
                 [delivered ? "delivered" : "pending", operationID.uuidString])
     }
 

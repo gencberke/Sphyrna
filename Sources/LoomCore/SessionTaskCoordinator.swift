@@ -14,6 +14,7 @@ public actor SessionTaskCoordinator {
     private let host: any SessionTaskHost
     private let now: @Sendable () -> Date
     private var waiters: [UUID: Waiter] = [:]
+    private var wakeLeases: [UUID: SessionTaskWakeLease] = [:]
 
     private init(url: URL, host: any SessionTaskHost, now: @escaping @Sendable () -> Date) throws {
         store = try SessionTaskStore(url: url)
@@ -175,6 +176,7 @@ public actor SessionTaskCoordinator {
                     case let .submitted(binding, turn, actualModel, actualEffort, actualMode):
                         if binding != bound || !Self.validMetadata(turn) ||
                             (turn != nil && round.nativeTurnID != nil && turn != round.nativeTurnID) {
+                            wakeLeases[taskID]?.cancel()
                             try retireRounds(&task)
                             task.lifecycle = .identityChanged; task.authorityEpoch += 1; task.revision += 1
                             try store.save(task)
@@ -190,6 +192,7 @@ public actor SessionTaskCoordinator {
                             try store.save(task)
                         }
                     case .deferred:
+                        wakeLeases[taskID]?.cancel()
                         try retireRounds(&task)
                         task.lifecycle = .revoked; task.authorityEpoch += 1; task.revision += 1
                         try store.save(task)
@@ -220,7 +223,11 @@ public actor SessionTaskCoordinator {
                       Self.validMetadata(binding.nativeSessionID), Self.validMetadata(nativeTurnID),
                       Self.validMetadata(actualModel), Self.validMetadata(actualEffort) else {
                     operation.receipt.delivery = .unknown
-                    if sameAuthority { task.lifecycle = .identityChanged }
+                    if sameAuthority {
+                        wakeLeases[taskID]?.cancel()
+                        task.lifecycle = .identityChanged
+                        task.authorityEpoch += 1
+                    }
                     break
                 }
                 task.uncertainChildEffects = max(0, task.uncertainChildEffects - 1)
@@ -243,6 +250,7 @@ public actor SessionTaskCoordinator {
                     if active && staleReply {
                         // The host should have fenced this at the write. Keep
                         // its receipt, but never claim the new ask was answered.
+                        wakeLeases[taskID]?.cancel()
                         task.pendingRoundID = nil; task.lifecycle = .revoked; task.authorityEpoch += 1
                     }
                 }
@@ -373,9 +381,13 @@ public actor SessionTaskCoordinator {
         }
         let (initial, events, initialReceipt) = prepared
         guard !events.isEmpty else { return initialReceipt }
+        let lease = SessionTaskWakeLease()
+        wakeLeases[taskID] = lease
         changed(taskID)
         let outcome = await host.wakeIfReady(SessionTaskWakeIntent(taskID: taskID, operationID: operationID,
-                                                                  parentBinding: initial.parentBinding, eventCount: events.count))
+                                                                  parentBinding: initial.parentBinding, eventCount: events.count,
+                                                                  lease: lease))
+        if wakeLeases[taskID] === lease { wakeLeases[taskID] = nil }
         let receipt = try store.transaction {
             guard var task = try store.task(taskID), var operation = try store.operation(operationID) else {
                 throw SessionTaskError.notFound
@@ -491,6 +503,18 @@ public actor SessionTaskCoordinator {
         let principal = try await authenticated(parent)
         let fingerprint = Self.fingerprint(["interrupt", taskID.uuidString, roundID.uuidString,
                                             nextOperationID.uuidString, message])
+        // A settled round or a replayed old operation must never fence a wake
+        // belonging to the current work. An actual interrupt fences it before
+        // the synchronous transaction retires the round.
+        let current = try authorizedTask(taskID, parent: principal, allowRevoked: true)
+        if let prior = try sameOperation(operationID, fingerprint: fingerprint) { return prior }
+        guard let candidate = try store.round(roundID), candidate.taskID == taskID else { throw SessionTaskError.staleRound }
+        if current.activeRoundID == roundID && candidate.phase != .completed && candidate.phase != .failed && candidate.phase != .retired {
+            try requireGrant(current, remaining: current.childInputsUsed < current.childInputLimit)
+            guard current.pendingRoundID == nil, candidate.binding != nil else { throw SessionTaskError.pendingInput }
+            guard try store.operation(nextOperationID) == nil else { throw SessionTaskError.conflictingOperation }
+            wakeLeases[taskID]?.cancel()
+        }
         let prepared: (SessionTaskReceipt, SessionTaskRoundTarget?, Int64) = try store.transaction {
             var task = try authorizedTask(taskID, parent: principal, allowRevoked: true)
             if let prior = try sameOperation(operationID, fingerprint: fingerprint) { return (prior, nil, task.authorityEpoch) }
@@ -543,6 +567,11 @@ public actor SessionTaskCoordinator {
     public func stopChild(taskID: UUID, parent: SessionTaskClaim, operationID: UUID) async throws -> SessionTaskReceipt {
         let principal = try await authenticated(parent)
         let fingerprint = Self.fingerprint(["stop", taskID.uuidString])
+        // A repeated old stop must not fence a newer grant. Once authorized,
+        // cancel the live wake admission before beginning the stop transaction.
+        _ = try authorizedTask(taskID, parent: principal, allowRevoked: true)
+        if let prior = try sameOperation(operationID, fingerprint: fingerprint) { return prior }
+        wakeLeases[taskID]?.cancel()
         let prepared: (SessionTaskReceipt, SessionTaskBinding?, Bool, Int64) = try store.transaction {
             var task = try authorizedTask(taskID, parent: principal, allowRevoked: true)
             if let prior = try sameOperation(operationID, fingerprint: fingerprint) { return (prior, nil, false, task.authorityEpoch) }
@@ -596,15 +625,19 @@ public actor SessionTaskCoordinator {
     /// Runtime lifecycle hook: fence old runs before Stop, Quit, deletion or
     /// identity switch. It is not an agent/wire operation.
     func fence(taskID: UUID, binding: SessionTaskBinding, identityChanged: Bool = false) throws {
-        try store.transaction {
-            guard var task = try store.task(taskID) else { throw SessionTaskError.notFound }
-            guard task.parentBinding == binding || task.childBinding == binding else { throw SessionTaskError.staleBinding }
-            try retireRounds(&task)
-            task.authorityEpoch += 1
-            task.lifecycle = identityChanged ? .identityChanged : .revoked
-            task.revision += 1
-            try store.save(task)
+        let mutation = {
+            try self.store.transaction {
+                guard var task = try self.store.task(taskID) else { throw SessionTaskError.notFound }
+                guard task.parentBinding == binding || task.childBinding == binding else { throw SessionTaskError.staleBinding }
+                try self.retireRounds(&task)
+                task.authorityEpoch += 1
+                task.lifecycle = identityChanged ? .identityChanged : .revoked
+                task.revision += 1
+                try self.store.save(task)
+                return true
+            }
         }
+        if let lease = wakeLeases[taskID] { _ = try lease.cancelIfChanged(mutation) } else { _ = try mutation() }
         changed(taskID)
     }
 
@@ -669,6 +702,34 @@ public actor SessionTaskCoordinator {
         _ = try authorizedTask(taskID, parent: principal, allowRevoked: true)
         let values = try store.events(taskID: taskID, after: after, limit: limit)
         return SessionTaskPage(items: values.map(\.event), next: values.count == limit ? values.last?.sequence : nil)
+    }
+
+    public func eventEntries(taskID: UUID, parent: SessionTaskClaim, after: Int64 = 0,
+                             limit: Int = 50) async throws -> SessionTaskPage<SessionTaskEventEntry> {
+        try validatePage(after: after, limit: limit)
+        let principal = try await authenticated(parent)
+        _ = try authorizedTask(taskID, parent: principal, allowRevoked: true)
+        let values = try store.events(taskID: taskID, after: after, limit: limit)
+        return SessionTaskPage(items: values.map { SessionTaskEventEntry(cursor: $0.sequence, event: $0.event) },
+                               next: values.count == limit ? values.last?.sequence : nil)
+    }
+
+    /// The caller explicitly read these task events. This is separate from
+    /// provider consumption of a wake.
+    public func acknowledgeEvents(taskID: UUID, parent: SessionTaskClaim, eventIDs: [UUID]) async throws {
+        guard !eventIDs.isEmpty, eventIDs.count <= SessionTaskLimits.pageSize else { throw SessionTaskError.invalidPage }
+        let principal = try await authenticated(parent)
+        let mutation = {
+            try self.store.transaction {
+                var task = try self.authorizedTask(taskID, parent: principal, allowRevoked: true)
+                guard try self.store.acknowledgeEvents(eventIDs, taskID: taskID) else { return false }
+                task.revision += 1
+                try self.store.save(task)
+                return true
+            }
+        }
+        let didChange = if let lease = wakeLeases[taskID] { try lease.cancelIfChanged(mutation) } else { try mutation() }
+        if didChange { changed(taskID) }
     }
 
     /// Event driven: one bounded timer only while a caller is waiting. After any

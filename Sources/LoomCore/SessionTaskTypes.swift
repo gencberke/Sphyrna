@@ -148,6 +148,13 @@ public struct SessionTaskPage<Element: Sendable>: Sendable {
     public let next: Int64?
 }
 
+/// A durable event cursor allows a bounded transport to return and acknowledge
+/// only the events that actually fit in one reply.
+public struct SessionTaskEventEntry: Codable, Equatable, Sendable {
+    public let cursor: Int64
+    public let event: SessionTaskEvent
+}
+
 public struct SessionTaskStatus: Sendable {
     public let task: SessionTaskProjection
     public let activeRound: SessionTaskRound?
@@ -169,6 +176,31 @@ public struct SessionTaskWakeIntent: Sendable {
     public let operationID: UUID
     public let parentBinding: SessionTaskBinding
     public let eventCount: Int
+    let lease: SessionTaskWakeLease
+
+    /// The host must put the synchronous queue admission inside this fence.
+    /// A read or lifecycle fence that wins first prevents the pointer write.
+    public func attemptDelivery(_ admit: () -> Bool) -> Bool { lease.attempt(admit) }
+}
+
+final class SessionTaskWakeLease: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    func attempt(_ admit: () -> Bool) -> Bool {
+        lock.withLock { !cancelled && admit() }
+    }
+
+    func cancel() { lock.withLock { cancelled = true } }
+
+    /// Keep acknowledgement and admission ordered across the SQLite commit.
+    func cancelIfChanged(_ mutation: () throws -> Bool) rethrows -> Bool {
+        try lock.withLock {
+            let changed = try mutation()
+            if changed { cancelled = true }
+            return changed
+        }
+    }
 }
 
 public struct SessionTaskRoundTarget: Sendable {
@@ -217,6 +249,8 @@ public protocol SessionTaskHost: Sendable {
     /// An on-demand observation, not a model call or a cached second owner.
     func nativeStatus(binding: SessionTaskBinding) async -> SessionTaskNativeStatus
     func submitIfReady(_ intent: SessionTaskInputIntent) async -> SessionTaskInputEffect
+    /// Check readiness first, then admit the synchronous pointer write through
+    /// `intent.attemptDelivery`. A false result must perform no provider effect.
     func wakeIfReady(_ intent: SessionTaskWakeIntent) async -> SessionTaskEffect
     func interrupt(_ target: SessionTaskRoundTarget) async -> SessionTaskEffect
     func stopChild(taskID: UUID, binding: SessionTaskBinding) async -> SessionTaskEffect
