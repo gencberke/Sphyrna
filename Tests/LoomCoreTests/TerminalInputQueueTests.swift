@@ -75,7 +75,9 @@ private final class PermitOnce: @unchecked Sendable {
     func check() -> Bool { lock.withLock { calls += 1; return calls == 1 } }
 }
 
-@Suite(.timeLimit(.minutes(1)))
+/// Serialized: a `PausedTaskWrite` holds the thread the queue's write runs on (a thread of the cooperative pool) until the test
+/// releases it, and four such tests at once, with the other suites' waits, held every pool thread their releases needed.
+@Suite(.serialized, .timeLimit(.minutes(1)))
 struct TerminalInputQueueTests {
     @Test func aDirtyIdleComposerDoesNotScheduleAnAutomaticRetry() {
         let queue = TerminalInputQueue(writer: { $0.count }, onError: { _ in })
