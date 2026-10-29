@@ -45,13 +45,19 @@ public struct CodexAppServerConfiguration: Sendable {
 /// internal supervisor session, so stop, app quit, crash recovery, and
 /// descendant cleanup use the same ownership boundary as provider terminals.
 public actor CodexAppServerManager {
+    struct ManagedOwner: Equatable, Sendable {
+        let sessionID: UUID
+        let runID: UUID
+    }
     private struct Running: Sendable {
         let internalSessionID: UUID
+        let launch: ManagedSessionLaunch
         let client: CodexAppServerClient
     }
 
     private let supervisor: ProcessSupervisor
     private let configuration: CodexAppServerConfiguration
+    private let managedOwner: ManagedOwner?
     private var running: Running?
     private var startTask: Task<Running, any Error>?
     private var stopTask: Task<(report: SessionStopReport?, errors: [String]), Never>?
@@ -64,9 +70,20 @@ public actor CodexAppServerManager {
                 configuration: CodexAppServerConfiguration) {
         self.supervisor = supervisor
         self.configuration = configuration
+        self.managedOwner = nil
     }
 
-    public func internalSessionID() -> UUID? { running?.internalSessionID }
+    init(supervisor: ProcessSupervisor, configuration: CodexAppServerConfiguration, managedOwner: ManagedOwner) {
+        self.supervisor = supervisor
+        self.configuration = configuration
+        self.managedOwner = managedOwner
+    }
+
+    public func internalSessionID() -> UUID? { managedOwner == nil ? running?.internalSessionID : nil }
+
+    /// The managed server is the child's own run, not an internal helper.
+    func managedLaunch() -> ManagedSessionLaunch? { managedOwner == nil ? nil : running?.launch }
+    func ownedSessionID() -> UUID? { running?.internalSessionID ?? failedInternalSessionID }
 
     /// Starts the server and connects to it; a running server's client is returned again.
     public func start() async throws -> CodexAppServerClient {
@@ -122,6 +139,7 @@ public actor CodexAppServerManager {
     private func performStop(
         graceSeconds: Double
     ) async -> (report: SessionStopReport?, errors: [String]) {
+        if let managedOwner { return await performManagedStop(managedOwner, graceSeconds: graceSeconds) }
         if let startTask {
             startTask.cancel()
             running = try? await startTask.value
@@ -158,19 +176,63 @@ public actor CodexAppServerManager {
         return (report, errors)
     }
 
+    private func performManagedStop(_ owner: ManagedOwner, graceSeconds: Double)
+        async -> (report: SessionStopReport?, errors: [String]) {
+        if let startTask {
+            startTask.cancel()
+            running = try? await startTask.value
+            self.startTask = nil
+        }
+        let active = running
+        guard active != nil || failedInternalSessionID == owner.sessionID else { return (nil, []) }
+        let current = await supervisor.session(id: owner.sessionID)?.currentRun
+        let report: SessionStopReport?
+        if let current {
+            guard current.id == owner.runID else {
+                return (nil, ["Managed Codex server no longer owns the expected run"])
+            }
+            report = await supervisor.stop(sessionID: owner.sessionID, runID: owner.runID,
+                                           graceSeconds: graceSeconds, endReason: .requested,
+                                           requiringSessionID: owner.sessionID)
+        } else {
+            report = await supervisor.lastStopReport(sessionID: owner.sessionID)
+        }
+        guard let report, report.sessionID == owner.sessionID, report.runID == owner.runID,
+              report.succeeded else {
+            failedInternalSessionID = owner.sessionID
+            return (report, ["Managed Codex server stop could not be verified"])
+        }
+        // Keep the client alive during Stop's provider preparation. Never
+        // discard the child's durable session when its run has stopped.
+        await active?.client.close()
+        running = nil
+        failedInternalSessionID = nil
+        return (report, [])
+    }
+
     private func startServer() async throws -> Running {
         guard socketOwnership == nil else { throw LoomError.message("Previous Codex socket cleanup is incomplete") }
         socketOwnership = try CodexSocketOwnership(requested: configuration.socketPath)
-        let internalSession = ManagedSession(
-            provider: .synthetic,
-            workingDirectory: configuration.workingDirectory
-        )
-        try await supervisor.createInternalSession(internalSession)
+        let sessionID: UUID
+        if let managedOwner {
+            guard configuration.scope != nil,
+                  let session = await supervisor.session(id: managedOwner.sessionID),
+                  session.provider == .codex, session.currentRun == nil, session.providerConversationID == nil,
+                  URL(fileURLWithPath: session.workingDirectory).resolvingSymlinksInPath().standardizedFileURL.path ==
+                    URL(fileURLWithPath: configuration.workingDirectory).resolvingSymlinksInPath().standardizedFileURL.path else {
+                throw LoomError.message("Managed Codex server requires its reserved child and owned scope")
+            }
+            sessionID = managedOwner.sessionID
+        } else {
+            let internalSession = ManagedSession(provider: .synthetic, workingDirectory: configuration.workingDirectory)
+            try await supervisor.createInternalSession(internalSession)
+            sessionID = internalSession.id
+        }
         do {
             let environment = LaunchEnvironment.make(
                 base: configuration.baseEnvironment,
                 runID: supervisor.ownershipRunID,
-                sessionID: internalSession.id
+                sessionID: sessionID
             )
             let profile = try ProviderLaunchProfile.codex(
                 route: .server(socket: configuration.socketPath),
@@ -179,11 +241,11 @@ public actor CodexAppServerManager {
             )
             let diagnostics = DiagnosticOutputTee(downstream: nil)
             let launch = try await supervisor.launch(
-                sessionID: internalSession.id,
+                sessionID: sessionID,
                 executable: configuration.executable,
                 arguments: profile.arguments,
                 environment: profile.environment,
-                outputSink: diagnostics,
+                outputSink: diagnostics, managedRunID: managedOwner?.runID,
                 scope: configuration.scope
             )
             guard let leader = launch.session.currentRun?.leader else {
@@ -197,7 +259,7 @@ public actor CodexAppServerManager {
                 if let status = await launch.terminal.exitStatus() {
                     // Finish draining the existing PTY before classifying its
                     // bounded startup output. The supervisor remains its owner.
-                    _ = try? await supervisor.stop(sessionID: internalSession.id, graceSeconds: 0.05)
+                    _ = await stopStartingRun(sessionID: sessionID)
                     throw startupExit(status, output: diagnostics.text)
                 }
                 do {
@@ -214,7 +276,7 @@ public actor CodexAppServerManager {
                         inboundObserver: configuration.inboundObserver
                     )
                     return Running(
-                        internalSessionID: internalSession.id, client: client
+                        internalSessionID: sessionID, launch: launch, client: client
                     )
                 } catch {
                     lastError = error
@@ -222,7 +284,7 @@ public actor CodexAppServerManager {
                 }
             } while ProcessInfo.processInfo.systemUptime < deadline
             if let status = await launch.terminal.exitStatus() {
-                _ = try? await supervisor.stop(sessionID: internalSession.id, graceSeconds: 0.05)
+                _ = await stopStartingRun(sessionID: sessionID)
                 throw startupExit(status, output: diagnostics.text)
             }
             // Never forward arbitrary RPC text (which can contain credentials).
@@ -235,18 +297,38 @@ public actor CodexAppServerManager {
             }
             throw LoomError.message("Codex app-server timed out during startup; \(connection)")
         } catch {
-            if await supervisor.session(id: internalSession.id)?.currentRun != nil {
-                let report = try? await supervisor.stop(
-                    sessionID: internalSession.id, graceSeconds: 0.05
-                )
-                if report?.succeeded != true { failedInternalSessionID = internalSession.id }
+            if let current = await supervisor.session(id: sessionID)?.currentRun {
+                let report: SessionStopReport?
+                if let managedOwner {
+                    if current.id == managedOwner.runID {
+                        report = await supervisor.stop(sessionID: sessionID, runID: managedOwner.runID,
+                                                       graceSeconds: 0.05, endReason: .requested,
+                                                       requiringSessionID: sessionID)
+                    } else { report = nil }
+                } else {
+                    report = try? await supervisor.stop(sessionID: sessionID, graceSeconds: 0.05)
+                }
+                if report?.succeeded != true { failedInternalSessionID = sessionID }
             }
-            do {
-                try await supervisor.discardInternalSession(internalSession.id)
-                await supervisor.events.forget(sessionID: internalSession.id)
-            } catch { failedInternalSessionID = internalSession.id }
+            if managedOwner == nil {
+                do {
+                    try await supervisor.discardInternalSession(sessionID)
+                    await supervisor.events.forget(sessionID: sessionID)
+                } catch { failedInternalSessionID = sessionID }
+            }
             throw error
         }
+    }
+
+    private func stopStartingRun(sessionID: UUID) async -> SessionStopReport? {
+        if let owner = managedOwner {
+            guard owner.sessionID == sessionID,
+                  await supervisor.session(id: sessionID)?.currentRun?.id == owner.runID else { return nil }
+            return await supervisor.stop(sessionID: sessionID, runID: owner.runID,
+                                         graceSeconds: 0.05, endReason: .requested,
+                                         requiringSessionID: sessionID)
+        }
+        return try? await supervisor.stop(sessionID: sessionID, graceSeconds: 0.05)
     }
 
     /// Check that the recorded node has no remaining listener while helpers
