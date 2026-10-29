@@ -13,6 +13,8 @@ time. The rules and where they came from:
   keys             no default, cancel, exit or submit key where a card, a banner, a sheet or the composer lives: Return never
                    approves and Esc never denies (EdgesPureTests, PinnedFixRoundTests, PinnedCardsModelTests, InkSettingsSheetTests)
   sheets           the main window's four questions are bodies of the sheet family, attached by its own layer (InkSettingsSheetTests)
+  input-reads      the Mac's real input state (mouse buttons, pointer, modifier keys) is read only at the listed places,
+                   each a default reader its owner can replace, so no test depends on a press anywhere on the Mac (0f48daf)
   banner-symbol    a banner's symbol takes the tone's text variant, not the hue (EdgesPureTests)
 Usage: scripts/check-source-guards.py [--root <repo>] [--only <rule>…]   (exit 0 clean, 1 with violations listed)
        scripts/check-source-guards.py --self-test                       (planted violations must fail, clean text must pass)
@@ -366,6 +368,37 @@ def rule_sheets(src):
     return problems
 
 
+# ---- input-reads ----------------------------------------------------------------------------------------------------------
+
+INPUT_READS = ['NSEvent.pressedMouseButtons', 'NSEvent.mouseLocation', 'NSEvent.modifierFlags', 'CGEventSource.buttonState',
+               'CGEventSource.flagsState', 'CGEventSource.keyState']
+# The reads allowed, per file: a new read is a reviewed change to this list, made with the reader it is injected through.
+INPUT_READ_SITES = {
+    # DragActivity's default button reader; its tests inject their own (0f48daf).
+    'Sources/LoomCatalogUI/DragActivity.swift': 1,
+    # Command-click on the composer's send control, in the Chat face frozen by D-100; its tests are TF's.
+    'Sources/LoomCatalogUI/Chat/ComposerBar.swift': 1,
+}
+
+
+def input_reads(files):
+    found = {}
+    for path, blanked in files:
+        n = sum(swift.words(name, blanked) for name in INPUT_READS)
+        if n:
+            found[path] = n
+    out = []
+    for path in sorted(set(found) | set(INPUT_READ_SITES)):
+        if found.get(path, 0) != INPUT_READ_SITES.get(path, 0):
+            out.append(f'input-reads: {path} reads real input {found.get(path, 0)} times, the list allows '
+                       f'{INPUT_READ_SITES.get(path, 0)}: read it through a reader the owner injects, and list the default')
+    return out
+
+
+def rule_input_reads(src):
+    return input_reads([(p, swift.code(src.text(p))) for p in src.all()])
+
+
 # ---- banner-symbol --------------------------------------------------------------------------------------------------------
 
 def rule_banner_symbol(src):
@@ -395,6 +428,7 @@ RULES = {
     'keys': rule_keys,
     'sheets': rule_sheets,
     'banner-symbol': rule_banner_symbol,
+    'input-reads': rule_input_reads,
 }
 
 
@@ -512,6 +546,7 @@ def self_test():
             ('keys', 'Sources/LoomCatalogUI/BannerBox.swift', '\nlet planted = Button("x") {}.keyboardShortcut(.defaultAction)\n', None),
             ('keys', 'Sources/LoomCatalogUI/Chat/PinnedPlanted.swift', 'let planted = Button("x") {}.keyboardShortcut("a")\n', None),
             ('sheets', 'Sources/LoomCatalogUI/SideTab.swift', '\nlet planted = EmptyView().sheet(isPresented: .constant(false)) {}\n', None),
+            ('input-reads', 'Sources/LoomCatalogUI/SidebarDrag.swift', 'let planted = NSEvent.mouseLocation\n', None),
             ('banner-symbol', 'Sources/LoomCatalogUI/Chat/ChatBanner.swift', '',
              ('AnyShapeStyle(LoomTheme.Status.failureLight)', 'AnyShapeStyle(LoomTheme.Status.failure)')),
         ]

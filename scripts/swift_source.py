@@ -185,6 +185,7 @@ def top_level_args(code_text, open_index):
         elif c == ',' and depth == 0:
             spans.append((start, i))
             start = i + 1
-    if code_text[start:end].strip():
+    # A blanked string literal is all spaces, but it is still an argument once a comma came before it.
+    if spans or code_text[start:end].strip():
         spans.append((start, end))
     return spans

@@ -14,6 +14,9 @@ The rules (comments and strings blanked unless a rule reads comments):
   global-state      a write to process-wide state that parallel suites share (ChatPresentation's verifier, HoverForce,
                     DragActivity, ChatUserText.watchedID, SessionDragProbe), or a render probe watched or reset in a file
                     without the `.renderProbe` trait
+  real-input        a test reads the Mac's real input state (mouse buttons, pointer location, modifier keys) or drives a
+                    product object whose default reader does (`DragActivity.shared`): a press anywhere on the Mac changes
+                    the result. The owner injects a reader (0f48daf)
   superseded        a line cites a superseded decision (DECISIONS §2.1) and no other decision
   milestone-name    a test file named by a round, slice or release (FixRound, B3, ReleaseC, V12, Polish, Review)
   disabled          a `.disabled(` trait
@@ -59,12 +62,14 @@ KEY_WINDOW = re.compile(r'\.makeKeyAndOrderFront\s*\(|\.orderFrontRegardless\s*\
 GLOBAL_WRITES = re.compile(r'ChatPresentation\.(verifiesRows|onMismatch)\s*=(?!=)|HoverForce\.shared\b|DragActivity\.shared\b'
                            r'|ChatUserText\.watchedID\s*=(?!=)|SessionDragProbe\.watch\s*\(')
 PROBE_USE = re.compile(r'\b(Sidebar|Chat|Header|StatusBar)RenderProbe\.(watch|reset)\s*\(|ChatSelectionProbe\.reset\s*\(')
+REAL_INPUT = re.compile(r'\bNSEvent\.(pressedMouseButtons|mouseLocation|modifierFlags)\b'
+                        r'|\bCGEventSource\.(buttonState|flagsState|keyState)\b|\bDragActivity\.shared\b')
 MILESTONE = re.compile(r'FixRound|^B\d|Release[A-Z]|^V\d\d|Polish|Review')
 FLAKE = re.compile(r'//\s*flake:\s*(\S+)\s+(\d{4}-\d{2}-\d{2})\s+\S')
 DECISION = re.compile(r'\bD-(\d{2,3})\b')
 
 RATCHETED = ['pool-block', 'detached-block', 'sleep', 'wait-helper', 'silent-wait', 'key-window', 'global-state',
-             'superseded', 'milestone-name', 'disabled', 'serialized']
+             'real-input', 'superseded', 'milestone-name', 'disabled', 'serialized']
 
 
 def superseded_ids(root):
@@ -128,7 +133,14 @@ def scan(path, text, superseded):
 
     support = path.startswith(SUPPORT)
     spans = own_thread_spans(code)
-    for m in BLOCKING.finditer(code):
+    # A wait on a name the file binds to a semaphore, group or condition, whatever the name.
+    bound = set(re.findall(r'\b(?:let|var)\s+(\w+)\s*(?::[^=\n]*)?=\s*(?:Dispatch(?:Semaphore|Group)|NSCondition\w*)\s*\(', code))
+    blocking = list(BLOCKING.finditer(code))
+    if bound:
+        named = re.compile(r'(?<![\w.])(' + '|'.join(sorted(bound)) + r')\.wait\s*\(')
+        seen = {m.start() for m in blocking}
+        blocking += [m for m in named.finditer(code) if m.start() not in seen]
+    for m in blocking:
         before = code[:m.start()].rstrip()
         # `await gate.wait()` suspends; `func sleep(` is a fake's declaration.
         if not inside(spans, m.start()) and not before.endswith('await') and not re.search(r'\bfunc$', before):
@@ -165,6 +177,8 @@ def scan(path, text, superseded):
     if not re.search(r'\.renderProbe\b', code) and not path.endswith('RenderProbeExclusive.swift'):
         for m in PROBE_USE.finditer(code):
             add('global-state', m.start())
+    for m in REAL_INPUT.finditer(code):
+        add('real-input', m.start())
     if superseded:
         for n, line in enumerate(lines, 1):
             cited = {f'D-{d}' for d in DECISION.findall(line)}
@@ -337,10 +351,13 @@ PLANTED = {
     'wait-helper': ('private func waitUntil(_ c: () -> Bool) async {}\nfunc until(_ c: () -> Bool) {}\nfunc waiting() {}\n'
                     'func waitForReader() {}\n', 3),
     'silent-wait': ('#expect(await waitUntil { x })\n#expect(await waitUntil { x }, "saw \\(x)")\n'
+                    '#expect(await eventually { a == nil }, "the drag ends")\n'
                     '#expect(await model.count == 1)\nlet ok = try #require(await until(timeout: 1) { y })\n', 2),
     'key-window': ('window.makeKeyAndOrderFront(nil)\nwindow.orderFrontRegardless()\n', 2),
     'global-state': ('ChatPresentation.verifiesRows = true\nif ChatPresentation.verifiesRows == true {}\n'
                      'SidebarRenderProbe.watch([])\n', 2),
+    'real-input': ('let down = NSEvent.pressedMouseButtons != 0\nlet a = DragActivity.shared\n'
+                   'let b = DragActivity(buttonsDown: mouse.buttonsDown)\nlet f = event.modifierFlags\n', 2),
     'superseded': ('// D-28: Codex frozen\n// D-28, now D-94\n// D-94\n', 1),
     'disabled': ('@Test(.disabled("later")) func f() {}\n', 1),
     'serialized': ('@Suite(.serialized) struct A {}\n// serialized: one shared port\n@MainActor\n@Suite(.serialized) struct B {}\n'
