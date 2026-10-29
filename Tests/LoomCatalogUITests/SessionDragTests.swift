@@ -5,6 +5,7 @@ import Testing
 import UniformTypeIdentifiers
 import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// W3-b: the session drag payload, and the sidebar rows that carry it without losing their click, double click and
 /// accessibility.
@@ -101,7 +102,7 @@ struct SessionDragSourceTests {
         let (model, root, ids) = try await fixture(mode: .activity)
         defer { SessionDragProbe.stop(); model.stop(); try? FileManager.default.removeItem(at: root) }
         SessionDragProbe.watch()
-        let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 320, height: 600))
+        let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 320, height: 600), key: true)
         defer { window.orderOut(nil) }
         #expect(await waitUntil { hosting.view.layoutSubtreeIfNeeded(); return SessionDragProbe.sources.isSuperset(of: ids) },
                 "both cards carry the drag in the activity view")
@@ -112,7 +113,7 @@ struct SessionDragSourceTests {
         let (model, root, ids) = try await fixture(mode: .projects)
         defer { SessionDragProbe.stop(); model.stop(); try? FileManager.default.removeItem(at: root) }
         SessionDragProbe.watch()
-        let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 320, height: 600))
+        let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 320, height: 600), key: true)
         defer { window.orderOut(nil) }
         func drawn() -> [String] { ["In project", "Loose"].filter { row($0, in: hosting.view) != nil } }
         #expect(await waitUntil { hosting.view.layoutSubtreeIfNeeded(); return SessionDragProbe.sources.isSuperset(of: ids) },

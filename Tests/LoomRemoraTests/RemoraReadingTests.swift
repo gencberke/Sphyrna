@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomRemora
+import LoomTestSupport
 
 /// L3a2 (item 3): what a call reads is told once its pack is built and before the model is asked. No real Claude: the fake
 /// provider's Remora mode over a temporary data root.

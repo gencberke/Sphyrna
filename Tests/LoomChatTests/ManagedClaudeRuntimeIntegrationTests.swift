@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 private final class ManagedParentScreen: TerminalOutputSink, @unchecked Sendable {
     private let lock = NSLock()

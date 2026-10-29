@@ -1,8 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
-
-private final class ShutdownTestBundleAnchor: NSObject {}
+import LoomTestSupport
 
 /// One-shot gate a launch can wait on while the test acts.
 @MainActor
@@ -40,7 +39,7 @@ private func failedReport(_ errors: [String]) -> ShutdownReport {
 @Suite(.serialized, .processHeavy, .timeLimit(.minutes(1)))
 struct AppShutdownCoordinatorTests {
     private var productsDirectory: URL {
-        Bundle(for: ShutdownTestBundleAnchor.self).bundleURL.deletingLastPathComponent()
+        Products.directory
     }
 
     private var childPath: String { productsDirectory.appendingPathComponent("loom-test-child").path }

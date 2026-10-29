@@ -1,8 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
-
-private final class ReportedChoicesBundleAnchor: NSObject {}
+import LoomTestSupport
 
 private final class ProbeCount: @unchecked Sendable {
     private let lock = NSLock()
@@ -90,7 +89,7 @@ struct ReportedChoicesTests {
     // MARK: Through the real adapter
 
     private var childPath: String {
-        Bundle(for: ReportedChoicesBundleAnchor.self).bundleURL.deletingLastPathComponent()
+        Products.directory
             .appendingPathComponent("loom-test-child").path
     }
 

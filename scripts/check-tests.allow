@@ -125,7 +125,6 @@ sleep	Tests/LoomCatalogUITests/PaletteTests.swift	7
 sleep	Tests/LoomCatalogUITests/PinnedCardsModelTests.swift	5
 sleep	Tests/LoomCatalogUITests/PinnedFixRoundTests.swift	3
 sleep	Tests/LoomCatalogUITests/PinnedInkTests.swift	1
-sleep	Tests/LoomCatalogUITests/ProcessHeavyGate.swift	1
 sleep	Tests/LoomCatalogUITests/ProjectDraftLayoutTests.swift	1
 sleep	Tests/LoomCatalogUITests/ProjectPageInkTests.swift	1
 sleep	Tests/LoomCatalogUITests/ProjectPageTests.swift	2
@@ -182,7 +181,7 @@ sleep	Tests/LoomChatTests/AgentsLiveTests.swift	1
 sleep	Tests/LoomChatTests/ChatAskFixRoundTests.swift	2
 sleep	Tests/LoomChatTests/ChatAskModeTests.swift	1
 sleep	Tests/LoomChatTests/ChatDriverPartsTests.swift	1
-sleep	Tests/LoomChatTests/ChatDriverTests.swift	5
+sleep	Tests/LoomChatTests/ChatDriverTests.swift	4
 sleep	Tests/LoomChatTests/ChatFixRound2DriverTests.swift	2
 sleep	Tests/LoomChatTests/ChatFixRoundTests.swift	2
 sleep	Tests/LoomChatTests/ChatModelCallTests.swift	1
@@ -193,10 +192,10 @@ sleep	Tests/LoomChatTests/ChatSideQuestionDriverTests.swift	1
 sleep	Tests/LoomChatTests/ContractTests.swift	1
 sleep	Tests/LoomChatTests/ManagedClaudeTaskTests.swift	5
 sleep	Tests/LoomChatTests/ModelChangeTests.swift	2
-sleep	Tests/LoomChatTests/ProcessHeavyGate.swift	1
 sleep	Tests/LoomChatTests/RealClaudeAcceptanceTests.swift	8
 sleep	Tests/LoomChatTests/RealClaudeSmokeTests.swift	2
 sleep	Tests/LoomChatTests/SideChatForkOnRealCLITests.swift	1
+sleep	Tests/LoomChatTests/Support/DriverRig.swift	1
 sleep	Tests/LoomChatTests/TranscriptGrowthFeedTests.swift	10
 sleep	Tests/LoomCoreTests/AgyHookPeerTests.swift	1
 sleep	Tests/LoomCoreTests/AgyRuntimeTests.swift	2
@@ -222,7 +221,6 @@ sleep	Tests/LoomCoreTests/NewSessionLaunchTests.swift	1
 sleep	Tests/LoomCoreTests/OpenCodeEventStreamTests.swift	1
 sleep	Tests/LoomCoreTests/OpenSessionTests.swift	2
 sleep	Tests/LoomCoreTests/PipeScopeTests.swift	11
-sleep	Tests/LoomCoreTests/ProcessHeavyGate.swift	1
 sleep	Tests/LoomCoreTests/ProcessLifecycleTests.swift	1
 sleep	Tests/LoomCoreTests/ProcessSupervisorTests.swift	28
 sleep	Tests/LoomCoreTests/ProviderToolchainTests.swift	1
@@ -232,15 +230,15 @@ sleep	Tests/LoomCoreTests/SessionLifecycleTests.swift	12
 sleep	Tests/LoomCoreTests/SessionListTests.swift	1
 sleep	Tests/LoomCoreTests/SessionMailboxTests.swift	1
 sleep	Tests/LoomCoreTests/SessionRuntimeCodexTests.swift	1
-sleep	Tests/LoomCoreTests/SessionRuntimeTests.swift	13
+sleep	Tests/LoomCoreTests/SessionRuntimeTests.swift	12
 sleep	Tests/LoomCoreTests/SessionServiceTests.swift	4
 sleep	Tests/LoomCoreTests/SessionTaskFoundationTests.swift	12
 sleep	Tests/LoomCoreTests/StatusReasonTests.swift	1
 sleep	Tests/LoomCoreTests/SubagentTests.swift	1
+sleep	Tests/LoomCoreTests/Support/RuntimeFixture.swift	1
 sleep	Tests/LoomCoreTests/TerminalInputQueueTests.swift	1
 sleep	Tests/LoomCoreTests/UsageTranscriptWatcherTests.swift	10
 sleep	Tests/LoomRemoraTests/LogReadBack.swift	1
-sleep	Tests/LoomRemoraTests/ProcessHeavyGate.swift	1
 sleep	Tests/LoomRemoraTests/RemoraCallTests.swift	4
 sleep	Tests/LoomRemoraTests/RemoraDayBriefTests.swift	1
 sleep	Tests/LoomRemoraTests/RemoraHostForgetterTests.swift	3
@@ -300,7 +298,6 @@ wait-helper	Tests/LoomCatalogUITests/SidebarRenderTests.swift	1
 wait-helper	Tests/LoomCatalogUITests/StudioNavigationTests.swift	1
 wait-helper	Tests/LoomCatalogUITests/SubagentPanelTests.swift	1
 wait-helper	Tests/LoomCatalogUITests/UsageModelTests.swift	1
-wait-helper	Tests/LoomChatTests/ChatDriverTests.swift	1
 wait-helper	Tests/LoomChatTests/ChatFixRound2DriverTests.swift	1
 wait-helper	Tests/LoomChatTests/ChatFixRoundTests.swift	1
 wait-helper	Tests/LoomChatTests/ChatHandoverTests.swift	1
@@ -310,6 +307,7 @@ wait-helper	Tests/LoomChatTests/ContractTests.swift	1
 wait-helper	Tests/LoomChatTests/ManagedClaudeTaskTests.swift	2
 wait-helper	Tests/LoomChatTests/RealClaudeAcceptanceTests.swift	1
 wait-helper	Tests/LoomChatTests/RealClaudeSmokeTests.swift	1
+wait-helper	Tests/LoomChatTests/Support/DriverRig.swift	1
 wait-helper	Tests/LoomCoreTests/AppShutdownCoordinatorTests.swift	2
 wait-helper	Tests/LoomCoreTests/ClaudeHookTests.swift	1
 wait-helper	Tests/LoomCoreTests/ClaudeLimitResetObserverTests.swift	1

@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomRemora
+import LoomTestSupport
 
 /// L3a: the host over the fake provider. Each test names a rule a host that skipped it would fail. No real Claude, no real
 /// profile, no vault: a temporary data root and the fake provider's Remora mode.

@@ -5,6 +5,7 @@ import Testing
 @testable import LoomCatalogUI
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 /// The quick question (V22): the panel's holder (one question at a time, a closed panel drops a late answer, a session that can
 /// no longer take a question closes it), the field's keys, the theme's contrast, and the menu and palette state on the real

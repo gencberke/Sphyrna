@@ -3,6 +3,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 /// `ProcessSupervisor.streamHelper`: an owned one-shot child that is fed a stdin and answers as a stream
 /// (Remora's `claude -p` call is its user). Shell children stand in for the model.

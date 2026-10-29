@@ -4,6 +4,7 @@ import Testing
 @testable import LoomCatalogUI
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // Characterization of the decisions the session-service refactor moves (SESSION-SERVICE.md, R0): the face of a start, a
 // resume, a stopped session's view and an approved open request, and what each harness may do in the production identity

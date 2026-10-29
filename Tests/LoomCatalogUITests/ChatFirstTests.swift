@@ -4,6 +4,7 @@ import Testing
 @testable import LoomCatalogUI
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // V19, Chat first, end to end with the real model, controller, runtime and driver on the fake provider: a new session
 // starts in the face Settings name (Chat by default), a stopped Chat session shows its composer and a send resumes it in

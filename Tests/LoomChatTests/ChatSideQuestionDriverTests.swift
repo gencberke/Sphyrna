@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // The quick question (V22) on the driver, through the real runtime and the fake provider's scripted `side_question` answers
 // (LOOM_FAKE_CHAT_SIDE_ANSWER, _SIDE_DELAY_MS, _SIDE): an answer while idle, while a card waits and while a turn works, and

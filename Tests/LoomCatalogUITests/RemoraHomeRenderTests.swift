@@ -5,6 +5,7 @@ import Testing
 @testable import LoomCore
 @testable import LoomRemora
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// L3b, the views: Home with Remora hosted in a window nobody sees (never ordered front, so nothing reaches the screen), read from
 /// the accessibility tree and its frames. The look against the reference is the end batch's on-screen check; these pin what Home

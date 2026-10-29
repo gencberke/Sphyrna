@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import Testing
+import LoomTestSupport
 
 /// A fake-provider process in chat mode, for the `stream` scenario only: it keeps every record with the time it arrived.
 private final class StreamRig: @unchecked Sendable {

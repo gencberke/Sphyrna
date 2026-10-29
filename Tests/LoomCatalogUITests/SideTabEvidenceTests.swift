@@ -4,6 +4,7 @@ import LoomCore
 import Testing
 @testable import LoomCatalogUI
 @testable import LoomChat
+import LoomTestSupport
 
 /// The Side tab's state as development evidence reads it (`side-state`): ids, booleans and the phase word, never a word of a
 /// question, an answer or a notice. A real side-chat flow over the fake provider is encoded and every leaf of the JSON is checked.

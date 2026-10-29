@@ -1,8 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
-
-private final class SubagentTestBundleAnchor: NSObject {}
+import LoomTestSupport
 
 /// The subagents a Claude session runs (D-39): the hook rules, the `meta.json` reader, the event hub
 /// state, and one pass through the real adapter. Payload shapes follow the 12 Oct 2026 research of
@@ -403,7 +402,7 @@ struct SubagentTests {
     // MARK: Through the real adapter
 
     private var childPath: String {
-        Bundle(for: SubagentTestBundleAnchor.self).bundleURL.deletingLastPathComponent()
+        Products.directory
             .appendingPathComponent("loom-test-child").path
     }
 

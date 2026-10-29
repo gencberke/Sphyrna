@@ -2,8 +2,7 @@ import Foundation
 import SQLite3
 import Testing
 @testable import LoomCore
-
-private final class ScaleBundleAnchor: NSObject {}
+import LoomTestSupport
 
 /// CP5 B5: state updates must not rescan the catalog, and the query, restore
 /// and event-map costs at 1,000 and 10,000 history rows are reported. These
@@ -113,7 +112,7 @@ struct CatalogScaleTests {
             id: sessionID, provider: .synthetic,
             workingDirectory: FileManager.default.temporaryDirectory.path
         ))
-        let child = Bundle(for: ScaleBundleAnchor.self).bundleURL.deletingLastPathComponent()
+        let child = Products.directory
             .appendingPathComponent("loom-test-child").path
         _ = try await supervisor.launch(
             sessionID: sessionID, executable: child, arguments: ["interactive"],

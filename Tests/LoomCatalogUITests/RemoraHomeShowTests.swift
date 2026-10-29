@@ -4,6 +4,7 @@ import Testing
 import LoomCore
 @testable import LoomRemora
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// L3b: what Home does each time it shows, over a real host and the fake provider's Remora mode (no real Claude, profile or vault):
 /// the day's kept brief is read again every time, and the automatic brief is asked once, for a Home that is on screen, with one

@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomRemora
+import LoomTestSupport
 
 /// L3c: Draft Brief's call (the new-session page's door, D-80). Synthetic transcripts, the fake provider's Remora mode and a
 /// capturing stand-in for `claude`; no real Claude, no real profile.

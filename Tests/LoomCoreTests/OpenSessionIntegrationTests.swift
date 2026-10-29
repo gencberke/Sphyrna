@@ -3,8 +3,7 @@ import Foundation
 import SQLite3
 import Testing
 @testable import LoomCore
-
-private final class OpenBundleAnchor: NSObject {}
+import LoomTestSupport
 
 private final class CommandOutput: @unchecked Sendable {
     private let lock = NSLock()
@@ -484,7 +483,7 @@ struct OpenSessionCommandTests {
 
     private func runHelper(_ arguments: [String], environment: [String: String], stdin: Data = Data())
         async throws -> (code: Int32, out: String, err: String) {
-        let helper = Bundle(for: OpenBundleAnchor.self).bundleURL.deletingLastPathComponent()
+        let helper = Products.directory
             .appendingPathComponent("loom-hook")
         return try await Task.detached {
             let process = Process()

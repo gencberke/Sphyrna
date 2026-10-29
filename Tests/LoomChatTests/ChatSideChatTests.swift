@@ -5,6 +5,7 @@ import Synchronization
 import Testing
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // The side chat's fork on the fake provider, through the real runtime and the host (V22 part 2): one card for a fork, the
 // request policy at the card's door, the guards of a side chat, and a discard that leaves the parent as it was. The fork's

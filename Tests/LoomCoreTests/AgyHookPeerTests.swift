@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 private final class AgyEventCount: @unchecked Sendable {
     private let lock = NSLock()

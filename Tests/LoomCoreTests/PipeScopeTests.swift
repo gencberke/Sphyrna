@@ -4,8 +4,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import LoomCore
-
-private final class PipeBundleAnchor: NSObject {}
+import LoomTestSupport
 
 /// Temporary folders of one test (run host bundles, the test child's copy),
 /// removed with their hosts' LaunchServices records when the test ends.
@@ -110,7 +109,7 @@ struct PipeScopeTests {
     private let scratch = PipeScratch()
 
     private var productsDirectory: URL {
-        Bundle(for: PipeBundleAnchor.self).bundleURL.deletingLastPathComponent()
+        Products.directory
     }
 
     /// Run hosts are their own TCC-responsible apps: scoped children run from

@@ -3,6 +3,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 private extension ProcessSupervisor {
     func markerReadsForScopePrivacy(runID: UUID, snapshot: [ProcessRecord]) throws -> Set<pid_t> {

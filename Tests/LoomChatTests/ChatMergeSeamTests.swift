@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // The seams between V19 (Chat first, the handover) and V24 (the chat bar, Ask), on the driver and the runtime with the fake
 // provider: a mode, model or effort picked while a handover waits is the session's choice and never reaches a child that is

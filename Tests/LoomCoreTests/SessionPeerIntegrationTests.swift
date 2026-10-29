@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 private struct PeerNullPipeSink: PipeOutputSink {
     func receive(_ data: Data, from stream: PipeStream) {}

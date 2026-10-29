@@ -4,6 +4,7 @@ import LoomCore
 import Testing
 @testable import LoomCatalogUI
 @testable import LoomChat
+import LoomTestSupport
 
 /// V21 on the app's model: the real model, controller, runtime and Chat driver on the fake provider's file checkpoints. The
 /// sheet's dry run with its marks, the confirm that restores the files, the marker, Undo, and the sheet's refusal while a turn

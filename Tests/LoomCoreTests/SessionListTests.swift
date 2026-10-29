@@ -1,8 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
-
-private final class ListBundleAnchor: NSObject {}
+import LoomTestSupport
 
 private final class ListOutput: @unchecked Sendable {
     private let lock = NSLock()
@@ -406,7 +405,7 @@ struct SessionListTests {
         let rig = try await ListRig.make()
         defer { rig.cleanup() }
         let ids = try await fill(rig)
-        let helper = Bundle(for: ListBundleAnchor.self).bundleURL.deletingLastPathComponent().appendingPathComponent("loom-hook")
+        let helper = Products.directory.appendingPathComponent("loom-hook")
         let environment = rig.environment
         let result = try await Task.detached {
             let process = Process()

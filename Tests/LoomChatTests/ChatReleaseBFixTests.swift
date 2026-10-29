@@ -3,6 +3,7 @@ import Synchronization
 import Testing
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // Release B fix round 1 (from the real-Claude acceptance), driver side: each test fails without the fix it names.
 

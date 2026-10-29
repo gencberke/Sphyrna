@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // The handover between the faces (V19), on the driver and the runtime with the fake provider: Chat → Terminal waits for a
 // running turn and refuses a waiting request, never runs two owners and never loses a message; a resume in Chat after

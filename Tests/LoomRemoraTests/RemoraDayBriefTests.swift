@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomRemora
+import LoomTestSupport
 
 /// L3a2 (item 4): the day's brief is kept in Remora's folder, read back on first use, and goes with the day, with a deleted
 /// session, with a new exclusion and with Clear. No real Claude, no real profile, no vault: a temporary data root and the fake

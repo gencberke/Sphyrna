@@ -4,6 +4,7 @@ import LoomCore
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// CHAT-SPEC → Draft session: "A draft with text shows in the sidebar with Discard". The rows come from
 /// `CatalogModel.visibleDrafts`; an empty draft has none.
@@ -110,7 +111,7 @@ extension WindowEventTests {
             model.showHome()
             await model.settle()
 
-            let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 320, height: 520))
+            let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 320, height: 520), key: true)
             defer { window.orderOut(nil) }
             try await Task.sleep(for: .milliseconds(500))
             let label = "Draft, fix the flaky test, api"
@@ -140,7 +141,7 @@ extension WindowEventTests {
             model.showHome()
             await model.settle()
 
-            let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 320, height: 520))
+            let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 320, height: 520), key: true)
             defer { window.orderOut(nil) }
             try await Task.sleep(for: .milliseconds(500))
             #expect(element(labelled: "Draft, write the migration, billing", in: hosting.view) != nil)

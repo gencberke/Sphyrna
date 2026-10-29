@@ -4,8 +4,7 @@ import Foundation
 import SwiftTerm
 import Testing
 @testable import LoomTerminal
-
-private final class TerminalTestBundleAnchor: NSObject {}
+import LoomTestSupport
 
 private final class RegistrationAdmissionProbe: @unchecked Sendable {
     private let lock = NSLock()
@@ -41,7 +40,7 @@ private final class HeadlessDelegate: TerminalDelegate {
 @Suite(.serialized, .timeLimit(.minutes(2)))
 struct TerminalSurfaceTests {
     private var childPath: String {
-        Bundle(for: TerminalTestBundleAnchor.self).bundleURL.deletingLastPathComponent()
+        Products.directory
             .appendingPathComponent("loom-test-child").path
     }
 

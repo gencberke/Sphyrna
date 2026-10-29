@@ -4,8 +4,7 @@ import LoomCore
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
-
-private final class DeletionBundleAnchor: NSObject {}
+import LoomTestSupport
 
 /// What the model asked of the runtime, and what the runtime answers.
 @MainActor
@@ -496,7 +495,7 @@ struct DeletionModelTests {
         let socketDirectory = URL(fileURLWithPath: "/tmp/ld-\(UUID().uuidString.prefix(8))", isDirectory: true)
         let catalog = try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
         let hub = SessionEventHub()
-        let binaries = Bundle(for: DeletionBundleAnchor.self).bundleURL.deletingLastPathComponent()
+        let binaries = Products.directory
         let supervisor = try await ProcessSupervisor.restoring(ledger: OwnershipLedger(), catalog: catalog, events: hub)
         let fake = binaries.appendingPathComponent("loom-fake-provider").path
         let forgotten = ForgetLog()

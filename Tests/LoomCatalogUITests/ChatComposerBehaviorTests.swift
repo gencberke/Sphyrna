@@ -6,6 +6,7 @@ import Testing
 @testable import LoomCatalogUI
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // The Chat composer on the real Chat driver and the fake provider (V17): the keys' meanings through the model, delivery
 // states, Read now, the queue, drafts, attachments, the chips and the menus. Nothing here sends a message to a real Claude.

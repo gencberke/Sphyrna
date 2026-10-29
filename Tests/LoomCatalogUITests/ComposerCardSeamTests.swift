@@ -6,6 +6,7 @@ import Testing
 @testable import LoomCatalogUI
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // The seam between the composer (V17) and the pinned cards (V18), on the real Chat driver and the fake provider: the composer's
 // text is the card's text (a denial's note, a question's "Other", a plan's feedback), one key rule serves both (↵ never

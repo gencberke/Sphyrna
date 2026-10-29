@@ -3,8 +3,7 @@ import Foundation
 @testable import LoomCore
 import Testing
 @testable import LoomTerminal
-
-private final class ControllerTestBundleAnchor: NSObject {}
+import LoomTestSupport
 
 private struct PlannedFailure: Error {}
 
@@ -12,7 +11,7 @@ private struct PlannedFailure: Error {}
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct TerminalRunControllerTests {
     private var childPath: String {
-        Bundle(for: ControllerTestBundleAnchor.self).bundleURL.deletingLastPathComponent()
+        Products.directory
             .appendingPathComponent("loom-test-child").path
     }
 

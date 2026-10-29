@@ -4,6 +4,7 @@ import LoomCore
 import Synchronization
 import Testing
 @testable import LoomChat
+import LoomTestSupport
 
 // Contract tests: the same four situations, once as the fake provider really prints them and once as the real CLI 2.1.300
 // printed them (S1 recordings, trimmed in S1Recordings.swift), go through the same pipeline, the one the chat engine uses:
@@ -11,9 +12,6 @@ import Testing
 // from the recordings (record order, capabilities, receipts) without a test failing.
 //
 //   plain turn | interrupt that returns queued sends | interrupt while a can_use_tool is pending | api_error
-
-private final class BundleAnchor: NSObject {}
-
 /// The decoder, the channel and the model, fed with bytes.
 private final class Wire: Sendable {
     struct State: Sendable {
@@ -106,7 +104,7 @@ private final class FakeChild: @unchecked Sendable {
     private let output = Pipe()
 
     init(wire: Wire, emitSessionState: Bool = false) throws {
-        let executable = Bundle(for: BundleAnchor.self).bundleURL.deletingLastPathComponent().appendingPathComponent("loom-fake-provider")
+        let executable = Products.directory.appendingPathComponent("loom-fake-provider")
         guard FileManager.default.isExecutableFile(atPath: executable.path) else {
             throw ContractTimeout(what: "the loom-fake-provider binary next to the tests (run swift build first)", tail: [executable.path])
         }

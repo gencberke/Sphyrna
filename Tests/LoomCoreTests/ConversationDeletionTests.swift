@@ -2,6 +2,7 @@ import Darwin
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 private actor PeerDeletionGate {
     private(set) var entered = false

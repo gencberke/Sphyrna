@@ -4,6 +4,7 @@ import LoomCore
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// The sidebar in Ink (I3r; DESIGN §2 items 1, 3, 4 and 5, §6 Rows): the header row, the list heading's switch, the rows' and
 /// cards' lines. What the views evaluate is in `SidebarRenderTests`, the pill's fills in `HighlightTests`, the selection's tint in
@@ -28,7 +29,7 @@ extension WindowEventTests {
             enableAccessibilityTree()
             let (model, root) = try model()
             defer { try? FileManager.default.removeItem(at: root) }
-            let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 300, height: 500))
+            let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 300, height: 500), key: true)
             defer { window.orderOut(nil) }
             try await Task.sleep(for: .milliseconds(400))
             let all = labels(in: hosting.view)
@@ -47,7 +48,7 @@ extension WindowEventTests {
             let (model, root) = try model()
             defer { try? FileManager.default.removeItem(at: root) }
             model.setViewMode(.projects)
-            let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 300, height: 500))
+            let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 300, height: 500), key: true)
             defer { window.orderOut(nil) }
             try await Task.sleep(for: .milliseconds(400))
 

@@ -3,6 +3,7 @@ import Synchronization
 import Testing
 @testable import LoomCore
 @testable import LoomChat
+import LoomTestSupport
 
 private actor ManagedWireGate {
     private var open = false

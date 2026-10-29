@@ -4,6 +4,7 @@ import SwiftUI
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// Reads a window's accessibility tree through the entry point AppKit answers an assistive client's request with
 /// (`_accessibilityValueForAttribute:clientError:`, the frame below which both signed-app crashes of 29 Oct recursed): every

@@ -4,6 +4,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import SwiftTerm
+import LoomTestSupport
 
 // This fixture is prepared for an explicit parent-owned, zero-input native
 // acceptance run. Discovery and ordinary checks never start a provider.
@@ -585,9 +586,6 @@ private actor NativeOpenCodeTUIIdentity {
         return false
     }
 }
-
-private final class NativeOpenCodeBundleAnchor: NSObject {}
-
 private struct NativeOpenCodeResult: Encodable {
     var executionBoundary = NativeOpenCodeAcceptanceMode.strictWrapper.rawValue
     var nativeAndProfileUnchanged = false
@@ -742,7 +740,7 @@ private func runNativeOpenCodeAcceptance(mode: NativeOpenCodeAcceptanceMode) asy
             _ = try OpenCodeTUIPlugin.install(in: layout.plugin)
             try boundary.validate()
 
-            let binaries = Bundle(for: NativeOpenCodeBundleAnchor.self).bundleURL.deletingLastPathComponent()
+            let binaries = Products.directory
             let bundle = try RunScopeLauncher.assembleOwnedBundle(
                 executable: binaries.appendingPathComponent("loom-run-host"), in: layout.host)
             let catalog = try SessionCatalog(url: layout.root.appendingPathComponent("acceptance.sqlite3"))

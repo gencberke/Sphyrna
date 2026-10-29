@@ -4,6 +4,7 @@ import Testing
 @testable import LoomCatalogUI
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // C5b: an approved opening follows "Sessions run in" like every other start (D-69 (1)). An agent's open request, approved
 // through the model, starts the new session in the Chat face when the switch says Chat and the app has its Chat host; in the

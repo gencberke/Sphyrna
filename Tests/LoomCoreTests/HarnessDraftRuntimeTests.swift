@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 @Suite(.serialized, .processHeavy, .timeLimit(.minutes(3)))
 struct HarnessDraftRuntimeTests {

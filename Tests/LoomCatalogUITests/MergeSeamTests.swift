@@ -4,6 +4,7 @@ import Testing
 @testable import LoomCatalogUI
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // The seams between V19 (Chat first, the handover) and V24 (the chat bar, Ask), end to end with the real model, controller,
 // runtime and driver on the fake provider: every path that would run Ask in the terminal runs Ask before edits and says so,

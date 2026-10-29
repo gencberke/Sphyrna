@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 private extension SessionRuntime {
     func injectActiveNativeSnapshotForTaskTest(_ binding: SessionTaskBinding) async throws {

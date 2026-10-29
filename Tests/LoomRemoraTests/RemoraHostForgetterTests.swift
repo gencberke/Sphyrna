@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomRemora
+import LoomTestSupport
 
 /// L3a: a deleted session's journal lines go through a real runtime's deletion, also when the deletion is the one
 /// `SessionRuntime.start()` recovers at launch. The runtime has no provider: a deletion needs only a catalog, a supervisor and

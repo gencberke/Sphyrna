@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 private extension SessionRuntime {
     func taskServerIDForTest(runID: UUID) -> UUID? { runs[runID]?.server?.id }

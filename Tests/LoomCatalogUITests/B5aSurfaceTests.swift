@@ -5,6 +5,7 @@ import Testing
 @testable import LoomCore
 @testable import LoomRemora
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 // Nested in ModelPickerTests' serialized suite: both host draft popovers in borderless windows, one at a time.
 extension ModelPickerTests {

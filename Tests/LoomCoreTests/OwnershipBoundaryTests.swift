@@ -2,8 +2,7 @@ import Darwin
 import Foundation
 import Testing
 @testable import LoomCore
-
-private final class OwnershipTestBundleAnchor: NSObject {}
+import LoomTestSupport
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct OwnershipBoundaryTests {
@@ -51,7 +50,7 @@ struct OwnershipBoundaryTests {
         try FileManager.default.createDirectory(at: broken, withIntermediateDirectories: true)
         try Data("invalid owner".utf8).write(to: broken.appendingPathComponent("owner.json"))
         let probe = Process()
-        probe.executableURL = Bundle(for: OwnershipTestBundleAnchor.self).bundleURL.deletingLastPathComponent().appendingPathComponent("loom-probe")
+        probe.executableURL = Products.directory.appendingPathComponent("loom-probe")
         probe.arguments = ["synthetic", "inspect"]
         var environment = ProcessInfo.processInfo.environment
         environment["LOOM_PROBE_ROOT"] = root.path

@@ -2,6 +2,7 @@ import Foundation
 import LoomCore
 import Testing
 @testable import LoomChat
+import LoomTestSupport
 
 // V23, Agents live, on the chat side: the hub's agent field, which Agent calls of a transcript have a result (a stopped
 // session's "Interrupted"), and the newest words of a running subagent.

@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomRemora
+import LoomTestSupport
 
 /// L3a2 (item 5): the brief's language. It is one line in the brief's request (the dynamic part of the pack, stdin), never in
 /// the cached system prompt; a set language wins, else the last question's, else none. Questions are not affected.

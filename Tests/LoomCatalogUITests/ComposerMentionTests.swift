@@ -5,6 +5,7 @@ import Testing
 @testable import LoomCatalogUI
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // D-96 (W3-a): a session dropped on the live Chat composer, or picked in its `@` list, becomes a mention pill in the chip row.
 // Nothing here sends a message to a real Claude: the driver is the fake provider's.

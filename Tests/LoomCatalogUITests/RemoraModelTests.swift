@@ -3,6 +3,7 @@ import Testing
 import LoomCore
 @testable import LoomRemora
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 private final class RemoraModelAnchor: NSObject {}
 

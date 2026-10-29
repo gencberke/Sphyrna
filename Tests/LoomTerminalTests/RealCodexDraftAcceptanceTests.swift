@@ -4,12 +4,12 @@ import Foundation
 import Testing
 @testable import SwiftTerm
 @testable import LoomCore
+import LoomTestSupport
 
 // The only provider input in this suite is the first positional message of a
 // new draft. Discovery and a normal test run never start a provider.
-private final class RealAcceptanceBundleAnchor: NSObject {}
 private enum RealAcceptanceFixture {
-    static var binaries: URL { Bundle(for: RealAcceptanceBundleAnchor.self).bundleURL.deletingLastPathComponent() }
+    static var binaries: URL { Products.directory }
 }
 
 private enum RealCodexAcceptanceGate {

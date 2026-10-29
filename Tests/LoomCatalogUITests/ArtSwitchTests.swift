@@ -4,6 +4,7 @@ import LoomCore
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// The art's switch (DESIGN §17 The budget, §2 items 5 and 8, D-12, D-79), kept in the preferences although no surface draws the art
 /// since the rescue (D-100) and Settings → Theme no longer shows its row: on by default and kept with the other UI preferences; off, every drawing stands still on one frame and the arrival is the remora at its place; Reduce Motion does not

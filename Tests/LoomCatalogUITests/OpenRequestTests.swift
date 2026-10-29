@@ -5,8 +5,7 @@ import Testing
 @testable import LoomCore
 import LoomTerminal
 @testable import LoomCatalogUI
-
-private final class OpenBundleAnchor: NSObject {}
+import LoomTestSupport
 
 @MainActor
 private final class AnswerRecorder: ConversationIntents {
@@ -374,7 +373,7 @@ struct OpenRequestTests {
         let socketDirectory = URL(fileURLWithPath: "/tmp/lo-\(UUID().uuidString.prefix(8))", isDirectory: true)
         let catalog = try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
         let hub = SessionEventHub()
-        let binaries = Bundle(for: OpenBundleAnchor.self).bundleURL.deletingLastPathComponent()
+        let binaries = Products.directory
         let supervisor = try await ProcessSupervisor.restoring(
             ledger: OwnershipLedger(), catalog: catalog, events: hub, scopeLauncher: nil)
         let fake = binaries.appendingPathComponent("loom-fake-provider").path

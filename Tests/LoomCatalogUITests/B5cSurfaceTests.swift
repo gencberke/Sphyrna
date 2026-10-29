@@ -4,6 +4,7 @@ import SwiftUI
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 @MainActor
 @Suite(.serialized, .timeLimit(.minutes(2)))

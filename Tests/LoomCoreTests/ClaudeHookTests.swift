@@ -3,8 +3,7 @@ import CryptoKit
 import Foundation
 import Testing
 @testable import LoomCore
-
-private final class HookTestBundleAnchor: NSObject {}
+import LoomTestSupport
 
 private final class HookEnvelopeCollector: @unchecked Sendable {
     private let condition = NSCondition()
@@ -103,8 +102,7 @@ struct ClaudeHookTests {
         let input = try payload(event: "SessionStart", fields: ["source": "startup"])
         let pipe = Pipe()
         let process = Process()
-        process.executableURL = Bundle(for: HookTestBundleAnchor.self).bundleURL
-            .deletingLastPathComponent().appendingPathComponent("loom-hook")
+        process.executableURL = Products.directory.appendingPathComponent("loom-hook")
         process.environment = [
             "LOOM_HOOK_SOCKET": socketPath,
             "LOOM_HOOK_TOKEN": "helper-token",

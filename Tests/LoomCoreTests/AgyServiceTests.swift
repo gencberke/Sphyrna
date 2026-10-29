@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 @MainActor private final class AgyTestTerminal: TerminalFaceSinks {
     let screen = SessionRuntimeTests.Screen()

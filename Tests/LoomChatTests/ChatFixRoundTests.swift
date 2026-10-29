@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // The fix round after the strict reviews of V17 (composer) and V18 (pinned cards), driver side: each test fails without the
 // fix it names.

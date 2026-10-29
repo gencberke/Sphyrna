@@ -3,6 +3,7 @@ import Synchronization
 import Testing
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // Rewind files (V21) on the driver, through the real runtime and the fake provider's checkpoints: the dry run, the idle rule,
 // the copy that comes before the CLI call, the error frame, the marker, and Undo. The fake restores files the way S8 saw the

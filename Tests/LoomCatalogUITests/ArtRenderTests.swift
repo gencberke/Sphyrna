@@ -3,6 +3,7 @@ import Foundation
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// I5's spike, the art hosted in a window nobody sees (never ordered front), in Ink and Paper: each shark of the cast, Home's
 /// band and the new-session page's pair with the whale shark below. With `LOOM_ART_RENDER_DIR` set the pictures are written

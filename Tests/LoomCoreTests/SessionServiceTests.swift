@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 /// R5a: the session service owns the lifecycle's orchestration and its transition state. Both faces are fakes (a structured
 /// host that records what it was asked and a terminal that hands out sinks); the runtime is the real one over the fake

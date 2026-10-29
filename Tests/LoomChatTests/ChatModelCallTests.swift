@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // G5 and F1 of the cost-and-context rule (goal 3 of D-83): Sphyrna causes a model call on the user's subscription only for what
 // the user sends, asks or approves, and for one call of its own, a Chat session's title (one per card, at most three tries, on

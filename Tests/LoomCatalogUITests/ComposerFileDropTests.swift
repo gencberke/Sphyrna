@@ -6,6 +6,7 @@ import Testing
 @testable import LoomChat
 @testable import LoomCore
 @testable import LoomRemora
+import LoomTestSupport
 
 // W3-d: files and folders dropped into every composer (the live Chat one, the draft page's, Side's and Quick Question's) and
 // anywhere on the live stream or the draft page. A drop only edits a composer; nothing here sends.

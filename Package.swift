@@ -49,11 +49,15 @@ let package = Package(
         .executableTarget(name: "loom-test-child", dependencies: ["CLoomTestSupport"]),
         // Development/test only: a provider-shaped terminal fixture. Never bundled.
         .executableTarget(name: "loom-fake-provider"),
-        .testTarget(name: "LoomCoreTests", dependencies: ["LoomCore"]),
-        .testTarget(name: "LoomTerminalTests", dependencies: ["LoomCore", "LoomTerminal"]),
-        .testTarget(name: "LoomChatTests", dependencies: ["LoomChat", "LoomCore"]),
-        .testTarget(name: "LoomRemoraTests", dependencies: ["LoomRemora", "LoomChat", "LoomCore"]),
-        .testTarget(name: "LoomLaunchOptionsTests", dependencies: ["LoomLaunchOptions"]),
-        .testTarget(name: "LoomCatalogUITests", dependencies: ["LoomCore", "LoomTerminal", "LoomCatalogUI", "LoomChat", "LoomRemora"]),
+        // The tests' shared fixtures (DEVELOPMENT §3.1): the bounded waits, the products directory, temporary roots, the
+        // process-heavy gate and the window host. Product-free, so it builds in every configuration; never bundled.
+        .target(name: "LoomTestSupport", path: "Tests/LoomTestSupport"),
+        .testTarget(name: "LoomCoreTests", dependencies: ["LoomCore", "LoomTestSupport"]),
+        .testTarget(name: "LoomTerminalTests", dependencies: ["LoomCore", "LoomTerminal", "LoomTestSupport"]),
+        .testTarget(name: "LoomChatTests", dependencies: ["LoomChat", "LoomCore", "LoomTestSupport"]),
+        .testTarget(name: "LoomRemoraTests", dependencies: ["LoomRemora", "LoomChat", "LoomCore", "LoomTestSupport"]),
+        .testTarget(name: "LoomLaunchOptionsTests", dependencies: ["LoomLaunchOptions", "LoomTestSupport"]),
+        .testTarget(name: "LoomCatalogUITests", dependencies: ["LoomCore", "LoomTerminal", "LoomCatalogUI", "LoomChat", "LoomRemora",
+                                                               "LoomTestSupport"]),
     ]
 )

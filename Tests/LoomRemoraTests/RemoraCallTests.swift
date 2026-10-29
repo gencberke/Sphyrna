@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomRemora
+import LoomTestSupport
 
 private final class FakeAnchor: NSObject {}
 

@@ -10,7 +10,8 @@ The rules (comments and strings blanked unless a rule reads comments):
   wait-helper       a wait helper defined in a test file (`func waitUntil…`, `waitFor…`, `until`, `eventually`, `wait`):
                     the shared bounded wait lives in Tests/LoomTestSupport/
   silent-wait       `#expect`/`#require` of an awaited wait with no message: a failure names nothing it saw
-  key-window        a window made key or ordered in outside the window tests (WindowEventTests, LoomWindowTests)
+  key-window        a window made key or ordered in outside the window tests (WindowEventTests, LoomWindowTests), or
+                    LoomTestSupport's `host(…, key: true)` there
   global-state      a write to process-wide state that parallel suites share (ChatPresentation's verifier, HoverForce,
                     DragActivity, ChatUserText.watchedID, SessionDragProbe), or a render probe watched or reset in a file
                     without the `.renderProbe` trait
@@ -169,9 +170,14 @@ def scan(path, text, superseded):
             first = code[args[0][0]:args[0][1]]
             if 'await' in first and WAIT_CALL.search(first):
                 add('silent-wait', m.start())
-    if not is_window_file(path, text):
+    # The support's window host is where a test's window is made; whether it is key is the caller's ask, counted below.
+    if not is_window_file(path, text) and not support:
         for m in KEY_WINDOW.finditer(code):
             add('key-window', m.start())
+        # LoomTestSupport's `host(_:size:key:)` asked for a key window.
+        for start in swift.call_sites('host', code):
+            if code[start - 1:start] != '.' and re.search(r'\bkey:\s*true\b', code[start:swift.closing_paren(code, code.index('(', start))]):
+                add('key-window', start)
     for m in GLOBAL_WRITES.finditer(code):
         add('global-state', m.start())
     if not re.search(r'\.renderProbe\b', code) and not path.endswith('RenderProbeExclusive.swift'):
@@ -353,7 +359,8 @@ PLANTED = {
     'silent-wait': ('#expect(await waitUntil { x })\n#expect(await waitUntil { x }, "saw \\(x)")\n'
                     '#expect(await eventually { a == nil }, "the drag ends")\n'
                     '#expect(await model.count == 1)\nlet ok = try #require(await until(timeout: 1) { y })\n', 2),
-    'key-window': ('window.makeKeyAndOrderFront(nil)\nwindow.orderFrontRegardless()\n', 2),
+    'key-window': ('window.makeKeyAndOrderFront(nil)\nwindow.orderFrontRegardless()\n'
+                   'let (w, _) = host(view, size: s, key: true)\nlet (v, _) = host(view, size: s)\n', 3),
     'global-state': ('ChatPresentation.verifiesRows = true\nif ChatPresentation.verifiesRows == true {}\n'
                      'SidebarRenderProbe.watch([])\n', 2),
     'real-input': ('let down = NSEvent.pressedMouseButtons != 0\nlet a = DragActivity.shared\n'

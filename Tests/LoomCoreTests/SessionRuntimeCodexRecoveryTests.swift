@@ -2,6 +2,7 @@ import Darwin
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 /// CP5 holistic review SR2: each Codex run owns its server; a stale or moved
 /// run never touches another run's server; a dead server never traps a

@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // V24 fix round (the strict review of 18 Oct): the mode chain, Ask's failure paths, the markers, the effort and the
 // withdrawal of a retried message. Everything runs on the fake provider's mirror of the CLI's rules.

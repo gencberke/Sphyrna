@@ -5,8 +5,7 @@ import LoomTerminal
 import Synchronization
 import Testing
 @testable import LoomCatalogUI
-
-private final class ControllerBundleAnchor: NSObject {}
+import LoomTestSupport
 
 /// CP5 C at the presentation boundary: the real model, controller, runtime,
 /// supervisor and catalog against provider-shaped fixtures. Native AppKit
@@ -52,7 +51,7 @@ struct ConversationControllerTests {
         let catalog = try SessionCatalog(url: root.appendingPathComponent("catalog.sqlite3"))
         try await seed?(root, catalog)
         let hub = SessionEventHub()
-        var binaries = Bundle(for: ControllerBundleAnchor.self).bundleURL.deletingLastPathComponent()
+        var binaries = Products.directory
         var launcher: RunScopeLauncher?
         if scoped {
             // Run hosts are their own TCC-responsible apps, and build products may

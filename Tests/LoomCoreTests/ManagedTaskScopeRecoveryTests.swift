@@ -2,6 +2,7 @@ import Darwin
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 extension SessionRuntime {
     func installRecoveredTaskCoordinatorForTest(_ coordinator: SessionTaskCoordinator) {

@@ -5,6 +5,7 @@ import SwiftUI
 import Testing
 @testable import LoomChat
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 // The fix round after the strict review of V18 (pinned cards), view side: each test fails without the fix it names.
 
@@ -183,7 +184,7 @@ struct PinnedKeyEventTests {
         let spy = ComposerSpy()
         cards.attach(spy, text: "", hasFocus: false)
         cards.apply(state([request("a")]))
-        let (window, _) = host(PinnedCardsView(cards: cards).frame(width: 700), size: NSSize(width: 700, height: 400))
+        let (window, _) = host(PinnedCardsView(cards: cards).frame(width: 700), size: NSSize(width: 700, height: 400), key: true)
         defer { window.orderOut(nil) }
         await settle()
         cards.focus()
@@ -240,7 +241,7 @@ struct PinnedKeyEventTests {
              "options": [["label": "SQLite", "description": "One file"], ["label": "Postgres", "description": "A server"]]],
         ]])
         cards.apply(state([question]))
-        let (window, _) = host(PinnedCardsView(cards: cards).frame(width: 700), size: NSSize(width: 700, height: 500))
+        let (window, _) = host(PinnedCardsView(cards: cards).frame(width: 700), size: NSSize(width: 700, height: 500), key: true)
         defer { window.orderOut(nil) }
         await settle()
         cards.focus()
@@ -283,7 +284,7 @@ struct PinnedSlotTests {
             slot.value += 1
             return Color.clear.frame(height: 40)
         }).frame(width: 700, height: 500)
-        let (window, _) = host(view, size: NSSize(width: 700, height: 500))
+        let (window, _) = host(view, size: NSSize(width: 700, height: 500), key: true)
         defer { window.orderOut(nil) }
         try await Task.sleep(for: .milliseconds(600))
         #expect(feed.phase == .opening, "the history has not arrived")

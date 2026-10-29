@@ -6,6 +6,7 @@ import SwiftUI
 import Testing
 @testable import LoomCatalogUI
 @testable import LoomChat
+import LoomTestSupport
 
 /// V22 part 3: the Side tab's flows on the model, the real runtime and the Chat driver over the fake provider (a forkable
 /// one): the first question forks, a stopped side chat resumes, "New side chat" forks again, "/" is refused where it stands,

@@ -4,8 +4,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import LoomCore
-
-private final class RunScopeBundleAnchor: NSObject {}
+import LoomTestSupport
 
 /// The temporary folders of one test: run host folders and the test child's copy. A suite instance
 /// lives for one test, so they go when the test ends, together with their hosts' LaunchServices records.
@@ -45,7 +44,7 @@ struct RunScopeTests {
     private let scratch = ScopeScratch()
 
     private var productsDirectory: URL {
-        Bundle(for: RunScopeBundleAnchor.self).bundleURL.deletingLastPathComponent()
+        Products.directory
     }
 
     /// Run hosts are their own TCC-responsible apps. The build products live

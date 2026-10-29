@@ -2,6 +2,7 @@ import Foundation
 import Darwin
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 private final class TaskWakeCounter: @unchecked Sendable {
     private let lock = NSLock()

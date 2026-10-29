@@ -1,8 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
-
-private final class SilenceBundleAnchor: NSObject {}
+import LoomTestSupport
 
 private final class Received: @unchecked Sendable {
     private let lock = NSLock()
@@ -43,8 +42,7 @@ private final class Received: @unchecked Sendable {
     /// Runs the real helper the way Claude does (no arguments, the event on standard input) and returns what it printed.
     private func run(environment: [String: String], input: Data) throws -> (status: Int32, stdout: Data) {
         let process = Process()
-        process.executableURL = Bundle(for: SilenceBundleAnchor.self).bundleURL
-            .deletingLastPathComponent().appendingPathComponent("loom-hook")
+        process.executableURL = Products.directory.appendingPathComponent("loom-hook")
         process.environment = environment
         let stdin = Pipe(), stdout = Pipe()
         process.standardInput = stdin

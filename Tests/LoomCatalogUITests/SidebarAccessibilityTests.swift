@@ -4,6 +4,7 @@ import SwiftUI
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// One node of the accessibility tree as an assistive technology would read it.
 struct AXNode {
@@ -58,18 +59,6 @@ func accessibilityElements(in object: Any) -> [AnyObject] {
     return [element] + children.flatMap(accessibilityElements(in:))
 }
 
-@MainActor
-func host<Content: View>(_ content: Content, size: NSSize, key: Bool = true) -> (NSWindow, NSHostingController<Content>) {
-    let hosting = NSHostingController(rootView: content)
-    hosting.sizingOptions = []
-    let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
-                          styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
-    window.contentViewController = hosting
-    window.setContentSize(size)
-    if key { window.makeKeyAndOrderFront(nil) } else { window.orderFrontRegardless() }
-    return (window, hosting)
-}
-
 extension WindowEventTests {
 /// I3: header traits, expanded or collapsed value and grouped notices as the accessibility tree reports them.
 @MainActor
@@ -99,7 +88,7 @@ struct SidebarAccessibilityTests {
         defer { try? FileManager.default.removeItem(at: root) }
         model.setViewMode(.projects)
         await model.settle()
-        let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 300, height: 500))
+        let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 300, height: 500), key: true)
         defer { window.orderOut(nil) }
         try await Task.sleep(for: .milliseconds(500))
         func element(labelled text: String) -> (node: AXNode, element: AnyObject)? {
@@ -153,7 +142,7 @@ struct SidebarAccessibilityTests {
         defer { try? FileManager.default.removeItem(at: root) }
         model.setViewMode(.activity)
         await model.settle()
-        let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 300, height: 500))
+        let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 300, height: 500), key: true)
         defer { window.orderOut(nil) }
         try await Task.sleep(for: .milliseconds(500))
         let day = axTree(of: hosting.view).flattened().filter { $0.role == "AXHeading" }
@@ -176,7 +165,7 @@ struct SidebarAccessibilityTests {
             Notice(RecordNotice(tone: .failure, symbol: "exclamationmark.triangle",
                                 title: "Stop could not be verified", text: "The process is still running."))
         }
-        let (window, hosting) = host(content, size: NSSize(width: 500, height: 400))
+        let (window, hosting) = host(content, size: NSSize(width: 500, height: 400), key: true)
         defer { window.orderOut(nil) }
         try await Task.sleep(for: .milliseconds(400))
         let root = axTree(of: hosting.view)

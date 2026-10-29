@@ -5,6 +5,7 @@ import SwiftUI
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 @MainActor
 @Observable private final class B5bIndicatorState { var active = false }

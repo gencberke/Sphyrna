@@ -1,8 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
-
-private final class StatusReasonBundleAnchor: NSObject {}
+import LoomTestSupport
 
 /// Slice V03: the reason a session shows its status, and the status fixes spike S0 recorded. The payloads
 /// are the sanitized S0 recordings (`S0HookFixtures.swift`). Each correction has a test that fails without it.
@@ -372,7 +371,7 @@ struct StatusReasonTests {
     // MARK: Through the real adapter
 
     private var childPath: String {
-        Bundle(for: StatusReasonBundleAnchor.self).bundleURL.deletingLastPathComponent()
+        Products.directory
             .appendingPathComponent("loom-test-child").path
     }
 

@@ -4,6 +4,7 @@ import LoomCore
 import Testing
 @testable import LoomCatalogUI
 @testable import LoomChat
+import LoomTestSupport
 
 /// V20: the Changes tab's comments go to Claude as one message through the path the composer's Return takes, with the real
 /// model, controller, runtime and Chat driver on the fake provider. A terminal-face session shows the diffs and cannot send.

@@ -3,8 +3,7 @@ import Foundation
 import SQLite3
 import Testing
 @testable import LoomCore
-
-private final class SupervisorTestBundleAnchor: NSObject {}
+import LoomTestSupport
 
 private actor StopTransitionGate {
     private var continuation: CheckedContinuation<Void, Never>?
@@ -106,7 +105,7 @@ private actor StoppedCodexFixture {
 @Suite(.serialized, .processHeavy, .timeLimit(.minutes(1)))
 struct ProcessSupervisorTests {
     private var childPath: String {
-        Bundle(for: SupervisorTestBundleAnchor.self).bundleURL.deletingLastPathComponent()
+        Products.directory
             .appendingPathComponent("loom-test-child").path
     }
 

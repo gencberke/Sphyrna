@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 /// V16: a session's mode, model and effort live in the catalog (runtime-owned), and every spawn in either face passes
 /// them; the Chat face's argv and environment. No real Claude, no real repository.

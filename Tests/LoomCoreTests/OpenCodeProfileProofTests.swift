@@ -2,6 +2,7 @@ import Darwin
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 private struct OpenCodeProfileFixture {
     let context: RuntimeContext

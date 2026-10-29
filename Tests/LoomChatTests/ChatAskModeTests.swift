@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // V24: the Ask mode (D-63, spikes S9 and S9b) on the fake provider's mirror of the CLI's rules, and the follow-ups of the
 // checkpoint review that live in the driver. Ask is the CLI's `dontAsk` plus deny rules for the edit tools plus an output style,

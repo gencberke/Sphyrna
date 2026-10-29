@@ -5,6 +5,7 @@ import LoomCore
 import SwiftUI
 import Testing
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 /// The rescue (D-100): no surface draws the art any more. I5's surfaces hosted in windows nobody sees (never ordered front), in Ink
 /// and Paper: none has an art view, so no display link runs for it. With `LOOM_ART_RENDER_DIR` set each picture is written there as

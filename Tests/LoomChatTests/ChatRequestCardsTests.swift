@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // Pinned cards, driver side (V18): what each answer sends the CLI and what it leaves in the stream (pure), and the rules a
 // card lives by on the fake provider: the driver never answers, a card retires only on its own id or `tool_use_id`, a CLI

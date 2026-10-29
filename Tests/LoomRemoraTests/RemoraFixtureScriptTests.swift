@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomRemora
+import LoomTestSupport
 
 /// L3a2 (item 6): the fake provider's Remora mode reads an optional script file from `$CLAUDE_CONFIG_DIR` (the app's evidence
 /// runs set that variable, and Remora's call passes it on), fills its closing block with real session ids out of the pack, and

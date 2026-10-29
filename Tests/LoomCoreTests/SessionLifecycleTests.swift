@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 private actor IdleReliabilityGate {
     private var continuation: CheckedContinuation<Void, Never>?
@@ -13,9 +14,6 @@ private actor IdleReliabilityGate {
     }
     func release() { released = true; continuation?.resume(); continuation = nil }
 }
-
-private final class LifecycleTestBundleAnchor: NSObject {}
-
 /// Fails the first `failing` calls, then lets them through.
 private final class FailureCounter: @unchecked Sendable {
     private let lock = NSLock()
@@ -43,7 +41,7 @@ private final class FailureSwitch: @unchecked Sendable {
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct SessionLifecycleTests {
     private var childPath: String {
-        Bundle(for: LifecycleTestBundleAnchor.self).bundleURL.deletingLastPathComponent()
+        Products.directory
             .appendingPathComponent("loom-test-child").path
     }
 

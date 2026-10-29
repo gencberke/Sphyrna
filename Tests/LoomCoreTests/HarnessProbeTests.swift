@@ -2,6 +2,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 /// The Codex probe against the fake provider's `app-server` (no real Codex, no network), the probe's cache and the connect
 /// switch, and Claude's side in the same neutral types.

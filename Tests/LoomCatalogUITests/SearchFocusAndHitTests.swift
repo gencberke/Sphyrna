@@ -4,6 +4,7 @@ import SwiftUI
 import Testing
 import LoomCore
 @testable import LoomCatalogUI
+import LoomTestSupport
 
 extension WindowEventTests {
 /// The sidebar's search is the command palette's door; small controls keep a 24 pt hit area; banners fade in only when Reduce
@@ -27,7 +28,7 @@ struct SearchFocusAndHitTests {
         enableAccessibilityTree()
         let (model, root) = try model()
         defer { try? FileManager.default.removeItem(at: root) }
-        let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 300, height: 400))
+        let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 300, height: 400), key: true)
         defer { window.orderOut(nil); model.palette.close() }
         try await Task.sleep(for: .milliseconds(400))
         #expect(!(window.firstResponder is NSText), "no field holds the keyboard")
@@ -49,7 +50,7 @@ struct SearchFocusAndHitTests {
             let content = Button { presses += 1 } label: { Image(systemName: "ellipsis") }
                 .buttonStyle(ChromeButtonStyle(size: size))
                 .frame(width: 120, height: 200).ignoresSafeArea()
-            let (window, hosting) = host(content, size: NSSize(width: 120, height: 200))
+            let (window, hosting) = host(content, size: NSSize(width: 120, height: 200), key: true)
             defer { window.orderOut(nil) }
             try await Task.sleep(for: .milliseconds(400))
             func hits(x: Double, y: Double) async throws -> Bool {
@@ -90,7 +91,7 @@ struct SearchFocusAndHitTests {
             let content = Color.white.fadesIn()
                 .frame(width: 60, height: 60).background(Color.black)
                 .transformEnvironment(\.self) { $0._accessibilityReduceMotion = reduceMotion }
-            let (window, hosting) = host(content, size: NSSize(width: 60, height: 60))
+            let (window, hosting) = host(content, size: NSSize(width: 60, height: 60), key: true)
             defer { window.orderOut(nil) }
             try await Task.sleep(for: .milliseconds(60))
             let early = try brightness(of: hosting.view)

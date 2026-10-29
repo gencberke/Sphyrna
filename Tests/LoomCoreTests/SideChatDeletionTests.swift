@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 /// V22 part 2: deleting around a side chat. A fork is a session of its own to Claude (its own id, its own files); Loom links it to
 /// its parent, so deleting the parent deletes the side chats first, each through the verified path, and discarding a side chat

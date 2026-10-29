@@ -1,8 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCatalogUI
-
-private final class ScenarioBundleAnchor: NSObject {}
+import LoomTestSupport
 
 /// One `/scenario stream …` turn of the fake provider in chat mode, run to its result: the assistant text of each message.
 /// A high rate over a short time hands out the same text as the measurement cells do (the text depends on the characters
@@ -16,7 +15,7 @@ private func streamedMessages(_ arguments: String) async throws -> [String] {
     let process = Process()
     let input = Pipe()
     let output = Pipe()
-    process.executableURL = Bundle(for: ScenarioBundleAnchor.self).bundleURL.deletingLastPathComponent()
+    process.executableURL = Products.directory
         .appendingPathComponent("loom-fake-provider")
     process.arguments = [
         "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",

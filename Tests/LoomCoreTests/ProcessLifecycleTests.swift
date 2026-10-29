@@ -2,8 +2,7 @@ import Darwin
 import Foundation
 import Testing
 @testable import LoomCore
-
-private final class TestBundleAnchor: NSObject {}
+import LoomTestSupport
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct ProcessLifecycleTests {
@@ -49,7 +48,7 @@ struct ProcessLifecycleTests {
     }
 
     private var childPath: String {
-        Bundle(for: TestBundleAnchor.self).bundleURL.deletingLastPathComponent()
+        Products.directory
             .appendingPathComponent("loom-test-child").path
     }
 

@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import LoomChat
 @testable import LoomCore
+import LoomTestSupport
 
 // Release B fix round 2, the driver part: a handover that ends without a move, the stored choices of a stopped session, the
 // hold that outlives the stop, messages in the draft file until Claude reads them, Ask after a reset, a held pick that
