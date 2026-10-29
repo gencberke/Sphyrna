@@ -8,14 +8,16 @@
 
 1.8.0 is Sphyrna's first strong stop: an app fit for daily use. It is done when:
 1. **Every harness is first-class.** Claude and Codex are equal: start from the draft with model, effort and mode, honest
-   status, stop, resume, read, delete. opencode, agy and pi show in every list with their state, and start as plain terminal
-   sessions (FEEDBACK-7 Q9).
+   status, stop, resume, read, delete. opencode and agy show in every offered list with their state, and start as plain terminal
+   sessions (FEEDBACK-7 Q9). Pi is deferred by D-113; compatible stored identifiers may remain.
 2. **The look is Ink v4**, Orca's design system with Sphyrna's identity ([DESIGN-V4.md](DESIGN-V4.md)), on every surface, in
    Ink and Paper.
 3. **Nothing known is broken:** the project drag reorders (FB7-3), Changes' comments reach a terminal session (F11), and the
    1.7.1 items that were never checked on screen are checked.
 4. **Sessions work together:** `send` between sessions with `@user`'s approval, and Remora on any connected harness.
-5. **The installed app passes the gate** in [§4](#4-the-release-gate).
+5. **The installed app passes the gate** in [§4](#4-the-release-gate) and the [daily-use acceptance matrix](ACCEPTANCE.md).
+
+**29Oct overnight goal (D-112–D-114):** the planner is the main technical authority and continues unattended toward a reliable local1.8.0. Reference fidelity, genuine reusable cross-harness child work and its truthful name/mark/model UI are required. Short cheap-model turns are authorized as needed, with isolated profiles and usage accounting. The closing optimizer may inspect all code through1.8.0; the final existing Claude session then performs an independent planner-reviewer/optimizer critique with its current permission/effort settings preserved. The acceptance matrix owns the execution order and evidence, without replacing SPEC guarantees.
 
 What does not change: the contracts of SPEC §1–§5 and §12.
 - The untouched CLI in an owned terminal; verified stop and deletion.
@@ -46,7 +48,7 @@ What does not change: the contracts of SPEC §1–§5 and §12.
 ### 3.1 Order
 
 ```
-Wave 0  B0 reference v4 ──(@user approves the look)──┐      P0 Codex spike      P1 opencode/agy/pi spike
+Wave 0  B0 reference v4 ──(@user approves the look)──┐      P0 Codex spike      P1 opencode/agy spike
 Wave 1  A1 project reorder        C1 harness catalogue │ B1 v4 tokens & controls    B0b the rest of the reference in v4
 Wave 2  C2 catalogue consumers ──┬── B2 sidebar & card (after A1, B1)
                                   ├── B1b shared controls & the last buttons (after B1)
@@ -56,7 +58,7 @@ Wave 2  C2 catalogue consumers ──┬── B2 sidebar & card (after A1, B1)
 Wave 3  C4 harness-neutral draft (after C2) ── B4 model & effort pickers (after B1, C4)
         D1 Codex sessions (after P0, C4) ── D2 Codex reader & deletion (after D1)
         B5a Home/project/draft · B5b session window & inspector · B5c Settings/sheets/palette/menus (after B1, B0b)
-Wave 4  E1 opencode · E2 agy · E3 pi (after P1, C4, D1)    F1 send (after D1)    F2 Changes → session (after F1)
+Wave 4  E1 opencode · E2 agy (after P1, C4, D1)    F0 child contract → F1 transport    F2 Changes → session
         G1 Remora backends (after P0, P1, C2, B4)    H1 usage completion (after C2, D2)    I1 names & leftovers
 Wave 5  Z gate (planner): pool, real CLIs, energy, visual pass, optimizer, release
 ```
@@ -87,7 +89,8 @@ Wave 5  Z gate (planner): pool, real CLIs, energy, visual pass, optimizer, relea
 | **B5c** | Settings (not Connections), sheets, the palette, menus and About in v4 | FB7-2 | those views | B1, C3, B0b | C4, D1, D2 |
 | **E1** | opencode sessions (plain terminal) | Q9 | its descriptor, launch profile, status source | P1, C4, D1 | E2, E3 |
 | **E2** | agy sessions (plain terminal) | Q9 | as E1 | P1, C4, D1 | E1, E3 |
-| **E3** | pi sessions (plain terminal) | Q9 | as E1 | P1, C4, D1 | E1, E2 |
+| **E3** | pi sessions — deferred from1.8.0 (D-113) | Q9 | no implementation/probe in this goal | — | — |
+| **F0** | durable parent/child rounds, scoped authority/reports/wait/interrupt and truthful projection contract | D-111/D-114 | new Core task types/store/coordinator; F1 wires existing runtime/CLI | D1 identities for integration | X1 visual-only |
 | **F1** | `send` between sessions: approval, mailbox, the pointer on Ready, `inbox` | FB6-16 part 2, Q8 | the control socket, the CLI, the skill, a mailbox store, the approval card | D1 | G1, H1 |
 | **F2** | Changes' comments to a terminal session through F1's delivery | F11 | Changes' send path | F1 | G1, H1 |
 | **G1** | Remora on any harness with a verified no-tools run | FB6-22 part 2, Q9 of FEEDBACK-6 | `LoomRemora` backends, Remora's settings | P0, P1, C2, B4 | F1, H1 |
@@ -105,7 +108,7 @@ Run by the planner on the integrated head, once (D-90). `@user` gives the idle M
 2. **Real CLIs**, each in `/private/tmp/loom-real/…` with its own data root:
    - **Claude:** a draft with Opus and medium; Stop; Resume; Delete.
    - **Codex:** the same; `send` from Claude to Codex and back, approved; Remora's brief on a Codex model.
-   - **opencode, agy and pi:** start, status, stop (each one that shipped).
+   - **opencode and agy:** start, status, stop and supported child work; Pi is deferred.
 3. **Energy** (`scripts/perf/real_energy.py`, RESCUE-PLAN Phase B), in `@user`'s scenarios:
    - Home idle and a resting terminal stay at 0.0;
    - the status bar adds nothing at rest;
@@ -113,7 +116,7 @@ Run by the planner on the integrated head, once (D-90). `@user` gives the idle M
    - FB6-11's cells, never run for 1.7.1, run here.
 4. **Visual pass** against the approved v4 reference: every surface in Ink and Paper, Neutral and one cast, hover and focus held,
    VoiceOver over the sidebar, the status bar and the panel.
-5. **Closing `@optimizer`** (D-06, FEEDBACK-7 Q11) over `release/1.7.2..head`; Blocking findings fixed and re-checked in scope.
+5. **Closing `@optimizer`** (D-06, D-112, FEEDBACK-7 Q11) across all code through1.8.0, including older code; Blocking and concrete Should-Fix findings addressed and rechecked. After the final doc check, the existing open Claude session independently reviews the complete app as planner-reviewer/optimizer, with evidence and its settings preserved.
 6. **`@user`'s hand checks** on the installed build: the project drag; a day with Claude and Codex side by side; the panel;
    the status bar; send; Remora.
 7. **Release:** release notes, the version, tag, promote and install on `@user`'s word; the push and the GitHub release on

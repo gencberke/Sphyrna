@@ -182,17 +182,17 @@ One spinner (the braille spinner) for every in-flight state.
   ┌─────────────────────────────────────────────┐
   │ [EB] edd-backend               ◌ Working 37s │  ← top line: mark (14) + project, or harness mark + model in the
   │ Remove Task Config Status                   │     Projects view; status at the trailing end
-  │ feature/bg/EDDP-20625                   [✳] │  ← branch in mono 11 tertiary; harness mark (12) at the end
+  │ feature/bg/EDDP-20625                   [✳] │  ← one bottom row; branch in mono 10.5; harness mark (11)
   └─────────────────────────────────────────────┘
   ```
-  - Padding 10 by 12. The lines are 18, 20 and 16 high, and the title wraps to two lines at most.
+  - Padding10 by12. The lines are18,20 and16 high, and the title wraps to two lines at most. The bottom-row's6pt optical gap is an explicit reference exception to the general four-point spacing grid.
   - Radius 10; the card has no fill at rest. Under the pointer it takes the hover fill; selected, it is raised with the strong
     hairline at elevation 2 (Q3).
   - **The status** is a mark and a word in the status's text colour: Working with the spinner and the elapsed time; Needs you,
     orange; Failed, red; Finished, blue. Ready is nothing, and the top line's trailing end shows the time since the last
     activity in mono tertiary.
-  - The reason line (the Activity view) sits under the title in Small secondary.
-  - **Subagents** branch from the mark's column, the line leaving the mark's centre. Their rows are 24, with a still running mark.
+  - **Reference reconciliation (29Oct, D-114):** the bottom is one16pt row. Activity shows its real reason when present, otherwise the branch/origin; Projects shows branch/origin. Pin and trailing11pt harness mark remain. Branch stays in accessible metadata/tooltip when a reason takes its visual place; there is no extra reason row. A one-line childless card is74pt. Projects retains harness plus actual model on top; the reference's repeated project label there is corrected. Search/Home glyph boxes are15pt; a known branch has no redundant generic branch glyph. Day headings are23pt with10.5pt mono text and a trailing hairline; the real Active/Drafts groups and sentence-case captions remain.
+  - **Subagents** branch from the mark's column, the line leaving the mark's centre. Their rows are24pt, with3pt above the first, inside the parent's whole selected/hover surface while retaining independent accessible actions. D-114 replaces brief snippets with child name, its own harness mark and model. Omit unknown model; distinguish requested from reported values. Native legacy records may use the actual role/short ID until a real name/model is available; never borrow the parent's model. Briefs remain in their task/detail context.
 - **Drag:** the project reorder is live (A1): the head lifts and the blocks slide.
 - **The bottom (D-110):** the sidebar list reaches the single window-wide status bar. Settings and Help are24pt ghost icon buttons at that bar's leading end; Help opens the existing app menu. The separate38pt sidebar utility row is removed.
 

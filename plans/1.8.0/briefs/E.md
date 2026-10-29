@@ -1,5 +1,7 @@
 # E1, E2, E3: opencode, agy and pi as terminal sessions
 
+**29Oct scope: E1 opencode and E2 agy only. E3 Pi is deferred from1.8.0 by D-113; do not implement or probe Pi in the current goal.**
+
 One brief for three slices, one harness each: **E1** opencode, **E2** agy, **E3** pi. They can run side by side: each owns its
 own descriptor and profile files. They start after P1, C4 and D1. P1's verdict for a harness decides its slice:
 - "startable as planned": the full slice;

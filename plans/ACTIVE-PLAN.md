@@ -13,6 +13,7 @@
   checkout (`loom-dev`, on `swarm/1`) mirrors the docs; `~/Documents/github/loom` is the public release tree.
 - **Who:** the planner starts each implementer (Claude Opus 5.5 / `medium` or `gpt-6.1-terra` / `max`, AGENTS §3.1; at most
   two at once), reviews, integrates and keeps the docs (D-107).
+- **Current goal (D-112–D-114):** unattended overnight work toward a reliable daily-use local1.8.0, [acceptance matrix](1.8.0/ACCEPTANCE.md). Match the clean reference, provide reusable native-like cross-harness children and truthful name/mark/model branches, then holistic real-use/performance/usage proof, full-code optimizer, final doc check and the existing Claude session's independent critique. Cheap short turns are authorized as needed; Pi is deferred.
 - **The record before 1.8.0** (rounds 5 and 6, the rescue, the 1.6.0 slices, the End Batch Runbook):
   [archive/ACTIVE-PLAN-1.6.0-to-1.7.2.md](archive/ACTIVE-PLAN-1.6.0-to-1.7.2.md).
 
@@ -25,7 +26,7 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | --- | --- | --- |
 | 0 | B0 the reference in Ink v4 | integrated `5ba94f1` (approved by `@user`, D-106, with the planner's fixes: Activity marks, the two pickers) |
 | 0 | P0 Codex spike | bounded investigation complete;7 user inputs +1 auxiliary held; D1 works with API-resume/owned-route changes, F1 queue verified, D2 data boundaries noted, G1 strict no-tools blocked; SPIKE.md in evidence/r9/p0 |
-| 0 | P1 opencode, agy, pi spike | real-turn permission D-108 (≤5 each); prepare isolated profiles, user signs in when needed |
+| 0 | P1 opencode/agy spike | D-112 cheap short turns as needed; official-source preparation complete, native isolation proof before execution; user signs in when needed. Pi deferredD-113 |
 | 1 | A1 project reorder | integrated `075cd7d` (after review: rows are direct list children again, `SidebarPagingTests`; the released gap holds until the order lands); a by-hand drag check waits for the gate |
 | 3 | A1b project draft row overlap | integrated `f8adc58`,50 connected tests +actual Ink/Paper row/selection PASS; recovery evidence retained, slice tree/scratch removed |
 | 1 | C1 harness catalogue | integrated `59e300e` (with the planner's fix: opencode has no doctor until P1) |
@@ -37,14 +38,16 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 2 | B2 sidebar and card | integrated `497a962` + `6601d5c`; off-screen layout/selection, viewport clock, rest render and accessibility checks pass |
 | 2 | C3 Connections and Home connect cards | integrated `365b2d2` + `175f0e2`, parent seams `425878a`, `c84572b`, `1d4326d`; 9 core + 76 UI scoped tests pass; pooled guard/expectation fixes closed by `8e6fbf7` (112 affected tests PASS) |
 | 2 | B3 status bar | integrated `26acb6c`; full-width 26 pt bar, cached limits/popover, bounded working menu, shared awake setting and sidebar utilities; 185 affected tests PASS; Q7's documented Yes default applied |
-| 3 | B3b one bottom bar | integrated `f3d4f01`; Settings/Help move into the global bar and sidebar footer is removed (D-110);93 slice +29 integrated scoped/window tests PASS; actual popup/appearance next |
+| 3 | B3b one bottom bar | integrated `f3d4f01` +Help AX fixf0d9117;93 slice +29 integrated scoped/window +14 fix tests PASS; actual Ink/Paper, repeated Help open/Escape, collapsed sidebar/fullscreen return PASS; source-equivalence cleanup next |
 | 3 | C4 neutral draft | integrated `049a95c`; 329 affected tests PASS on v2 (193 Core + 1 Chat + 135 UI); compatible choices/files and v1/v4, supported effort retained per DESIGN |
 | 3 | B4 model and effort pickers | integrated `d727e87`; 140 offscreen tests PASS. Native fix `0c8a0b2` passes 47 affected tests and actual signed-app/keyboard gate. D-109 header stays read-only |
-| 3 | D1 Codex sessions · D2 Codex reader and deletion | D1 implementation/combined fake checks active inr9-d1; safe neutral starts/resume identity/owned socket lifecycle; parent real acceptance precedes gate acceptance. D2 follows; reference comparison complete |
+| 3 | D1 Codex sessions · D2 Codex reader and deletion | D1 source4cda375 in review; real T8 startup FAIL, zero-input diagnostics identify incompatible remote-TUI roots CLI flag and native trust/frontend requirement. Fixing TUI-only argument; server hardening retained. Actual first-prompt/owned-leader acceptance precedes integration. Original combined FAIL preserved; D2 source audit in progress |
 | 3 | B5a Home/project/draft · B5b session surfaces | B5a integrated `e618124`, connected 9 Core +108 UI tests PASS (slice 345 UI run FAIL test-state collision, affected serialized 12 PASS); B5b integrated `339929d`, connected156 tests PASS; first-screen RSS/timing limits and native gates remain named |
 | 3 | B5c Settings, sheets, palette, menus and About | integrated `7f77000`; 97 affected tests PASS (one corpus measurement skipped), six controlled theme renders; native/window/energy remain pooled |
-| 4 | F0 cross-harness child contract | planned D-111; stable child identity, readable results/status, follow-ups and completion/attention wake, then F1 transport |
-| 4 | E1 opencode · E2 agy · E3 pi · F1 send · F2 Changes → session · G1 Remora backends · H1 usage · I1 names | queued |
+| 3 | X1 reference/sidebar parity | in review7866731; whole-card/children surface,3-row Activity geometry, day/icon/branch parity and pinned-reason fix; failing-first raster/AX evidence and scoped checks pass |
+| 4 | F0 cross-harness child contract/foundation | in reviewff8627a;21 fake-host tests pass; native turn provenance follow-up before runtime wiring. Durable stable relationship/fresh rounds, explicit results/attention, bounded task grant, wait/check/interrupt and lifecycle fences. F1 wires existing owner/CLI/UI |
+| 4 | E1 opencode · E2 agy · F1 send · F2 Changes → session · G1 supported Remora backends · H1 usage · I1 names | queued |
+| — | E3 pi | deferred from1.8.0 byD-113; no probe/integration in current goal |
 | 5 | Z the gate, the optimizer, the release | planner |
 
 ## Open notes for the planner
@@ -61,7 +64,7 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 
 - **B4 header UX (D-109):** @user delegated the cleanest interaction to the planner; retain the read-only current-model/context header, with model/effort selection in the new-session draft. Shared reference headers are reconciled; do not introduce next-start pending state or terminal command injection.
 
-- **Continuous resume and test budget (D-108, 28 Oct):** Mac idle and AC attached; run the accumulated native/window/visual/energy pool at a worthwhile integrated point. Real isolated turns are authorized: Codex ≤15, opencode/agy/pi ≤5 each; record every turn in `evidence/r9/REAL-TURN-BUDGET.md` and provider reports. The user performs any login; no release/install authority was added.
+- **Continuous resume and test budget (D-108, 28 Oct):** Mac idle and AC attached; run the accumulated native/window/visual/energy pool at a worthwhile integrated point. Historical real isolated ceilings were Codex ≤15, opencode/agy/pi ≤5 each; D-112 supersedes them for this goal with short cheap turns as needed, and D-113 defers Pi; record every turn in `evidence/r9/REAL-TURN-BUDGET.md` and provider reports. The user performs any login; no release/install authority was added.
 
 - **C4/B5c accepted (28 Oct):** C4 integrated-tree log `check-20261028T213831-12075.log` passes 329 tests; B5c on top
   passes 97 in `check-20261028T214402-14160.log`. The old-file fixture and v4 work left at the daytime pause are now verified.

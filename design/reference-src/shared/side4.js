@@ -19,8 +19,9 @@ const I4_PROJECTS = [
   { name:'loom', tone:'var(--orchid)', letter:'L', sessions:[
     { id:'ink', t:'Port the sidebar to Ink tokens', st:'work', time:'37s', br:'ui/ink-sidebar', h:'claude',
       why:'Editing <span class="mono">SidebarCard.swift</span> · 61 lines',
-      subs:[ { st:'work', type:'explorer', d:'Map every sidebar token', e:'2m' },
-             { st:'work', type:'implementer', d:'Port SidebarCard', e:'now' } ] },
+      subs:[ { st:'work', name:'Implementer', h:'agy', model:'Gemini', e:'2m' },
+             { st:'work', name:'Reviewer', h:'codex', model:'GPT-6 Luna', e:'now' },
+             { st:'done', name:'Docs', h:'opencode', model:'CLI default', e:'' } ] },
     { id:'gate', t:'Review the gate failure', st:'attn', time:'3m', br:'fix/gate-timeout', h:'claude',
       why:'Claude asks to run <span class="mono">scripts/check.sh --full</span>.' },
     { id:'lb', t:'Remora spike S10', st:'', time:'2d', br:'remora/s10', h:'codex',
@@ -49,16 +50,20 @@ function i4st(st, time) {
 }
 
 function i4subs(list) {
-  return `<div class="i4subs">${list.map(a => `<div class="i4sub"><span class="ind">${a.st === 'done' ? svg('check') : mark(a.st)}</span><b>${a.type}</b><span>${a.d || ''}</span><em>${a.e || ''}</em></div>`).join('')}</div>`;
+  return `<div class="i4subs">${list.map(a => `<div class="i4sub"><span class="ind">${a.st === 'done' ? svg('check') : mark(a.st)}</span><span class="hm ${a.h}"></span><b>${a.name}</b><span class="model">${a.model || ''}</span><em>${a.e || ''}</em></div>`).join('')}</div>`;
 }
 
 function i4card(s, p, view, o = {}) {
   const idle = o.idle === s.id;
-  const third = view === 'activity'
+  const third = view === 'activity' && !idle && s.why
     ? `<span class="i4scb"><span class="i4scr">${s.why}</span><span class="hm ${s.h}"></span></span>`
     : `<span class="i4scb"><span class="i4brn">${s.br}</span><span class="hm ${s.h}"></span></span>`;
+  const model = s.model || ({claude:'Opus 5.5',codex:'GPT-6 Luna',opencode:'CLI default',agy:'Gemini'})[s.h] || '';
+  const identity = view === 'projects'
+    ? `<span class="hm ${s.h}"></span><span class="pn">${model}</span>`
+    : `<span class="i4pmark">${p.letter}</span><span class="pn">${p.name}</span>`;
   return `<div class="i4sc${o.sel === s.id ? ' sel' : ''}" style="--tone:${p.tone}" data-s="${s.id}">
-    <span class="i4sct"><span class="i4pmark">${p.letter}</span><span class="pn">${p.name}</span>${i4st(idle ? '' : s.st, s.time)}</span>
+    <span class="i4sct">${identity}${i4st(idle ? '' : s.st, s.time)}</span>
     <span class="i4scti">${s.t}</span>
     ${third}
     ${s.subs && !idle ? i4subs(s.subs) : ''}
