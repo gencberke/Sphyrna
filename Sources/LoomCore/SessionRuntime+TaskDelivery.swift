@@ -87,12 +87,14 @@ extension SessionRuntime {
     func updateTaskQuiescenceObservers() {
         for (sessionID, plan) in taskRunPlans {
             let runID = plan.claim.managedRunID
-            let needed = taskLaunchContexts.contains { taskID, context in
+            let deliveryNeeded = taskLaunchContexts.contains { taskID, context in
                 guard tasksNeedingDelivery.contains(taskID) else { return false }
                 let parent = taskChildReservations[taskID]?.parent
                 return context.launch?.runID == runID || (parent?.sessionID == sessionID && parent?.managedRunID == runID)
             }
-            if needed {
+            let proofNeeded = taskExpectedInputs[runID]?.rolloutCandidate != nil &&
+                taskProofWaiters.values.contains { $0.binding.managedRunID == runID }
+            if deliveryNeeded || proofNeeded {
                 plan.lease.observeQuiescence { [weak self] in
                     Task { await self?.taskRunBecameQuiescent(sessionID: sessionID, runID: runID) }
                 }
@@ -107,6 +109,7 @@ extension SessionRuntime {
                 scheduleTaskDelivery(taskID)
             }
         }
+        scheduleTaskFileProof(runID: runID)
     }
 
     /// Revocation wins before a not-yet-admitted first input. An empty child
@@ -246,12 +249,25 @@ extension SessionRuntime {
                                                              operationID: intent.round.operationID)
         let pointer = "Sphyrna task: run \"$SPHYRNA_CLI\" task input --task \(task.id.uuidString.lowercased()) --round \(intent.round.id.uuidString.lowercased()) --operation \(intent.round.operationID.uuidString.lowercased()); report using task --help."
         let digest = Data(SHA256.hash(data: Data(pointer.utf8)))
+        let clientMessageID = launch.provider == .codex ? UUID().uuidString.lowercased() : nil
+        var candidate: CodexTaskInputProofCandidate?
+        if launch.provider == .codex, intent.round.ordinal == 1, let clientMessageID,
+           let server = runs[binding.managedRunID]?.server, let rollout = server.initialTaskRollout,
+           rollout.runID == binding.managedRunID, rollout.threadID == binding.nativeSessionID,
+           let cwd = await supervisor.runContext(runID: binding.managedRunID)?.session.workingDirectory {
+            let home = server.profileHome, path = rollout.path, native = binding.nativeSessionID
+            candidate = await Task.detached {
+                CodexTaskInputProofReader.prepare(home: home, path: path, threadID: native,
+                                                  workingDirectory: cwd, clientMessageID: clientMessageID)
+            }.value
+        }
         let effect = SessionTaskInputEffectMarker()
         if taskLaunchContexts[task.id]?.firstInputEffect?.hasEffect != true {
             taskLaunchContexts[task.id]?.firstInputEffect = effect
         }
         guard await prepareTaskInput(purpose: purpose, binding: binding, digest: digest, effect: effect, ticket: ticket,
-                                     requiresNativeReceipt: launch.provider == .codex),
+                                     requiresNativeReceipt: launch.provider == .codex,
+                                     clientMessageID: clientMessageID, rolloutCandidate: candidate),
               let parentRevision = parentPlan.lease.admit({ $0 }), let childRevision = childPlan.lease.admit({ $0 }),
               taskLaunchContexts[task.id]?.stopRequested == false else {
             inputGate.releaseReservedAutomatic(runID: binding.managedRunID, ticket: ticket)
@@ -273,7 +289,8 @@ extension SessionRuntime {
             }
             let gate = inputGate
             do {
-                let turn = try await client.startTaskTurn(threadID: binding.nativeSessionID, text: pointer, transaction: { write in
+                let turn = try await client.startTaskTurn(threadID: binding.nativeSessionID, text: pointer,
+                                                          clientMessageID: clientMessageID, transaction: { write in
                     try transaction { try gate.writeReservedAutomatic(runID: binding.managedRunID, ticket: ticket, write) ?? 0 }
                 })
                 guard let turn else {

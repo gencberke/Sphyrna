@@ -35,6 +35,63 @@ func fakeSphyrnaTaskProbe() -> Bool {
     return process.terminationStatus == 0
 }
 
+/// Opt-in synthetic task fixture. Helpers run as provider descendants, use
+/// the real task socket, and never log their inherited environment.
+func fakeSphyrnaTaskCommand(_ arguments: [String], input: String? = nil) -> (Int32, String)? {
+    guard ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_ROUNDS"] == "1",
+          let helper = ProcessInfo.processInfo.environment["SPHYRNA_CLI"] else { return nil }
+    let process = Process(), output = Pipe(), stdin = Pipe()
+    process.executableURL = URL(fileURLWithPath: helper)
+    process.arguments = arguments
+    process.standardInput = stdin
+    process.standardOutput = output
+    process.standardError = FileHandle.nullDevice
+    let ended = DispatchSemaphore(value: 0)
+    process.terminationHandler = { _ in ended.signal() }
+    guard (try? process.run()) != nil else { return nil }
+    if let input { stdin.fileHandleForWriting.write(Data(input.utf8)) }
+    try? stdin.fileHandleForWriting.close()
+    guard ended.wait(timeout: .now() + 8) == .success else {
+        process.terminate()
+        _ = ended.wait(timeout: .now() + 1)
+        return nil
+    }
+    let data = output.fileHandleForReading.readDataToEndOfFile()
+    guard data.count <= 16 * 1024 + 512, let text = String(data: data, encoding: .utf8) else { return nil }
+    return (process.terminationStatus, text)
+}
+
+func fakeSphyrnaTaskCreate(_ command: String) -> Bool {
+    let words = command.split(separator: " ").map(String.init)
+    guard words.count == 4, words[0] == "/fake-sphyrna-task-create",
+          let task = UUID(uuidString: words[1]), let operation = UUID(uuidString: words[2]),
+          ["claude", "codex"].contains(words[3]) else { return false }
+    let result = fakeSphyrnaTaskCommand(["task", "create", "--task", task.uuidString.lowercased(),
+        "--operation", operation.uuidString.lowercased(), "--name", "Fixture child", "--harness", words[3], "--message", "-"],
+        input: "fixture-round-1")
+    return result?.0 == 0 && result?.1.contains("pending") == true
+}
+
+func fakeSphyrnaTaskRound(_ pointer: String) -> Bool {
+    guard ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_ROUNDS"] == "1" else { return false }
+    let words = pointer.split(separator: " ").map(String.init)
+    guard words.count == 16, Array(words.prefix(7)) == ["Sphyrna", "task:", "run", "\"$SPHYRNA_CLI\"", "task", "input", "--task"],
+          words[8] == "--round", words[10] == "--operation", words[11].hasSuffix(";"),
+          Array(words.suffix(4)) == ["report", "using", "task", "--help."],
+          let task = UUID(uuidString: words[7]), let round = UUID(uuidString: words[9]),
+          let operation = UUID(uuidString: String(words[11].dropLast())) else { return false }
+
+    let taskID = task.uuidString.lowercased(), roundID = round.uuidString.lowercased()
+    guard let received = fakeSphyrnaTaskCommand(["task", "input", "--task", taskID, "--round", roundID,
+                                                 "--operation", operation.uuidString.lowercased()]), received.0 == 0 else { return false }
+    let message = received.1.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard message.hasPrefix("fixture-round-"), message.utf8.count <= 64 else { return false }
+    let result = fakeSphyrnaTaskCommand(["task", "report", "--task", taskID, "--round", roundID,
+        "--operation", UUID().uuidString.lowercased(), "--kind", "completed", "--message", "-"],
+        input: "fixture-result: \(message)")
+    return result?.0 == 0
+}
+
 nonisolated(unsafe) var arguments = Array(CommandLine.arguments.dropFirst())
 func take(_ flag: String) -> String? {
     guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
@@ -368,6 +425,10 @@ struct FakeClaude {
         currentPrompt = line
         defer { currentPrompt = nil }
         switch line.split(separator: " ").first.map(String.init) ?? "" {
+            case "/fake-sphyrna-task-create" where environment["LOOM_FAKE_TASK_ROUNDS"] == "1":
+                hook("UserPromptSubmit", ["prompt_id": "p\(promptCount)"])
+                out(fakeSphyrnaTaskCreate(line) ? "FAKE-TASK-CREATE-OK\r\n" : "FAKE-TASK-CREATE-REFUSED\r\n")
+                hook("Stop", ["last_assistant_message": "fixture create finished"])
             case "/fake-sphyrna-task-probe":
                 hook("UserPromptSubmit", ["prompt_id": "p\(promptCount)"])
                 out(fakeSphyrnaTaskProbe() ? "TASK-HELPER-OK\r\n" : "TASK-HELPER-REFUSED\r\n")
@@ -452,7 +513,9 @@ struct FakeClaude {
                 promptCount += 1
                 remember(line)
                 hook("UserPromptSubmit", ["prompt_id": "p\(promptCount)"])
-                out("echo: \(line)\r\n")
+                if line.hasPrefix("Sphyrna task:") && environment["LOOM_FAKE_TASK_ROUNDS"] == "1" {
+                    out(fakeSphyrnaTaskRound(line) ? "FAKE-TASK-ROUND-OK\r\n" : "FAKE-TASK-ROUND-REFUSED\r\n")
+                } else { out("echo: \(line)\r\n") }
                 recordReply()
                 hook("Stop", ["last_assistant_message": "echo \(line)"])
         }

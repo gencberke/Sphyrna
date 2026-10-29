@@ -137,7 +137,8 @@ extension SessionRuntime {
 
     func prepareTaskInput(purpose: SessionTaskExpectedInput.Purpose, binding: SessionTaskBinding,
                           digest: Data, effect: SessionTaskInputEffectMarker,
-                          ticket: TerminalInputQueue.AutomaticInputTicket? = nil, requiresNativeReceipt: Bool = false) async -> Bool {
+                          ticket: TerminalInputQueue.AutomaticInputTicket? = nil, requiresNativeReceipt: Bool = false,
+                          clientMessageID: String? = nil, rolloutCandidate: CodexTaskInputProofCandidate? = nil) async -> Bool {
         if let old = taskExpectedInputs[binding.managedRunID], old.binding == binding, old.confirmedObservation != nil,
            case .child = old.purpose, case .child = purpose, old.purpose != purpose {
             taskExpectedInputs[binding.managedRunID] = nil
@@ -149,7 +150,8 @@ extension SessionRuntime {
               let current = taskRunPlans[binding.sessionID], current.lease === plan.lease,
               current.lease.isEnabled, taskExpectedInputs[binding.managedRunID] == nil else { return false }
         taskExpectedInputs[binding.managedRunID] = SessionTaskExpectedInput(purpose: purpose, binding: binding,
-            digest: digest, ticket: ticket, effect: effect, requiresNativeReceipt: requiresNativeReceipt)
+            digest: digest, ticket: ticket, effect: effect, requiresNativeReceipt: requiresNativeReceipt,
+            clientMessageID: clientMessageID, rolloutCandidate: rolloutCandidate)
         return true
     }
 
@@ -173,6 +175,8 @@ extension SessionRuntime {
                     }
                     taskProofWaiters[id] = SessionTaskProofWaiter(purpose: purpose, binding: binding,
                                                                    continuation: continuation, timeout: timeout)
+                    updateTaskQuiescenceObservers()
+                    scheduleTaskFileProof(runID: binding.managedRunID)
                 }
             } onCancel: { Task { await self.finishTaskProofWaiter(id, result: nil) } }
         }
@@ -186,6 +190,7 @@ extension SessionRuntime {
         guard let waiter = taskProofWaiters.removeValue(forKey: id) else { return }
         waiter.timeout.cancel()
         waiter.continuation.resume(returning: result)
+        updateTaskQuiescenceObservers()
     }
 
     func finishTaskProofWaiters(runID: UUID, observation: SessionTaskExpectedInput?) {
@@ -251,7 +256,8 @@ extension SessionRuntime {
         guard let binding, binding == current.binding,
               observation.threadID == binding.nativeSessionID, let turn = observation.turnID,
               current.effect.hasEffect, current.expectedNativeTurn == nil || current.expectedNativeTurn == turn,
-              observation.digest == current.digest else {
+              observation.digest == current.digest,
+              current.clientMessageID == nil || observation.clientID == current.clientMessageID else {
             rejectTaskInput(runID: plan.claim.managedRunID, plan: plan)
             return
         }
@@ -273,8 +279,68 @@ extension SessionRuntime {
         if current.confirmedObservation != nil {
             if let ticket = current.ticket { _ = inputGate.confirmAutomaticInput(runID: binding.managedRunID, ticket: ticket) }
             finishTaskProofWaiters(runID: binding.managedRunID, observation: current)
-        }
+        } else { scheduleTaskFileProof(runID: binding.managedRunID) }
         return true
+    }
+
+    /// Only a helper already waiting on this exact input can request one
+    /// bounded read. New provider ingress invalidates the read revision.
+    func scheduleTaskFileProof(runID: UUID) {
+        guard var expected = taskExpectedInputs[runID], expected.confirmedObservation == nil,
+              expected.rolloutCandidate != nil, expected.effect.hasEffect, expected.expectedNativeTurn != nil,
+              !expected.proofReadInFlight, expected.proofReadAttempts < 3,
+              taskProofWaiters.values.contains(where: { $0.binding == expected.binding && $0.purpose == expected.purpose }),
+              let plan = taskRunPlans[expected.binding.sessionID], plan.claim.managedRunID == runID,
+              plan.claim.generation == expected.binding.generation,
+              let revision = plan.lease.admit({ $0 }), expected.lastProofReadRevision != revision,
+              let candidate = expected.rolloutCandidate, let turn = expected.expectedNativeTurn else { return }
+        expected.proofReadInFlight = true
+        expected.proofReadAttempts += 1
+        expected.lastProofReadRevision = revision
+        taskExpectedInputs[runID] = expected
+        let purpose = expected.purpose, binding = expected.binding, digest = expected.digest
+        Task { [weak self] in
+            let proof = await Task.detached {
+                CodexTaskInputProofReader.proof(candidate, nativeTurnID: turn, digest: digest)
+            }.value
+            await self?.finishTaskFileProof(proof, binding: binding, purpose: purpose, turn: turn,
+                                            digest: digest, plan: plan, revision: revision)
+        }
+    }
+
+    private func finishTaskFileProof(_ proof: CodexTaskInputProof?, binding: SessionTaskBinding,
+                                     purpose: SessionTaskExpectedInput.Purpose, turn: String, digest: Data,
+                                     plan: SessionTaskRunPlan, revision: UInt64) async {
+        let runID = binding.managedRunID
+        guard let current = taskExpectedInputs[runID], current.binding == binding, current.purpose == purpose,
+              current.digest == digest, current.expectedNativeTurn == turn, current.proofReadInFlight,
+              taskRunPlans[binding.sessionID]?.lease === plan.lease else { return }
+        defer {
+            if var pending = taskExpectedInputs[runID], pending.binding == binding, pending.purpose == purpose {
+                pending.proofReadInFlight = false
+                taskExpectedInputs[runID] = pending
+                scheduleTaskFileProof(runID: runID)
+            }
+        }
+        guard let proof, plan.lease.permits(revision: revision),
+              await authenticateTaskRun(plan.claim) == binding, plan.lease.permits(revision: revision),
+              let server = runs[runID]?.server, let coordinator = server.coordinator else { return }
+        // The coordinator owns both the metadata-only join and its Stop cleanup
+        // barrier. It never sends another user input or requests history.
+        guard await coordinator.joinTaskAfterInputProof(binding),
+              let nextRevision = plan.lease.admit({ $0 }),
+              let now = taskExpectedInputs[runID], now.binding == binding, now.purpose == purpose,
+              now.digest == digest, now.expectedNativeTurn == turn, now.effect.hasEffect else { return }
+        let unchanged = await Task.detached { CodexTaskInputProofReader.remainsCurrent(proof) }.value
+        guard unchanged, plan.lease.permits(revision: nextRevision),
+              await authenticateTaskRun(plan.claim) == binding, plan.lease.permits(revision: nextRevision),
+              var latest = taskExpectedInputs[runID], latest.binding == binding, latest.purpose == purpose,
+              latest.digest == digest, latest.expectedNativeTurn == turn, latest.effect.hasEffect,
+              taskProofWaiters.values.contains(where: { $0.binding == binding && $0.purpose == purpose }),
+              let ticket = latest.ticket, inputGate.confirmAutomaticInput(runID: runID, ticket: ticket) else { return }
+        latest.observed = .nativeTurn(turn)
+        taskExpectedInputs[runID] = latest
+        finishTaskProofWaiters(runID: runID, observation: latest)
     }
 
     /// A deletion fence remains held until the owned run is gone and the task

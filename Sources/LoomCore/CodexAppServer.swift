@@ -117,15 +117,18 @@ public struct CodexThreadIdentity: Equatable, Sendable {
     public let ephemeral: Bool?
     /// Provider-reported status in this same thread/started event; nil when absent.
     public let initialStatus: CodexThreadStatus?
+    /// Prospective native rollout path from this same owned thread event.
+    public let rolloutPath: String?
 
     public init(id: String, workingDirectory: String?, originator: String?, source: String?,
-                ephemeral: Bool? = nil, initialStatus: CodexThreadStatus? = nil) {
+                ephemeral: Bool? = nil, initialStatus: CodexThreadStatus? = nil, rolloutPath: String? = nil) {
         self.id = id
         self.workingDirectory = workingDirectory
         self.originator = originator
         self.source = source
         self.ephemeral = ephemeral
         self.initialStatus = initialStatus
+        self.rolloutPath = rolloutPath
     }
 }
 
@@ -165,6 +168,11 @@ struct CodexTaskInputObservation: Equatable, Sendable {
     let threadID: String?
     let turnID: String?
     let digest: Data?
+    let clientID: String?
+    init(sequence: UInt64, threadID: String?, turnID: String?, digest: Data?, clientID: String? = nil) {
+        self.sequence = sequence; self.threadID = threadID; self.turnID = turnID
+        self.digest = digest; self.clientID = clientID
+    }
 }
 
 public struct CodexThreadSnapshot: Equatable, Sendable {
@@ -450,18 +458,22 @@ public actor CodexAppServerClient {
 
     /// Submit one task pointer to this owned thread, retaining its native
     /// settings. A response is a submission receipt, not proof of consumption.
-    func startTaskTurn(threadID: String, text: String, transaction: @escaping TerminalWriteTransaction,
-                       timeout: TimeInterval = 20) async throws -> String? {
-        guard Self.validTaskIdentifier(threadID), !text.isEmpty, text.utf8.count <= 1_024,
+    func startTaskTurn(threadID: String, text: String, clientMessageID: String? = nil,
+                       transaction: @escaping TerminalWriteTransaction, timeout: TimeInterval = 20) async throws -> String? {
+        guard Self.validTaskIdentifier(threadID), clientMessageID.map(Self.validTaskIdentifier) ?? true,
+              !text.isEmpty, text.utf8.count <= 1_024,
               text.utf8.allSatisfy({ (0x20...0x7e).contains($0) }) else {
             throw CodexAppServerError.protocolViolation("invalid task turn input")
         }
+        var parameters: [String: JSONValue] = [
+            "threadId": .string(threadID),
+            "input": .array([.object(["type": .string("text"), "text": .string(text), "text_elements": .array([])])]),
+        ]
+        if let clientMessageID { parameters["clientUserMessageId"] = .string(clientMessageID) }
         let result: JSONValue
         do {
-            result = try await request(method: "turn/start", params: .object([
-                "threadId": .string(threadID),
-                "input": .array([.object(["type": .string("text"), "text": .string(text), "text_elements": .array([])])]),
-            ]), timeout: timeout, taskTransaction: transaction)
+            result = try await request(method: "turn/start", params: .object(parameters),
+                                       timeout: timeout, taskTransaction: transaction)
         } catch CodexTaskSendError.deferred { return nil }
         guard let turnID = result["turn"]?["id"]?.string, Self.validTaskIdentifier(turnID) else {
             throw CodexAppServerError.protocolViolation("task turn response has no valid turn id")
@@ -841,7 +853,8 @@ public actor CodexAppServerClient {
                 originator: thread["originator"]?.string,
                 source: thread["source"]?.string,
                 ephemeral: thread["ephemeral"]?.bool,
-                initialStatus: thread["status"].map { decodeStatus($0) }
+                initialStatus: thread["status"].map { decodeStatus($0) },
+                rolloutPath: thread["path"]?.string
             ))
         case "thread/status/changed":
             guard let threadID = object["threadId"]?.string else {
@@ -911,7 +924,8 @@ public actor CodexAppServerClient {
            part["text_elements"] == nil || part["text_elements"]?.array?.isEmpty == true {
             digest = Data(SHA256.hash(data: Data(text.utf8)))
         }
-        return CodexTaskInputObservation(sequence: sequence, threadID: thread, turnID: turn, digest: digest)
+        return CodexTaskInputObservation(sequence: sequence, threadID: thread, turnID: turn, digest: digest,
+                                         clientID: identifier(item["clientId"]))
     }
 
     private static func decodeStatus(_ value: JSONValue?) -> CodexThreadStatus {

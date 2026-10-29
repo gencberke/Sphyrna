@@ -139,6 +139,11 @@ struct SessionTaskExpectedInput: Sendable {
     let ticket: TerminalInputQueue.AutomaticInputTicket?
     let effect: SessionTaskInputEffectMarker
     let requiresNativeReceipt: Bool
+    let clientMessageID: String?
+    let rolloutCandidate: CodexTaskInputProofCandidate?
+    var proofReadInFlight = false
+    var proofReadAttempts = 0
+    var lastProofReadRevision: UInt64?
     var observed: SessionTaskExecutionReference?
     var expectedNativeTurn: String?
     var lastSequence: UInt64 = 0

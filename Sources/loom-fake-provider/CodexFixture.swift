@@ -114,6 +114,17 @@ private struct FakeThread {
     var reviewer = "user"
 }
 
+private final class FakeTaskCompletions: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [(String, String, String)] = []
+    func add(thread: String, turn: String, message: String) {
+        lock.withLock { if values.count < 64 { values.append((thread, turn, message)) } }
+    }
+    func take() -> [(String, String, String)] {
+        lock.withLock { let result = values; values.removeAll(); return result }
+    }
+}
+
 private final class FakeServerConnection {
     let descriptor: Int32
     var parser = FrameParser()
@@ -135,6 +146,7 @@ private final class FakeServerConnection {
 
 func runCodexServer(socketPath: String, config: [String: String]) -> Never {
     let state = ProcessInfo.processInfo.environment["LOOM_FAKE_STATE"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+    let taskCompletions = FakeTaskCompletions()
     if ProcessInfo.processInfo.environment["LOOM_FAKE_CODEX_SERVER_ESCAPE"] != nil, let state {
         // A command the server started that left its session and carries no
         // ownership marker: only the run scope can still attribute it.
@@ -277,9 +289,40 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
         broadcast("thread/status/changed", ["threadId": thread.id, "status": status(thread)])
     }
 
+    func taskRolloutURL(_ threadID: String) -> URL? {
+        guard ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_ROUNDS"] == "1",
+              let home = ProcessInfo.processInfo.environment["CODEX_HOME"] else { return nil }
+        return URL(fileURLWithPath: home, isDirectory: true)
+            .appendingPathComponent("sessions/2026/10/29/rollout-2026-10-29T00-00-00-\(threadID).jsonl")
+    }
+
+    // Only the explicit task-round fixture writes this synthetic first-turn
+    // rollout. Native Codex flushes these records before invoking its tool.
+    func writeFirstTaskRollout(_ thread: FakeThread, turnID: String, text: String, clientID: String) {
+        guard let file = taskRolloutURL(thread.id),
+              ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_ROLLOUT"] != "missing" else { return }
+        do {
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true,
+                                                    attributes: [.posixPermissions: 0o700])
+            let client = ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_ROLLOUT"] == "wrong-client" ? "wrong" : clientID
+            let objects: [[String: Any]] = [
+                ["type": "session_meta", "payload": ["id": thread.id, "cwd": thread.cwd]],
+                ["type": "event_msg", "payload": ["type": "task_started", "turn_id": turnID]],
+                ["type": "event_msg", "payload": ["type": "user_message", "client_id": client, "message": text,
+                    "images": [], "local_images": [], "audio": [], "local_audio": [], "text_elements": []]],
+            ]
+            var data = Data()
+            for object in objects { data += try JSONSerialization.data(withJSONObject: object); data.append(0x0a) }
+            if ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_ROLLOUT"] == "partial" { data.removeLast() }
+            try data.write(to: file)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        } catch { /* The task helper must refuse when evidence is absent. */ }
+    }
+
     func threadObject(_ thread: FakeThread, includeTurns: Bool) -> [String: Any] {
         var object: [String: Any] = ["id": thread.id, "cwd": thread.cwd, "status": status(thread),
                                      "originator": "codex-tui", "source": "cli", "ephemeral": false]
+        if let path = taskRolloutURL(thread.id)?.path { object["path"] = path }
         if includeTurns {
             object["turns"] = thread.turns.map {
                 ["id": $0.id, "status": $0.status, "items": $0.items, "startedAt": $0.startedAt] as [String: Any]
@@ -589,8 +632,8 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
                        "sandbox": ["type": sandboxType, "networkAccess": thread.networkAccess, "writableRoots": thread.writableRoots],
                        "approvalPolicy": thread.approval, "approvalsReviewer": thread.reviewer])
             }
-            if !isTUI && mode.hasPrefix("delay") {
-                let delay = Double(mode.dropFirst("delay".count)) ?? 0.3
+            if !isTUI && (mode.hasPrefix("delay") || mode == "blank-delay") {
+                let delay = mode == "blank-delay" ? 1.5 : (Double(mode.dropFirst("delay".count)) ?? 0.3)
                 timers.append((monotonic() + delay, finish))
             } else { finish() }
         case "thread/read":
@@ -660,14 +703,36 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
             }
             let text = ((params["input"] as? [[String: Any]])?.first?["text"] as? String) ?? ""
             var turn = FakeTurn(id: "turn-\(thread.turns.count + 1)-\(thread.id.prefix(6))")
+            let clientID = params["clientUserMessageId"] as? String
+            if thread.turns.isEmpty, text.hasPrefix("Sphyrna task:"), let clientID {
+                writeFirstTaskRollout(thread, turnID: turn.id, text: text, clientID: clientID)
+            }
             turn.items = [["type": "userMessage", "text": text]]
             recordStopDiagnostic("turn-start \(threadID) \(turn.id)")
             thread.turns.append(turn)
             thread.active = true
             threads[threadID] = thread
-            reply(["turn": ["id": turn.id, "status": "inProgress"]])
+            if text.hasPrefix("Sphyrna task:"), ProcessInfo.processInfo.environment["LOOM_FAKE_CODEX_DELAY_TASK_RECEIPT"] == "1" {
+                timers.append((monotonic() + 0.15, { reply(["turn": ["id": turn.id, "status": "inProgress"]]) }))
+            } else { reply(["turn": ["id": turn.id, "status": "inProgress"]]) }
             broadcast("turn/started", ["threadId": threadID, "turn": ["id": turn.id, "status": "inProgress"]])
             announceStatus(thread)
+            if ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_ROUNDS"] == "1",
+               text.hasPrefix("Sphyrna task:") || text.hasPrefix("/fake-sphyrna-task-create ") {
+                broadcast("item/started", ["threadId": threadID, "turnId": turn.id, "item": [
+                    "type": "userMessage", "clientId": clientID.map { $0 as Any } ?? NSNull(),
+                    "content": [["type": "text", "text": text, "text_elements": []]]
+                ]])
+                let turnID = turn.id
+                DispatchQueue.global().async {
+                    let isCreate = text.hasPrefix("/fake-sphyrna-task-create ")
+                    let succeeded = isCreate ? fakeSphyrnaTaskCreate(text) : fakeSphyrnaTaskRound(text)
+                    let kind = isCreate ? "CREATE" : "ROUND"
+                    taskCompletions.add(thread: threadID, turn: turnID,
+                                        message: "FAKE-TASK-\(kind)-\(succeeded ? "OK" : "REFUSED")")
+                }
+                return
+            }
             if text == "/fake-sphyrna-task-probe" {
                 complete(threadID, turnID: turn.id, status: "completed",
                          message: fakeSphyrnaTaskProbe() ? "TASK-HELPER-OK" : "TASK-HELPER-REFUSED")
@@ -766,6 +831,9 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
         let due = timers.filter { $0.due <= monotonic() }
         timers.removeAll { $0.due <= monotonic() }
         for timer in due { timer.action() }
+        for (thread, turn, message) in taskCompletions.take() {
+            complete(thread, turnID: turn, status: "completed", message: message)
+        }
     }
 }
 

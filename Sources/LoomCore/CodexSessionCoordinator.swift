@@ -41,10 +41,12 @@ public actor CodexSessionCoordinator {
     private var responding: [UUID: Bool] = [:]
     private var connectionLostHandler: (@Sendable (String) -> Void)?
     private var identityChangeHandler: (@Sendable (UUID, UUID) async -> Void)?
+    private var initialIdentityHandler: (@Sendable (CodexRunBinding, CodexThreadIdentity) async -> Void)?
     private struct Join {
         let generation: UUID
         let binding: CodexRunBinding
         var task: Task<Void, Error>?
+        var attemptID: UUID?
         var awaitingPersistence = false
         var attempts = 0
         var lastStatus: CodexThreadStatus?
@@ -98,6 +100,10 @@ public actor CodexSessionCoordinator {
 
     func setIdentityChangeHandler(_ handler: @escaping @Sendable (UUID, UUID) async -> Void) {
         identityChangeHandler = handler
+    }
+
+    func setInitialIdentityHandler(_ handler: @escaping @Sendable (CodexRunBinding, CodexThreadIdentity) async -> Void) {
+        initialIdentityHandler = handler
     }
 
     /// Called for every issue the coordinator records (a dropped request, a
@@ -285,6 +291,9 @@ public actor CodexSessionCoordinator {
                     if case let .event(_, .threadStarted(identity)) = inbound { initialStatus = identity.initialStatus }
                     else { initialStatus = nil }
                     try await installBinding(binding, after: sequence, initialStatus: initialStatus)
+                    if case let .event(_, .threadStarted(identity)) = inbound {
+                        await initialIdentityHandler?(binding, identity)
+                    }
                     guard await router.launchMatcher.commitMatched(binding) else {
                         await unbind(runID: binding.managedRunID)
                         throw CancellationError()
@@ -412,7 +421,8 @@ public actor CodexSessionCoordinator {
         guard var join = joins[runID], join.task == nil, join.attempts < 3 else { return }
         join.attempts += 1
         join.awaitingPersistence = false
-        let binding = join.binding, generation = join.generation
+        let binding = join.binding, generation = join.generation, attemptID = UUID()
+        join.attemptID = attemptID
         let barrier = cleanupByThread[binding.threadID]
         let client = self.client
         let task = Task {
@@ -424,7 +434,7 @@ public actor CodexSessionCoordinator {
         joins[runID] = join
         Task { [weak self] in
             let result = await task.result
-            await self?.joinFinished(runID: runID, generation: generation, result: result)
+            await self?.joinFinished(runID: runID, generation: generation, attemptID: attemptID, result: result)
         }
     }
 
@@ -445,14 +455,15 @@ public actor CodexSessionCoordinator {
         }
     }
 
-    private func joinFinished(runID: UUID, generation: UUID, result: Result<Void, Error>) async {
-        guard var join = joins[runID], join.generation == generation else { return }
+    private func joinFinished(runID: UUID, generation: UUID, attemptID: UUID, result: Result<Void, Error>) async {
+        guard var join = joins[runID], join.generation == generation, join.attemptID == attemptID else { return }
         switch result {
         case .success:
             // Keep the completed task as the wire-order barrier for cleanup.
             join.retryStatus = nil
             joins[runID] = join
         case let .failure(error):
+            join.attemptID = nil
             if case let CodexAppServerError.rpc(code, message, _) = error,
                code == -32600, message.lowercased().contains("no rollout"),
                message.contains(join.binding.threadID) {
@@ -470,6 +481,27 @@ public actor CodexSessionCoordinator {
                 await joinIssue(join.binding, error)
             }
         }
+    }
+
+    /// After an exact first input was materialized, finish the existing
+    /// metadata-only subscription before granting the helper authority. The
+    /// join remains owned by this coordinator and its cleanup barrier.
+    func joinTaskAfterInputProof(_ binding: SessionTaskBinding) async -> Bool {
+        for _ in 0..<2 {
+            guard acceptingJoins, let current = joins[binding.managedRunID],
+                  current.binding.sessionID == binding.sessionID, current.binding.threadID == binding.nativeSessionID else { return false }
+            if current.task == nil, current.awaitingPersistence { launchJoin(runID: binding.managedRunID) }
+            guard let pending = joins[binding.managedRunID], pending.generation == current.generation,
+                  let task = pending.task, let attemptID = pending.attemptID else { return false }
+            let result = await task.result
+            await joinFinished(runID: binding.managedRunID, generation: pending.generation, attemptID: attemptID, result: result)
+            guard acceptingJoins, let latest = joins[binding.managedRunID], latest.generation == pending.generation,
+                  latest.binding.sessionID == binding.sessionID, latest.binding.threadID == binding.nativeSessionID else { return false }
+            if case .success = result { return latest.attemptID == attemptID }
+            if latest.task != nil, latest.attemptID != nil { continue }
+            guard latest.awaitingPersistence, latest.attempts < 3 else { return false }
+        }
+        return false
     }
 
     /// Generation invalidation is synchronous; cleanup waits for the server

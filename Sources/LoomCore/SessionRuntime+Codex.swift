@@ -13,6 +13,8 @@ extension SessionRuntime {
         let manager: CodexAppServerManager
         let socket: String
         let scope: RunScope?
+        let profileHome: URL
+        var initialTaskRollout: (runID: UUID, threadID: String, path: String)?
         var runID: UUID?
         var client: CodexAppServerClient?
         var coordinator: CodexSessionCoordinator?
@@ -27,11 +29,12 @@ extension SessionRuntime {
         var failedRequests: [String: String] = [:]
         var teardownTask: Task<[String], Never>?
         var finished = false
-        init(ownerCard: UUID, manager: CodexAppServerManager, socket: String, scope: RunScope?) {
+        init(ownerCard: UUID, manager: CodexAppServerManager, socket: String, scope: RunScope?, profileHome: URL) {
             self.ownerCard = ownerCard
             self.manager = manager
             self.socket = socket
             self.scope = scope
+            self.profileHome = profileHome
         }
     }
 
@@ -348,13 +351,20 @@ extension SessionRuntime {
                     : CodexAppServerClient.productOptOutNotificationMethods.filter { $0 != "item/started" }
             )
         )
-        return CodexServer(ownerCard: card, manager: manager, socket: socket, scope: scope)
+        return CodexServer(ownerCard: card, manager: manager, socket: socket, scope: scope, profileHome: codexHome(toolchain))
     }
 
     private func requireCodexSetup(_ server: CodexServer, _ id: UUID) throws {
         try Task.checkCancellation()
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
         guard server.setup?.id == id else { throw CancellationError() }
+    }
+
+    private func recordInitialTaskRollout(serverID: UUID, binding: CodexRunBinding, identity: CodexThreadIdentity) {
+        guard let server = codexServers.first(where: { $0.id == serverID }), server.ownerCard == binding.sessionID,
+              let plan = taskRunPlans[binding.sessionID], plan.claim.managedRunID == binding.managedRunID,
+              plan.lease.isEnabled, identity.id == binding.threadID, let path = identity.rolloutPath else { return }
+        server.initialTaskRollout = (binding.managedRunID, binding.threadID, path)
     }
 
     private func installCodexCoordinator(
@@ -385,6 +395,9 @@ extension SessionRuntime {
                     await self?.revokeTaskRun(sessionID: sessionID, runID: runID, identityChanged: true)
                 }
                 let serverID = server.id
+                await coordinator.setInitialIdentityHandler { [weak self] binding, identity in
+                    await self?.recordInitialTaskRollout(serverID: serverID, binding: binding, identity: identity)
+                }
                 await client.observeTaskInputs { [weak self, lease] observation in
                     let runtime = self
                     Task {
