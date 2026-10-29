@@ -26,7 +26,22 @@ public enum TerminalInputError: Error, CustomStringConvertible, Equatable, Senda
 /// task finishes short writes before taking the next bytes. Memory is bounded
 /// by `capacity`; there is no work while the queue is empty.
 public final class TerminalInputQueue: @unchecked Sendable {
-    struct AutomaticInputTicket: Equatable, Sendable { let id: UUID }
+    enum AutomaticWriteOutcome: Equatable, Sendable { case written, notWritten, unknown }
+    struct AutomaticInputTicket: Equatable, Sendable {
+        let id = UUID()
+        fileprivate let completion = AutomaticWriteCompletion()
+        static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+        func writeOutcome() async -> AutomaticWriteOutcome { await completion.value() }
+    }
+    private struct AutomaticSegment: Sendable {
+        let end: Int
+        let ticket: AutomaticInputTicket
+        let permit: @Sendable () -> Bool
+    }
+    private enum DrainChunk: Sendable {
+        case automatic(Data, AutomaticSegment)
+        case ordinary(Data)
+    }
     public typealias Writer = @Sendable (Data) async throws -> Int
 
     public let capacity: Int
@@ -47,6 +62,7 @@ public final class TerminalInputQueue: @unchecked Sendable {
     private var automaticClean = false
     private var automaticEverUsed = false
     private var automaticOutstanding: (ticket: AutomaticInputTicket, generation: UInt64)?
+    private var automaticSegment: AutomaticSegment?
 
     public init(capacity: Int = 4 * 1024 * 1024, writer: @escaping Writer,
                 onError: @escaping @Sendable (TerminalInputError) -> Void) {
@@ -103,17 +119,18 @@ public final class TerminalInputQueue: @unchecked Sendable {
 
     /// Admit a single printable pointer and Return atomically with the clean
     /// check. Anything else, including a multiline payload, is deferred whole.
-    func enqueueAutomatic(_ bytes: Data) -> AutomaticInputTicket? {
-        guard bytes.count > 1, bytes.last == 0x0d,
+    func enqueueAutomatic(_ bytes: Data, permit: @escaping @Sendable () -> Bool = { true }) -> AutomaticInputTicket? {
+        guard bytes.count > 1, bytes.count <= 16 * 1024, bytes.last == 0x0d,
               bytes.dropLast().allSatisfy({ (0x20...0x7e).contains($0) }) else { return nil }
         let ticket = lock.withLock { () -> AutomaticInputTicket? in
             guard automaticClean, automaticOutstanding == nil, failure == nil, closedReason == nil,
                   !draining, pending.count == sent, bytes.count <= capacity else { return nil }
-            let ticket = AutomaticInputTicket(id: UUID())
+            let ticket = AutomaticInputTicket()
             automaticOutstanding = (ticket, unclassifiedGeneration)
             automaticClean = false
             automaticEverUsed = true
             pending.append(bytes)
+            automaticSegment = AutomaticSegment(end: pending.count, ticket: ticket, permit: permit)
             lastAcceptedUptime = ProcessInfo.processInfo.systemUptime
             lastAccepted = Date()
             draining = true
@@ -175,7 +192,7 @@ public final class TerminalInputQueue: @unchecked Sendable {
     private func drain() async {
         var idleWrites = 0
         while true {
-            let chunk: Data? = lock.withLock {
+            let work: DrainChunk? = lock.withLock {
                 guard failure == nil, sent < pending.count else {
                     pending.removeAll(keepingCapacity: false)
                     sent = 0
@@ -183,15 +200,46 @@ public final class TerminalInputQueue: @unchecked Sendable {
                     return nil
                 }
                 let start = pending.startIndex + sent
-                return Data(pending[start..<min(start + 64 * 1024, pending.endIndex)])
+                if let segment = automaticSegment, sent < segment.end {
+                    let end = pending.startIndex + segment.end
+                    return .automatic(Data(pending[start..<end]), segment)
+                }
+                return .ordinary(Data(pending[start..<min(start + 64 * 1024, pending.endIndex)]))
             }
-            guard let chunk else { return }
+            guard let work else { return }
+            let chunk: Data
+            switch work {
+            case let .ordinary(bytes): chunk = bytes
+            case let .automatic(bytes, segment):
+                guard segment.permit() else {
+                    let outcome: AutomaticWriteOutcome? = lock.withLock {
+                        guard automaticSegment?.ticket == segment.ticket else { return nil }
+                        let started = sent > 0
+                        let start = pending.startIndex + sent, end = pending.startIndex + segment.end
+                        pending.removeSubrange(start..<end)
+                        automaticSegment = nil
+                        if let outstanding = automaticOutstanding, outstanding.ticket == segment.ticket {
+                            automaticOutstanding = nil
+                            automaticClean = !started && outstanding.generation == unclassifiedGeneration
+                                && failure == nil && closedReason == nil
+                        }
+                        return started ? .unknown : .notWritten
+                    }
+                    if let outcome { segment.ticket.completion.finish(outcome) }
+                    continue
+                }
+                chunk = bytes
+            }
             do {
                 let written = try await writer(chunk)
                 if written > 0 {
                     idleWrites = 0
                     lock.withLock {
-                        sent = min(pending.count, sent + written)
+                        sent = min(pending.count, sent + min(written, chunk.count))
+                        if let segment = automaticSegment, sent >= segment.end {
+                            automaticSegment = nil
+                            segment.ticket.completion.finish(.written)
+                        }
                         // Compact occasionally instead of shifting on every write.
                         if sent >= 256 * 1024, sent * 2 >= pending.count {
                             pending.removeFirst(sent)
@@ -206,15 +254,39 @@ public final class TerminalInputQueue: @unchecked Sendable {
                 }
             } catch {
                 let failure = TerminalInputError.writeFailed(String(describing: error))
-                lock.withLock {
+                let automatic = lock.withLock {
+                    let automatic = automaticSegment?.ticket
+                    automaticSegment = nil
                     self.failure = failure
                     pending.removeAll()
                     sent = 0
                     draining = false
+                    return automatic
                 }
+                automatic?.completion.finish(.unknown)
                 onError(failure)
                 return
             }
         }
+    }
+}
+
+private final class AutomaticWriteCompletion: @unchecked Sendable {
+    private let lock = NSLock()
+    private let stream: AsyncStream<TerminalInputQueue.AutomaticWriteOutcome>
+    private let continuation: AsyncStream<TerminalInputQueue.AutomaticWriteOutcome>.Continuation
+    private var finished = false
+
+    init() {
+        let pair = AsyncStream<TerminalInputQueue.AutomaticWriteOutcome>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        stream = pair.stream; continuation = pair.continuation
+    }
+    func finish(_ value: TerminalInputQueue.AutomaticWriteOutcome) {
+        let first = lock.withLock { if finished { return false }; finished = true; return true }
+        if first { continuation.yield(value); continuation.finish() }
+    }
+    func value() async -> TerminalInputQueue.AutomaticWriteOutcome {
+        var iterator = stream.makeAsyncIterator()
+        return await iterator.next() ?? .unknown
     }
 }

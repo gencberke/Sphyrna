@@ -34,8 +34,59 @@ private final class ErrorLog: @unchecked Sendable {
     var values: [TerminalInputError] { lock.withLock { errors } }
 }
 
+private final class PausedTaskWrite: @unchecked Sendable {
+    private let condition = NSCondition()
+    private var entered = false
+    private var released = false
+    func permit() -> Bool {
+        condition.lock()
+        entered = true
+        condition.broadcast()
+        while !released { condition.wait() }
+        condition.unlock()
+        return false
+    }
+    var isEntered: Bool { condition.withLock { entered } }
+    func release() { condition.withLock { released = true; condition.broadcast() } }
+}
+
+private final class PermitOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls = 0
+    func check() -> Bool { lock.withLock { calls += 1; return calls == 1 } }
+}
+
 @Suite(.timeLimit(.minutes(1)))
 struct TerminalInputQueueTests {
+    @Test func providerEventBeforeWriteCancelsOnlyTheAutomaticChunk() async throws {
+        let writer = ScriptedWriter(script: [])
+        let queue = TerminalInputQueue(capacity: 1024, writer: { try await writer.write($0) }, onError: { _ in })
+        let pause = PausedTaskWrite()
+        #expect(queue.establishFreshCleanInput())
+        let ticket = try #require(queue.enqueueAutomatic(Data("task pointer\r".utf8), permit: pause.permit))
+        #expect(try await SessionRuntimeTests.waitUntil(2) { pause.isEntered })
+        #expect(queue.enqueue(Data("user draft".utf8)))
+        pause.release()
+        #expect(await ticket.writeOutcome() == .notWritten)
+        try await waitUntilIdle(queue)
+        #expect(await writer.received == Data("user draft".utf8))
+        #expect(queue.enqueueAutomatic(Data("another\r".utf8)) == nil)
+    }
+
+    @Test func providerEventAfterPartialTaskWriteIsUnknownAndNeverRetried() async throws {
+        let writer = ScriptedWriter(script: [1])
+        let queue = TerminalInputQueue(capacity: 1024, writer: { try await writer.write($0) }, onError: { _ in })
+        let permit = PermitOnce()
+        #expect(queue.establishFreshCleanInput())
+        let ticket = try #require(queue.enqueueAutomatic(Data("pointer\r".utf8), permit: permit.check))
+        #expect(await ticket.writeOutcome() == .unknown)
+        try await waitUntilIdle(queue)
+        #expect(queue.enqueue(Data("user".utf8)))
+        try await waitUntilIdle(queue)
+        #expect(await writer.received == Data("puser".utf8))
+        #expect(queue.enqueueAutomatic(Data("retry\r".utf8)) == nil)
+    }
+
     private func waitUntilIdle(_ queue: TerminalInputQueue) async throws {
         let deadline = ProcessInfo.processInfo.systemUptime + 5
         while queue.isDraining {

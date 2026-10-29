@@ -25,6 +25,20 @@ struct SessionTaskIngressTests {
         #expect(lease.permits { true } == nil)
     }
 
+    @Test func consumedIngressInvalidatesAnEarlierAdmission() throws {
+        let lease = SessionTaskRunLease()
+        let admission = try #require(lease.admit { $0 })
+        #expect(lease.permits(revision: admission))
+        lease.beginHook()
+        lease.finishHook()
+        #expect(!lease.permits(revision: admission))
+        let renewed = try #require(lease.admit { $0 })
+        #expect(lease.permits(revision: renewed))
+        lease.beginCodexEvent(42)
+        lease.finishCodexEvent(42)
+        #expect(!lease.permits(revision: renewed))
+    }
+
     @Test func codexFenceMatchesSequenceAndNeverReopensAfterLoss() {
         let lease = SessionTaskRunLease()
         lease.beginCodexEvent(42)

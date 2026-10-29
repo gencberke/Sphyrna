@@ -9,12 +9,24 @@ final class SessionTaskRunLease: @unchecked Sendable {
     private var reliable = true
     private var hooksInFlight = 0
     private var codexEvents: Set<UInt64> = []
+    private var revision: UInt64 = 0
     func revoke() { lock.withLock { enabled = false } }
-    func beginHook() { lock.withLock { if enabled { hooksInFlight += 1 } } }
+    private func advanceRevision() {
+        guard revision < .max else { reliable = false; return }
+        revision += 1
+    }
+    func beginHook() {
+        lock.withLock {
+            guard enabled, reliable else { return }
+            advanceRevision()
+            hooksInFlight += 1
+        }
+    }
     func finishHook() { lock.withLock { hooksInFlight = max(0, hooksInFlight - 1) } }
     func beginCodexEvent(_ sequence: UInt64) {
         lock.withLock {
             guard enabled, reliable else { return }
+            advanceRevision()
             if codexEvents.count >= 4_096 { reliable = false; codexEvents.removeAll(); return }
             codexEvents.insert(sequence)
         }
@@ -23,6 +35,15 @@ final class SessionTaskRunLease: @unchecked Sendable {
     func invalidate() { lock.withLock { reliable = false } }
     func permits<T>(_ body: () -> T?) -> T? {
         lock.withLock { enabled && reliable && hooksInFlight == 0 && codexEvents.isEmpty ? body() : nil }
+    }
+    // The caller captures this at admission, then rechecks it at the write boundary.
+    func admit<T>(_ body: (UInt64) -> T?) -> T? {
+        lock.withLock {
+            enabled && reliable && hooksInFlight == 0 && codexEvents.isEmpty ? body(revision) : nil
+        }
+    }
+    func permits(revision admitted: UInt64) -> Bool {
+        lock.withLock { enabled && reliable && hooksInFlight == 0 && codexEvents.isEmpty && revision == admitted }
     }
     var isEnabled: Bool { lock.withLock { enabled } }
 }
