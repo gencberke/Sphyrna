@@ -40,7 +40,8 @@ extension ProcessSupervisor {
     }
 
     func sample(
-        runID: UUID, snapshot: [ProcessRecord]
+        runID: UUID, snapshot: [ProcessRecord],
+        markerReader: @Sendable (pid_t) -> String? = { ProcessTable.managedRunID(pid: $0) }
     ) throws -> [ProcessRecord] {
         try ownershipSamplingFailpoint?()
         guard var runtime = runtimes[runID] else {
@@ -61,11 +62,15 @@ extension ProcessSupervisor {
             selected.formUnion(snapshot.filter { $0.sessionID == runtime.run.leader.pid }.map(\.identity))
         }
 
+        // A scope already supplies kernel-backed ownership. Do not inspect
+        // unrelated processes' environments merely to find our marker.
+        let markerScope = try runtime.scope.map { Set(try $0.forkedMembers().map(\.identity)) }
         var newMarkers: [ProcessIdentity: UUID] = [:]
         for record in snapshot where record.identity.pid != getpid()
-            && !markerInspected.contains(record.identity) {
+            && !markerInspected.contains(record.identity)
+            && (markerScope?.contains(record.identity) ?? true) {
             markerInspected.insert(record.identity)
-            if let value = ProcessTable.managedRunID(pid: record.identity.pid),
+            if let value = markerReader(record.identity.pid),
                let marker = UUID(uuidString: value) {
                 newMarkers[record.identity] = marker
             }
