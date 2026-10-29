@@ -54,12 +54,15 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 4 | G1 Remora backends | local fake OpenCode no-tools wire proved; actual offered-backend no-tools acceptance pending |
 | 4 | I1 names and migration | pending; package identity/version/name audit is not complete |
 | 4 | Optimizer resource fixes | transcript and Changes cache fixes integrated `4e492d7`; 37 Core + 27 UI scoped tests pass `143930-72609`. Actual process metrics remain separate |
-| 5 | Z holistic gate and continuation | the last full release/window gate (`3ac3b1e`) FAILED with 69 issues; the continuation (`ca1a71e`…`1e88c0a`) fixed the actual AX crash, the menu AX regression, two real UI regressions and the opening window, and corrected stale expectations and test oracles. Window suites and the full gate are not re-run yet; no daily-use-ready claim |
+| 5 | Z holistic gate and continuation | the continuation (`ca1a71e`…`dec1b63`) fixed the actual AX crash, the menu AX regression, two real UI regressions, the opening window, a D-94 slip and helper jobs starving the cooperative pool, and corrected stale expectations and test oracles. The full gate on `e58c2c9` FAILED with 48 issues (69 before); the triage is in `gate-e58c2c9/REPORT.md`: an unexplained start-of-run stall in LoomCore runs, and window suites that fail only beside the other UI suites. No daily-use-ready claim |
 
 ## Current open work
 
 - D-118 final evidence is `evidence/r9/final-wrap-20261029/` (exact files linked from `STATUS.md`). Read the full69-issue verdict, actual AX crash reproductions, positive scoped/deletion/metric evidence and the rejected Menu differential before continuing in existing Claude with permission/effort unchanged.
-- Next, when the Mac is idle: the window suites the continuation could not run (DefaultAction, SearchFocusAndHit, SessionDrag, SettingsWindowClick, InspectorWindow, PinnedFixRound), then the full gate on the current `v2`, then the open slices.
+- Next:
+  - Find the LoomCore start-of-run stall. Its victims are every timing issue of the last gate. One of its causes is fixed in `dec1b63`; the other blocking `Task.detached` sites are candidates.
+  - Run `WindowEventTests` apart from the other UI suites in `check.sh`.
+  - Then the full gate on the current `v2` when the Mac is idle, then the open slices.
 - The opening-before-associated-ledger gap from `evidence/r9/optimizer/STALLED-FLOWS-ADVICE.md` is settled in `1e88c0a` with the advisory's provider-admission idea in its minimal form: the rule version and owner identity on the `opening` record, a `notAdmitted` disposition at store open and on live failures, and journaled (never claimed) host cleanup. Its optional host-side enrollment receipt and the bounded provisioning journal are not built. The interrupted durable Stop and never-started deletion corrections have scoped proof. The intermittent Claude interrupt has a passing controlled diagnostic and no established root cause.
 - Preserve evidence limits: old whole pool `3560` tests failed three; later scoped fixes do not convert it to PASS. B5b first paint/RSS equivalence, native UI/VoiceOver/energy, native deletion, complete managed harness coverage and actual OS notification acceptance remain distinct gates.
 - Historical progress details were moved out of this relay to [the dated snapshot](archive/ACTIVE-PLAN-1.8.0-20261029-progress.md). Founding product goals live in `SPEC.md` §1 and D-83.
