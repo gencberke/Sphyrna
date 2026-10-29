@@ -6,7 +6,7 @@ struct DraftModelPickers: View {
     let model: CatalogModel
     let projectID: UUID?
     let restoreFocus: () -> Void
-    private let openState = InkOpenState.shared
+    private var openState: InkOpenState { model.inkOpenState }
     @State private var modelCursor = ModelPickerController()
     @State private var effortCursor = EffortPickerController()
 

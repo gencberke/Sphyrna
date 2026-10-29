@@ -349,6 +349,8 @@ public final class CatalogModel {
     @ObservationIgnored public var modelCatalog = ModelCatalog()
     /// The bounded in-memory recents shared by this model's pickers.
     @ObservationIgnored let modelPickerState = ModelPickerState()
+    /// Which draft popover and which project menu are open: this model's own, so another model's page cannot shut them.
+    @ObservationIgnored let inkOpenState = InkOpenState()
     /// Which CLIs were found on the PATH at the last read (`HarnessAvailabilityReader`, off the main actor; no CLI runs). Nil until a
     /// read has answered. Observed: the lists that show a harness redraw when a reading lands (C2B).
     public internal(set) var harnessAvailability: [HarnessID: HarnessAvailability]?

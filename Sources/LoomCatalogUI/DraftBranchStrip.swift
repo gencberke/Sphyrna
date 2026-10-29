@@ -6,7 +6,7 @@ import SwiftUI
 struct BranchStrip: View {
     let model: CatalogModel
     let projectID: UUID?
-    private let openState = InkOpenState.shared
+    private var openState: InkOpenState { model.inkOpenState }
 
     private var draft: SessionDraft { model.newSession.draft(for: projectID) ?? SessionDraft(projectID: projectID) }
 

@@ -36,7 +36,7 @@ extension DevelopmentEvidence {
         case "project-menu":
             let parts = argument.split(separator: ":")
             guard parts.count == 2, let id = UUID(uuidString: String(parts[0])) else { return false }
-            clicked = InkEvidence.projectMenu(projectID: id, origin: String(parts[1]))
+            clicked = InkEvidence.projectMenu(projectID: id, origin: String(parts[1]), model: model)
         case "project-page-state": break
         default: return false
         }

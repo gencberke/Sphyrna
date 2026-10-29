@@ -168,13 +168,74 @@ private struct PickerMeasurementProbeLayout: Layout {
         #expect(!ModelPickerDraft.chooseDefault(harness: .claude, model: model, projectID: nil))
     }
 
+    /// Each model has its own draft popover state. Another model's draft strip leaving the screen (another window's page closing,
+    /// or another test's) must not shut this model's open picker: with one process-wide state it did, and the parallel UI run
+    /// closed this suite's pickers at random.
+    @Test func anotherModelsDraftLeavingTheScreenKeepsThisPickerOpen() async throws {
+        enableAccessibilityTree()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-b4-own-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        func makeModel(_ name: String) -> CatalogModel {
+            let model = CatalogModel(catalog: nil, events: SessionEventHub(),
+                                     preferences: UIPreferencesStore(url: root.appendingPathComponent("\(name).json")))
+            model.modelCatalog = catalog()
+            model.harnessAvailability = availability
+            model.showDraft(projectID: nil)
+            return model
+        }
+        let mine = makeModel("mine"), other = makeModel("other")
+        defer { mine.stop(); other.stop() }
+
+        let host = InkHost()
+        let chips = NSHostingView(rootView: DraftModelPickers(model: mine, projectID: nil, restoreFocus: {}).inkHost(host))
+        chips.frame = NSRect(x: 20, y: 400, width: 500, height: 40)
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 900, height: 600))
+        content.addSubview(chips)
+        host.view.frame = content.bounds
+        content.addSubview(host.view)
+        let window = NSWindow(contentRect: content.bounds, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = content
+        defer { host.state.dismiss(); window.close() }
+
+        let shown = OtherDraftShown()
+        let otherHost = InkHost()
+        let strip = NSHostingView(rootView: OtherDraftStrip(model: other, shown: shown).inkHost(otherHost))
+        strip.frame = NSRect(x: 0, y: 0, width: 400, height: 60)
+        let otherContent = NSView(frame: strip.frame)
+        otherContent.addSubview(strip)
+        otherHost.view.frame = otherContent.bounds
+        otherContent.addSubview(otherHost.view)
+        let otherWindow = NSWindow(contentRect: otherContent.bounds, styleMask: [.borderless], backing: .buffered, defer: false)
+        otherWindow.isReleasedWhenClosed = false
+        otherWindow.contentView = otherContent
+        defer { otherWindow.close() }
+
+        func settle() async throws {
+            try await Task.sleep(for: .milliseconds(150))
+            content.layoutSubtreeIfNeeded()
+            otherContent.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            otherWindow.displayIfNeeded()
+        }
+        try await settle()
+        let button = try #require(accessibilityElements(in: chips).first { InkAX.label($0).hasPrefix("Model, ") })
+        #expect(button.accessibilityPerformPress?() == true)
+        try await settle()
+        #expect(host.state.active?.id == "draft-model")
+
+        shown.on = false
+        try await settle()
+        #expect(host.state.active?.id == "draft-model", "another model's draft strip leaving the screen shut this picker")
+    }
+
     @Test func railAndKeyboardFollowTheVisibleRecentAndHarnessRows() async throws {
         enableAccessibilityTree()
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-b4-rail-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
         let model = CatalogModel(catalog: nil, events: SessionEventHub(),
                                  preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
-        defer { model.stop(); InkOpenState.shared.draft = nil }
+        defer { model.stop() }
         model.modelCatalog = catalog()
         model.modelCatalog.apply(HarnessReading(provider: .claude, models: (0..<24).map { index in
             HarnessModel(id: "model-\(index)", displayName: "Model \(index)", isDefault: false, efforts: ["high"])
@@ -262,7 +323,7 @@ private struct PickerMeasurementProbeLayout: Layout {
         defer { try? FileManager.default.removeItem(at: root) }
         let model = CatalogModel(catalog: nil, events: SessionEventHub(),
                                  preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
-        defer { model.stop(); InkOpenState.shared.draft = nil }
+        defer { model.stop() }
         model.modelCatalog = catalog()
         model.harnessAvailability = availability
         model.showDraft(projectID: nil)
@@ -470,7 +531,7 @@ private struct PickerMeasurementProbeLayout: Layout {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = CatalogModel(catalog: nil, events: SessionEventHub(),
                                  preferences: UIPreferencesStore(url: directory.appendingPathComponent("p.json")))
-        defer { model.stop(); InkOpenState.shared.draft = nil }
+        defer { model.stop() }
         model.modelCatalog = catalog()
         model.harnessAvailability = availability
         model.showDraft(projectID: nil)
@@ -570,5 +631,17 @@ private struct PickerMeasurementProbeLayout: Layout {
         #expect(!elements.contains { InkAX.label($0).hasPrefix("Effort,") })
         #expect(!elements.contains { InkAX.identifier($0) == "draft-mode" })
         #expect(!window.isVisible)
+    }
+}
+
+/// The other model's draft strip, shown until the test takes it off the screen.
+@MainActor @Observable private final class OtherDraftShown { var on = true }
+
+private struct OtherDraftStrip: View {
+    let model: CatalogModel
+    let shown: OtherDraftShown
+    var body: some View {
+        VStack(spacing: 0) { if shown.on { BranchStrip(model: model, projectID: nil) } }
+            .frame(width: 400, height: 60)
     }
 }

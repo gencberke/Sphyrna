@@ -151,7 +151,7 @@ struct ProjectMenuButton: View {
     @State private var cursor = ProjectMenuCursor()
 
     var body: some View {
-        let isOpen = InkOpenState.shared.menuBinding(projectID: project.id, origin: origin)
+        let isOpen = model.inkOpenState.menuBinding(projectID: project.id, origin: origin)
         let spot = InkOpeners.placement(.projectMenu, onDraft: false) ?? InkOpeners.Spot(side: .below, alignment: .trailing)
         Button { isOpen.wrappedValue.toggle() } label: {
             InkIcon(.more, size: LoomTheme.Icon.compact)
@@ -168,7 +168,7 @@ struct ProjectMenuButton: View {
         })
         .onChange(of: isOpen.wrappedValue) { _, shown in if !shown { cursor.state = ProjectMenuKeys.State() } }
         // A menu does not outlive its page: coming back to it finds it shut.
-        .onDisappear { if InkOpenState.shared.projectMenu?.projectID == project.id { InkOpenState.shared.projectMenu = nil } }
+        .onDisappear { if model.inkOpenState.projectMenu?.projectID == project.id { model.inkOpenState.projectMenu = nil } }
     }
 
     private func handle(_ key: InkKey, isOpen: Binding<Bool>) -> Bool {

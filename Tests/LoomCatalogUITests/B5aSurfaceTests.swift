@@ -6,7 +6,7 @@ import Testing
 @testable import LoomRemora
 @testable import LoomCatalogUI
 
-// Draft popovers in both suites share InkOpenState.shared, so the existing parent suite serializes them.
+// Nested in ModelPickerTests' serialized suite: both host draft popovers in borderless windows, one at a time.
 extension ModelPickerTests {
 /// Controlled offscreen checks of the actual draft and Home controls. No provider is started.
 @MainActor @Suite(.serialized) struct B5aSurfaceTests {
@@ -94,7 +94,7 @@ extension ModelPickerTests {
                                  preferences: UIPreferencesStore(url: root.appendingPathComponent("p.json")))
         let intents = NewSessionTests.DraftIntents()
         model.intents = intents
-        defer { model.stop(); InkOpenState.shared.draft = nil; withExtendedLifetime(intents) {} }
+        defer { model.stop(); withExtendedLifetime(intents) {} }
         let project = UUID()
         model.showDraft(projectID: project)
         model.newSession.setBranch(.named("main"), for: project)

@@ -120,7 +120,7 @@ private struct ComposerBar: View {
     let projectID: UUID?
     /// Gives the keyboard back to the draft's text when a popover closes.
     let restoreFocus: () -> Void
-    private let openState = InkOpenState.shared
+    private var openState: InkOpenState { model.inkOpenState }
 
     var body: some View {
         let resolved = model.resolvedStart(for: projectID)

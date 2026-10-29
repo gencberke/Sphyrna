@@ -4,10 +4,10 @@ import SwiftUI
 
 /// Which of the draft page's popovers and which project menu is open. The controls open and close them through bindings, and the
 /// development evidence opens them by key (`InkEvidence`), since a private `@State` flag cannot be reached from outside the view.
-/// There is one draft page and one project menu on screen at a time, so one shared instance holds both.
+/// There is one draft page and one project menu on screen at a time per model, so the model holds one
+/// (`CatalogModel.inkOpenState`). One for the whole process let another model's draft, leaving the screen, shut this one's popover.
 @MainActor @Observable
 final class InkOpenState {
-    static let shared = InkOpenState()
 
     /// A popover of the draft page.
     enum DraftPopover: Equatable, Sendable {
@@ -57,7 +57,7 @@ public enum InkEvidence {
     /// `kind`: `model`, `effort`, `mode`, `branch` (the name popover of the chosen new-branch or new-worktree segment, else New branch) or
     /// `off`. False when `kind` is none of those.
     @MainActor public static func draftPopover(projectID: UUID?, kind: String, model: CatalogModel) -> Bool {
-        let state = InkOpenState.shared
+        let state = model.inkOpenState
         switch kind {
         case "model": state.draft = .init(projectID: projectID, popover: .model)
         case "effort": state.draft = .init(projectID: projectID, popover: .effort)
@@ -72,8 +72,8 @@ public enum InkEvidence {
     }
 
     /// `origin`: `page` (the project page's ⋯), `sidebar` (the project head's ⋯) or `off`.
-    @MainActor public static func projectMenu(projectID: UUID, origin: String) -> Bool {
-        let state = InkOpenState.shared
+    @MainActor public static func projectMenu(projectID: UUID, origin: String, model: CatalogModel) -> Bool {
+        let state = model.inkOpenState
         if origin == "off" {
             state.projectMenu = nil
             return true
