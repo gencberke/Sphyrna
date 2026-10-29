@@ -810,7 +810,7 @@ public actor SessionTaskCoordinator {
                     inputOperationID: UUID) async throws -> String {
         let binding = try await authenticated(child)
         guard let task = try store.task(taskID), let round = try store.round(roundID),
-              task.lifecycle == .active, task.childSessionID == binding.sessionID,
+              task.lifecycle == .active, !isDeletionFenced(task), task.childSessionID == binding.sessionID,
               round.taskID == taskID, round.operationID == inputOperationID,
               (task.activeRoundID == roundID && round.binding == binding && round.phase == .active)
                 || (task.pendingRoundID == roundID && round.phase == .deliveringUnknown &&
@@ -822,7 +822,7 @@ public actor SessionTaskCoordinator {
         guard let observed = await host.observedChildExecution(target), Self.validExecution(observed),
               Self.matches(observed, round: round), try await authenticated(child) == binding,
               let current = try store.task(taskID), let currentRound = try store.round(roundID),
-              current.lifecycle == .active, current.authorityEpoch == task.authorityEpoch,
+              current.lifecycle == .active, !isDeletionFenced(current), current.authorityEpoch == task.authorityEpoch,
               currentRound.operationID == inputOperationID,
               (current.activeRoundID == roundID && currentRound.binding == binding && currentRound.phase == .active)
                 || (current.pendingRoundID == roundID && currentRound.phase == .deliveringUnknown &&
