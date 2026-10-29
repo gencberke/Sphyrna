@@ -158,6 +158,8 @@ private final class BlockingEventSink: @unchecked Sendable {
         let request = String(decoding: peer.received, as: UTF8.self)
         #expect(request.contains("GET /api/event?"))
         #expect(request.contains("Authorization: Basic "))
+        #expect(request.contains("types=config.updated"))
+        #expect(request.contains("types=plugin.updated"))
         #expect(sink.connected == 1)
         let event = Data("data: {\"id\":\"evt_2\",\"type\":\"session.created\",\"data\":{\"sessionID\":\"ses_one\"},\"durable\":{\"aggregateID\":\"ses_one\",\"seq\":1,\"version\":1}}\n\n".utf8)
         let frame = chunk(event)
@@ -165,13 +167,17 @@ private final class BlockingEventSink: @unchecked Sendable {
         try peer.send(frame.dropFirst(11))
         #expect(await SessionRuntimeTests.waitUntil(2) { sink.events.count == 1 })
         #expect(sink.events.first?.sessionID == "ses_one")
+        let changed = Data("data: {\"id\":\"evt_3\",\"type\":\"config.updated\",\"data\":{}}\n\n".utf8)
+        try peer.send(chunk(changed))
+        #expect(await SessionRuntimeTests.waitUntil(2) { sink.events.count == 2 })
+        #expect(sink.events.last?.type == "config.updated")
         try peer.send(chunk(Data(": heartbeat\n\n".utf8)))
         try await Task.sleep(for: .milliseconds(150))
-        #expect(sink.events.count == 1)
+        #expect(sink.events.count == 2)
         await stream.close()
         _ = try await server.value
         #expect(sink.disconnected == 1)
-        #expect(sink.events.count == 1)
+        #expect(sink.events.count == 2)
     }
 
     @Test func oversizeFrameDisconnectsAndCancellationClosesPendingHandshake() async throws {

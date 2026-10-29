@@ -24,4 +24,17 @@ import Testing
                                                directory: "/tmp/project", environment: [:], password: "fixture-secret")
         }
     }
+    @Test func observerCapabilityNeverEntersTheServerOrItsToolEnvironment() throws {
+        let server = try OpenCodeLaunchProfile.server(environment: [
+            "PATH": "/usr/bin",
+            "SPHYRNA_OPENCODE_TUI_SOCKET": "/private/tmp/fixture.sock",
+            "SPHYRNA_OPENCODE_TUI_TOKEN": "fixture-secret",
+            "SPHYRNA_OPENCODE_TUI_APP_SESSION_ID": UUID().uuidString,
+            "SPHYRNA_OPENCODE_TUI_RUN_ID": UUID().uuidString,
+            "SPHYRNA_OPENCODE_TUI_INSTANCE_ID": UUID().uuidString
+        ], password: "server-fixture")
+        #expect(server.environment["PATH"] == "/usr/bin")
+        #expect(!server.environment.keys.contains { $0.hasPrefix("SPHYRNA_OPENCODE_TUI_") })
+    }
+
 }

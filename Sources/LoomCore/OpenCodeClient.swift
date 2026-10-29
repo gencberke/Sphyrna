@@ -40,9 +40,8 @@ public struct OpenCodeSession: Equatable, Sendable {
     public let permissions: [OpenCodePermissionRule]?
 }
 
-/// One server/run and its admitted input receipts. Only an exact delivered
-/// input correlated with an observed busy period can carry its native outcome;
-/// a last outcome or an uncorrelated event never completes an app round.
+/// One verified server/run and its live metadata. Passive TUI observations do
+/// not grant authority to send input; a future action-time fence is required.
 public actor OpenCodeClient {
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)
     private enum Admission {
@@ -73,6 +72,7 @@ public actor OpenCodeClient {
     private var selectedID: String?
     private var selectedDirectory: String?
     private var resuming = false
+
     private var firstMessageID: String?
     private var receipts: [String: Receipt] = [:]
     private static let receiptLimit = 128
@@ -190,6 +190,28 @@ public actor OpenCodeClient {
         }
     }
 
+    /// Project only the owned server's native config entries. A volatile feed
+    /// must already be subscribed, and a config/plugin change during or after
+    /// this request invalidates the resulting passive-observer proof.
+    public func validateTUIPluginPolicy(pluginDirectory: URL) async throws -> OpenCodeTUIPolicyProof {
+        try await validateProfile()
+        try requireVerified()
+        let path = pluginDirectory.standardizedFileURL.path
+        guard pluginDirectory.isFileURL, let profile, let feed, let revision = feed.beginPolicyCheck() else {
+            throw OpenCodeError.unavailable
+        }
+        let data = try await request(path: "/api/config", method: "GET",
+                                     queryItems: [URLQueryItem(name: "location[directory]", value: profile.directory)])
+        try Task.checkCancellation()
+        try requireVerified()
+        let allowed = OpenCodeTUIPolicy.permits(config: data, pluginDirectory: path)
+        guard let proof = feed.finishPolicyCheck(revision: revision, allowed: allowed, serverURL: serverURL,
+                                                 directory: profile.directory, pluginDirectory: path) else {
+            throw OpenCodeError.unavailable
+        }
+        return proof
+    }
+
     public func create(directory: String, model: OpenCodeModel?,
                        permissions: [OpenCodePermissionRule]? = nil) async throws -> OpenCodeSession {
         try await validateProfile()
@@ -242,27 +264,18 @@ public actor OpenCodeClient {
         return session
     }
 
-    /// Sends a new draft's one opening input through the API. The TUI is always
-    /// launched without `--prompt`; a lost reply remains indeterminate.
+    /// Passive route observations cannot fence a later native selection
+    /// change. API input stays unavailable until the TUI can check its current
+    /// route immediately before issuing the requested native operation.
     public func firstInput(sessionID: String, messageID: String, roundID: UUID, text: String) async throws -> String {
-        try await validateProfile()
-        guard selectedWasNew else { throw OpenCodeError.invalidTarget }
-        let body = try inputBody(sessionID: sessionID, messageID: messageID, text: text)
-        return try await admitInput(sessionID: sessionID, messageID: messageID, roundID: roundID, text: text,
-                                    body: body, first: true)
+        throw OpenCodeError.unavailable
     }
 
-    /// Explicit subsequent input only; repeated IDs with identical accepted
-    /// payloads return the recorded receipt without sending. The runtime must
-    /// persist its own authorization/receipt fence across process restarts.
     public func submitInput(sessionID: String, messageID: String, roundID: UUID, text: String) async throws -> String {
-        try await validateProfile()
-        guard !selectedWasNew || firstMessageID != nil else { throw OpenCodeError.unavailable }
-        let body = try inputBody(sessionID: sessionID, messageID: messageID, text: text)
-        return try await admitInput(sessionID: sessionID, messageID: messageID, roundID: roundID, text: text,
-                                    body: body, first: false)
+        throw OpenCodeError.unavailable
     }
 
+    // Retained behind the fail-closed public input methods until an action-time fence exists.
     private func inputBody(sessionID: String, messageID: String, text: String) throws -> Data {
         try requireVerified()
         guard feed?.isConnected == true else { throw OpenCodeError.unavailable }
@@ -307,11 +320,16 @@ public actor OpenCodeClient {
         }
     }
 
-    /// Native interruption covers the whole session, not an exact turn. The
-    /// runtime must first fence terminal/API input and establish that no newer
-    /// work can be canceled; F1's exact-round interrupt cannot assume this.
+    /// A stale selection cannot authorize a session-wide interrupt. Owned
+    /// process-scope shutdown remains separate from this selected-session API.
     public func interruptForStoppedInput(sessionID: String) async throws -> Bool {
         try await validateProfile()
+        throw OpenCodeError.unavailable
+    }
+
+    // Retained for a future action-time fence. Native interruption covers the
+    // whole session and must not be treated as an exact-round interrupt.
+    private func interruptNative(sessionID: String) async throws -> Bool {
         try requireVerified()
         guard feed?.isConnected == true else { throw OpenCodeError.unavailable }
         guard selectedID == sessionID else { throw OpenCodeError.invalidTarget }
@@ -327,7 +345,7 @@ public actor OpenCodeClient {
         try await validateProfile(environment: environment)
         try requireVerified()
         guard let feed, feed.isConnected else { throw OpenCodeError.unavailable }
-        guard !selectedWasNew || firstMessageID != nil || feed.permitsFirstAttachment else {
+        guard !selectedWasNew || feed.permitsFirstAttachment else {
             throw OpenCodeError.unavailable
         }
         guard let selectedID, selectedDirectory == directory else { throw OpenCodeError.invalidTarget }
@@ -353,11 +371,13 @@ public actor OpenCodeClient {
         value.hasPrefix("/") && value.utf8.count <= 4096 && !value.contains("\0")
     }
 
-    private func request(path: String, method: String, body: Data? = nil) async throws -> Data {
+    private func request(path: String, method: String, body: Data? = nil,
+                         queryItems: [URLQueryItem]? = nil) async throws -> Data {
         guard !closed, var components = URLComponents(url: serverURL, resolvingAgainstBaseURL: false) else {
             throw OpenCodeError.closed
         }
         components.path = path
+        components.queryItems = queryItems
         guard let url = components.url else { throw OpenCodeError.invalidTarget }
         var request = URLRequest(url: url)
         request.httpMethod = method

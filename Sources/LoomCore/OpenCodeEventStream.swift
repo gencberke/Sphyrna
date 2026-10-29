@@ -136,7 +136,7 @@ final class OpenCodeEventStream: @unchecked Sendable {
                 "session.created", "session.deleted", "session.inbox.enqueued",
                 "session.inbox.delivered", "session.inbox.cancelled",
                 "session.execution.started", "session.execution.succeeded",
-                "session.execution.failed", "session.execution.interrupted"
+                "session.execution.failed", "session.execution.interrupted", "config.updated", "plugin.updated"
             ]
             let query = types.map { "types=\($0)" }.joined(separator: "&")
             let headers = "GET /api/event?\(query) HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nAuthorization: Basic \(authorization)\r\nAccept: text/event-stream\r\nConnection: keep-alive\r\n\r\n"

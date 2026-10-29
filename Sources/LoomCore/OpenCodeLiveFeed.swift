@@ -11,6 +11,8 @@ public final class OpenCodeLiveFeed: @unchecked Sendable {
     private var ended = false
     private var early: [OpenCodeEvent] = []
     private var state: OpenCodeLiveState?
+    private var policyRevision: UInt64 = 0
+    private var policyProof: OpenCodeTUIPolicyProof?
     private var observerID: UUID?
     private var observer: AsyncStream<OpenCodeLiveSnapshot>.Continuation?
     private let cleanupQueue = DispatchQueue(label: "sphyrna.opencode.events.observers")
@@ -26,10 +28,25 @@ public final class OpenCodeLiveFeed: @unchecked Sendable {
 
     /// Return false on loss of bounded ordering so the stream closes.
     func receive(_ event: OpenCodeEvent) -> Bool {
-        lock.withLock {
+        var revoke: OpenCodeTUIPolicyProof?
+        let accepted = lock.withLock {
             guard connected, !ended else { return false }
+            if event.type == "config.updated" || event.type == "plugin.updated" {
+                guard event.sessionID == nil, event.sequence == nil, event.inboxID == nil, event.version == nil,
+                      policyRevision < UInt64.max else {
+                    ended = true; connected = false; revoke = policyProof; policyProof = nil
+                    return false
+                }
+                policyRevision += 1
+                revoke = policyProof
+                policyProof = nil
+                return true
+            }
             if state == nil {
-                guard early.count < 128 else { ended = true; connected = false; early.removeAll(); return false }
+                guard early.count < 128 else {
+                    ended = true; connected = false; early.removeAll(); revoke = policyProof; policyProof = nil
+                    return false
+                }
                 early.append(event)
                 return true
             }
@@ -37,13 +54,15 @@ public final class OpenCodeLiveFeed: @unchecked Sendable {
             state!.receive(event)
             publishIfChanged(before)
             let reliable = state!.isReliable
-            if !reliable { connected = false; ended = true }
+            if !reliable { connected = false; ended = true; revoke = policyProof; policyProof = nil }
             return reliable
         }
+        revoke?.invalidate()
+        return accepted
     }
 
     func didDisconnect() {
-        let prior = lock.withLock {
+        let (prior, revoke) = lock.withLock {
             ended = true
             connected = false
             early.removeAll()
@@ -54,27 +73,69 @@ public final class OpenCodeLiveFeed: @unchecked Sendable {
             let prior = observer
             observer = nil
             observerID = nil
-            return prior
+            let revoke = policyProof
+            policyProof = nil
+            return (prior, revoke)
         }
+        revoke?.invalidate()
         prior?.finish()
     }
 
+    func beginPolicyCheck() -> UInt64? {
+        var old: OpenCodeTUIPolicyProof?
+        let revision = lock.withLock { () -> UInt64? in
+            old = policyProof
+            policyProof = nil
+            guard connected, !ended, policyRevision < UInt64.max else { return nil }
+            policyRevision += 1
+            return policyRevision
+        }
+        old?.invalidate()
+        return revision
+    }
+
+    func finishPolicyCheck(revision: UInt64, allowed: Bool, serverURL: URL,
+                           directory: String, pluginDirectory: String) -> OpenCodeTUIPolicyProof? {
+        var old: OpenCodeTUIPolicyProof?
+        let result = lock.withLock { () -> OpenCodeTUIPolicyProof? in
+            guard connected, !ended, policyRevision == revision else { return nil }
+            old = policyProof
+            policyProof = nil
+            guard allowed else { return nil }
+            let proof = OpenCodeTUIPolicyProof(appSessionID: appSessionID, runID: runID,
+                                               serverURL: serverURL, directory: directory,
+                                               pluginDirectory: pluginDirectory)
+            policyProof = proof
+            return proof
+        }
+        old?.invalidate()
+        return result
+    }
+
     func bind(nativeSessionID: String) throws {
-        try lock.withLock {
-            guard connected, !ended, state == nil,
-                  OpenCodeLaunchProfile.validID(nativeSessionID, prefix: "ses") else { throw OpenCodeError.unavailable }
-            var next = OpenCodeLiveState(appSessionID: appSessionID, runID: runID, nativeSessionID: nativeSessionID)
-            for event in early { next.receive(event) }
-            early.removeAll()
-            guard next.isReliable else {
+        var revoke: OpenCodeTUIPolicyProof?
+        do {
+            try lock.withLock {
+                guard connected, !ended, state == nil,
+                      OpenCodeLaunchProfile.validID(nativeSessionID, prefix: "ses") else { throw OpenCodeError.unavailable }
+                var next = OpenCodeLiveState(appSessionID: appSessionID, runID: runID, nativeSessionID: nativeSessionID)
+                for event in early { next.receive(event) }
+                early.removeAll()
+                guard next.isReliable else {
+                    state = next
+                    connected = false
+                    ended = true
+                    revoke = policyProof
+                    policyProof = nil
+                    publish()
+                    throw OpenCodeError.unavailable
+                }
                 state = next
-                connected = false
-                ended = true
                 publish()
-                throw OpenCodeError.unavailable
             }
-            state = next
-            publish()
+        } catch {
+            revoke?.invalidate()
+            throw error
         }
     }
 

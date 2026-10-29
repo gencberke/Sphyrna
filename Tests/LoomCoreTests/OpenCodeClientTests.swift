@@ -67,7 +67,7 @@ private actor OpenCodeHTTPFixture {
         }
     }
 
-    @Test func verifiedCreateAndReceiptAreSingleAdmission() async throws {
+    @Test func verifiedCreateKeepsTheExactTerminalAndDoesNotSendInput() async throws {
         let fixture = OpenCodeHTTPFixture()
         let client = client(fixture)
         let roundID = UUID()
@@ -83,17 +83,11 @@ private actor OpenCodeHTTPFixture {
         #expect(!terminal.arguments.contains("--prompt"))
         await #expect(throws: (any Error).self) { _ = try await client.terminalProfile(directory: "/tmp/other", environment: [:]) }
         await #expect(throws: OpenCodeError.conflict) { _ = try await client.create(directory: "/tmp/project", model: model) }
-        let receipt = try await client.firstInput(sessionID: created.id, messageID: "msg_one", roundID: roundID, text: "first input")
-        #expect(receipt == "msg_one")
-        #expect(try await client.firstInput(sessionID: created.id, messageID: "msg_one", roundID: roundID, text: "first input") == receipt)
-        await #expect(throws: OpenCodeError.conflict) {
-            _ = try await client.firstInput(sessionID: created.id, messageID: "msg_one", roundID: UUID(), text: "first input")
-        }
-        await #expect(throws: OpenCodeError.conflict) {
-            _ = try await client.firstInput(sessionID: created.id, messageID: "msg_one", roundID: roundID, text: "different input")
+        await #expect(throws: OpenCodeError.unavailable) {
+            _ = try await client.firstInput(sessionID: created.id, messageID: "msg_one", roundID: roundID, text: "first input")
         }
         let requests = await fixture.allRequests()
-        #expect(requests.map { $0.url!.path } == ["/api/info", "/api/session", "/api/session/ses_fixture/prompt"])
+        #expect(requests.map { $0.url!.path } == ["/api/info", "/api/session"])
         #expect(requests.allSatisfy { $0.value(forHTTPHeaderField: "Authorization") == "Basic b3BlbmNvZGU6Zml4dHVyZS1zZWNyZXQ=" })
         let create = try #require(requests.first { $0.url!.path == "/api/session" })
         let bytes = try #require(create.httpBody)
@@ -128,43 +122,18 @@ private actor OpenCodeHTTPFixture {
             await #expect(throws: (any Error).self) { _ = try await client.resume(id: "ses_fixture", directory: "/tmp/project") }
         }
     }
-    @Test func unknownAdmissionIsNotReplayedAndResumeOnlyReads() async throws {
+    @Test func resumeReadsTheExactIDWithoutSendingInput() async throws {
         let fixture = OpenCodeHTTPFixture()
         let client = client(fixture)
-        let roundID = UUID()
         try await client.verify(pid: 1234, version: "2.2.0", temporaryDirectory: "/tmp/owned/opencode")
         let resumed = try await client.resume(id: "ses_fixture", directory: "/tmp/project")
         #expect(resumed.id == "ses_fixture")
-        let resumeRequests = await fixture.allRequests()
-        #expect(resumeRequests.map { $0.httpMethod } == ["GET", "GET"])
-        #expect(resumeRequests.last?.httpBody == nil)
-        await fixture.setInfo(status: 500)
-        await #expect(throws: (any Error).self) {
-            _ = try await client.submitInput(sessionID: "ses_fixture", messageID: "msg_one", roundID: roundID, text: "first input")
-        }
-        await fixture.setInfo(status: 200)
-        await #expect(throws: OpenCodeError.indeterminate) {
-            _ = try await client.submitInput(sessionID: "ses_fixture", messageID: "msg_one", roundID: roundID, text: "first input")
+        await #expect(throws: OpenCodeError.unavailable) {
+            _ = try await client.submitInput(sessionID: resumed.id, messageID: "msg_one", roundID: UUID(), text: "approved")
         }
         let requests = await fixture.allRequests()
-        #expect(requests.filter { $0.url!.path.hasSuffix("/prompt") }.count == 1)
-    }
-
-    @Test func mismatchedNativeReceiptNeverCountsAsAuthorizedInput() async throws {
-        let fixture = OpenCodeHTTPFixture()
-        let client = client(fixture)
-        let roundID = UUID()
-        try await client.verify(pid: 1234, version: "2.2.0", temporaryDirectory: "/tmp/owned/opencode")
-        _ = try await client.resume(id: "ses_fixture", directory: "/tmp/project")
-        await fixture.setWrongReceipt()
-        await #expect(throws: OpenCodeError.invalidResponse) {
-            _ = try await client.submitInput(sessionID: "ses_fixture", messageID: "msg_one", roundID: roundID, text: "approved input")
-        }
-        await #expect(throws: OpenCodeError.indeterminate) {
-            _ = try await client.submitInput(sessionID: "ses_fixture", messageID: "msg_one", roundID: roundID, text: "approved input")
-        }
-        let requests = await fixture.allRequests()
-        #expect(requests.filter { $0.url!.path.hasSuffix("/prompt") }.count == 1)
+        #expect(requests.map { $0.httpMethod } == ["GET", "GET"])
+        #expect(requests.last?.httpBody == nil)
     }
 
     @Test func repeatedExactResumeKeepsItsLiveSubscription() async throws {

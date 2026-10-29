@@ -88,8 +88,76 @@ private actor OpenCodeProfileHTTPFixture {
     }
 }
 
+private actor OpenCodePolicyHTTPFixture {
+    let temporaryDirectory: String
+    let pluginDirectory: String
+    var pending: CheckedContinuation<Void, Never>?
+    var shouldPause = false
+    private(set) var requestedLocation: String?
+    private(set) var requestCount = 0
+    init(temporaryDirectory: String, pluginDirectory: String) {
+        self.temporaryDirectory = temporaryDirectory; self.pluginDirectory = pluginDirectory
+    }
+    func pauseNext() { shouldPause = true }
+    var waiting: Bool { pending != nil }
+    func release() { pending?.resume(); pending = nil }
+    func respond(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let url = request.url!
+        let object: Any
+        if url.path == "/api/info" {
+            object = ["pid": 1234, "version": "2.2.0", "urls": ["http://127.0.0.1:43123"],
+                      "paths": ["tmp": temporaryDirectory]]
+        } else if url.path == "/api/config" {
+            requestCount += 1
+            requestedLocation = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
+                .first(where: { $0.name == "location[directory]" })?.value
+            if shouldPause {
+                shouldPause = false
+                await withCheckedContinuation { pending = $0 }
+            }
+            object = [["type": "document", "info": ["plugins": [pluginDirectory]]]]
+        } else { throw OpenCodeError.invalidTarget }
+        return (try JSONSerialization.data(withJSONObject: object),
+                HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil)!)
+    }
+}
+
 @Suite(.serialized, .processHeavy, .timeLimit(.minutes(2)))
 struct OpenCodeProfileProofTests {
+    @Test func nativeConfigProjectionIsBoundToTheFeedAndRejectsAnInFlightChange() async throws {
+        let fixture = try await OpenCodeProfileFixture.make()
+        do {
+            let proof = try await fixture.acquire()
+            let app = UUID(), run = UUID()
+            let feed = OpenCodeLiveFeed(appSessionID: app, runID: run)
+            feed.didConnect()
+            let plugin = fixture.context.root.appendingPathComponent("observer", isDirectory: true)
+            let http = OpenCodePolicyHTTPFixture(temporaryDirectory: fixture.roots.tmp, pluginDirectory: plugin.path)
+            let url = URL(string: "http://127.0.0.1:43123")!
+            let client = OpenCodeClient(base: url, password: "fixture-secret", profileProof: proof,
+                                        executable: fixture.executable.path, environment: fixture.environment,
+                                        workingDirectory: fixture.context.home.path, liveFeed: feed) {
+                try await http.respond($0)
+            }
+            try await client.verify(pid: 1234, version: "2.2.0", temporaryDirectory: fixture.roots.tmp)
+            let policy = try await client.validateTUIPluginPolicy(pluginDirectory: plugin)
+            #expect(policy.isValid)
+            #expect(await http.requestedLocation == fixture.context.home.path)
+            #expect(await http.requestCount == 1)
+            await http.pauseNext()
+            let pending = Task { try await client.validateTUIPluginPolicy(pluginDirectory: plugin) }
+            #expect(await SessionRuntimeTests.waitUntil(2) { await http.waiting })
+            #expect(!policy.isValid)
+            #expect(feed.receive(OpenCodeEvent(id: "evt_update", type: "config.updated",
+                                               sessionID: nil, sequence: nil, inboxID: nil)))
+            await http.release()
+            await #expect(throws: OpenCodeError.unavailable) { _ = try await pending.value }
+            #expect(await http.requestCount == 2)
+            await client.close()
+        } catch { await fixture.close(); throw error }
+        await fixture.close()
+    }
+
     @Test func exactLayoutIsBoundToEnvironmentExecutableAndLaterDatabaseCreation() async throws {
         let fixture = try await OpenCodeProfileFixture.make(createAtProbe: true)
         do {
@@ -229,7 +297,7 @@ struct OpenCodeProfileProofTests {
                 _ = try await selected.terminalProfile(directory: fixture.context.home.path, environment: fixture.environment)
             }
             await #expect(throws: OpenCodeProfileError.changed) {
-                _ = try await selected.firstInput(sessionID: "ses_fixture", messageID: "msg_one", roundID: UUID(), text: "approved")
+                _ = try await selected.interruptForStoppedInput(sessionID: "ses_fixture")
             }
             await #expect(throws: OpenCodeProfileError.changed) {
                 _ = try await other.create(directory: fixture.context.home.path, model: nil)

@@ -5,7 +5,7 @@ import Foundation
 public enum OpenCodeLaunchProfile {
     public static func server(environment: [String: String], password: String) throws -> ProviderLaunchProfile {
         guard validPassword(password) else { throw OpenCodeError.invalidCapability }
-        var environment = environment
+        var environment = environment.filter { !$0.key.hasPrefix("SPHYRNA_OPENCODE_TUI_") }
         environment.removeValue(forKey: "OPENCODE_SERVER_PASSWORD")
         environment["OPENCODE_PASSWORD"] = password
         return ProviderLaunchProfile(arguments: ["serve", "--hostname", "127.0.0.1", "--port", "0"],

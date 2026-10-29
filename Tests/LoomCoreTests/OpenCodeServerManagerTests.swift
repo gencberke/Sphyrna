@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 @testable import LoomCore
@@ -80,14 +81,14 @@ struct OpenCodeServerManagerTests {
                     if self.path == '/api/session':
                         self.event('session.created', 1)
                         self.answer({'data': {'id':'ses_fixture', 'location': payload['location']}})
-                    elif self.path == '/api/session/ses_fixture/prompt':
-                        msg = payload['id']
-                        self.event('session.inbox.enqueued', 2, msg)
-                        self.event('session.execution.started', 3)
-                        self.event('session.inbox.delivered', 4, msg)
-                        self.event('session.execution.succeeded', 5)
-                        self.answer({'data': {'id':msg, 'sessionID':'ses_fixture', 'type':'user',
-                                              'payload':{'text':payload['text']}, 'delivery':'steer'}})
+                        def replay_fixture():
+                            with open(os.environ['OPEN_CODE_TEST_EVENT_FIFO'], 'r') as signal:
+                                signal.read(1)
+                            self.event('session.inbox.enqueued', 2, 'msg_one')
+                            self.event('session.execution.started', 3)
+                            self.event('session.inbox.delivered', 4, 'msg_one')
+                            self.event('session.execution.succeeded', 5)
+                        threading.Thread(target=replay_fixture, daemon=True).start()
                     else:
                         self.send_response(404); self.send_header('Content-Length', '0'); self.end_headers()
             child = subprocess.Popen(['/bin/sleep', '60'], start_new_session=True)
@@ -101,8 +102,14 @@ struct OpenCodeServerManagerTests {
         try source.write(to: script, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
         let childPIDFile = context.root.appendingPathComponent("detached-child-pid")
+        let eventFIFO = context.root.appendingPathComponent("event-fifo")
+        guard mkfifo(eventFIFO.path, 0o600) == 0 else { throw OpenCodeError.unavailable }
+        let fifoReader = open(eventFIFO.path, O_RDONLY | O_NONBLOCK)
+        guard fifoReader >= 0 else { throw OpenCodeError.unavailable }
+        defer { Darwin.close(fifoReader) }
         let (verified, environment) = try await proof(context: context, executable: script,
-            extra: ["OPEN_CODE_TEST_TMP": context.home.path, "OPEN_CODE_CHILD_PID_PATH": childPIDFile.path])
+            extra: ["OPEN_CODE_TEST_TMP": context.home.path, "OPEN_CODE_CHILD_PID_PATH": childPIDFile.path,
+                    "OPEN_CODE_TEST_EVENT_FIFO": eventFIFO.path])
         let scope = try await context.supervisor.openScope()
         let manager = OpenCodeServerManager(supervisor: context.supervisor, configuration: .init(
             executable: script.path, workingDirectory: context.home.path,
@@ -119,9 +126,15 @@ struct OpenCodeServerManagerTests {
             #expect(session.id == "ses_fixture")
             #expect(await SessionRuntimeTests.waitUntil(2) { live.snapshot?.creationSequence == 1 })
             #expect(live.snapshot?.execution == .unknown)
-            let receipt = try await firstClient.firstInput(sessionID: session.id, messageID: "msg_one",
-                                                           roundID: roundID, text: "fixture input")
-            #expect(receipt == "msg_one")
+            await #expect(throws: OpenCodeError.unavailable) {
+                _ = try await firstClient.firstInput(sessionID: session.id, messageID: "msg_one",
+                                                     roundID: roundID, text: "fixture input")
+            }
+            // Synthetic round evidence tests the reducer without granting API input authority.
+            try live.begin(roundID: roundID, inputID: "msg_one", requireCreation: true)
+            try live.receipt(inputID: "msg_one")
+            let signal = Task.detached { try Data("1".utf8).write(to: eventFIFO) }
+            try await signal.value
             #expect(await SessionRuntimeTests.waitUntil(2) { live.snapshot?.input?.state == .settled(.succeeded) })
             #expect(live.snapshot?.appSessionID == appID)
             #expect(live.snapshot?.runID == runID)
