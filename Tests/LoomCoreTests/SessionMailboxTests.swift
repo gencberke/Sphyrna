@@ -172,8 +172,18 @@ struct SessionMailboxTests {
         #expect(try await owner?.offer(offer) == .pending)
         await #expect(throws: SessionTaskError.storage) { _ = try await SessionMailbox.open(url: url, exclusive: true) }
         #expect(try await owner?.status(id: offer.id) == .pending, "another owner must not retire a live offer")
+        weak var released = owner
         owner = nil
-        let reopened = try await SessionMailbox.open(url: url, exclusive: true)
+        // The owner's lock goes with its last reference, and the actor's executor can hold one a moment after `owner = nil`
+        // (the full run's free pool reopened inside that moment once). An owner that is never released still fails here.
+        let deadline = ContinuousClock.now + .seconds(2)
+        var lockFree: SessionMailbox?
+        while lockFree == nil {
+            do { lockFree = try await SessionMailbox.open(url: url, exclusive: true) }
+            catch SessionTaskError.storage where ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        }
+        #expect(released == nil, "the first owner was released")
+        let reopened = try #require(lockFree)
         #expect(try await reopened.status(id: offer.id) == .failed)
         let next = makeOffer(sender: sender, target: target)
         #expect(try await reopened.offer(next) == .pending, "a lost offer does not permanently block its sender")
