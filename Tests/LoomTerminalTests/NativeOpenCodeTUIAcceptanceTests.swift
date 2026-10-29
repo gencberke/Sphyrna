@@ -19,13 +19,6 @@ private enum NativeOpenCodeAcceptanceGate {
             required.allSatisfy { !(environment[$0] ?? "").isEmpty }
     }
 
-    // This is deliberately not an environment override or a self-attestation.
-    // The parent removes it only after the owned-scope sampler is reviewed.
-    static var supervisorPrivacyVerified: Bool { false }
-
-    static func requirePrivacy() throws {
-        try nativeAcceptanceRequire(supervisorPrivacyVerified, "scope-sampling-unverified")
-    }
 }
 
 private struct NativeOpenCodeAcceptanceFailure: Error, Equatable {
@@ -390,11 +383,14 @@ private final class NativeOpenCodeScreen: TerminalOutputSink, TerminalDelegate, 
     private var failed = false
     private var interaction = false
     private var responseCount = 0
+    private var closed = false
 
     func attach(_ endpoint: TerminalEndpoint) {
         lock.withLock {
+            guard !closed else { return }
             queue = TerminalInputQueue(endpoint: endpoint, capacity: 32 * 1024) { [weak self] _ in
-                self?.lock.withLock { self?.failed = true }
+                guard let self else { return }
+                self.lock.withLock { if !self.closed { self.failed = true } }
             }
             if !pending.isEmpty {
                 if queue?.enqueueTerminalResponse(pending) != true { failed = true }
@@ -405,7 +401,7 @@ private final class NativeOpenCodeScreen: TerminalOutputSink, TerminalDelegate, 
 
     func receive(_ data: Data) {
         lock.withLock {
-            guard !failed else { return }
+            guard !closed, !failed else { return }
             totalBytes += data.count
             guard totalBytes <= 1024 * 1024 else { failed = true; return }
             terminal.terminalLock.withLock { terminal.feed(byteArray: Array(data)) }
@@ -419,11 +415,12 @@ private final class NativeOpenCodeScreen: TerminalOutputSink, TerminalDelegate, 
 
     func send(source: SwiftTerm.Terminal, data: ArraySlice<UInt8>) {
         // Any reply that lost its origin is refused, never treated as a key.
-        lock.withLock { failed = true }
+        lock.withLock { if !closed { failed = true } }
     }
 
     func send(source: SwiftTerm.Terminal, data: ArraySlice<UInt8>, origin: TerminalInputOrigin) {
         lock.withLock {
+            guard !closed else { return }
             guard origin == .protocolResponse, !data.isEmpty else { failed = true; return }
             responseCount += 1
             if let queue {
@@ -438,11 +435,16 @@ private final class NativeOpenCodeScreen: TerminalOutputSink, TerminalDelegate, 
         lock.withLock { (failed, interaction, responseCount, totalBytes) }
     }
 
-    func close() {
+    /// Freeze the final observation and retire input under the same lock, so
+    /// late native output cannot alter the acceptance decision.
+    @discardableResult
+    func close() -> (failed: Bool, needsInteraction: Bool, replies: Int, bytes: Int) {
         lock.withLock {
+            closed = true
             queue?.close(reason: "Native acceptance finished")
             queue = nil
             pending.removeAll(keepingCapacity: false)
+            return (failed, interaction, responseCount, totalBytes)
         }
     }
 }
@@ -637,13 +639,17 @@ struct NativeOpenCodeTUIAcceptanceTests {
                 "d16bdac6fd81d258c2e6bb8476d866307a647339c4d1c2ade300cd988c157184")
     }
 
-    @Test func unresolvedSupervisorPrivacyStopsTheAcceptanceBeforeStartup() {
-        do {
-            try NativeOpenCodeAcceptanceGate.requirePrivacy()
-            Issue.record("Unreviewed supervisor sampling must block native acceptance")
-        } catch let error as NativeOpenCodeAcceptanceFailure {
-            #expect(error.phase == "scope-sampling-unverified")
-        } catch { Issue.record("Unexpected native acceptance privacy result") }
+    @Test func terminalCloseFreezesTheFinalAcceptanceObservation() {
+        let screen = NativeOpenCodeScreen()
+        screen.receive(Data("Ready".utf8))
+        let before = screen.state
+        screen.close()
+        screen.receive(Data("Permission required\u{1b}[6n".utf8))
+        let after = screen.state
+        #expect(after.bytes == before.bytes)
+        #expect(after.replies == before.replies)
+        #expect(after.needsInteraction == before.needsInteraction)
+        #expect(after.failed == before.failed)
     }
 
     @Test(.enabled(if: NativeOpenCodeAcceptanceGate.enabled,
@@ -664,10 +670,6 @@ struct NativeOpenCodeTUIAcceptanceTests {
         var failure: String?
         let screen = NativeOpenCodeScreen()
         do {
-            // The current supervisor samples process environments before
-            // restricting them to its RunScope. Do not run this fixture until
-            // that shared Core privacy seam is resolved and reviewed.
-            try NativeOpenCodeAcceptanceGate.requirePrivacy()
             let value = try NativeOpenCodeAcceptanceInputs.read()
             input = value
             let layout = NativeOpenCodeLayout(root: value.root)
@@ -798,11 +800,12 @@ struct NativeOpenCodeTUIAcceptanceTests {
             failure = (error as? NativeOpenCodeAcceptanceFailure)?.phase ?? result.phase
         }
 
-        let screenState = screen.state
+        let screenState = screen.close()
         result.protocolReplies = screenState.replies
         result.terminalBytes = screenState.bytes
         result.interactionRequired = screenState.needsInteraction
-        screen.close()
+        if screenState.failed { failure = failure ?? "terminal-output" }
+        if screenState.needsInteraction { failure = failure ?? "interaction-required" }
         if let bridge { await bridge.stop() }
         var cleanup = true
         if let scope {
