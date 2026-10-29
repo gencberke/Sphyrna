@@ -4,7 +4,9 @@
 #                         [--scratch <path>] [--macro-plugin <dylib>]
 #   default   git diff --check, git diff --cached --check, trailing whitespace in untracked files, zsh -n on
 #             scripts/**/*.sh, py_compile on scripts/**/*.py, clang -Wall -Wextra -Werror -fsyntax-only on the C
-#             sources, then swift build (debug) in the build slot.
+#             sources, the source guards and the test guard (scripts/check-source-guards.py, check-tests.py), then
+#             swift build (debug) in the build slot. After any test step the log goes into the test ledger
+#             (scripts/test-ledger.py) and the wall time per target and the five slowest tests are printed.
 #   --suite   adds swift test --filter <Name> per name (target, suite or test name, a regex).
 #   --tests   adds every test target. Tests that open a real window are skipped unless --windows.
 #   --windows includes the window tests; needs --idle (unlocked screen, Mac idle by the user's word). With --tests
@@ -67,11 +69,18 @@ log_dir=${LOOM_CHECK_LOG_DIR:-$HOME/Library/Caches/loom-check-logs}
 loom_refuse_documents "LOOM_CHECK_LOG_DIR" "$log_dir"
 mkdir -p "$log_dir"
 log="$log_dir/check-$(date +%Y%m%dT%H%M%S)-$$.log"
+export LOOM_CHECK_LOG_DIR=$log_dir
 pycache=$(mktemp -d "${TMPDIR:-/tmp}/loom-check-pycache.XXXXXX")
 trap 'rm -rf "$pycache"' EXIT
 cd "$root"
+# The tree the log speaks for: the ledger keys its runs by it (`+dirty` when tracked files differ from HEAD).
+source_sha=$(git rev-parse --short --verify -q HEAD 2>/dev/null || true)
+if [[ -n $source_sha ]]; then
+  git diff --quiet HEAD -- 2>/dev/null || source_sha+="+dirty"
+  print -r -- "=== source: $source_sha" >> "$log"
+fi
 
-failed_step="" step_status=0
+failed_step="" step_status=0 tests_ran=0
 # step <label> <command...>: runs the command, appends its output to the log, prints one line.
 step() {
   local label=$1; shift
@@ -87,7 +96,14 @@ step() {
     finish
   fi
 }
+# ledger_report: after a test step, files the log in the ledger and prints its summary. It reports; it never fails a check.
+ledger_report() {
+  (( tests_ran )) || return 0
+  python3 scripts/test-ledger.py ingest "$log" >> "$log" 2>&1 || { print -r -- "  (test ledger: could not file this log)"; return 0; }
+  python3 scripts/test-ledger.py summary --log "$log" 2>/dev/null | sed 's/^/  /' || true
+}
 finish() {
+  ledger_report
   if [[ -n $failed_step ]]; then
     print -r -- "check: FAIL at '$failed_step' (log: $log)"
     (( step_status == 3 )) && exit 3
@@ -174,6 +190,8 @@ step "clang -Werror syntax (C sources)" c_syntax
 step "theme literals (LoomCatalogUI)" zsh scripts/check-theme-literals.sh
 step "user wording (session, not conversation; Sphyrna, not Loom)" zsh scripts/check-user-wording.sh
 step "selectable text labels (LoomCatalogUI, loom-app)" zsh scripts/check-selectable-labels.sh
+step "source guards (Sources/)" python3 scripts/check-source-guards.py
+step "test guard (Tests/, ratchet)" python3 scripts/check-tests.py
 if (( full )); then
   step "swift build -c release" slot swift build -c release --scratch-path "$scratch"
 else
@@ -182,6 +200,7 @@ fi
 if (( full || release_tree )); then step "staged release tree (build, no evidence code)" loom_check_release_tree; fi
 test_cfg=()
 (( full )) && test_cfg=(-c release)
+(( full || run_tests || ${#suites} )) && tests_ran=1
 if (( full || run_tests )); then
   # The window tests never share a run with the offscreen suites: those host windows that take key and first responder at
   # the same time, and in the e58c2c9 gate the window tests' clicks, keys and focus did not land among them (each passed

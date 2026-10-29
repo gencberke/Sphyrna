@@ -7,11 +7,14 @@ root = Path(__file__).resolve().parent.parent
 def probe(flags):
     with tempfile.TemporaryDirectory(prefix='loom-check-routing-', dir='/private/tmp') as tmp:
         fixture = Path(tmp)
-        for name in ['check.sh', 'dev-paths.sh', 'with-build-slot.sh', 'check-theme-literals.sh', 'check-user-wording.sh', 'check-user-wording.allow', 'release/allowlist.sh']:
+        for name in ['check.sh', 'dev-paths.sh', 'with-build-slot.sh', 'check-theme-literals.sh', 'check-user-wording.sh', 'check-user-wording.allow', 'check-selectable-labels.sh', 'test-ledger.py', 'release/allowlist.sh']:
             src = root/'scripts'/name
             dst = fixture/'scripts'/name
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src,dst)
+        # The guards read the real Sources/ and Tests/; the fixture has neither, and routing is what it checks.
+        for name in ['check-source-guards.py', 'check-tests.py']:
+            (fixture/'scripts'/name).write_text('print("guard stub")\n')
         for name in ['LoomCatalogUI', 'loom-app', 'LoomCore', 'LoomChat', 'LoomLaunchOptions', 'LoomRemora']:
             (fixture/'Sources'/name).mkdir(parents=True)
             (fixture/'Sources'/name/'Fixture.swift').write_text('// Isolated routing fixture.\n')

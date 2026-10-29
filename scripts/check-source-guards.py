@@ -35,10 +35,19 @@ class Sources:
     def __init__(self, root):
         self.root = root
         self._files = None
+        self._texts, self._codes = {}, {}
 
     def text(self, path):
-        with open(os.path.join(self.root, path), encoding='utf-8') as f:
-            return f.read()
+        if path not in self._texts:
+            with open(os.path.join(self.root, path), encoding='utf-8') as f:
+                self._texts[path] = f.read()
+        return self._texts[path]
+
+    def code(self, path):
+        """The file with comments and strings blanked (swift_source.code), read once per run."""
+        if path not in self._codes:
+            self._codes[path] = swift.code(self.text(path))
+        return self._codes[path]
 
     def exists(self, path):
         return os.path.isfile(os.path.join(self.root, path))
@@ -184,7 +193,7 @@ def remora_reach(files):
 
 
 def rule_remora_reach(src):
-    files = [(p, swift.code(src.text(p))) for p in src.all()]
+    files = [(p, src.code(p)) for p in src.all()]
     problems = []
     paths = {p for p, _ in files}
     if len(files) < 300:
@@ -396,7 +405,7 @@ def input_reads(files):
 
 
 def rule_input_reads(src):
-    return input_reads([(p, swift.code(src.text(p))) for p in src.all()])
+    return input_reads([(p, src.code(p)) for p in src.all()])
 
 
 # ---- banner-symbol --------------------------------------------------------------------------------------------------------
