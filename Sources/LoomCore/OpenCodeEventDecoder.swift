@@ -8,6 +8,12 @@ public struct OpenCodeEvent: Equatable, Sendable {
     public let sessionID: String?
     public let sequence: Int64?
     public let inboxID: String?
+    public let version: Int?
+
+    init(id: String, type: String, sessionID: String?, sequence: Int64?, inboxID: String?, version: Int? = nil) {
+        self.id = id; self.type = type; self.sessionID = sessionID
+        self.sequence = sequence; self.inboxID = inboxID; self.version = version
+    }
 }
 
 /// Incremental SSE frames from `/api/event`. Text and tool payloads are never
@@ -79,6 +85,6 @@ public struct OpenCodeEventDecoder: Sendable {
             }
         }
         return OpenCodeEvent(id: event.id, type: event.type, sessionID: event.data.sessionID,
-                             sequence: event.durable?.seq, inboxID: event.data.inboxID)
+                             sequence: event.durable?.seq, inboxID: event.data.inboxID, version: event.durable?.version)
     }
 }

@@ -9,7 +9,7 @@ import Testing
         let data = Data(frame.utf8)
         #expect(try decoder.feed(data.prefix(35)).isEmpty)
         let events = try decoder.feed(data.dropFirst(35))
-        #expect(events == [OpenCodeEvent(id: "evt_1", type: "session.inbox.delivered", sessionID: "ses_one", sequence: 42, inboxID: "msg_one")])
+        #expect(events == [OpenCodeEvent(id: "evt_1", type: "session.inbox.delivered", sessionID: "ses_one", sequence: 42, inboxID: "msg_one", version: 1)])
     }
 
     @Test func malformedAndOversizedFramesFailClosed() throws {

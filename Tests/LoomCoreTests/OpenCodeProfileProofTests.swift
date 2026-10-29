@@ -197,12 +197,16 @@ struct OpenCodeProfileProofTests {
             let proof = try await fixture.acquire()
             let http = OpenCodeProfileHTTPFixture(temporaryDirectory: fixture.roots.tmp, workingDirectory: fixture.context.home.path)
             let url = URL(string: "http://127.0.0.1:43123")!
+            let selectedFeed = OpenCodeLiveFeed(appSessionID: UUID(), runID: UUID())
+            let otherFeed = OpenCodeLiveFeed(appSessionID: UUID(), runID: UUID())
+            selectedFeed.didConnect()
+            otherFeed.didConnect()
             let selected = OpenCodeClient(base: url, password: "fixture", profileProof: proof,
                                           executable: fixture.executable.path, environment: fixture.environment,
-                                          workingDirectory: fixture.context.home.path) { try await http.respond($0) }
+                                          workingDirectory: fixture.context.home.path, liveFeed: selectedFeed) { try await http.respond($0) }
             let other = OpenCodeClient(base: url, password: "fixture", profileProof: proof,
                                        executable: fixture.executable.path, environment: fixture.environment,
-                                       workingDirectory: fixture.context.home.path) { try await http.respond($0) }
+                                       workingDirectory: fixture.context.home.path, liveFeed: otherFeed) { try await http.respond($0) }
             try await selected.verify(pid: 1234, version: "2.2.0", temporaryDirectory: fixture.roots.tmp)
             await #expect(throws: OpenCodeError.invalidTarget) {
                 try await other.verify(pid: 1234, version: "2.2.0", temporaryDirectory: "/other")
@@ -225,7 +229,7 @@ struct OpenCodeProfileProofTests {
                 _ = try await selected.terminalProfile(directory: fixture.context.home.path, environment: fixture.environment)
             }
             await #expect(throws: OpenCodeProfileError.changed) {
-                _ = try await selected.firstInput(sessionID: "ses_fixture", messageID: "msg_one", text: "approved")
+                _ = try await selected.firstInput(sessionID: "ses_fixture", messageID: "msg_one", roundID: UUID(), text: "approved")
             }
             await #expect(throws: OpenCodeProfileError.changed) {
                 _ = try await other.create(directory: fixture.context.home.path, model: nil)

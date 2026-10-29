@@ -28,30 +28,76 @@ struct OpenCodeServerManagerTests {
         let context = try await SessionRuntimeTests.makeContext(startRuntime: false, scoped: true)
         defer { context.cleanup() }
         let script = context.root.appendingPathComponent("opencode-fake")
-        let source = """
+        let source = #"""
             #!/usr/bin/python3
-            import base64, json, os, subprocess, sys
+            import base64, json, os, subprocess, sys, threading
             if sys.argv[1:] == ['debug', 'paths']:
                 print(os.environ['OPEN_CODE_PROFILE_OUTPUT'], end='')
                 sys.exit(0)
-            from http.server import HTTPServer, BaseHTTPRequestHandler
+            from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
             class Handler(BaseHTTPRequestHandler):
+                protocol_version = 'HTTP/1.1'
                 def log_message(self, *args): pass
-                def do_GET(self):
+                def allowed(self):
                     key = base64.b64encode(('opencode:' + os.environ['OPENCODE_PASSWORD']).encode()).decode()
-                    if self.headers.get('Authorization') != 'Basic ' + key:
-                        self.send_response(401); self.end_headers(); return
-                    body = json.dumps({'version':'2.2.0','pid':os.getpid(),
+                    return self.headers.get('Authorization') == 'Basic ' + key
+                def answer(self, body):
+                    data = json.dumps(body).encode()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    self.wfile.flush()
+                def event(self, kind, seq, inbox=None):
+                    data = {'sessionID': 'ses_fixture'}
+                    if inbox is not None: data['inboxID'] = inbox
+                    event = {'id': 'evt_%d' % seq, 'type': kind, 'data': data,
+                             'durable': {'aggregateID': 'ses_fixture', 'seq': seq, 'version': 1}}
+                    with self.server.event_lock:
+                        target = self.server.subscriber
+                        target.wfile.write(('data: ' + json.dumps(event) + '\n\n').encode())
+                        target.wfile.flush()
+                def do_GET(self):
+                    if not self.allowed():
+                        self.send_response(401); self.send_header('Content-Length', '0'); self.end_headers(); return
+                    if self.path.startswith('/api/event?'):
+                        self.send_response(200)
+                        self.send_header('Content-Type', 'text/event-stream')
+                        self.end_headers()
+                        self.server.subscriber = self
+                        self.wfile.write(b'data: {"id":"evt_ready","type":"server.connected","data":{}}\n\n')
+                        self.wfile.flush()
+                        self.connection.recv(1)
+                        return
+                    self.answer({'version':'2.2.0','pid':os.getpid(),
                         'urls':['http://127.0.0.1:%d' % self.server.server_port],
-                        'paths':{'tmp':os.environ['OPEN_CODE_TEST_TMP']}}).encode()
-                    self.send_response(200); self.send_header('Content-Length', str(len(body)))
-                    self.end_headers(); self.wfile.write(body)
+                        'paths':{'tmp':os.environ['OPEN_CODE_TEST_TMP']}})
+                def do_POST(self):
+                    if not self.allowed():
+                        self.send_response(401); self.send_header('Content-Length', '0'); self.end_headers(); return
+                    payload = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                    if self.path == '/api/session':
+                        self.event('session.created', 1)
+                        self.answer({'data': {'id':'ses_fixture', 'location': payload['location']}})
+                    elif self.path == '/api/session/ses_fixture/prompt':
+                        msg = payload['id']
+                        self.event('session.inbox.enqueued', 2, msg)
+                        self.event('session.execution.started', 3)
+                        self.event('session.inbox.delivered', 4, msg)
+                        self.event('session.execution.succeeded', 5)
+                        self.answer({'data': {'id':msg, 'sessionID':'ses_fixture', 'type':'user',
+                                              'payload':{'text':payload['text']}, 'delivery':'steer'}})
+                    else:
+                        self.send_response(404); self.send_header('Content-Length', '0'); self.end_headers()
             child = subprocess.Popen(['/bin/sleep', '60'], start_new_session=True)
             with open(os.environ['OPEN_CODE_CHILD_PID_PATH'], 'w') as handle: handle.write(str(child.pid))
-            server = HTTPServer(('127.0.0.1', 0), Handler)
+            server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+            server.event_lock = threading.Lock()
+            server.subscriber = None
             print('server listening on http://127.0.0.1:%d' % server.server_port, flush=True)
             server.serve_forever()
-            """
+            """#
         try source.write(to: script, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
         let childPIDFile = context.root.appendingPathComponent("detached-child-pid")
@@ -67,12 +113,36 @@ struct OpenCodeServerManagerTests {
             let secondClient = try await manager.start()
             #expect(firstClient === secondClient)
             #expect(await context.supervisor.runningSessionIDs().count == 1)
+            let appID = UUID(), runID = UUID(), roundID = UUID()
+            let live = try await firstClient.openLive(appSessionID: appID, runID: runID)
+            let session = try await firstClient.create(directory: context.home.path, model: nil)
+            #expect(session.id == "ses_fixture")
+            #expect(await SessionRuntimeTests.waitUntil(2) { live.snapshot?.creationSequence == 1 })
+            #expect(live.snapshot?.execution == .unknown)
+            let receipt = try await firstClient.firstInput(sessionID: session.id, messageID: "msg_one",
+                                                           roundID: roundID, text: "fixture input")
+            #expect(receipt == "msg_one")
+            #expect(await SessionRuntimeTests.waitUntil(2) { live.snapshot?.input?.state == .settled(.succeeded) })
+            #expect(live.snapshot?.appSessionID == appID)
+            #expect(live.snapshot?.runID == runID)
+            #expect(live.snapshot?.input?.roundID == roundID)
+            #expect(live.snapshot?.input?.creationSequence == 1)
+            #expect(live.snapshot?.input?.startSequence == 3)
+            #expect(live.snapshot?.input?.deliverySequence == 4)
+            #expect(live.snapshot?.input?.terminalSequence == 5)
             let pidText = try String(contentsOf: childPIDFile, encoding: .utf8)
             let childPID = try #require(Int32(pidText))
             #expect(ProcessTable.record(pid: childPID) != nil)
             let stopped = await manager.stop()
             #expect(stopped.errors.isEmpty)
             #expect(stopped.report?.succeeded == true)
+            #expect(!live.isConnected)
+            #expect(live.snapshot?.execution == .unknown)
+            #expect(live.snapshot?.input?.state == .unknown)
+            #expect(live.snapshot?.input?.creationSequence == nil)
+            #expect(live.snapshot?.input?.startSequence == nil)
+            #expect(live.snapshot?.input?.deliverySequence == nil)
+            #expect(live.snapshot?.input?.terminalSequence == nil)
             #expect(await context.supervisor.runningSessionIDs().isEmpty)
             #expect(ProcessTable.record(pid: childPID).map(\.zombie) ?? true)
         } catch {

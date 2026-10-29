@@ -40,8 +40,9 @@ public struct OpenCodeSession: Equatable, Sendable {
     public let permissions: [OpenCodePermissionRule]?
 }
 
-/// One server/run and its admitted input receipts. This client never turns a
-/// last outcome or a volatile SSE event into a completed app round.
+/// One server/run and its admitted input receipts. Only an exact delivered
+/// input correlated with an observed busy period can carry its native outcome;
+/// a last outcome or an uncorrelated event never completes an app round.
 public actor OpenCodeClient {
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)
     private enum Admission {
@@ -49,6 +50,7 @@ public actor OpenCodeClient {
     }
     private struct Receipt {
         let sessionID: String
+        let roundID: UUID
         let fingerprint: SHA256.Digest
         var admission: Admission
     }
@@ -59,6 +61,12 @@ public actor OpenCodeClient {
     private let lease: OpenCodeHTTPLease
     private let profile: OpenCodeProfileBinding?
     private let expectedPID: Int32?
+    private let streamOwner: ProcessIdentity?
+    private var feed: OpenCodeLiveFeed?
+    private var eventStream: OpenCodeEventStream?
+    private var eventOpening: Task<OpenCodeEventStream, any Error>?
+    private var eventClosing: Task<Void, Never>?
+    private var selectedWasNew = false
     private var verified = false
     private var closed = false
     private var createAttempted = false
@@ -74,7 +82,7 @@ public actor OpenCodeClient {
                 timeout: TimeInterval = 5) throws {
         guard OpenCodeLaunchProfile.validServerURL(serverURL), OpenCodeLaunchProfile.validPassword(password),
               timeout.isFinite, timeout > 0, timeout <= 30 else { throw OpenCodeError.invalidTarget }
-        self.serverURL = serverURL; self.password = password; expectedPID = leader.pid
+        self.serverURL = serverURL; self.password = password; expectedPID = leader.pid; streamOwner = leader
         profile = OpenCodeProfileBinding(proof: profileProof, executable: executable,
                                          environment: environment, directory: workingDirectory)
         let lease = OpenCodeHTTPLease()
@@ -83,23 +91,49 @@ public actor OpenCodeClient {
     }
 
     /// Only a test fixture can replace the real, ownership-checked transport.
-    init(base: URL, password: String, transport: @escaping Transport) {
+    init(base: URL, password: String, liveFeed: OpenCodeLiveFeed? = nil,
+         eventStream: OpenCodeEventStream? = nil, leader: ProcessIdentity? = nil, transport: @escaping Transport) {
         serverURL = base; self.password = password; self.transport = transport; lease = OpenCodeHTTPLease(); profile = nil
-        expectedPID = nil
+        expectedPID = leader?.pid; streamOwner = leader; feed = liveFeed; self.eventStream = eventStream
     }
 
     /// Test transport with the same profile binding used by the production initializer.
     init(base: URL, password: String, profileProof: OpenCodeProfileProof, executable: String,
-         environment: [String: String], workingDirectory: String, transport: @escaping Transport) {
+         environment: [String: String], workingDirectory: String, liveFeed: OpenCodeLiveFeed? = nil,
+         transport: @escaping Transport) {
         serverURL = base; self.password = password; self.transport = transport; lease = OpenCodeHTTPLease()
-        expectedPID = nil
+        expectedPID = nil; streamOwner = nil; feed = liveFeed
         profile = OpenCodeProfileBinding(proof: profileProof, executable: executable,
                                          environment: environment, directory: workingDirectory)
     }
 
-    public func close() { closed = true; verified = false; lease.revoke() }
+    public func close() async {
+        if let eventClosing { await eventClosing.value; return }
+        guard !closed else { return }
+        closed = true; verified = false; lease.revoke()
+        let opening = eventOpening
+        opening?.cancel()
+        let active = eventStream
+        eventStream = nil
+        feed?.didDisconnect()
+        let closing = Task {
+            if let opening, let opened = try? await opening.value { await opened.close() }
+            if let active { await active.close() }
+        }
+        eventClosing = closing
+        await closing.value
+        eventClosing = nil
+    }
+
+    deinit {
+        lease.revoke()
+        eventOpening?.cancel()
+        eventStream?.cancel()
+        feed?.didDisconnect()
+    }
 
     public func verify(pid: Int32, version: String, temporaryDirectory: String) async throws {
+        guard eventStream == nil, eventOpening == nil else { throw OpenCodeError.conflict }
         verified = false
         try await validateProfile()
         guard pid > 0, expectedPID == nil || expectedPID == pid, !version.isEmpty, temporaryDirectory.hasPrefix("/"),
@@ -114,10 +148,53 @@ public actor OpenCodeClient {
         verified = true
     }
 
+    /// Opens the event subscription before any create/resume or input. The
+    /// connected event proves the server installed its volatile subscriber.
+    /// The caller supplies the actual application session and run identity.
+    public func openLive(appSessionID: UUID, runID: UUID, timeout: TimeInterval = 5) async throws -> OpenCodeLiveFeed {
+        try await validateProfile()
+        try requireVerified()
+        guard let owner = streamOwner, feed == nil, eventOpening == nil, selectedID == nil else {
+            throw OpenCodeError.conflict
+        }
+        let next = OpenCodeLiveFeed(appSessionID: appSessionID, runID: runID)
+        let url = serverURL, secret = password, requestLease = lease
+        let opening = Task {
+            try await OpenCodeEventStream.open(
+                serverURL: url, password: secret, owner: owner, timeout: timeout,
+                onConnected: { next.didConnect() },
+                onEvent: { next.receive($0) },
+                onDisconnect: { requestLease.revoke(); next.didDisconnect() }
+            )
+        }
+        eventOpening = opening
+        do {
+            let stream = try await withTaskCancellationHandler {
+                try await opening.value
+            } onCancel: { opening.cancel() }
+            eventOpening = nil
+            if Task.isCancelled {
+                await stream.close()
+                throw CancellationError()
+            }
+            guard !closed, next.isConnected else {
+                await stream.close()
+                throw OpenCodeError.unavailable
+            }
+            eventStream = stream
+            feed = next
+            return next
+        } catch {
+            eventOpening = nil
+            throw error
+        }
+    }
+
     public func create(directory: String, model: OpenCodeModel?,
                        permissions: [OpenCodePermissionRule]? = nil) async throws -> OpenCodeSession {
         try await validateProfile()
         try requireVerified()
+        guard let feed, feed.isConnected else { throw OpenCodeError.unavailable }
         guard selectedID == nil, !createAttempted, !resuming else { throw OpenCodeError.conflict }
         guard validDirectory(directory), profile == nil || profile?.directory == directory, model?.valid != false,
               permissions.map({ $0.count <= 128 && $0.allSatisfy(\.valid) }) ?? true else { throw OpenCodeError.invalidTarget }
@@ -132,15 +209,22 @@ public actor OpenCodeClient {
               permissions == nil || session.permissions == permissions else { throw OpenCodeError.invalidResponse }
         selectedID = session.id
         selectedDirectory = session.directory
+        selectedWasNew = true
+        if (try? feed.bind(nativeSessionID: session.id)) == nil {
+            feed.didDisconnect()
+            if let eventStream { await eventStream.close() }
+        }
         return session
     }
 
     public func resume(id: String, directory: String) async throws -> OpenCodeSession {
         try await validateProfile()
         try requireVerified()
+        guard let feed, feed.isConnected else { throw OpenCodeError.unavailable }
         guard OpenCodeLaunchProfile.validID(id, prefix: "ses"), validDirectory(directory),
               profile == nil || profile?.directory == directory, !createAttempted,
               selectedID == nil || selectedID == id, !resuming else { throw OpenCodeError.invalidTarget }
+        let alreadyBound = selectedID == id
         resuming = true
         defer { resuming = false }
         let result = try await request(path: "/api/session/\(id)", method: "GET")
@@ -150,30 +234,38 @@ public actor OpenCodeClient {
         }
         selectedID = session.id
         selectedDirectory = session.directory
+        selectedWasNew = false
+        if !alreadyBound, (try? feed.bind(nativeSessionID: session.id)) == nil {
+            feed.didDisconnect()
+            if let eventStream { await eventStream.close() }
+        }
         return session
     }
 
     /// Sends a new draft's one opening input through the API. The TUI is always
     /// launched without `--prompt`; a lost reply remains indeterminate.
-    public func firstInput(sessionID: String, messageID: String, text: String) async throws -> String {
+    public func firstInput(sessionID: String, messageID: String, roundID: UUID, text: String) async throws -> String {
         try await validateProfile()
+        guard selectedWasNew else { throw OpenCodeError.invalidTarget }
         let body = try inputBody(sessionID: sessionID, messageID: messageID, text: text)
-        if let firstMessageID, firstMessageID != messageID { throw OpenCodeError.conflict }
-        firstMessageID = messageID
-        return try await admitInput(sessionID: sessionID, messageID: messageID, text: text, body: body)
+        return try await admitInput(sessionID: sessionID, messageID: messageID, roundID: roundID, text: text,
+                                    body: body, first: true)
     }
 
     /// Explicit subsequent input only; repeated IDs with identical accepted
     /// payloads return the recorded receipt without sending. The runtime must
     /// persist its own authorization/receipt fence across process restarts.
-    public func submitInput(sessionID: String, messageID: String, text: String) async throws -> String {
+    public func submitInput(sessionID: String, messageID: String, roundID: UUID, text: String) async throws -> String {
         try await validateProfile()
+        guard !selectedWasNew || firstMessageID != nil else { throw OpenCodeError.unavailable }
         let body = try inputBody(sessionID: sessionID, messageID: messageID, text: text)
-        return try await admitInput(sessionID: sessionID, messageID: messageID, text: text, body: body)
+        return try await admitInput(sessionID: sessionID, messageID: messageID, roundID: roundID, text: text,
+                                    body: body, first: false)
     }
 
     private func inputBody(sessionID: String, messageID: String, text: String) throws -> Data {
         try requireVerified()
+        guard feed?.isConnected == true else { throw OpenCodeError.unavailable }
         guard selectedID == sessionID, OpenCodeLaunchProfile.validID(messageID, prefix: "msg_"),
               !text.isEmpty, text.utf8.count <= 48 * 1024, !text.contains("\0") else { throw OpenCodeError.invalidTarget }
         let encoder = JSONEncoder()
@@ -183,26 +275,34 @@ public actor OpenCodeClient {
         return body
     }
 
-    private func admitInput(sessionID: String, messageID: String, text: String, body: Data) async throws -> String {
+    private func admitInput(sessionID: String, messageID: String, roundID: UUID, text: String,
+                            body: Data, first: Bool) async throws -> String {
         let fingerprint = SHA256.hash(data: body)
         if let receipt = receipts[messageID] {
-            guard receipt.sessionID == sessionID, receipt.fingerprint == fingerprint else { throw OpenCodeError.conflict }
+            guard receipt.sessionID == sessionID, receipt.roundID == roundID,
+                  receipt.fingerprint == fingerprint else { throw OpenCodeError.conflict }
             switch receipt.admission {
             case .accepted: return messageID
             case .pending, .uncertain: throw OpenCodeError.indeterminate
             }
         }
+        guard let feed, feed.isConnected else { throw OpenCodeError.unavailable }
+        if first, let firstMessageID, firstMessageID != messageID { throw OpenCodeError.conflict }
         guard receipts.count < Self.receiptLimit else { throw OpenCodeError.unavailable }
-        receipts[messageID] = Receipt(sessionID: sessionID, fingerprint: fingerprint, admission: .pending)
+        try feed.begin(roundID: roundID, inputID: messageID, requireCreation: first)
+        if first { firstMessageID = messageID }
+        receipts[messageID] = Receipt(sessionID: sessionID, roundID: roundID, fingerprint: fingerprint, admission: .pending)
         do {
             let result = try await request(path: "/api/session/\(sessionID)/prompt", method: "POST", body: body)
             guard !closed, let response = try? JSONDecoder().decode(PromptEnvelope.self, from: result),
                   response.data.id == messageID, response.data.sessionID == sessionID,
                   response.data.type == "user", response.data.payload.text == text else { throw OpenCodeError.invalidResponse }
             receipts[messageID]?.admission = .accepted
+            try? feed.receipt(inputID: messageID)
             return messageID
         } catch {
             receipts[messageID]?.admission = .uncertain
+            feed.indeterminate(inputID: messageID)
             throw error
         }
     }
@@ -211,7 +311,9 @@ public actor OpenCodeClient {
     /// runtime must first fence terminal/API input and establish that no newer
     /// work can be canceled; F1's exact-round interrupt cannot assume this.
     public func interruptForStoppedInput(sessionID: String) async throws -> Bool {
+        try await validateProfile()
         try requireVerified()
+        guard feed?.isConnected == true else { throw OpenCodeError.unavailable }
         guard selectedID == sessionID else { throw OpenCodeError.invalidTarget }
         let result = try await request(path: "/api/session/\(sessionID)/interrupt", method: "POST", body: Data("{}".utf8))
         guard !closed, let value = try? JSONDecoder().decode(InterruptAnswer.self, from: result) else {
@@ -224,6 +326,10 @@ public actor OpenCodeClient {
     public func terminalProfile(directory: String, environment: [String: String]) async throws -> ProviderLaunchProfile {
         try await validateProfile(environment: environment)
         try requireVerified()
+        guard let feed, feed.isConnected else { throw OpenCodeError.unavailable }
+        guard !selectedWasNew || firstMessageID != nil || feed.permitsFirstAttachment else {
+            throw OpenCodeError.unavailable
+        }
         guard let selectedID, selectedDirectory == directory else { throw OpenCodeError.invalidTarget }
         return try OpenCodeLaunchProfile.terminal(serverURL: serverURL, sessionID: selectedID,
                                                   directory: directory, environment: environment, password: password)
@@ -239,7 +345,7 @@ public actor OpenCodeClient {
     }
 
     private func requireVerified() throws {
-        guard !closed else { throw OpenCodeError.closed }
+        guard !closed, !lease.isRevoked else { throw OpenCodeError.closed }
         guard verified else { throw OpenCodeError.unverifiedServer }
     }
 
