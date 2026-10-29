@@ -91,6 +91,12 @@ Sphyrna is the new name of Loom from 1.6.0. Some names stay Loom on purpose, so 
 
 Replace the old `Loom.app` in `/Applications` with the new one; there is nothing to move.
 
+If you rename the app's file to `Sphyrna.app` yourself, do it in place and in this order, so the Dock, the login item and
+the permissions follow it: turn **Open at login** off in Settings → General, quit Sphyrna, rename
+`/Applications/Loom.app` to `Sphyrna.app` (never install a second copy beside it and trash the old one: the Dock would
+open the copy in the Trash), open it, then turn **Open at login** on again. The bundle id and the signature do not change,
+so macOS keeps the permissions. Install later builds with `./build.sh --target /Applications/Sphyrna.app`.
+
 ## Build it yourself
 
 You need macOS 27, Xcode with its Swift toolchain, and a code-signing identity. The build refuses ad-hoc signing so that macOS privacy permissions survive a rebuild. A self-signed certificate is enough: in Keychain Access choose **Certificate Assistant → Create a Certificate…**, name it `Loom Dev Code Signing`, pick **Self-Signed Root** and **Code Signing**, then set its trust for code signing to **Always Trust**. `security find-identity -v -p codesigning` should list it. To use an identity you already have, set `LOOM_CODESIGN_IDENTITY` to its name.

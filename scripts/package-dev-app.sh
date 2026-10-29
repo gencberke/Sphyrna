@@ -90,16 +90,25 @@ STRINGS
 # Run scopes: LaunchServices starts one instance per run, each in a fresh
 # resource coalition (plans/cp5/OWN.md). It is its own TCC-responsible app.
 host="$app/Contents/Helpers/LoomRunHost.app"
-mkdir -p "$host/Contents/MacOS"
+mkdir -p "$host/Contents/MacOS" "$host/Contents/Resources/en.lproj"
 cp "$bin/loom-run-host" "$host/Contents/MacOS/loom-run-host"
+# Activity Monitor lists the host under its LaunchServices name, and LaunchServices reads the display name only
+# while the plain CFBundleDisplayName is the file's name; otherwise it shows "LoomRunHost" (FB6-12). So, as for the app,
+# the plain one says LoomRunHost and en.lproj says Sphyrna Dev Run Host.
+cat > "$host/Contents/Resources/en.lproj/InfoPlist.strings" <<STRINGS
+"CFBundleName" = "Sphyrna Dev Run Host";
+"CFBundleDisplayName" = "Sphyrna Dev Run Host";
+STRINGS
 cat > "$host/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>local.loom.desktop.dev.run-host</string>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>CFBundleName</key><string>Sphyrna Dev Run Host</string>
-  <key>CFBundleDisplayName</key><string>Sphyrna Dev Run Host</string>
+  <key>CFBundleDisplayName</key><string>LoomRunHost</string>
+  <key>LSHasLocalizedDisplayName</key><true/>
   <key>CFBundleExecutable</key><string>loom-run-host</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSBackgroundOnly</key><true/>
