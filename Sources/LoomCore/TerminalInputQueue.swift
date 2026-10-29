@@ -26,6 +26,7 @@ public enum TerminalInputError: Error, CustomStringConvertible, Equatable, Senda
 /// task finishes short writes before taking the next bytes. Memory is bounded
 /// by `capacity`; there is no work while the queue is empty.
 public final class TerminalInputQueue: @unchecked Sendable {
+    struct AutomaticInputTicket: Equatable, Sendable { let id: UUID }
     public typealias Writer = @Sendable (Data) async throws -> Int
 
     public let capacity: Int
@@ -40,6 +41,12 @@ public final class TerminalInputQueue: @unchecked Sendable {
     private var closedReason: String?
     private var lastAcceptedUptime: TimeInterval?
     private var lastAccepted: Date?
+    // Mixed terminal input is not evidence of a clean editor. Automatic input
+    // is admitted only at an explicitly established fresh/verified boundary.
+    private var unclassifiedGeneration: UInt64 = 0
+    private var automaticClean = false
+    private var automaticEverUsed = false
+    private var automaticOutstanding: (ticket: AutomaticInputTicket, generation: UInt64)?
 
     public init(capacity: Int = 4 * 1024 * 1024, writer: @escaping Writer,
                 onError: @escaping @Sendable (TerminalInputError) -> Void) {
@@ -68,6 +75,8 @@ public final class TerminalInputQueue: @unchecked Sendable {
                                                 capacity: capacity))
             }
             pending.append(contentsOf: bytes)
+            unclassifiedGeneration &+= 1
+            automaticClean = false
             lastAcceptedUptime = ProcessInfo.processInfo.systemUptime
             lastAccepted = Date()
             guard !draining else { return (true, false, nil) }
@@ -80,6 +89,51 @@ public final class TerminalInputQueue: @unchecked Sendable {
     }
 
     public var pendingByteCount: Int { lock.withLock { pending.count - sent } }
+
+    /// Only the owner of a freshly started terminal may establish this first
+    /// boundary. Any earlier mixed input makes its editor state unknown.
+    func establishFreshCleanInput() -> Bool {
+        lock.withLock {
+            guard unclassifiedGeneration == 0, !automaticEverUsed, !draining,
+                  pending.count == sent, failure == nil, closedReason == nil else { return false }
+            automaticClean = true
+            return true
+        }
+    }
+
+    /// Admit a single printable pointer and Return atomically with the clean
+    /// check. Anything else, including a multiline payload, is deferred whole.
+    func enqueueAutomatic(_ bytes: Data) -> AutomaticInputTicket? {
+        guard bytes.count > 1, bytes.last == 0x0d,
+              bytes.dropLast().allSatisfy({ (0x20...0x7e).contains($0) }) else { return nil }
+        let ticket = lock.withLock { () -> AutomaticInputTicket? in
+            guard automaticClean, automaticOutstanding == nil, failure == nil, closedReason == nil,
+                  !draining, pending.count == sent, bytes.count <= capacity else { return nil }
+            let ticket = AutomaticInputTicket(id: UUID())
+            automaticOutstanding = (ticket, unclassifiedGeneration)
+            automaticClean = false
+            automaticEverUsed = true
+            pending.append(bytes)
+            lastAcceptedUptime = ProcessInfo.processInfo.systemUptime
+            lastAccepted = Date()
+            draining = true
+            return ticket
+        }
+        if ticket != nil { Task.detached { [self] in await drain() } }
+        return ticket
+    }
+
+    /// The owner calls this only after an exact provider-input observation.
+    /// Later mixed bytes make the editor unknown again, even if that proof is late.
+    func confirmAutomaticInput(_ ticket: AutomaticInputTicket) -> Bool {
+        lock.withLock {
+            guard let outstanding = automaticOutstanding, outstanding.ticket == ticket else { return false }
+            automaticOutstanding = nil
+            guard outstanding.generation == unclassifiedGeneration, failure == nil, closedReason == nil else { return false }
+            automaticClean = true
+            return true
+        }
+    }
 
     public enum CloseOutcome: Equatable, Sendable {
         case closed

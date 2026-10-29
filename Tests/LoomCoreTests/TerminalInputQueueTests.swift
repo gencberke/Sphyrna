@@ -47,6 +47,64 @@ struct TerminalInputQueueTests {
         }
     }
 
+    @Test func automaticInputNeverAppendsToUnclassifiedTerminalBytes() async throws {
+        let writer = ScriptedWriter(script: [])
+        let queue = TerminalInputQueue(capacity: 1024, writer: { try await writer.write($0) }, onError: { _ in })
+        let gate = TerminalInputGate(), runID = UUID()
+        gate.register(runID: runID, queue: queue)
+        #expect(gate.establishFreshCleanInput(runID: runID))
+        #expect(queue.enqueue(Data("unsent draft".utf8)))
+        try await waitUntilIdle(queue)
+        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("task pointer\r".utf8)) == nil)
+        try await waitUntilIdle(queue)
+        #expect(await writer.received == Data("unsent draft".utf8))
+    }
+
+    @Test func automaticProofCannotClearLaterUnclassifiedInput() async throws {
+        let writer = ScriptedWriter(script: [])
+        let queue = TerminalInputQueue(capacity: 1024, writer: { try await writer.write($0) }, onError: { _ in })
+        let gate = TerminalInputGate(), runID = UUID()
+        gate.register(runID: runID, queue: queue)
+        #expect(gate.establishFreshCleanInput(runID: runID))
+        let ticket = try #require(gate.enqueueAutomatic(runID: runID, bytes: Data("first\r".utf8)))
+        try await waitUntilIdle(queue)
+        #expect(queue.enqueue(Data("next draft".utf8)))
+        try await waitUntilIdle(queue)
+        #expect(!gate.confirmAutomaticInput(runID: runID, ticket: ticket))
+        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("second\r".utf8)) == nil)
+        try await waitUntilIdle(queue)
+        #expect(await writer.received == Data("first\rnext draft".utf8))
+    }
+
+    @Test func automaticInputRequiresAProvenCleanBoundaryAndOnePrintableLine() async throws {
+        let writer = ScriptedWriter(script: [])
+        let queue = TerminalInputQueue(capacity: 1024, writer: { try await writer.write($0) }, onError: { _ in })
+        let gate = TerminalInputGate(), runID = UUID()
+        gate.register(runID: runID, queue: queue)
+        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("first\r".utf8)) == nil)
+        #expect(gate.establishFreshCleanInput(runID: runID))
+        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("first\nsecond\r".utf8)) == nil)
+        let first = try #require(gate.enqueueAutomatic(runID: runID, bytes: Data("first\r".utf8)))
+        try await waitUntilIdle(queue)
+        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("second\r".utf8)) == nil)
+        #expect(gate.confirmAutomaticInput(runID: runID, ticket: first))
+        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("second\r".utf8)) != nil)
+        try await waitUntilIdle(queue)
+        #expect(await writer.received == Data("first\rsecond\r".utf8))
+        gate.unregister(runID: runID)
+        #expect(gate.enqueueAutomatic(runID: runID, bytes: Data("third\r".utf8)) == nil)
+    }
+
+    @Test func priorUnclassifiedInputCannotBeDeclaredFresh() async throws {
+        let writer = ScriptedWriter(script: [])
+        let queue = TerminalInputQueue(capacity: 1024, writer: { try await writer.write($0) }, onError: { _ in })
+        #expect(queue.enqueue(Data("\u{1b}[1;1R".utf8)))
+        try await waitUntilIdle(queue)
+        #expect(!queue.establishFreshCleanInput())
+        #expect(queue.enqueueAutomatic(Data("pointer\r".utf8)) == nil)
+        #expect(await writer.received == Data("\u{1b}[1;1R".utf8))
+    }
+
     @Test func shortAndBlockedWritesKeepEveryByteInCallerOrder() async throws {
         let writer = ScriptedWriter(script: [1, 0, 3, 0, 0, 2, 7, 1])
         let errors = ErrorLog()

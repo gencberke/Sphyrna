@@ -54,4 +54,16 @@ public final class TerminalInputGate: @unchecked Sendable {
     public func pendingByteCount(runID: UUID) -> Int {
         lock.withLock { queues[runID] }?.pendingByteCount ?? 0
     }
+
+    func establishFreshCleanInput(runID: UUID) -> Bool {
+        lock.withLock { queues[runID]?.establishFreshCleanInput() ?? false }
+    }
+
+    func enqueueAutomatic(runID: UUID, bytes: Data) -> TerminalInputQueue.AutomaticInputTicket? {
+        lock.withLock { queues[runID]?.enqueueAutomatic(bytes) }
+    }
+
+    func confirmAutomaticInput(runID: UUID, ticket: TerminalInputQueue.AutomaticInputTicket) -> Bool {
+        lock.withLock { queues[runID]?.confirmAutomaticInput(ticket) ?? false }
+    }
 }
