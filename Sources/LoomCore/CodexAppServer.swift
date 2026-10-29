@@ -558,32 +558,7 @@ public actor CodexAppServerClient {
     func resumeThread(_ threadID: String, workingDirectory: String) async throws -> CodexResumeSettings {
         let result = try await request(method: "thread/resume",
             params: .object(["threadId": .string(threadID), "excludeTurns": .bool(true)]))
-        let response = result.object ?? [:]
-        let thread = response["thread"]?.object ?? [:]
-        guard thread["id"]?.string == threadID else {
-            throw CodexAppServerError.protocolViolation("thread/resume returned a missing or different thread identity")
-        }
-        guard let cwd = response["cwd"]?.string, cwd.hasPrefix("/"), workingDirectory.hasPrefix("/"),
-              URL(fileURLWithPath: cwd).resolvingSymlinksInPath().standardizedFileURL.path
-                == URL(fileURLWithPath: workingDirectory).resolvingSymlinksInPath().standardizedFileURL.path else {
-            throw CodexAppServerError.protocolViolation("thread/resume returned a different working directory")
-        }
-        let sandbox = response["sandbox"]?.object ?? [:]
-        let mode: HarnessMode
-        switch sandbox["type"]?.string {
-        case "readOnly": mode = .askBeforeEdits
-        case "workspaceWrite" where sandbox["writableRoots"]?.array == []: mode = .acceptEdits
-        default: throw CodexAppServerError.protocolViolation("thread/resume returned unverified permissions")
-        }
-        guard sandbox["networkAccess"]?.bool == false,
-              response["approvalPolicy"]?.string == "on-request",
-              response["approvalsReviewer"]?.string == "user",
-              response["activePermissionProfile"] == nil || response["activePermissionProfile"] == .null,
-              response["runtimeWorkspaceRoots"] == nil || response["runtimeWorkspaceRoots"]?.array == [] else {
-            throw CodexAppServerError.protocolViolation("thread/resume returned unverified permissions")
-        }
-        return CodexResumeSettings(model: response["model"]?.string,
-                                   effort: response["reasoningEffort"]?.string, mode: mode)
+        return try CodexResumeSettings.decodeNative(result, threadID: threadID, workingDirectory: workingDirectory)
     }
 
     public func unsubscribe(threadID: String) async throws {

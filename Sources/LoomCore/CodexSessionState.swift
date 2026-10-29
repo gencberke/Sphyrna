@@ -8,6 +8,52 @@ public struct CodexResumeSettings: Equatable, Sendable {
     public let mode: HarnessMode
 }
 
+extension CodexResumeSettings {
+    /// Validate native permission evidence without consulting stored app launch choices.
+    static func decodeNative(_ result: JSONValue, threadID: String, workingDirectory: String) throws -> Self {
+        let response = result.object ?? [:]
+        let thread = response["thread"]?.object ?? [:]
+        guard thread["id"]?.string == threadID else {
+            throw CodexAppServerError.protocolViolation("thread/resume returned a missing or different thread identity")
+        }
+        guard let cwd = response["cwd"]?.string, cwd.hasPrefix("/"), workingDirectory.hasPrefix("/"),
+              URL(fileURLWithPath: cwd).resolvingSymlinksInPath().standardizedFileURL.path
+                == URL(fileURLWithPath: workingDirectory).resolvingSymlinksInPath().standardizedFileURL.path else {
+            throw CodexAppServerError.protocolViolation("thread/resume returned a different working directory")
+        }
+        let sandbox = response["sandbox"]?.object ?? [:]
+        // The native schema defaults absent network and writable-root fields
+        // to false/empty; null or a different type is not that default.
+        let network = sandbox["networkAccess"] ?? .bool(false)
+        let writableRoots = sandbox["writableRoots"] ?? .array([])
+        let mode: HarnessMode
+        switch sandbox["type"]?.string {
+        case "readOnly": mode = .askBeforeEdits
+        case "workspaceWrite" where writableRoots == .array([]): mode = .acceptEdits
+        default: throw CodexAppServerError.protocolViolation("thread/resume returned unverified permissions")
+        }
+        let runtimeRoots = (response["runtimeWorkspaceRoots"] ?? .array([])).array
+        let expectedRoot = URL(fileURLWithPath: workingDirectory).resolvingSymlinksInPath().standardizedFileURL.path
+        // A native TUI normally records its own cwd as :workspace_roots. It
+        // adds no directory beyond the already identity-checked workspace.
+        let rootsMatch = runtimeRoots.map { roots in
+            roots.count <= 1 && roots.allSatisfy { value in
+                guard let path = value.string, path.hasPrefix("/") else { return false }
+                return URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path == expectedRoot
+            }
+        } ?? false
+        guard network == .bool(false),
+              response["approvalPolicy"]?.string == "on-request",
+              response["approvalsReviewer"]?.string == "user",
+              response["activePermissionProfile"] == nil || response["activePermissionProfile"] == .null,
+              rootsMatch else {
+            throw CodexAppServerError.protocolViolation("thread/resume returned unverified permissions")
+        }
+        return CodexResumeSettings(model: response["model"]?.string,
+                                   effort: response["reasoningEffort"]?.string, mode: mode)
+    }
+}
+
 public struct CodexSessionStatus: Equatable, Sendable {
     public var providerThreadID: String
     public var activity: AgentActivity
