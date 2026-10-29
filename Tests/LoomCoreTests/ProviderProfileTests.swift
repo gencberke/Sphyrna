@@ -3,6 +3,28 @@ import Testing
 @testable import LoomCore
 
 struct ProviderProfileTests {
+    @Test func managedClaudeUsesNativePermissionRequestsWithoutChatBypass() throws {
+        let capabilities = ProviderCapabilities(version: "2.0.0",
+            help: "--settings <s> --session-id <i> --name <n> --effort <e> --permission-mode <m>")
+        let choices = ClaudeLaunchChoices(permissionMode: "default", model: "opus", effort: "low")
+        let managed = try ProviderLaunchProfile.claude(route: .new(UUID()), capabilities: capabilities,
+            config: URL(fileURLWithPath: "/isolated"), environment: [:], choices: choices,
+            opening: .init(taskTitle: "Owned task"), face: .managedTask)
+        let arguments = managed.launchArguments()
+        #expect(arguments.contains("--input-format") && arguments.contains("--output-format"))
+        let position = try #require(arguments.firstIndex(of: "--permission-prompt-tool"))
+        #expect(arguments.dropFirst(position + 1).first == "stdio")
+        #expect(!arguments.contains("--allow-dangerously-skip-permissions"))
+        #expect(!arguments.contains("--dangerously-skip-permissions"))
+        #expect(arguments.contains("--permission-mode") && arguments.contains("default"))
+        #expect(arguments.contains("--model") && arguments.contains("opus"))
+        #expect(arguments.contains("--effort") && arguments.contains("low"))
+        #expect(!arguments.contains("--"))
+        let chat = try ProviderLaunchProfile.claude(route: .new(UUID()), capabilities: capabilities,
+            config: URL(fileURLWithPath: "/isolated"), environment: [:], face: .chat)
+        #expect(chat.launchArguments().contains("--allow-dangerously-skip-permissions"))
+    }
+
     @Test func approvedTaskClaudeOpeningKeepsNameAndChoicesButHasNoPositionalPrompt() throws {
         let capabilities = ProviderCapabilities(version: "2.0.0", help: "--settings <s> --session-id <i> --name <n> --effort <e>")
         let profile = try ProviderLaunchProfile.claude(route: .new(UUID()), capabilities: capabilities,

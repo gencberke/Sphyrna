@@ -70,6 +70,8 @@ struct HarnessCapabilitiesTests {
         "Sources/LoomCore/ProviderResume.swift",
         // AGY's invocation builder validates its own neutral launch choices.
         "Sources/LoomCore/AgyLaunchProfile.swift",
+        // The Claude pipe controller validates that its run belongs to its native adapter.
+        "Sources/LoomChat/ManagedClaudeTaskController.swift",
         // Development-only fixture dispatches the provider-shaped fake by its command-line route.
         "Sources/loom-fake-provider/main.swift",
         "Sources/loom-app/Evidence/AppDelegate+Evidence.swift",

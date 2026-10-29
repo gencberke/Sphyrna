@@ -1,6 +1,8 @@
 import Darwin
 import Foundation
 
+private enum ManagedCodexResponseError: Error { case deferred }
+
 extension SessionRuntime {
     /// One app-server per Codex conversation run. It owns its socket, scope,
     /// client, coordinator and approval state, so nothing is shared between
@@ -23,6 +25,8 @@ extension SessionRuntime {
         var taskDiscovery: SessionTaskDiscovery = .unavailable
         var setup: (id: UUID, task: Task<CodexSessionCoordinator, any Error>)?
         var requestTask: Task<Void, Never>?
+        var progressTask: Task<Void, Never>?
+        var isManagedTask = false
         var requests: [String: CodexPendingRequest] = [:]
         var requestRevision: UInt64 = 0
         var requestOwners: [String: UUID] = [:]
@@ -270,7 +274,8 @@ extension SessionRuntime {
     /// `card`. Nothing is shared with any other run; a server a live run still
     /// references is never touched. On any failure what started is stopped again.
     func ensureCodex(
-        card: UUID, toolchain: ProviderToolchain, choices: HarnessLaunchChoices? = nil
+        card: UUID, toolchain: ProviderToolchain, choices: HarnessLaunchChoices? = nil,
+        managedRun: ManagedTaskRun? = nil
     ) async throws -> (CodexServer, CodexSessionCoordinator) {
         try Task.checkCancellation()
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
@@ -285,7 +290,7 @@ extension SessionRuntime {
                 )
             }
         }
-        let server = try await makeCodexServer(card: card, toolchain: toolchain, choices: choices)
+        let server = try await makeCodexServer(card: card, toolchain: toolchain, choices: choices, managedRun: managedRun)
         codexServers.append(server)
         do {
             let client = try await server.manager.start()
@@ -318,7 +323,8 @@ extension SessionRuntime {
         )
     }
 
-    private func makeCodexServer(card: UUID, toolchain: ProviderToolchain, choices: HarnessLaunchChoices?) async throws -> CodexServer {
+    private func makeCodexServer(card: UUID, toolchain: ProviderToolchain, choices: HarnessLaunchChoices?,
+                                 managedRun: ManagedTaskRun?) async throws -> CodexServer {
         try FileManager.default.createDirectory(
             at: configuration.socketDirectory, withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
@@ -334,24 +340,52 @@ extension SessionRuntime {
                 throw SessionRuntimeError.shuttingDown
             }
         }
+        if let managedRun {
+            guard let scope, let coordinator = taskCoordinator, managedRun.sessionID == card,
+                  let plan = taskRunPlans[card], plan.claim.managedRunID == managedRun.runID,
+                  plan.claim.generation == managedRun.generation, plan.lease.isEnabled else {
+                if let scope { _ = await supervisor.releaseScope(scope) }
+                throw SessionTaskError.unverified
+            }
+            let binding = ManagedTaskScopeBinding(taskID: managedRun.taskID, sessionID: card, runID: managedRun.runID,
+                generation: managedRun.generation, ownerRunID: supervisor.ownershipRunID, scope: scope.record)
+            do {
+                try await supervisor.registerManagedScope(binding, scope: scope)
+                try await coordinator.prepareManagedScope(binding)
+                guard await supervisor.managedScopeIsOpen(binding, scope: scope),
+                      taskRunPlans[card]?.lease === plan.lease, plan.lease.isEnabled, !shuttingDown else {
+                    throw SessionTaskError.unverified
+                }
+            } catch {
+                let failures = await supervisor.releaseScope(scope)
+                if !failures.isEmpty { throw LoomError.message("Managed task scope cleanup could not be verified") }
+                throw error
+            }
+        }
         var serverEnvironment = toolchain.environment
         serverEnvironment.merge(taskEnvironment(sessionID: card)) { _, task in task }
-        let manager = CodexAppServerManager(
-            supervisor: supervisor,
-            configuration: CodexAppServerConfiguration(
+        let serverConfiguration = CodexAppServerConfiguration(
                 executable: toolchain.executable, capabilities: toolchain.capabilities,
                 home: codexHome(toolchain),
                 baseEnvironment: serverEnvironment,
-                workingDirectory: configuration.homeDirectory, socketPath: socket,
+                workingDirectory: managedRun?.workingDirectory ?? configuration.homeDirectory, socketPath: socket,
                 clientVersion: configuration.clientVersion, launchChoices: choices,
                 startupTimeout: configuration.codexServerStartupTimeout,
                 scope: scope,
                 optOutNotificationMethods: taskRunPlans[card] == nil
                     ? CodexAppServerClient.productOptOutNotificationMethods
-                    : CodexAppServerClient.productOptOutNotificationMethods.filter { $0 != "item/started" }
+                    : CodexAppServerClient.productOptOutNotificationMethods.filter {
+                        $0 != "item/started" && (managedRun == nil || $0 != "item/completed")
+                    }
             )
-        )
-        return CodexServer(ownerCard: card, manager: manager, socket: socket, scope: scope, profileHome: codexHome(toolchain))
+        let manager: CodexAppServerManager
+        if let managedRun {
+            manager = CodexAppServerManager(supervisor: supervisor, configuration: serverConfiguration,
+                managedOwner: .init(sessionID: card, runID: managedRun.runID))
+        } else { manager = CodexAppServerManager(supervisor: supervisor, configuration: serverConfiguration) }
+        let server = CodexServer(ownerCard: card, manager: manager, socket: socket, scope: scope, profileHome: codexHome(toolchain))
+        server.isManagedTask = managedRun != nil
+        return server
     }
 
     private func requireCodexSetup(_ server: CodexServer, _ id: UUID) throws {
@@ -432,6 +466,13 @@ extension SessionRuntime {
                     await self?.received(requests: snapshot, from: coordinator)
                 }
             }
+            if server.isManagedTask {
+                let progress = await client.managedProgress()
+                try requireCodexSetup(server, setupID)
+                server.progressTask = Task { [weak self] in
+                    for await item in progress { await self?.receiveManagedCodexProgress(item, serverID: serverID) }
+                }
+            }
             return coordinator
         } catch {
             await coordinator.stop()
@@ -439,7 +480,7 @@ extension SessionRuntime {
         }
     }
 
-    private func refreshTaskDiscovery(server: CodexServer, directory: String) async {
+    func refreshTaskDiscovery(server: CodexServer, directory: String) async {
         server.taskDiscovery = .unavailable
         guard let root = server.taskSkillRoot, let client = server.client else { return }
         do {
@@ -462,14 +503,19 @@ extension SessionRuntime {
     /// A failed process check is "not verified".
     private func serverProcessGone(serverID: UUID) async -> Bool {
         guard let server = codexServers.first(where: { $0.id == serverID }) else { return true }
-        guard let id = await server.manager.internalSessionID(),
-              let run = await supervisor.session(id: id)?.currentRun else { return true }
+        let leader: ProcessIdentity
+        if let captured = await server.manager.ownedLeader() { leader = captured }
+        else {
+            guard let id = await server.manager.ownedSessionID(),
+                  let run = await supervisor.session(id: id)?.currentRun else { return true }
+            leader = run.leader
+        }
         // No record only counts as gone when the pid is really absent; any other
         // lookup failure stays "not verified".
-        guard let leader = ProcessTable.record(pid: run.leader.pid) else {
-            return kill(run.leader.pid, 0) == -1 && errno == ESRCH
+        guard let current = ProcessTable.record(pid: leader.pid) else {
+            return kill(leader.pid, 0) == -1 && errno == ESRCH
         }
-        return leader.identity != run.leader || leader.zombie
+        return current.identity != leader || current.zombie
     }
 
     private func codexServer(for coordinator: CodexSessionCoordinator) -> CodexServer? {
@@ -508,6 +554,8 @@ extension SessionRuntime {
         _ = await setup?.task.result
         server.requestTask?.cancel()
         server.requestTask = nil
+        server.progressTask?.cancel()
+        server.progressTask = nil
         await server.coordinator?.stop()
         server.coordinator = nil
         server.client = nil
@@ -546,6 +594,105 @@ extension SessionRuntime {
         server.requestOwners = accepted.mapValues { $0.binding.sessionID }
         server.failedRequests = server.failedRequests.filter { accepted[$0.key] != nil }
         for owner in affected { await publishRequests(for: owner, in: server) }
+        await refreshManagedCodexRequests(server)
+    }
+
+    /// Present only requests from the exact proved managed turn. Unknown
+    /// native request kinds stay waiting for the user, without an invented answer.
+    func refreshManagedCodexRequests(_ server: CodexServer) async {
+        guard let runID = server.runID, let context = taskLaunchContexts.first(where: { $0.value.currentRunID == runID }),
+              let run = context.value.managedRun, let old = managedTaskPresentations[context.key], old.run == run,
+              let binding = old.binding, let plan = taskRunPlans[binding.sessionID],
+              plan.claim.managedRunID == runID, plan.claim.generation == binding.generation, plan.lease.isEnabled else { return }
+        var occurrences: [ManagedTaskPermissionOccurrence] = []
+        if let expected = taskExpectedInputs[runID], expected.binding == binding,
+           case let .child(taskID, roundID, operationID) = expected.purpose, taskID == run.taskID,
+           case let .nativeTurn(turn)? = expected.confirmedObservation {
+            for pending in server.requests.values.sorted(by: { $0.sequence < $1.sequence }) {
+                let request = pending.request
+                guard pending.binding.sessionID == binding.sessionID, pending.binding.managedRunID == runID,
+                      pending.binding.threadID == binding.nativeSessionID,
+                      request.params.object?["turnId"]?.string == turn,
+                      request.kind == .commandExecution || request.kind == .fileChange else { continue }
+                let tool = request.kind == .commandExecution ? "Command" : "File change"
+                let display = ProviderPendingRequest(requestID: pending.id.uuidString,
+                    toolUseID: request.params.object?["itemId"]?.string, kind: .approval,
+                    toolName: tool, summary: Self.summary(of: request), arrivedAt: nil)
+                if let occurrence = try? ManagedTaskPermissionOccurrence(id: pending.id, binding: binding,
+                    taskID: taskID, roundID: roundID, operationID: operationID, nativeRequestID: request.id,
+                    request: display, originalInput: request.params) {
+                    occurrences.append(occurrence)
+                }
+                if occurrences.count == ManagedTaskPresentation.maximumPermissions { break }
+            }
+        }
+        let status: SessionTaskNativeStatus = server.requests.isEmpty
+            ? (old.status == .waitingForUser ? .unknown : old.status) : .waitingForUser
+        guard let next = try? ManagedTaskPresentation(run: run, binding: binding, effectiveSettings: old.effectiveSettings,
+            status: status, progress: status == .unknown || status == .stopped ? [] : old.progress,
+            permissions: occurrences, canTakeOver: old.canTakeOver), next != old else { return }
+        await publishManagedTaskPresentation(next)
+    }
+
+    private func receiveManagedCodexProgress(_ item: CodexManagedProgress, serverID: UUID) async {
+        guard let server = codexServers.first(where: { $0.id == serverID }), let runID = server.runID,
+              let context = taskLaunchContexts.first(where: { $0.value.currentRunID == runID }),
+              let old = managedTaskPresentations[context.key], let binding = old.binding,
+              old.status != .unknown, old.status != .stopped,
+              binding.nativeSessionID == item.threadID, binding.managedRunID == runID,
+              let expected = taskExpectedInputs[runID], expected.binding == binding,
+              expected.confirmedObservation == .nativeTurn(item.turnID),
+              let plan = taskRunPlans[binding.sessionID], plan.claim.managedRunID == runID, plan.lease.isEnabled else { return }
+        var progress = old.progress
+        progress.append(item.progress)
+        while progress.count > ManagedTaskPresentation.maximumProgressRows ||
+                progress.reduce(0, { $0 + $1.text.utf8.count }) > ManagedTaskPresentation.maximumProgressBytes {
+            progress.removeFirst()
+        }
+        guard let next = try? ManagedTaskPresentation(run: old.run, binding: binding, effectiveSettings: old.effectiveSettings,
+            status: old.status, progress: progress, permissions: old.permissions, canTakeOver: old.canTakeOver) else { return }
+        await publishManagedTaskPresentation(next)
+    }
+
+    func respondManagedCodex(taskID: UUID, binding: SessionTaskBinding, occurrenceID: UUID,
+                             decision: ManagedTaskUserDecision, plan: SessionTaskRunPlan,
+                             revision: UInt64) async throws -> ManagedTaskWriteOutcome {
+        guard let server = runs[binding.managedRunID]?.server, let client = server.client,
+              let coordinator = server.coordinator, let pending = server.requests[occurrenceID.uuidString],
+              pending.id == occurrenceID, pending.binding.sessionID == binding.sessionID,
+              pending.binding.managedRunID == binding.managedRunID, pending.binding.threadID == binding.nativeSessionID,
+              let expected = taskExpectedInputs[binding.managedRunID], expected.binding == binding,
+              case let .child(currentTask, _, _) = expected.purpose, currentTask == taskID,
+              case let .nativeTurn(turn)? = expected.confirmedObservation,
+              pending.request.params.object?["turnId"]?.string == turn,
+              pending.request.kind == .commandExecution || pending.request.kind == .fileChange else {
+            throw SessionTaskError.staleBinding
+        }
+        let decisionField = pending.request.params.object?["availableDecisions"]
+        if decisionField != nil && decisionField?.array == nil { throw SessionTaskError.invalidPayload }
+        let available = decisionField?.array
+        let nativeDecision: String
+        switch decision {
+        case .allow: nativeDecision = "accept"
+        case .deny:
+            nativeDecision = available?.contains(.string("decline")) == false &&
+                available?.contains(.string("cancel")) == true ? "cancel" : "decline"
+        case .answer: throw SessionTaskError.invalidPayload
+        }
+        if let available, !available.contains(.string(nativeDecision)) { throw SessionTaskError.invalidPayload }
+        let answer: JSONValue = .object(["decision": .string(nativeDecision)])
+        let effect = SessionTaskInputEffectMarker()
+        do {
+            try await coordinator.respond(to: pending, result: answer) { id, value in
+                let sent = try await client.respondManaged(id: id, result: value) { write in
+                    try plan.lease.withOptionalAdmission(revision: revision) { try effect.write(write) }
+                }
+                if !sent { throw ManagedCodexResponseError.deferred }
+            }
+            await received(requests: await coordinator.pendingRequestSnapshot(), from: coordinator)
+            return .submitted
+        } catch ManagedCodexResponseError.deferred { return .deferred }
+        catch { return effect.hasEffect ? .unknown : .deferred }
     }
 
     private func markRequestFailed(_ id: String, _ failure: String, in server: CodexServer) async {

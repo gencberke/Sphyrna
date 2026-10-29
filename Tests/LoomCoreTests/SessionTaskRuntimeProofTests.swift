@@ -9,6 +9,55 @@ private extension SessionRuntime {
 
 @Suite(.serialized, .processHeavy, .timeLimit(.minutes(1)))
 struct SessionTaskRuntimeProofTests {
+    @Test func aDeferredFollowupRestoresOnlyThePriorProvedExecution() async throws {
+        let context = try await SessionRuntimeTests.makeContext()
+        defer { context.cleanup() }
+        do {
+            let screen = SessionRuntimeTests.Screen()
+            let launch = try await context.runtime.startConversation(provider: .claude, projectID: nil, outputSink: screen)
+            screen.attach(launch.terminal)
+            let claim = try #require(await context.runtime.taskRunPlans[launch.sessionID]?.claim)
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+            let binding = try #require(await context.runtime.authenticateTaskRun(claim))
+            let task = UUID(), round = UUID(), operation = UUID()
+            let oldPurpose = SessionTaskExpectedInput.Purpose.child(taskID: task, roundID: round, operationID: operation)
+            let target = SessionTaskRoundTarget(taskID: task, roundID: round, inputOperationID: operation,
+                                               binding: binding, nativeTurnID: nil, execution: nil)
+            let oldEffect = SessionTaskInputEffectMarker(); _ = oldEffect.write { 1 }
+            let oldDigest = Data(SHA256.hash(data: Data("first owned pointer".utf8)))
+            #expect(await context.runtime.prepareTaskInput(purpose: oldPurpose, binding: binding,
+                                                           digest: oldDigest, effect: oldEffect))
+            try await screen.send("first owned pointer")
+            let host = SessionTaskRuntimeHost(runtime: context.runtime)
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await host.observedChildExecution(target) != nil })
+            let old = try #require(await host.observedChildExecution(target))
+            let next = SessionTaskExpectedInput.Purpose.child(taskID: task, roundID: UUID(), operationID: UUID())
+            let nextDigest = Data(SHA256.hash(data: Data("second owned pointer".utf8)))
+            let deferred = SessionTaskInputEffectMarker()
+            #expect(await context.runtime.prepareTaskInput(purpose: next, binding: binding, digest: nextDigest, effect: deferred))
+            #expect(await host.observedChildExecution(target) == nil)
+            await context.runtime.clearTaskExpectation(next, binding: binding)
+            #expect(await host.observedChildExecution(target) == old)
+            let admitted = SessionTaskInputEffectMarker()
+            #expect(await context.runtime.prepareTaskInput(purpose: next, binding: binding, digest: nextDigest, effect: admitted))
+            _ = admitted.write { 1 }
+            await context.runtime.clearTaskExpectation(next, binding: binding)
+            #expect(await host.observedChildExecution(target) == nil)
+        } catch { Issue.record("follow-up proof fixture failed: \(error)") }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test func takeoverRevocationCannotCrossAProviderIngress() throws {
+        let lease = SessionTaskRunLease()
+        let shown = try #require(lease.admit { $0 })
+        lease.beginHook()
+        #expect(!lease.revokeIfCurrent(revision: shown))
+        lease.finishHook()
+        #expect(!lease.revokeIfCurrent(revision: shown), "a consumed event still invalidates the old view")
+        let current = try #require(lease.admit { $0 })
+        #expect(lease.revokeIfCurrent(revision: current))
+        #expect(lease.admit { _ in true } == nil)
+    }
     @Test func matchingPromptBeforeTheGuardedWriteCannotProveConsumption() async throws {
         let context = try await SessionRuntimeTests.makeContext()
         defer { context.cleanup() }
@@ -29,7 +78,7 @@ struct SessionTaskRuntimeProofTests {
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
-    @Test func laterUserInputPreventsTheEarlierTicketFromProvingACleanInput() async throws {
+    @Test func keyBeforeNativeProofKeepsExecutionButNotTheEditorClean() async throws {
         let context = try await SessionRuntimeTests.makeContext()
         defer { context.cleanup() }
         let screen = SessionRuntimeTests.Screen()
@@ -54,7 +103,8 @@ struct SessionTaskRuntimeProofTests {
         try await screen.send("owned synthetic pointer")
         #expect(await screen.contains("echo: owned synthetic pointer"))
         let host = SessionTaskRuntimeHost(runtime: context.runtime)
-        #expect(await host.observedChildExecution(target) == nil)
+        #expect(await host.observedChildExecution(target) != nil)
+        #expect(context.runtime.inputGate.reserveAutomaticInput(runID: launch.runID) == nil)
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
@@ -94,6 +144,10 @@ struct SessionTaskRuntimeProofTests {
         let claim = try #require(await context.runtime.taskRunPlans[launch.sessionID]?.claim)
         #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
         let binding = try #require(await context.runtime.authenticateTaskRun(claim))
+        let queue = TerminalInputQueue(endpoint: launch.terminal, onError: { _ in })
+        context.runtime.inputGate.register(runID: launch.runID, queue: queue)
+        #expect(context.runtime.inputGate.establishFreshCleanInput(runID: launch.runID))
+        let ticket = try #require(context.runtime.inputGate.reserveAutomaticInput(runID: launch.runID))
         let task = UUID(), round = UUID(), operation = UUID()
         let target = SessionTaskRoundTarget(taskID: task, roundID: round, inputOperationID: operation,
                                             binding: binding, nativeTurnID: nil, execution: nil)
@@ -101,7 +155,7 @@ struct SessionTaskRuntimeProofTests {
         let effect = SessionTaskInputEffectMarker()
         _ = effect.write { 1 }
         #expect(await context.runtime.prepareTaskInput(purpose: .child(taskID: task, roundID: round, operationID: operation),
-                                                       binding: binding, digest: digest, effect: effect))
+                                                       binding: binding, digest: digest, effect: effect, ticket: ticket))
         try await screen.send("owned synthetic pointer")
         #expect(await screen.contains("echo: owned synthetic pointer"))
         let host = SessionTaskRuntimeHost(runtime: context.runtime)
@@ -109,6 +163,9 @@ struct SessionTaskRuntimeProofTests {
         let proof = await host.observedChildExecution(target)
         if case let .providerPrompt(id) = proof { #expect(!id.isEmpty) }
         else { Issue.record("An accepted fake Claude hook must supply its native prompt ID") }
+        context.runtime.inputGate.noteUnclassifiedInput(runID: launch.runID)
+        #expect(await host.observedChildExecution(target) == proof)
+        #expect(context.runtime.inputGate.reserveAutomaticInput(runID: launch.runID) == nil)
         let stale = SessionTaskRoundTarget(taskID: task, roundID: UUID(), inputOperationID: operation,
                                            binding: binding, nativeTurnID: nil, execution: nil)
         #expect(await host.observedChildExecution(stale) == nil)

@@ -25,36 +25,36 @@ struct SessionTaskCreateTests {
     }
 
     @Test func approvingATaskStartsTheOwnedChildAndDeliversItsFirstPointerOnlyAfterReady() async throws {
-        let context = try await SessionRuntimeTests.makeContext(claudeVersion: "2.0.0")
+        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1"],
+            scoped: true, durableLedger: true, claudeVersion: "2.0.0", managedClaudeControllerFactory: { run, ingress in
+                ManagedClaudeFixtureController(run: run, ingress: ingress)
+            })
         defer { context.cleanup() }
-        let folder = context.root.appendingPathComponent("approved-task", isDirectory: true)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let project = try await context.catalog.addProject(path: folder.path).project
-        let parentScreen = SessionRuntimeTests.Screen()
-        let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id, outputSink: parentScreen)
-        parentScreen.attach(parent.terminal)
-        let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
-        #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
-        let socket = try #require(await context.runtime.taskSocketPath)
-        let taskID = UUID(), operationID = UUID()
-        #expect(try Self.create(taskID: taskID, operationID: operationID, claim: claim, socket: socket,
-                                message: "Check the synthetic change", harness: "claude").0 == 0)
-        let request = try #require(await context.runtime.openRequestSnapshot().first { $0.id == taskID })
-        let childID = try #require(request.task?.childID)
-        let screen = SessionRuntimeTests.Screen(), gate = context.runtime.inputGate
         do {
-            let launch = try await context.runtime.approveOpenRequest(taskID, outputSink: screen, expectedProvider: .claude,
-                onTerminalReady: { launch in
-                    screen.attach(launch.terminal)
-                    gate.register(runID: launch.runID, queue: TerminalInputQueue(endpoint: launch.terminal, onError: { _ in }))
-                })
-            #expect(launch.sessionID == childID)
-            #expect(await screen.contains("FAKE-CLAUDE READY"))
-            #expect(await screen.contains("Sphyrna task:"))
+            let folder = context.root.appendingPathComponent("approved-task", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let project = try await context.catalog.addProject(path: folder.path).project
+            let parentScreen = SessionRuntimeTests.Screen()
+            let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id, outputSink: parentScreen)
+            parentScreen.attach(parent.terminal)
+            let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+            let socket = try #require(await context.runtime.taskSocketPath)
+            let taskID = UUID(), operationID = UUID()
+            #expect(try Self.create(taskID: taskID, operationID: operationID, claim: claim, socket: socket,
+                                    message: "fixture-round-1", harness: "claude").0 == 0)
+            let request = try #require(await context.runtime.openRequestSnapshot().first { $0.id == taskID })
+            let childID = try #require(request.task?.childID)
+            let started = try await context.runtime.approveManagedTaskRequest(taskID, expectedProvider: .claude)
+            #expect(started == childID)
             let coordinator = try #require(await context.runtime.taskCoordinator)
+            #expect(try await SessionRuntimeTests.waitUntil(6) {
+                try await coordinator.latestEventsForUser(taskID: taskID, limit: 10).count == 1
+            })
             let status = try await coordinator.status(taskID: taskID, parent: claim)
             #expect(status.task.childBinding?.sessionID == childID && status.task.childInputsUsed == 1)
-            #expect(status.activeRound?.operationID == operationID)
+            #expect(try await coordinator.latestEventsForUser(taskID: taskID, limit: 10).first?.payload ==
+                    "fixture-result: fixture-round-1")
         } catch {
             Issue.record("approved task did not start and deliver: \(error)")
         }
@@ -62,103 +62,127 @@ struct SessionTaskCreateTests {
     }
 
     @Test func stoppingParentBeforeFirstAdmissionStopsTheEmptyOwnedChild() async throws {
-        let context = try await SessionRuntimeTests.makeContext(claudeVersion: "2.0.0")
+        let inputGate = ManagedClaudeFixtureInputGate()
+        let context = try await SessionRuntimeTests.makeContext(scoped: true, durableLedger: true, claudeVersion: "2.0.0",
+            managedClaudeControllerFactory: { run, ingress in
+                ManagedClaudeFixtureController(run: run, ingress: ingress, inputGate: inputGate)
+            })
         defer { context.cleanup() }
-        let folder = context.root.appendingPathComponent("stopped-parent", isDirectory: true)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let project = try await context.catalog.addProject(path: folder.path).project
-        let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id)
-        let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
-        #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
-        let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
-        #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
-                                message: "Never admitted", harness: "claude").0 == 0)
-        let screen = SessionRuntimeTests.Screen()
-        let child = try await context.runtime.approveOpenRequest(taskID, outputSink: screen, expectedProvider: .claude,
-            onTerminalReady: { screen.attach($0.terminal) }) // No input queue is registered yet.
-        #expect(await screen.contains("FAKE-CLAUDE READY"))
-        #expect(try await context.runtime.stopConversation(sessionID: parent.sessionID).succeeded)
-        #expect(try await SessionRuntimeTests.waitUntil(3) {
-            await context.supervisor.session(id: child.sessionID)?.currentRun == nil
-        })
-        let report = await context.supervisor.lastStopReport(sessionID: child.sessionID)
-        #expect(report?.runID == child.runID && report?.succeeded == true)
-        #expect(!screen.snapshot.contains("Sphyrna task:"))
-        let coordinator = try #require(await context.runtime.taskCoordinator)
-        #expect(try await coordinator.projectionForUser(taskID: taskID)?.lifecycle == .revoked)
+        do {
+            let folder = context.root.appendingPathComponent("stopped-parent", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let project = try await context.catalog.addProject(path: folder.path).project
+            let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id)
+            let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+            let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
+            #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                    message: "Never admitted", harness: "claude").0 == 0)
+            let childID = try #require(await context.runtime.openRequestSnapshot().first?.task?.childID)
+            let approval = Task { try? await context.runtime.approveManagedTaskRequest(taskID, expectedProvider: .claude) }
+            #expect(await SessionRuntimeTests.waitUntil(5) { await inputGate.entered })
+            let childRun = try #require(await context.supervisor.session(id: childID)?.currentRun?.id)
+            #expect(try await context.runtime.stopConversation(sessionID: parent.sessionID).succeeded)
+            await inputGate.release()
+            _ = await approval.value
+            #expect(try await SessionRuntimeTests.waitUntil(3) {
+                await context.supervisor.session(id: childID)?.currentRun == nil
+            })
+            let report = await context.supervisor.lastStopReport(sessionID: childID)
+            #expect(report?.runID == childRun && report?.succeeded == true)
+            #expect(await context.runtime.taskLaunchContexts[taskID]?.firstInputEffect?.hasEffect != true)
+            let coordinator = try #require(await context.runtime.taskCoordinator)
+            #expect(try await coordinator.projectionForUser(taskID: taskID)?.lifecycle == .revoked)
+        } catch {
+            await inputGate.release()
+            _ = await context.runtime.shutdown()
+            throw error
+        }
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
     @Test func parentStopDuringAwaitedChildSpawnNeverSubmitsTheFirstInput() async throws {
-        let context = try await SessionRuntimeTests.makeContext(claudeVersion: "2.0.0")
+        let context = try await SessionRuntimeTests.makeContext(scoped: true, durableLedger: true, claudeVersion: "2.0.0")
         defer { context.cleanup() }
-        let folder = context.root.appendingPathComponent("stop-during-spawn", isDirectory: true)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let project = try await context.catalog.addProject(path: folder.path).project
-        let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id)
-        let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
-        #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
-        let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
-        #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
-                                message: "Must not run", harness: "codex").0 == 0)
-        let childID = try #require(await context.runtime.openRequestSnapshot().first?.task?.childID)
-        let screen = SessionRuntimeTests.Screen(), gate = context.runtime.inputGate
-        context.toolchainSwitch.slow(by: 0.7)
-        let approval = Task {
-            try? await context.runtime.approveOpenRequest(taskID, outputSink: screen, expectedProvider: .codex,
-                onTerminalReady: { launch in
-                    screen.attach(launch.terminal)
-                    gate.register(runID: launch.runID, queue: TerminalInputQueue(endpoint: launch.terminal, onError: { _ in }))
-                })
+        do {
+            let folder = context.root.appendingPathComponent("stop-during-spawn", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let project = try await context.catalog.addProject(path: folder.path).project
+            let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id)
+            let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+            let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
+            #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                    message: "Must not run", harness: "codex").0 == 0)
+            let childID = try #require(await context.runtime.openRequestSnapshot().first?.task?.childID)
+            context.toolchainSwitch.slow(by: 0.7)
+            let approval = Task {
+                try? await context.runtime.approveManagedTaskRequest(taskID, expectedProvider: .codex)
+            }
+            #expect(await SessionRuntimeTests.waitUntil(3) { context.toolchainSwitch.resolutionsBegun >= 2 })
+            #expect(try await context.runtime.stopConversation(sessionID: parent.sessionID).succeeded)
+            let child = await approval.value
+            #expect(try await SessionRuntimeTests.waitUntil(5) { await context.supervisor.session(id: childID)?.currentRun == nil })
+            if child != nil {
+                let report = await context.supervisor.lastStopReport(sessionID: childID)
+                #expect(report?.succeeded == true)
+            }
+            let methods = (try? String(contentsOf: context.state.appendingPathComponent("codex-methods.log"), encoding: .utf8)) ?? ""
+            #expect(!methods.split(separator: "\n").contains("turn/start"))
+        } catch {
+            _ = await context.runtime.shutdown()
+            throw error
         }
-        #expect(await SessionRuntimeTests.waitUntil(3) { context.toolchainSwitch.resolutionsBegun >= 2 })
-        #expect(try await context.runtime.stopConversation(sessionID: parent.sessionID).succeeded)
-        let child = await approval.value
-        #expect(try await SessionRuntimeTests.waitUntil(5) { await context.supervisor.session(id: childID)?.currentRun == nil })
-        if let child {
-            let report = await context.supervisor.lastStopReport(sessionID: childID)
-            #expect(report?.runID == child.runID && report?.succeeded == true)
-        }
-        let methods = (try? String(contentsOf: context.state.appendingPathComponent("codex-methods.log"), encoding: .utf8)) ?? ""
-        #expect(!methods.split(separator: "\n").contains("turn/start"))
-        #expect(!screen.snapshot.contains("Sphyrna task:"))
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
     @Test(arguments: [ManagedSession.Provider.claude, .codex])
     func nativeIdentityChangeRevokesTaskAndStopsAnEmptyChild(parentProvider: ManagedSession.Provider) async throws {
-        let context = try await SessionRuntimeTests.makeContext(claudeVersion: "2.0.0")
+        let inputGate = ManagedClaudeFixtureInputGate()
+        let context = try await SessionRuntimeTests.makeContext(scoped: true, durableLedger: true, claudeVersion: "2.0.0",
+            managedClaudeControllerFactory: { run, ingress in
+                ManagedClaudeFixtureController(run: run, ingress: ingress, inputGate: inputGate)
+            })
         defer { context.cleanup() }
-        let folder = context.root.appendingPathComponent("identity-change", isDirectory: true)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let project = try await context.catalog.addProject(path: folder.path).project
-        let parentScreen = SessionRuntimeTests.Screen()
-        let parent = try await context.runtime.startConversation(provider: parentProvider, projectID: project.id, outputSink: parentScreen)
-        parentScreen.attach(parent.terminal)
-        let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
-        #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
-        let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
-        #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
-                                message: "Do not retarget", harness: "claude").0 == 0)
-        let screen = SessionRuntimeTests.Screen()
-        let child = try await context.runtime.approveOpenRequest(taskID, outputSink: screen, expectedProvider: .claude,
-                                                                 onTerminalReady: { screen.attach($0.terminal) })
-        try await parentScreen.send(parentProvider == .claude ? "/clear" : "/new")
-        #expect(try await SessionRuntimeTests.waitUntil(3) {
-            await context.supervisor.activeSessionID(runID: parent.runID) != parent.sessionID
-        })
-        let coordinator = try #require(await context.runtime.taskCoordinator)
-        #expect(try await SessionRuntimeTests.waitUntil(3) {
-            try await coordinator.projectionForUser(taskID: taskID)?.lifecycle == .identityChanged
-        })
-        #expect(try await SessionRuntimeTests.waitUntil(3) { await context.supervisor.session(id: child.sessionID)?.currentRun == nil })
-        #expect(await context.runtime.authenticateTaskRun(claim) == nil)
-        #expect(!screen.snapshot.contains("Sphyrna task:"))
+        do {
+            let folder = context.root.appendingPathComponent("identity-change", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let project = try await context.catalog.addProject(path: folder.path).project
+            let parentScreen = SessionRuntimeTests.Screen()
+            let parent = try await context.runtime.startConversation(provider: parentProvider, projectID: project.id, outputSink: parentScreen)
+            parentScreen.attach(parent.terminal)
+            let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+            let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
+            #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                    message: "Do not retarget", harness: "claude").0 == 0)
+            let childID = try #require(await context.runtime.openRequestSnapshot().first?.task?.childID)
+            let approval = Task { try? await context.runtime.approveManagedTaskRequest(taskID, expectedProvider: .claude) }
+            #expect(await SessionRuntimeTests.waitUntil(5) { await inputGate.entered })
+            try await parentScreen.send(parentProvider == .claude ? "/clear" : "/new")
+            #expect(try await SessionRuntimeTests.waitUntil(3) {
+                await context.supervisor.activeSessionID(runID: parent.runID) != parent.sessionID
+            })
+            let coordinator = try #require(await context.runtime.taskCoordinator)
+            #expect(try await SessionRuntimeTests.waitUntil(3) {
+                try await coordinator.projectionForUser(taskID: taskID)?.lifecycle == .identityChanged
+            })
+            await inputGate.release()
+            _ = await approval.value
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.supervisor.session(id: childID)?.currentRun == nil })
+            #expect(await context.runtime.authenticateTaskRun(claim) == nil)
+            #expect(await context.runtime.taskLaunchContexts[taskID]?.firstInputEffect?.hasEffect != true)
+        } catch {
+            await inputGate.release()
+            _ = await context.runtime.shutdown()
+            throw error
+        }
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
     @Test func taskStopNeverFollowsAChildThatMovedWhileStopWaited() async throws {
-        let context = try await SessionRuntimeTests.makeContext(claudeVersion: "2.0.0")
+        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1",
+            "LOOM_FAKE_TASK_HOLD_FIRST": "1"], scoped: true, durableLedger: true, claudeVersion: "2.0.0")
         defer { context.cleanup() }
         let hold = TaskDeletionTransitionGate()
         defer { hold.release() }
@@ -171,36 +195,36 @@ struct SessionTaskCreateTests {
             #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
             let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
             #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
-                                    message: "Do not follow a moved child", harness: "claude").0 == 0)
-            let screen = SessionRuntimeTests.Screen(), gate = context.runtime.inputGate
-            let child = try await context.runtime.approveOpenRequest(taskID, outputSink: screen, expectedProvider: .claude,
-                onTerminalReady: { launch in
-                    screen.attach(launch.terminal)
-                    gate.register(runID: launch.runID, queue: TerminalInputQueue(endpoint: launch.terminal, onError: { _ in }))
-                })
-            #expect(await screen.contains("Sphyrna task:"))
+                                    message: "Do not follow a moved child", harness: "codex").0 == 0)
+            let childID = try await context.runtime.approveManagedTaskRequest(taskID, expectedProvider: .codex)
+            let childRun = try #require(await context.supervisor.session(id: childID)?.currentRun?.id)
+            #expect(try await SessionRuntimeTests.waitUntil(5) {
+                try await context.runtime.sessionTaskProjection(id: taskID)?.childBinding != nil
+            })
             let projection = try #require(try await context.runtime.sessionTaskProjection(id: taskID))
             let binding = try #require(projection.childBinding)
             let blocked = Task.detached { await context.catalog.holdTaskDeletionTransition(hold) }
             #expect(await SessionRuntimeTests.waitUntil(3) { hold.entered })
-            let adoption = Task { try await context.supervisor.adoptConversation(runID: child.runID,
+            let adoption = Task { try await context.supervisor.adoptConversation(runID: childRun,
                                                         conversationID: UUID().uuidString, transition: .new) }
             #expect(await SessionRuntimeTests.waitUntil(3) { await context.supervisor.pendingConversationTransitionCount() > 0 })
-            let stop = Task { await context.runtime.stopTaskChild(taskID: taskID, childSessionID: child.sessionID, binding: binding) }
+            let stop = Task { await context.runtime.stopTaskChild(taskID: taskID, childSessionID: childID, binding: binding) }
             #expect(await SessionRuntimeTests.waitUntil(3) { await context.supervisor.pendingStopCount() > 0 })
             hold.release()
             await blocked.value
             let moved = try await adoption.value
             let result = await stop.value
             if case .unknown = result {} else { Issue.record("a moved run must not be reported as the stopped task child") }
-            #expect(await context.supervisor.session(id: moved)?.currentRun?.id == child.runID)
+            #expect(await context.supervisor.session(id: moved)?.currentRun?.id == childRun)
         } catch { Issue.record("task stop/move race failed: \(error)") }
         hold.release()
-        #expect((await context.runtime.shutdown()).succeeded)
+        let shutdown = await context.runtime.shutdown()
+        #expect(shutdown.succeeded, "shutdown errors=\(shutdown.errors); remaining=\(shutdown.remaining)")
     }
 
     @Test func removingParentStopsItsOwnedChildAndForgetsOnlyTheRelationship() async throws {
-        let context = try await SessionRuntimeTests.makeContext(claudeVersion: "2.0.0")
+        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1",
+            "LOOM_FAKE_TASK_HOLD_FIRST": "1"], scoped: true, durableLedger: true, claudeVersion: "2.0.0")
         defer { context.cleanup() }
         do {
             let folder = context.root.appendingPathComponent("task-deletion", isDirectory: true)
@@ -211,34 +235,29 @@ struct SessionTaskCreateTests {
             #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
             let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
             #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
-                                    message: "Retain until stopped", harness: "claude").0 == 0)
-            let screen = SessionRuntimeTests.Screen(), gate = context.runtime.inputGate
-            let child = try await context.runtime.approveOpenRequest(taskID, outputSink: screen, expectedProvider: .claude,
-                onTerminalReady: { launch in
-                    screen.attach(launch.terminal)
-                    gate.register(runID: launch.runID, queue: TerminalInputQueue(endpoint: launch.terminal, onError: { _ in }))
-                })
-            #expect(await screen.contains("Sphyrna task:"))
+                                    message: "Retain until stopped", harness: "codex").0 == 0)
+            let childID = try await context.runtime.approveManagedTaskRequest(taskID, expectedProvider: .codex)
             #expect(try await SessionRuntimeTests.waitUntil(3) {
                 await context.runtime.taskLaunchContexts[taskID]?.firstInputEffect?.hasEffect == true
             })
             let pendingTask = UUID()
             #expect(try Self.create(taskID: pendingTask, operationID: UUID(), claim: claim, socket: socket,
-                                    message: "A pending request is also forgotten", harness: "claude").0 == 0)
+                                    message: "A pending request is also forgotten", harness: "codex").0 == 0)
             #expect(await context.runtime.openRequestSnapshot().contains { $0.id == pendingTask })
             try await context.runtime.removeFromLoomOnly(id: parent.sessionID)
             #expect(!(await context.runtime.openRequestSnapshot()).contains { $0.id == pendingTask })
-            #expect(await context.supervisor.session(id: child.sessionID)?.currentRun == nil)
-            #expect((await context.supervisor.lastStopReport(sessionID: child.sessionID))?.succeeded == true)
+            #expect(await context.supervisor.session(id: childID)?.currentRun == nil)
+            #expect((await context.supervisor.lastStopReport(sessionID: childID))?.succeeded == true)
             #expect(try await context.catalog.session(id: parent.sessionID) == nil)
-            #expect(try await context.catalog.session(id: child.sessionID) != nil)
+            #expect(try await context.catalog.session(id: childID) != nil)
             #expect(try await context.runtime.sessionTaskProjection(id: taskID) == nil)
         } catch { Issue.record("parent deletion failed: \(error)") }
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
     @Test func unverifiedChildStopKeepsTaskUntilDeletionRetry() async throws {
-        let context = try await SessionRuntimeTests.makeContext(claudeVersion: "2.0.0")
+        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1",
+            "LOOM_FAKE_TASK_HOLD_FIRST": "1"], scoped: true, durableLedger: true, claudeVersion: "2.0.0")
         defer { context.cleanup() }
         let failure = TaskDeletionFailure()
         do {
@@ -250,29 +269,24 @@ struct SessionTaskCreateTests {
             #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
             let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
             #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
-                                    message: "Keep this task on stop failure", harness: "claude").0 == 0)
-            let screen = SessionRuntimeTests.Screen(), gate = context.runtime.inputGate
-            let child = try await context.runtime.approveOpenRequest(taskID, outputSink: screen, expectedProvider: .claude,
-                onTerminalReady: { launch in
-                    screen.attach(launch.terminal)
-                    gate.register(runID: launch.runID, queue: TerminalInputQueue(endpoint: launch.terminal, onError: { _ in }))
-                })
-            #expect(await screen.contains("Sphyrna task:"))
+                                    message: "Keep this task on stop failure", harness: "codex").0 == 0)
+            let childID = try await context.runtime.approveManagedTaskRequest(taskID, expectedProvider: .codex)
+            let childRun = try #require(await context.supervisor.session(id: childID)?.currentRun?.id)
             #expect(try await SessionRuntimeTests.waitUntil(3) {
                 await context.runtime.taskLaunchContexts[taskID]?.firstInputEffect?.hasEffect == true
             })
-            try await context.supervisor.registerStopHooks(runID: child.runID, hooks: ManagedRunStopHooks(
+            try await context.supervisor.registerStopHooks(runID: childRun, hooks: ManagedRunStopHooks(
                 prepare: { if failure.isOn { throw LoomError.message("synthetic stop failure") } }, completed: {}))
             await #expect(throws: SessionRuntimeError.self) {
                 try await context.runtime.removeFromLoomOnly(id: parent.sessionID)
             }
-            #expect(await context.supervisor.session(id: child.sessionID)?.currentRun?.id == child.runID)
+            #expect(await context.supervisor.session(id: childID)?.currentRun?.id == childRun)
             #expect(try await context.runtime.sessionTaskProjection(id: taskID)?.lifecycle == .stopUnverified)
             #expect(try await context.runtime.pendingDeletions().contains { $0.id == parent.sessionID })
             failure.clear()
             try await context.runtime.removeFromLoomOnly(id: parent.sessionID)
-            #expect(await context.supervisor.session(id: child.sessionID)?.currentRun == nil)
-            #expect(try await context.catalog.session(id: child.sessionID) != nil)
+            #expect(await context.supervisor.session(id: childID)?.currentRun == nil)
+            #expect(try await context.catalog.session(id: childID) != nil)
             #expect(try await context.runtime.sessionTaskProjection(id: taskID) == nil)
         } catch { Issue.record("task deletion retry failed: \(error)") }
         failure.clear()

@@ -14,6 +14,13 @@ final class SessionTaskRunLease: @unchecked Sendable {
     private var quiescent: (@Sendable () -> Void)?
     func observeQuiescence(_ callback: (@Sendable () -> Void)?) { lock.withLock { quiescent = callback } }
     func revoke() { lock.withLock { enabled = false } }
+    func revokeIfCurrent(revision admitted: UInt64) -> Bool {
+        lock.withLock {
+            guard enabled, reliable, hooksInFlight == 0, codexEvents.isEmpty, revision == admitted else { return false }
+            enabled = false
+            return true
+        }
+    }
     private func advanceRevision() {
         guard revision < .max else { reliable = false; return }
         revision += 1
@@ -145,7 +152,7 @@ struct SessionTaskExpectedInput: Sendable {
         let observation: SessionTaskExecutionReference
         let expectedNativeTurn: String?
         let lastSequence: UInt64
-        let generation: UInt64
+        let generation: UInt64?
         let providerPromptGeneration: UUID?
     }
     let purpose: Purpose
@@ -167,11 +174,11 @@ struct SessionTaskExpectedInput: Sendable {
     var retainedChild: RetainedChildProof?
 
     func retainedChildProof() -> RetainedChildProof? {
-        guard case .child = purpose, let observation = confirmedObservation, let generation = acceptedGeneration else { return nil }
+        guard case .child = purpose, let observation = confirmedObservation else { return nil }
         return .init(purpose: purpose, binding: binding, digest: digest, ticket: ticket, effect: effect,
                      requiresNativeReceipt: requiresNativeReceipt, clientMessageID: clientMessageID,
                      observation: observation, expectedNativeTurn: expectedNativeTurn, lastSequence: lastSequence,
-                     generation: generation, providerPromptGeneration: providerPromptGeneration)
+                     generation: acceptedGeneration, providerPromptGeneration: providerPromptGeneration)
     }
 
     static func restoring(_ proof: RetainedChildProof) -> SessionTaskExpectedInput {
@@ -268,10 +275,15 @@ extension ProcessSupervisor {
               runtime.launchSessionID == claim.sessionID, runtime.activeSessionID == claim.sessionID,
               !transitioningRuns.contains(claim.managedRunID), !stoppingRuns.contains(claim.managedRunID),
               (identityStates[claim.managedRunID] ?? .known) == .known,
-              case .terminal = runtime.endpoint,
               let session = sessions[claim.sessionID], session.currentRun?.id == claim.managedRunID,
               session.currentRun?.state == .running,
               let nativeID = session.providerConversationID, !nativeID.isEmpty else { return nil }
+        if case .pipe = runtime.endpoint {
+            guard let scope = runtime.scope, (ledger.managedTaskScopes ?? []).contains(where: {
+                $0.sessionID == claim.sessionID && $0.runID == claim.managedRunID &&
+                $0.generation == claim.generation && $0.scope == scope.record && $0.ownerRunID == ownershipRunID
+            }) else { return nil }
+        }
         return SessionTaskBinding(sessionID: claim.sessionID, nativeSessionID: nativeID,
                                   managedRunID: claim.managedRunID, generation: claim.generation)
     }

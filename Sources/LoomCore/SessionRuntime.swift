@@ -366,7 +366,9 @@ public actor SessionRuntime {
     var taskChildReservations: [UUID: SessionTaskChildReservation] = [:]
     var taskLaunchContexts: [UUID: SessionTaskLaunchContext] = [:]
     var managedTaskPresentations: [UUID: ManagedTaskPresentation] = [:]
+    var managedTaskControllers: [UUID: ManagedTaskControllerState] = [:]
     var taskDeliveriesInFlight: Set<UUID> = []
+    var managedCodexInterruptSignals: [UUID: ManagedCodexInterruptSignal] = [:]
     var taskDeliveriesRequested: Set<UUID> = []
     var tasksNeedingDelivery: Set<UUID> = []
     var retiredTaskRuns: [UUID: SessionTaskRetiredRun] = [:]
@@ -582,11 +584,15 @@ public actor SessionRuntime {
             let runID = UUID()
             self.beginTaskRun(sessionID: sessionID, runID: runID)
             do {
-                return try await harness.resumeTerminal(in: self, HarnessTerminalResume(
+                let launch = try await harness.resumeTerminal(in: self, HarnessTerminalResume(
                     session: session, conversationID: conversationID, toolchain: toolchain,
                     rows: rows, columns: columns, outputSink: outputSink,
                     tee: DiagnosticOutputTee(downstream: outputSink), choices: choices
                 ))
+                if let task = self.taskLaunchContexts.first(where: { $0.value.childID == sessionID })?.key {
+                    await self.supervisor.events.publish(sessionID: sessionID, change: .managedTaskDetached(task))
+                }
+                return launch
             } catch {
                 self.revokeTaskRun(sessionID: sessionID, runID: runID)
                 throw error
@@ -797,6 +803,7 @@ public actor SessionRuntime {
         stopRequestedRuns.insert(run.id)
         runs[run.id]?.activeSession = sessionID
         let server = runs[run.id]?.server
+        await closeManagedTaskController(runID: run.id)
         var report: SessionStopReport
         do {
             if let expectedRunID {
@@ -829,6 +836,7 @@ public actor SessionRuntime {
             let errors = await tearDown(server, card: sessionID)
             if !errors.isEmpty { report = report.adding(errors: errors) }
         }
+        await endManagedTaskPresentation(runID: run.id, verified: report.succeeded)
         return report
     }
 
@@ -848,6 +856,7 @@ public actor SessionRuntime {
         for plan in taskPlans {
             revokeTaskRun(sessionID: plan.claim.sessionID, runID: plan.claim.managedRunID)
         }
+        for runID in Array(managedTaskControllers.keys) { await closeManagedTaskController(runID: runID) }
         for plan in taskPlans {
             await fenceTaskRun(sessionID: plan.claim.sessionID, runID: plan.claim.managedRunID,
                                generation: plan.claim.generation)
@@ -896,8 +905,10 @@ public actor SessionRuntime {
             _ = await server.teardownTask?.value
             server.requestTask?.cancel()
             server.requestTask = nil
+            server.progressTask?.cancel()
+            server.progressTask = nil
             await server.coordinator?.stop()
-            let stopped = await server.manager.stopServer()
+            let stopped = await server.manager.stopServerForShutdown()
             socketErrors += stopped.errors
             if stopped.errors.isEmpty {
                 let errors = await server.manager.prepareSocketCleanup()
@@ -933,6 +944,11 @@ public actor SessionRuntime {
         // genuinely finished runs on both successful and failed Quit; a live
         // run from a failed shutdown keeps its resources for the retry.
         await reconcileEnded()
+        if report.succeeded {
+            for runID in taskLaunchContexts.values.compactMap(\.currentRunID) {
+                await endManagedTaskPresentation(runID: runID, verified: true)
+            }
+        }
         await backup?.value
         return report
     }
@@ -1125,7 +1141,9 @@ public actor SessionRuntime {
     private func reconcile(_ frame: SessionEventFrame) async {
         await reconcileEnded()
         for (taskID, context) in taskLaunchContexts {
-            guard let launch = context.launch, let status = frame.sessions[launch.sessionID]?.status,
+            if let runID = context.currentRunID { await refreshManagedCodexStatus(taskID: taskID, runID: runID) }
+            guard let runID = context.currentRunID, frame.sessions[context.childID]?.runID == runID,
+                  let status = frame.sessions[context.childID]?.status,
                   status.activity == .atPrompt || status.activity == .turnComplete else { continue }
             scheduleTaskDelivery(taskID)
         }
@@ -1157,6 +1175,8 @@ public actor SessionRuntime {
             // ended run: only the one that removes the record handles it.
             guard let record = runs.removeValue(forKey: snapshot.runID) else { continue }
             revokeTaskRun(sessionID: record.launchSessionID, runID: record.runID)
+            await closeManagedTaskController(runID: record.runID)
+            await endManagedTaskPresentation(runID: record.runID, verified: false)
             await claudeLimitObserver?.forget(runID: snapshot.runID)
             if let harness = harnesses[record.provider] { await harness.runEnded(runID: record.runID, in: self) }
             // A start still waiting for this run's identity can stop waiting now.

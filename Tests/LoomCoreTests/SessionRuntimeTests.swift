@@ -129,6 +129,7 @@ struct SessionRuntimeTests {
         extraEnvironment: [String: String] = [:],
         startRuntime: Bool = true,
         scoped: Bool = false,
+        durableLedger: Bool = false,
         executableOverride: String? = nil,
         claudePlugin: Bool = false,
         hookHelperPath: String? = nil,
@@ -138,7 +139,8 @@ struct SessionRuntimeTests {
         extraClaudeHelp: String = "",
         runsRecovered: (@Sendable () async -> Void)? = nil,
         defaultOpenedMode: (@Sendable (UUID?) async -> String?)? = nil,
-        openedModels: (@Sendable (HarnessID) async -> [ModelCatalogEntry])? = nil
+        openedModels: (@Sendable (HarnessID) async -> [ModelCatalogEntry])? = nil,
+        managedClaudeControllerFactory: ManagedTaskControllerFactory? = nil
     ) async throws -> RuntimeContext {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("loom-runtime-\(UUID())", isDirectory: true)
@@ -165,7 +167,7 @@ struct SessionRuntimeTests {
                 executable: RuntimeFixture.binaries.appendingPathComponent("loom-run-host"), in: root
             )
             supervisor = try await ProcessSupervisor.restoring(
-                catalog: catalog,
+                ledgerURL: durableLedger ? root.appendingPathComponent("ledger.json") : nil, catalog: catalog,
                 scopeLauncher: RunScopeLauncher(hostBundle: bundle, socketDirectory: socketDirectory.appendingPathComponent("rs"))
             )
         } else {
@@ -201,7 +203,8 @@ struct SessionRuntimeTests {
                 idlePolicy: idlePolicy, codexIdentityTimeout: 3,
                 claudePluginDirectory: claudePlugin ? root.appendingPathComponent("claude-plugin", isDirectory: true) : nil,
                 hookSilenceGrace: hookSilenceGrace, catalogBackupDelay: catalogBackupDelay,
-                runsRecovered: runsRecovered, defaultOpenedMode: defaultOpenedMode, openedModels: openedModels
+                runsRecovered: runsRecovered, defaultOpenedMode: defaultOpenedMode, openedModels: openedModels,
+                managedClaudeControllerFactory: managedClaudeControllerFactory
             )
         )
         if startRuntime { try await runtime.start() }

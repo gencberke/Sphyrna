@@ -37,12 +37,7 @@ extension SessionRuntime {
         let launched = LaunchBox()
         let sessionID = try await openRequests.approve(requestID) { spec in
             guard spec.send == nil else { throw SessionTaskError.unauthorized }
-            if spec.task != nil {
-                let launch = try await self.approveTaskRequest(spec, rows: rows, columns: columns,
-                    outputSink: outputSink, onTerminalReady: onTerminalReady)
-                launched.value = launch
-                return launch.sessionID
-            }
+            guard spec.task == nil else { throw SessionTaskError.notReady }
             guard let provider = spec.choices.harness.provider else {
                 let name = HarnessCatalogue.descriptor(for: spec.choices.harness)?.displayName ?? spec.choices.harness.rawValue
                 throw LoomError.message("\(name) cannot start an opened session in this build")
@@ -63,6 +58,21 @@ extension SessionRuntime {
             throw OpenSessionError.unknownRequest(requestID)
         }
         return launch
+    }
+
+    /// Approves a task-owned child without allocating or retaining a terminal
+    /// surface. Its process remains owned by this runtime's supervisor.
+    public func approveManagedTaskRequest(_ requestID: UUID,
+                                          expectedProvider: ManagedSession.Provider? = nil) async throws -> UUID {
+        guard let request = await openRequests.snapshot().first(where: { $0.id == requestID }),
+              request.task != nil, request.send == nil else { throw OpenSessionError.unknownRequest(requestID) }
+        if let expectedProvider, request.choices.harness.provider != expectedProvider {
+            throw SessionRuntimeError.openRequestHarnessMismatch
+        }
+        return try await openRequests.approve(requestID) { spec in
+            guard spec.task != nil, spec.send == nil else { throw SessionTaskError.unauthorized }
+            return try await self.approveManagedTaskRequest(spec)
+        }
     }
 
     /// The Chat face's approval (C5b): the same request, the same coordinator and the same answer to the agent

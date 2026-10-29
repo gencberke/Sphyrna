@@ -38,12 +38,14 @@ struct SessionTaskCodexInitialStatusTests {
                                                                          outcome: .interrupted, lastAssistantMessage: nil)), for: run) == .applied)
         #expect(await tracker.status().activity == .failed("interrupted"))
         #expect(await tracker.status().nativeThreadStatus == .active([]))
+        #expect(await tracker.status().lastCompletedTurnID == "turn")
         let snapshot = CodexThreadSnapshot(threadID: "native", lastTurnID: "turn", lastTurnStartedAt: nil,
             lastTurnOutcome: .interrupted, lastAssistantMessage: nil, isIdle: true, status: .idle)
         #expect(await tracker.refresh(snapshot, after: 3) == .applied)
         #expect(await tracker.status().activity == .failed("interrupted"))
         #expect(await tracker.status().nativeThreadStatus == .idle)
         #expect(await tracker.status().lastTurnOutcome == .interrupted)
+        #expect(await tracker.status().lastCompletedTurnID == nil, "a snapshot is not a live exact-turn completion")
         let withoutOutcome = CodexThreadSnapshot(threadID: "native", lastTurnID: nil, lastTurnStartedAt: nil,
             lastTurnOutcome: nil, lastAssistantMessage: nil, isActive: true, status: .active([]))
         #expect(await tracker.refresh(withoutOutcome, after: 4) == .applied)

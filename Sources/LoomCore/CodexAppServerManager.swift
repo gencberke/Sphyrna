@@ -84,6 +84,7 @@ public actor CodexAppServerManager {
     /// The managed server is the child's own run, not an internal helper.
     func managedLaunch() -> ManagedSessionLaunch? { managedOwner == nil ? nil : running?.launch }
     func ownedSessionID() -> UUID? { running?.internalSessionID ?? failedInternalSessionID }
+    func ownedLeader() -> ProcessIdentity? { running?.launch.session.currentRun?.leader }
 
     /// Starts the server and connects to it; a running server's client is returned again.
     public func start() async throws -> CodexAppServerClient {
@@ -129,7 +130,18 @@ public actor CodexAppServerManager {
         graceSeconds: Double = 0.2
     ) async -> (report: SessionStopReport?, errors: [String]) {
         if let stopTask { return await stopTask.value }
-        let task = Task { await self.performStop(graceSeconds: graceSeconds) }
+        let task = Task { await self.performStop(graceSeconds: graceSeconds, allowMovedManagedRun: false) }
+        stopTask = task
+        let result = await task.value
+        stopTask = nil
+        return result
+    }
+
+    /// Quit stops every owned run, including this exact run if its card moved.
+    /// A task-specific Stop never uses this route.
+    func stopServerForShutdown(graceSeconds: Double = 0.2) async -> (report: SessionStopReport?, errors: [String]) {
+        if let stopTask { return await stopTask.value }
+        let task = Task { await self.performStop(graceSeconds: graceSeconds, allowMovedManagedRun: true) }
         stopTask = task
         let result = await task.value
         stopTask = nil
@@ -137,9 +149,11 @@ public actor CodexAppServerManager {
     }
 
     private func performStop(
-        graceSeconds: Double
+        graceSeconds: Double, allowMovedManagedRun: Bool
     ) async -> (report: SessionStopReport?, errors: [String]) {
-        if let managedOwner { return await performManagedStop(managedOwner, graceSeconds: graceSeconds) }
+        if let managedOwner {
+            return await performManagedStop(managedOwner, graceSeconds: graceSeconds, allowMoved: allowMovedManagedRun)
+        }
         if let startTask {
             startTask.cancel()
             running = try? await startTask.value
@@ -176,7 +190,7 @@ public actor CodexAppServerManager {
         return (report, errors)
     }
 
-    private func performManagedStop(_ owner: ManagedOwner, graceSeconds: Double)
+    private func performManagedStop(_ owner: ManagedOwner, graceSeconds: Double, allowMoved: Bool)
         async -> (report: SessionStopReport?, errors: [String]) {
         if let startTask {
             startTask.cancel()
@@ -185,19 +199,20 @@ public actor CodexAppServerManager {
         }
         let active = running
         guard active != nil || failedInternalSessionID == owner.sessionID else { return (nil, []) }
-        let current = await supervisor.session(id: owner.sessionID)?.currentRun
         let report: SessionStopReport?
-        if let current {
-            guard current.id == owner.runID else {
+        if let context = await supervisor.runContext(runID: owner.runID) {
+            guard context.launchSessionID == owner.sessionID, context.session.currentRun?.id == owner.runID,
+                  allowMoved || context.activeSessionID == owner.sessionID else {
                 return (nil, ["Managed Codex server no longer owns the expected run"])
             }
-            report = await supervisor.stop(sessionID: owner.sessionID, runID: owner.runID,
+            report = await supervisor.stop(sessionID: context.activeSessionID, runID: owner.runID,
                                            graceSeconds: graceSeconds, endReason: .requested,
-                                           requiringSessionID: owner.sessionID)
+                                           requiringSessionID: context.activeSessionID)
         } else {
-            report = await supervisor.lastStopReport(sessionID: owner.sessionID)
+            if allowMoved { report = await supervisor.lastStopReport(runID: owner.runID) }
+            else { report = await supervisor.lastStopReport(sessionID: owner.sessionID) }
         }
-        guard let report, report.sessionID == owner.sessionID, report.runID == owner.runID,
+        guard let report, (allowMoved || report.sessionID == owner.sessionID), report.runID == owner.runID,
               report.succeeded else {
             failedInternalSessionID = owner.sessionID
             return (report, ["Managed Codex server stop could not be verified"])
@@ -217,7 +232,9 @@ public actor CodexAppServerManager {
         if let managedOwner {
             guard configuration.scope != nil,
                   let session = await supervisor.session(id: managedOwner.sessionID),
-                  session.provider == .codex, session.currentRun == nil, session.providerConversationID == nil,
+                  let choices = configuration.launchChoices, choices.harness.provider == session.provider,
+                  (try? CodexLaunchSettings(choices)) != nil,
+                  session.currentRun == nil, session.providerConversationID == nil,
                   URL(fileURLWithPath: session.workingDirectory).resolvingSymlinksInPath().standardizedFileURL.path ==
                     URL(fileURLWithPath: configuration.workingDirectory).resolvingSymlinksInPath().standardizedFileURL.path else {
                 throw LoomError.message("Managed Codex server requires its reserved child and owned scope")

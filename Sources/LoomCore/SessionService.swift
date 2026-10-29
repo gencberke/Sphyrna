@@ -312,6 +312,26 @@ public final class SessionService {
         }
     }
 
+    /// Takes over only the exact managed run shown in the selected task view.
+    public func takeOverManagedTask(_ run: ManagedTaskRun, shown: @MainActor (UUID) -> Void) async throws {
+        guard let sink = terminal?.newRunSink() else { throw LoomError.message("Terminal is unavailable") }
+        do {
+            let launch = try await runtime.takeOverManagedTask(taskID: run.taskID, expectedRunID: run.runID,
+                expectedGeneration: run.generation, rows: sink.rows, columns: sink.columns, outputSink: sink.output)
+            terminal?.adopt(launch, into: sink)
+            shown(launch.sessionID)
+        } catch {
+            terminal?.runFailedToStart(sink)
+            throw error
+        }
+    }
+
+    public func respondManagedTask(_ run: ManagedTaskRun, occurrenceID: UUID,
+                                   decision: ManagedTaskUserDecision) async throws -> ManagedTaskWriteOutcome {
+        try await runtime.respondManagedTask(taskID: run.taskID, expectedRunID: run.runID,
+            expectedGeneration: run.generation, occurrenceID: occurrenceID, decision: decision)
+    }
+
     // MARK: Stop
 
     /// Stops the session's run. A Stop ends a handover in any phase (the user chose to end the session, not to move it):
@@ -502,6 +522,19 @@ public final class SessionService {
             guard capabilities(of: provider).startable else {
                 approving.remove(requestID)
                 failureHandler(SessionFailure(.startFailed(provider), LoomError.message("The harness cannot be started")))
+                return
+            }
+            if request?.task != nil {
+                defer { approving.remove(requestID) }
+                do {
+                    let sessionID = try await runtime.approveManagedTaskRequest(requestID, expectedProvider: provider)
+                    LoomLog.notice(.session, "Task request \(Self.requestRef(requestID)) approved: \(LoomLog.ref(sessionID)) started")
+                } catch {
+                    LoomLog.error(.session, "Task request \(Self.requestRef(requestID)) could not start (\(LoomLog.category(of: error)))")
+                    if error is OpenSessionError || (error as? SessionRuntimeError) == .openRequestHarnessMismatch {
+                        failureHandler(SessionFailure(.openRequestNotAnswered, error))
+                    }
+                }
                 return
             }
             if request?.task == nil, facePolicy.faceOfApprovedOpening(capabilities(of: provider)) == .chat,

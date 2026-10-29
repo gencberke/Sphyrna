@@ -128,7 +128,7 @@ extension SessionRuntime {
         face: ProviderLaunchProfile.ClaudeFace = .terminal,
         askRules: [String] = []
     ) throws -> ProviderLaunchProfile {
-        let (choices, askReplaced) = face == .terminal ? Self.terminalAskRule(choices) : (choices, false)
+        let (choices, askReplaced) = face != .chat ? Self.terminalAskRule(choices) : (choices, false)
         let environment = LaunchEnvironment.make(
             base: toolchain.environment, runID: supervisor.ownershipRunID, sessionID: sessionID
         )
@@ -168,7 +168,7 @@ extension SessionRuntime {
             askRules: askRules
         )
         var profileEnvironment = built.environment
-        if face == .terminal { profileEnvironment.merge(taskEnvironment(sessionID: sessionID)) { _, task in task } }
+        if face != .chat { profileEnvironment.merge(taskEnvironment(sessionID: sessionID)) { _, task in task } }
         // The provider's own default profile: do not pin a config directory.
         if toolchain.profileDirectory == nil { profileEnvironment["CLAUDE_CONFIG_DIR"] = toolchain.environment["CLAUDE_CONFIG_DIR"] }
         return ProviderLaunchProfile(

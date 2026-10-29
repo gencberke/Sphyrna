@@ -238,8 +238,10 @@ struct SessionServiceTests {
     }
 
     private func makeRig(runsIn: SessionLiveFace = .chat, host hasHost: Bool = true, startable: Set<ManagedSession.Provider> = [.claude, .codex],
-                         extraEnvironment: [String: String] = [:], claudeVersion: String = "fake 1") async throws -> Rig {
-        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: extraEnvironment, claudeVersion: claudeVersion)
+                         extraEnvironment: [String: String] = [:], scoped: Bool = false, durableLedger: Bool = false,
+                         claudeVersion: String = "fake 1") async throws -> Rig {
+        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: extraEnvironment,
+            scoped: scoped, durableLedger: durableLedger, claudeVersion: claudeVersion)
         let host = FakeHost()
         let sinks = FakeSinks()
         let told = Told()
@@ -377,9 +379,11 @@ struct SessionServiceTests {
         #expect(terminal.told.failures == [.openRequestNotAnswered])
     }
 
-    @Test func anApprovedTaskAlwaysUsesTheOwnedTerminalEvenWhenOrdinaryOpeningsUseChat() async throws {
-        let rig = try await makeRig(runsIn: .chat, claudeVersion: "2.0.0")
+    @Test func anApprovedManagedTaskDoesNotAllocateOrRetainATerminalSink() async throws {
+        let rig = try await makeRig(runsIn: .chat, extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1"],
+                                    scoped: true, durableLedger: true, claudeVersion: "2.0.0")
         defer { rig.context.cleanup() }
+        do {
         let folder = rig.context.root.appendingPathComponent("service-task", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let project = try await rig.context.catalog.addProject(path: folder.path).project
@@ -393,12 +397,17 @@ struct SessionServiceTests {
         let taskID = UUID()
         var request = SessionTaskWireRequest(command: "create", sessionID: claim.sessionID, runID: claim.managedRunID,
                                              generation: claim.generation, credential: claim.credential, taskID: taskID)
-        request.operationID = UUID(); request.name = "Task child"; request.harness = "claude"; request.message = "Inspect"
+        request.operationID = UUID(); request.name = "Task child"; request.harness = "codex"; request.message = "Inspect"
         #expect(await rig.context.runtime.submitTaskRequest(request).status == "pending")
         let childID = try #require(await rig.context.runtime.openRequestSnapshot().first?.task?.childID)
-        await rig.service.approveOpen(requestID: taskID, provider: .claude)?.value
+        await rig.service.approveOpen(requestID: taskID, provider: .codex)?.value
         #expect(rig.host.opened.isEmpty)
-        #expect(rig.sinks.requested == 1 && rig.sinks.adopted.first?.sessionID == childID)
+        #expect(rig.sinks.requested == 0 && rig.sinks.adopted.isEmpty && rig.sinks.captured.isEmpty)
+        #expect((await rig.context.supervisor.session(id: childID))?.currentRun != nil)
+        } catch {
+            _ = await rig.context.runtime.shutdown()
+            throw error
+        }
         #expect((await rig.context.runtime.shutdown()).succeeded)
     }
 

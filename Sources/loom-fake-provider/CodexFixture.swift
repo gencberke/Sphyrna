@@ -353,6 +353,11 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
         thread.active = false
         thread.flags = []
         threads[threadID] = thread
+        if ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_ROUNDS"] == "1",
+           message.hasPrefix("FAKE-TASK-") {
+            broadcast("item/completed", ["threadId": threadID, "turnId": turnID,
+                                         "item": ["type": "agentMessage", "text": message]])
+        }
         broadcast("turn/completed", ["threadId": threadID, "turn": [
             "id": turnID, "status": status, "items": [["type": "agentMessage", "text": message]],
         ] as [String: Any]])
@@ -488,7 +493,16 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
             threads[thread.id] = thread
             connection.resumedThreads.insert(thread.id)
             persist(thread)
-            reply(["thread": threadObject(thread, includeTurns: false)])
+            let sandboxType: String = switch thread.sandbox {
+            case "read-only": "readOnly"
+            case "workspace-write": "workspaceWrite"
+            case "danger-full-access": "dangerFullAccess"
+            default: "futurePolicy"
+            }
+            reply(["thread": threadObject(thread, includeTurns: false), "cwd": thread.cwd,
+                   "model": thread.model, "reasoningEffort": thread.effort,
+                   "sandbox": ["type": sandboxType, "networkAccess": thread.networkAccess, "writableRoots": thread.writableRoots],
+                   "approvalPolicy": thread.approval, "approvalsReviewer": thread.reviewer])
             broadcast("thread/started", ["thread": threadObject(thread, includeTurns: false)])
         case "fixture/settings":
             let threadID = (params["threadId"] as? String) ?? ""
@@ -502,6 +516,16 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
             thread.reviewer = (params["reviewer"] as? String) ?? thread.reviewer
             threads[threadID] = thread
             persist(thread)
+            reply([:])
+        case "fixture/taskStatus":
+            let threadID = (params["threadId"] as? String) ?? ""
+            guard var thread = load(threadID), let active = params["active"] as? Bool else {
+                failure(-32600, "fixture thread or status missing"); return
+            }
+            thread.active = active
+            thread.flags = []
+            threads[threadID] = thread
+            announceStatus(thread)
             reply([:])
         case "fixture/resolve":
             let threadID = (params["threadId"] as? String) ?? ""
@@ -689,6 +713,9 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
         case "turn/interrupt":
             let threadID = (params["threadId"] as? String) ?? "", turnID = (params["turnId"] as? String) ?? ""
             recordStopDiagnostic("turn-interrupt \(threadID) \(turnID)")
+            if ProcessInfo.processInfo.environment["LOOM_FAKE_CODEX_INTERRUPT_REPLY_ONLY"] == "1" {
+                reply([:]); return
+            }
             complete(threadID, turnID: turnID, status: "interrupted", message: "interrupted")
             reply([:])
         case "turn/start":
@@ -750,6 +777,19 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
                 if text.hasPrefix("Sphyrna task:"), thread.turns.count == 1,
                    ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_HOLD_FIRST"] == "1" {
                     return // The test must interrupt this exact still-active turn.
+                }
+                if text.hasPrefix("Sphyrna task:"), thread.turns.count == 1,
+                   ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_APPROVAL"] == "1" {
+                    thread.flags = ["waitingOnApproval"]
+                    threads[threadID] = thread
+                    announceStatus(thread)
+                    nextRequestID += 1
+                    approvals[nextRequestID] = (threadID, turn.id)
+                    connection.send(["id": nextRequestID, "method": "item/commandExecution/requestApproval", "params": [
+                        "threadId": threadID, "turnId": turn.id, "command": "printf fixture", "cwd": thread.cwd,
+                        "availableDecisions": ["accept", "cancel"],
+                    ] as [String: Any]])
+                    return
                 }
                 let turnID = turn.id
                 DispatchQueue.global().async {

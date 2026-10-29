@@ -28,6 +28,10 @@ extension SessionRuntime {
             taskReadFence = router.readFence
             peerMailbox = mailbox
             peerReadFence = SessionTaskReadFence { [weak self] id in Task { await self?.markPeerNeedsDelivery(id) } }
+            await supervisor.setManagedScopeReceiptWriter { binding in
+                try await coordinator.recordManagedScopeStopped(binding)
+            }
+            guard !shuttingDown, taskCoordinator === coordinator else { return }
             inputGate.observeRegistrations { [weak self] runID in Task { await self?.taskTerminalAttached(runID) } }
         } catch {
             LoomLog.error(.lifecycle, "Task channel unavailable (\(LoomLog.category(of: error)))")
@@ -91,6 +95,7 @@ extension SessionRuntime {
         taskExpectedInputs[plan.claim.managedRunID] = nil
         finishTaskProofWaiters(runID: plan.claim.managedRunID, observation: nil)
         finishTaskInterruptWaiters(runID: plan.claim.managedRunID)
+        finishManagedCodexInterruptSignals(runID: plan.claim.managedRunID)
         taskRunPlans[sessionID] = nil
         if !shuttingDown {
             Task { [weak self] in
@@ -134,6 +139,13 @@ extension SessionRuntime {
         }
         guard let revision = plan.lease.admit({ $0 }),
               await supervisor.taskBinding(for: plan.claim) == binding else { return .unknown }
+        if let managed = managedTaskControllers[binding.managedRunID], managed.run.sessionID == binding.sessionID,
+           let view = managedTaskPresentations[managed.run.taskID], view.binding == binding {
+            guard taskRunPlans[binding.sessionID]?.lease === plan.lease,
+                  plan.lease.permits(revision: revision), !shuttingDown else { return .unknown }
+            if !view.permissions.isEmpty { return .waitingForUser }
+            return view.status
+        }
         let work = await supervisor.providerWorkState(sessionID: binding.sessionID)
         guard let current = taskRunPlans[binding.sessionID], current.lease === plan.lease,
               current.lease.permits(revision: revision), !shuttingDown,
@@ -185,7 +197,7 @@ extension SessionRuntime {
                !inputGate.hasInputGeneration(runID: binding.managedRunID, generation: generation) { return false }
             switch purpose {
             case .wake, .peer: retained = old.retainedChildProof() ?? old.retainedChild
-            case .child: break
+            case .child: retained = old.retainedChildProof()
             }
         }
         guard digest.count == 32, let plan = taskRunPlans[binding.sessionID], plan.lease.isEnabled,
@@ -216,20 +228,11 @@ extension SessionRuntime {
         guard let expected = taskExpectedInputs[binding.managedRunID], expected.binding == binding,
               let plan = taskRunPlans[binding.sessionID], plan.lease.isEnabled,
               plan.claim.managedRunID == binding.managedRunID, plan.claim.generation == binding.generation else { return nil }
-        if expected.purpose != purpose {
-            guard expected.confirmedObservation != nil, let retained = expected.retainedChild,
-                  retained.purpose == purpose, retained.binding == binding,
-                  inputGate.hasInputGeneration(runID: binding.managedRunID, generation: retained.generation),
-                  await authenticateTaskRun(plan.claim) == binding,
-                  let current = taskExpectedInputs[binding.managedRunID], current.effect === expected.effect,
-                  current.confirmedObservation != nil, current.retainedChild?.purpose == purpose,
-                  inputGate.hasInputGeneration(runID: binding.managedRunID, generation: retained.generation) else { return nil }
-            return retained.observation
-        }
-        if let generation = expected.acceptedGeneration,
-           !inputGate.hasInputGeneration(runID: binding.managedRunID, generation: generation) { return nil }
+        // A newer possible native input may have superseded this execution.
+        // A deferred write restores the retained proof separately.
+        guard expected.purpose == purpose else { return nil }
         var result = expected.confirmedObservation
-        if result == nil {
+        if result == nil || plan.lease.permits({ true }) == nil {
             guard taskProofWaiters.count < 32 else { return nil }
             let id = UUID()
             result = await withTaskCancellationHandler {
@@ -243,14 +246,20 @@ extension SessionRuntime {
                                                                    continuation: continuation, timeout: timeout)
                     updateTaskQuiescenceObservers()
                     scheduleTaskFileProof(runID: binding.managedRunID)
+                    // The ingress may have settled just before the observer was
+                    // installed. Its exact current proof is safe to deliver now.
+                    if plan.lease.permits({ true }) != nil,
+                       let latest = taskExpectedInputs[binding.managedRunID],
+                       latest.purpose == purpose, latest.binding == binding, latest.confirmedObservation != nil {
+                        finishTaskProofWaiters(runID: binding.managedRunID, observation: latest)
+                    }
                 }
             } onCancel: { Task { await self.finishTaskProofWaiter(id, result: nil) } }
         }
-        guard let result, await authenticateTaskRun(plan.claim) == binding,
+        guard let result, let revision = plan.lease.admit({ $0 }),
+              await authenticateTaskRun(plan.claim) == binding, plan.lease.permits(revision: revision),
               let current = taskExpectedInputs[binding.managedRunID], current.purpose == purpose,
-              current.binding == binding, current.confirmedObservation == result,
-              (current.ticket == nil || current.acceptedGeneration != nil),
-              current.acceptedGeneration.map({ inputGate.hasInputGeneration(runID: binding.managedRunID, generation: $0) }) ?? true else { return nil }
+              current.binding == binding, current.confirmedObservation == result else { return nil }
         return result
     }
 
@@ -305,13 +314,17 @@ extension SessionRuntime {
               await authenticateTaskRun(plan.claim) == binding,
               taskRunPlans[binding.sessionID]?.lease === plan.lease,
               case .confirmed = inputGate.confirmManualInput(runID: runID, digest: digest, observedAt: observedAt) else { return }
-        taskRunBecameQuiescent(sessionID: binding.sessionID, runID: runID)
+        await taskRunBecameQuiescent(sessionID: binding.sessionID, runID: runID)
     }
 
     func observeClaudeTaskHook(_ envelope: ClaudeHookEnvelope, event: ClaudeHookEvent) async {
         guard case .userPromptSubmit = event.kind, !event.promptIsSynthetic, event.agentID == nil,
               let plan = taskRunPlans[envelope.sessionID], plan.claim.managedRunID == envelope.managedRunID,
               plan.lease.isEnabled else { return }
+        // A managed pipe's first hook can precede system/init and contain no
+        // prompt text. Its ordered controller observes the exact submitted
+        // input instead; the hook still participates in the ingress fence.
+        if managedTaskControllers[envelope.managedRunID] != nil { return }
         guard envelope.taskGeneration == plan.claim.generation,
               let credential = envelope.taskCredential, secureEqual(credential, plan.claim.credential),
               let context = await supervisor.runContext(runID: envelope.managedRunID),
@@ -392,22 +405,24 @@ extension SessionRuntime {
         return true
     }
 
-    private func acceptTaskObservation(_ proposed: SessionTaskExpectedInput) {
+    func acceptTaskObservation(_ proposed: SessionTaskExpectedInput) {
         let runID = proposed.binding.managedRunID
         guard var current = taskExpectedInputs[runID], current.effect === proposed.effect,
               current.confirmedObservation != nil else { return }
         if let ticket = current.ticket, current.acceptedGeneration == nil {
-            guard let generation = inputGate.confirmAutomaticInputGeneration(runID: runID, ticket: ticket) else {
-                current.observed = nil
-                taskExpectedInputs[runID] = current
-                finishTaskProofWaiters(runID: runID, observation: nil)
-                return
-            }
-            current.acceptedGeneration = generation
+            // An unrelated user key can make the composer unsafe for another
+            // write without erasing the already observed native execution.
+            current.acceptedGeneration = inputGate.confirmAutomaticInputGeneration(runID: runID, ticket: ticket)
         }
+        current.retainedChild = nil
         taskExpectedInputs[runID] = current
-        finishTaskProofWaiters(runID: runID, observation: current)
+        if let plan = taskRunPlans[current.binding.sessionID], plan.lease.permits({ true }) != nil {
+            finishTaskProofWaiters(runID: runID, observation: current)
+        } else { updateTaskQuiescenceObservers() }
         observeTaskWakeIfProved(current)
+        if let server = runs[runID]?.server {
+            Task { await self.refreshManagedCodexRequests(server) }
+        }
     }
 
     private func observeTaskWakeIfProved(_ expected: SessionTaskExpectedInput) {
@@ -519,6 +534,7 @@ extension SessionRuntime {
         for id in reservations.keys {
             taskChildReservations[id] = nil
             taskLaunchContexts[id] = nil
+            managedTaskPresentations[id] = nil
             tasksNeedingDelivery.remove(id)
             taskDeliveriesRequested.remove(id)
         }

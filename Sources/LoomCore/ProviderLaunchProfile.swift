@@ -138,6 +138,7 @@ public struct ProviderLaunchProfile: Sendable {
     public enum ClaudeFace: Equatable, Sendable {
         case terminal
         case chat
+        case managedTask
     }
 
     /// The options that make a Chat-face child (S1): NDJSON both ways, partial messages, the echo of every send,
@@ -150,6 +151,13 @@ public struct ProviderLaunchProfile: Sendable {
         "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
         "--include-partial-messages", "--replay-user-messages", "--permission-prompt-tool", "stdio",
         "--allow-dangerously-skip-permissions",
+    ]
+
+    /// Task-only stream transport. Native permission requests remain user
+    /// decisions; no live permission-bypass capability is added.
+    static let claudeManagedTaskArguments = [
+        "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+        "--include-partial-messages", "--replay-user-messages", "--permission-prompt-tool", "stdio",
     ]
 
     /// A new session's name and, for ordinary openings, its positional first prompt.
@@ -281,7 +289,7 @@ public struct ProviderLaunchProfile: Sendable {
         }
         var openingArguments: [String] = []
         var trailing: [String] = []
-        if let opening, face == .chat {
+        if let opening, face != .terminal {
             // The Chat face sends its first message over stdin; only the name is an option.
             guard case .new = route else {
                 throw LoomError.message("Only a new Claude session can start with a first message")
@@ -300,20 +308,20 @@ public struct ProviderLaunchProfile: Sendable {
         env["CLAUDE_CONFIG_DIR"] = config.path
         env["CLAUDE_CODE_DISABLE_AGENT_VIEW"] = "1"
         var faceArguments: [String] = []
-        if face == .chat {
-            faceArguments = claudeChatArguments
+        if face != .terminal {
+            faceArguments = face == .chat ? claudeChatArguments : claudeManagedTaskArguments
             // Readable thinking (S1 §D14): the default `updates` display sends empty thinking text. A hidden option,
             // so it is passed only where it is known to exist.
             if capabilities.claudeAcceptsThinkingDisplay { faceArguments += ["--thinking-display", "summarized"] }
             // A subagent's text and thinking on the parent's stream (R4), so a running subagent's card shows its words. Only
             // the Chat face (`-p` stream-json) takes it, and only where `--help` lists it.
-            if capabilities.supportsForwardSubagentText { faceArguments += ["--forward-subagent-text"] }
+            if face == .chat, capabilities.supportsForwardSubagentText { faceArguments += ["--forward-subagent-text"] }
             // `system/session_state_changed` (S1 §D8): idle, running, requires_action.
             env["CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS"] = "1"
             // File checkpoints from the session's first turn (S8): without them `rewind_files` answers "File rewinding
             // is not enabled", and a message sent before the switch has no checkpoint. `rewind_files` takes the uuid
             // Loom put on its own user line (the id of its row in the live model). The terminal keeps its own.
-            env["CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING"] = "true"
+            if face == .chat { env["CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING"] = "true" }
         }
         if let hooks {
             env["LOOM_HOOK_SOCKET"] = hooks.socketPath

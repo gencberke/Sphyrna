@@ -5,6 +5,101 @@ import Testing
 @testable import LoomCore
 
 struct CodexAppServerTests {
+    @Test func managedProgressCoalescesAndRejectsOversizedText() async throws {
+        let (client, peer) = try await CodexSocketPeer.make()
+        defer { peer.close() }
+        let stream = await client.managedProgress()
+        func send(_ text: String) throws {
+            let body: JSONValue = .object(["method": .string("item/completed"), "params": .object([
+                "threadId": .string("thread"), "turnId": .string("turn"),
+                "item": .object(["type": .string("agentMessage"), "text": .string(text)])
+            ])])
+            let data = Array(try JSONEncoder().encode(body))
+            let chunks = stride(from: 0, to: data.count, by: 100).map { Array(data[$0..<min($0 + 100, data.count)]) }
+            for (index, chunk) in chunks.enumerated() {
+                try peer.rawFrame(opcode: index == 0 ? 1 : 0, final: index == chunks.count - 1, bytes: chunk)
+            }
+        }
+        try send("first")
+        try send("newest")
+        try send(String(repeating: "x", count: ManagedTaskProgress.maximumTextBytes + 1))
+        #expect(try await SessionRuntimeTests.waitUntil { await client.latestSequence() >= 3 })
+        var iterator = stream.makeAsyncIterator()
+        let item = try #require(await iterator.next())
+        #expect(item.threadID == "thread" && item.turnID == "turn" && item.progress.text == "newest")
+        await client.close()
+    }
+
+    @Test func managedDecisionUsesOneFencedNativeOccurrence() async throws {
+        let (client, peer) = try await CodexSocketPeer.make()
+        defer { peer.close() }
+        let revoked = SessionTaskRunLease()
+        let oldRevision = try #require(revoked.admit { $0 })
+        revoked.revoke()
+        let denied = try await client.respondManaged(id: .number(42), result: .object(["decision": .string("accept")])) { write in
+            try revoked.withOptionalAdmission(revision: oldRevision) { try write() }
+        }
+        #expect(!denied)
+        let live = SessionTaskRunLease()
+        let revision = try #require(live.admit { $0 })
+        let sent = try await client.respondManaged(id: .number(42), result: .object(["decision": .string("accept")])) { write in
+            try live.withOptionalAdmission(revision: revision) { try write() }
+        }
+        #expect(sent)
+        let frame = try await peer.nextFrame()
+        let answer = try JSONDecoder().decode(JSONValue.self, from: Data(frame.bytes))
+        #expect(answer == .object(["id": .number(42), "result": .object(["decision": .string("accept")])]))
+        await client.close()
+    }
+
+    @Test(arguments: ["safe", "cwd", "identity", "ephemeral", "mode", "network", "roots", "reviewer", "profile", "model", "effort"])
+    func managedCreatorValidatesNativeSettingsBeforeAnyInput(variant: String) async throws {
+        let (client, peer) = try await CodexSocketPeer.make()
+        defer { peer.close() }
+        let cwd = "/tmp/loom-managed-fixture", id = UUID().uuidString.lowercased()
+        let choices = HarnessLaunchChoices(harness: .codex, model: "fake-codex-alpha", effort: "low", mode: .acceptEdits)
+        let start = Task { try await client.startManagedThread(workingDirectory: cwd, choices: choices) }
+        let frame = try await peer.nextFrame()
+        let call = try JSONDecoder().decode(JSONValue.self, from: Data(frame.bytes))
+        #expect(call["method"] == .string("thread/start"))
+        #expect(call["params"] == .object(["cwd": .string(cwd)]))
+        var thread: [String: JSONValue] = ["id": .string(id), "cwd": .string(cwd),
+            "ephemeral": .bool(false), "status": .object(["type": .string("idle")])]
+        var sandbox: [String: JSONValue] = ["type": .string("workspaceWrite"), "networkAccess": .bool(false),
+                                             "writableRoots": .array([])]
+        var response: [String: JSONValue] = ["cwd": .string(cwd), "model": .string("fake-codex-alpha"),
+            "reasoningEffort": .string("low"), "approvalPolicy": .string("on-request"),
+            "approvalsReviewer": .string("user")]
+        switch variant {
+        case "cwd": response["cwd"] = .string("/tmp/other")
+        case "identity": thread["id"] = .string("not-a-native-uuid")
+        case "ephemeral": thread["ephemeral"] = .bool(true)
+        case "mode": sandbox["type"] = .string("dangerFullAccess")
+        case "network": sandbox["networkAccess"] = .bool(true)
+        case "roots": sandbox["writableRoots"] = .array([.string("/tmp/outside")])
+        case "reviewer": response["approvalsReviewer"] = .string("auto_review")
+        case "profile": response["activePermissionProfile"] = .object(["name": .string("broad")])
+        case "model": response["model"] = .string("different-model")
+        case "effort": response["reasoningEffort"] = .string("high")
+        default: break
+        }
+        response["thread"] = .object(thread); response["sandbox"] = .object(sandbox)
+        let requestID = try #require(call["id"])
+        let data = Array(try JSONEncoder().encode(JSONValue.object(["id": requestID, "result": .object(response)])))
+        let pieces = stride(from: 0, to: data.count, by: 100).map { Array(data[$0..<min($0 + 100, data.count)]) }
+        for (index, piece) in pieces.enumerated() {
+            try peer.rawFrame(opcode: index == 0 ? 1 : 0, final: index == pieces.count - 1, bytes: piece)
+        }
+        if variant == "safe" {
+            let accepted = try await start.value
+            #expect(accepted.identity.id == id && accepted.settings.mode == .acceptEdits)
+            #expect(accepted.settings.model == "fake-codex-alpha" && accepted.settings.effort == "low")
+        } else {
+            await #expect(throws: (any Error).self) { _ = try await start.value }
+        }
+        await client.close()
+    }
+
     @Test func alreadyReadFrameFencesTaskWriteUntilActorConsumesIt() async throws {
         var descriptors: [Int32] = [0, 0]
         guard socketpair(AF_UNIX, SOCK_STREAM, 0, &descriptors) == 0 else { throw CodexAppServerError.closed }

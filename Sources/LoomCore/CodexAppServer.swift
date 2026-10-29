@@ -132,6 +132,11 @@ public struct CodexThreadIdentity: Equatable, Sendable {
     }
 }
 
+struct ManagedCodexThread: Equatable, Sendable {
+    let identity: CodexThreadIdentity
+    let settings: CodexResumeSettings
+}
+
 public enum CodexAppServerEvent: Equatable, Sendable {
     case threadStarted(CodexThreadIdentity)
     case threadStatusChanged(threadID: String, status: CodexThreadStatus)
@@ -175,6 +180,12 @@ struct CodexTaskInputObservation: Equatable, Sendable {
         self.sequence = sequence; self.threadID = threadID; self.turnID = turnID
         self.digest = digest; self.clientID = clientID; self.receivedUptime = receivedUptime
     }
+}
+
+struct CodexManagedProgress: Sendable {
+    let threadID: String
+    let turnID: String
+    let progress: ManagedTaskProgress
 }
 
 public struct CodexThreadSnapshot: Equatable, Sendable {
@@ -237,6 +248,7 @@ public actor CodexAppServerClient {
     private let wireDiagnostics: CodexWireDiagnostics?
     private let inboundObserver: CodexInboundObserver?
     private var taskInputObserver: (@Sendable (CodexTaskInputObservation) -> Void)?
+    private var managedProgressContinuation: AsyncStream<CodexManagedProgress>.Continuation?
     private var taskEventLease: SessionTaskRunLease?
     private var nextRequestID = 1
     private var sequence: UInt64 = 0
@@ -327,6 +339,7 @@ public actor CodexAppServerClient {
         readerTask?.cancel()
         transport.close()
         eventContinuation.finish()
+        managedProgressContinuation?.finish()
     }
 
     public func latestSequence() -> UInt64 { sequence }
@@ -388,6 +401,16 @@ public actor CodexAppServerClient {
 
     func observeTaskInputs(_ observer: (@Sendable (CodexTaskInputObservation) -> Void)?) {
         taskInputObserver = observer
+    }
+
+    /// Display data may coalesce; input proof stays on its independent,
+    /// loss-detecting ingress path.
+    func managedProgress() -> AsyncStream<CodexManagedProgress> {
+        managedProgressContinuation?.finish()
+        var continuation: AsyncStream<CodexManagedProgress>.Continuation!
+        let stream = AsyncStream<CodexManagedProgress>(bufferingPolicy: .bufferingNewest(1)) { continuation = $0 }
+        managedProgressContinuation = continuation
+        return stream
     }
 
     func fenceTaskEvents(with lease: SessionTaskRunLease?) {
@@ -501,6 +524,33 @@ public actor CodexAppServerClient {
 
     private static func validTaskIdentifier(_ value: String) -> Bool {
         !value.isEmpty && value.utf8.count <= 256 && !value.utf8.contains(0)
+    }
+
+    /// This connection creates and owns the thread subscription. No input is
+    /// sent until identity and the effective native settings are verified.
+    func startManagedThread(workingDirectory: String, choices: HarnessLaunchChoices) async throws -> ManagedCodexThread {
+        let requested = try CodexLaunchSettings(choices)
+        guard workingDirectory.hasPrefix("/"), requested.mode != nil else {
+            throw CodexAppServerError.protocolViolation("managed thread requires a safe mode and absolute working directory")
+        }
+        let result = try await request(method: "thread/start", params: .object(["cwd": .string(workingDirectory)]))
+        guard let thread = result["thread"],
+              case let .threadStarted(identity) = Self.decodeEvent(method: "thread/started", params: .object(["thread": thread])),
+              UUID(uuidString: identity.id) != nil, identity.ephemeral == false,
+              let nativeDirectory = identity.workingDirectory, nativeDirectory.hasPrefix("/"),
+              URL(fileURLWithPath: nativeDirectory).resolvingSymlinksInPath().standardizedFileURL.path ==
+                URL(fileURLWithPath: workingDirectory).resolvingSymlinksInPath().standardizedFileURL.path else {
+            throw CodexAppServerError.protocolViolation("managed thread returned an unverified identity or directory")
+        }
+        let settings = try CodexResumeSettings.decodeNative(result, threadID: identity.id, workingDirectory: workingDirectory)
+        guard let model = settings.model, ClaudeLaunchChoices.isSafeToken(model),
+              settings.effort.map(HarnessEffort.isToken) ?? true,
+              requested.model.map({ $0 == model }) ?? true,
+              requested.effort.map({ $0 == settings.effort }) ?? true,
+              settings.mode == requested.mode else {
+            throw CodexAppServerError.protocolViolation("managed thread returned different or unavailable settings")
+        }
+        return ManagedCodexThread(identity: identity, settings: settings)
     }
 
     /// Status comes from a history-free `thread/read`; the last turn (id, start,
@@ -677,7 +727,16 @@ public actor CodexAppServerClient {
         try await Task.detached { try transport.send(data) }.value
     }
 
+    /// Managed permission decisions use the same bounded, fenced single
+    /// socket write as task input. No rule or permission amendment is sent.
+    func respondManaged(id: JSONValue, result: JSONValue, transaction: TerminalWriteTransaction) throws -> Bool {
+        let data = try JSONEncoder().encode(JSONValue.object(["id": id, "result": result]))
+        return try transport.sendTask(data, transaction: transaction)
+    }
+
     public func close() {
+        managedProgressContinuation?.finish()
+        managedProgressContinuation = nil
         readerTask?.cancel()
         readerTask = nil
         transport.close()
@@ -753,6 +812,11 @@ public actor CodexAppServerClient {
                 decoded("task-input")
                 return
             }
+            if object["id"] == nil, method == "item/completed", let continuation = managedProgressContinuation {
+                if let value = Self.managedProgress(params) { continuation.yield(value) }
+                decoded("managed-progress")
+                return
+            }
             if let id = object["id"] {
                 decoded("request")
                 let inbound = CodexAppServerInbound.request(
@@ -812,6 +876,8 @@ public actor CodexAppServerClient {
 
     private func readerStopped(_ error: any Error) {
         guard terminalError == nil else { return }
+        managedProgressContinuation?.finish()
+        managedProgressContinuation = nil
         taskEventLease?.invalidate()
         wireDiagnostics?.invalidate(error is CodexAppServerError && (error as? CodexAppServerError) == .closed ? "disconnect" : "protocol")
         terminalError = error
@@ -966,6 +1032,15 @@ public actor CodexAppServerClient {
         case "failed": return .failed(error)
         default: return .unknown(status)
         }
+    }
+
+    private static func managedProgress(_ params: JSONValue) -> CodexManagedProgress? {
+        guard let object = params.object, let thread = object["threadId"]?.string,
+              let turn = object["turnId"]?.string, !thread.isEmpty, thread.utf8.count <= 256,
+              !turn.isEmpty, turn.utf8.count <= 256, let item = object["item"]?.object,
+              item["type"]?.string == "agentMessage", let text = item["text"]?.string,
+              !text.isEmpty, let progress = try? ManagedTaskProgress(kind: .message, text: text) else { return nil }
+        return CodexManagedProgress(threadID: thread, turnID: turn, progress: progress)
     }
 
     private static func lastAssistantMessage(_ turn: [String: JSONValue]) -> String? {

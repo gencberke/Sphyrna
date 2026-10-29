@@ -396,6 +396,7 @@ final class ChatEngine {
     var keepPendingAtEnd = false
     var requestCounter = 0
     var toolCounter = 0
+    var heldTaskRound = false
 
     var sessionBusy = false
     var inputClosed = false
@@ -926,7 +927,29 @@ final class ChatEngine {
         }
         do {
             if let first {
-                try runScenario(first.text)
+                if first.text.hasPrefix("Sphyrna task:"),
+                   ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_ROUNDS"] == "1" {
+                    if ProcessInfo.processInfo.environment["LOOM_FAKE_CLAUDE_TASK_INTERRUPT"] == "1", !heldTaskRound {
+                        heldTaskRound = true
+                        let accepted = fakeSphyrnaTaskRound(first.text, report: false)
+                        if accepted {
+                            if let state = ProcessInfo.processInfo.environment["LOOM_FAKE_STATE"] {
+                                _ = FileManager.default.createFile(atPath: state + "/managed-claude-task-accepted", contents: Data())
+                            }
+                            // This fixture waits for a control request rather
+                            // than a model/tool timer; ignored interrupts must
+                            // not be mistaken for an ended execution.
+                            let deadline = Date().addingTimeInterval(20)
+                            while !inputClosed && Date() < deadline { try serviceOnce(maxWait: 0.2) }
+                        }
+                        else { try assistantMessage([.text("FAKE-TASK-ROUND-REFUSED")]) }
+                    } else {
+                        let reported = fakeSphyrnaTaskRound(first.text)
+                        try assistantMessage([.text(reported ? "FAKE-TASK-ROUND-OK" : "FAKE-TASK-ROUND-REFUSED")])
+                    }
+                } else {
+                    try runScenario(first.text)
+                }
             } else if finished?.isAgent == true {
                 // S9b: the model goes on with the agent's report, and tries to write it down.
                 try fileScenario(["agent-report.txt", "Survey findings"])

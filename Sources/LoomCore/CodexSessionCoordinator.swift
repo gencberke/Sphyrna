@@ -53,6 +53,9 @@ public actor CodexSessionCoordinator {
         var retryStatus: CodexThreadStatus?
     }
     private var joins: [UUID: Join] = [:]
+    /// A managed creator is already subscribed to its own complete stream;
+    /// it must not hydrate the same thread's history at every idle edge.
+    private var managedCreatorRuns: Set<UUID> = []
     // Retained failures are barriers too: an uncertain old join must never be
     // followed by a new owner whose subscription an old cleanup could remove.
     private struct StopGate {
@@ -178,6 +181,7 @@ public actor CodexSessionCoordinator {
         consumerTask?.cancel()
         consumerTask = nil
         cleanupDrains.removeAll()
+        managedCreatorRuns.removeAll()
         pendingRequests.removeAll()
         answeredRequests.removeAll()
         publishRequests()
@@ -219,7 +223,25 @@ public actor CodexSessionCoordinator {
         launchJoin(runID: managedRunID)
     }
 
+    /// `thread/start` subscribed this very connection before returning. Do not
+    /// issue a second join or hydrate history for an empty managed child.
+    func bindManagedCreator(sessionID: UUID, managedRunID: UUID, workingDirectory: String,
+                            thread: ManagedCodexThread) async throws {
+        let sequence = await client.latestSequence()
+        let binding = CodexRunBinding(sessionID: sessionID, managedRunID: managedRunID,
+            threadID: thread.identity.id, workingDirectory: workingDirectory)
+        managedCreatorRuns.insert(managedRunID)
+        do {
+            try await installBinding(binding, after: sequence, initialStatus: thread.identity.initialStatus,
+                                     registerProviderStopHooks: false)
+        } catch {
+            managedCreatorRuns.remove(managedRunID)
+            throw error
+        }
+    }
+
     public func unbind(runID: UUID) async {
+        managedCreatorRuns.remove(runID)
         stopGates.removeValue(forKey: runID)?.continuation.finish()
         let cleanup = invalidateJoin(runID: runID)
             ?? cleanupThreadByRun[runID].flatMap { cleanupByThread[$0] }
@@ -345,11 +367,15 @@ public actor CodexSessionCoordinator {
                         await resolve(pending)
                     }
                 }
-                if case let .event(sequence, .threadStatusChanged(_, .idle)) = inbound {
+                if case let .event(sequence, .threadStatusChanged(_, .idle)) = inbound,
+                   !managedCreatorRuns.contains(binding.managedRunID) {
                     try await hydrateIdleThread(binding: binding, after: sequence)
                 }
             case let .newConversation(previous, identity):
                 await identityChangeHandler?(previous.sessionID, previous.managedRunID)
+                // Managed children never adopt a replacement native thread.
+                // Revocation above leaves the owned run available for Stop.
+                if managedCreatorRuns.contains(previous.managedRunID) { return }
                 _ = invalidateJoin(runID: previous.managedRunID)
                 let sequence: UInt64
                 switch inbound {
@@ -392,7 +418,7 @@ public actor CodexSessionCoordinator {
 
     private func installBinding(
         _ binding: CodexRunBinding, after sequence: UInt64, alreadyBound: Bool = false,
-        initialStatus: CodexThreadStatus? = nil
+        initialStatus: CodexThreadStatus? = nil, registerProviderStopHooks: Bool = true
     ) async throws {
         guard acceptingJoins else { throw CancellationError() }
         if joins[binding.managedRunID]?.binding == binding { return }
@@ -411,8 +437,10 @@ public actor CodexSessionCoordinator {
         }
         try await supervisor.setIdentityState(.known, runID: binding.managedRunID)
         try verify()
-        try await registerStopHooks(runID: binding.managedRunID, threadID: binding.threadID)
-        try verify()
+        if registerProviderStopHooks {
+            try await registerStopHooks(runID: binding.managedRunID, threadID: binding.threadID)
+            try verify()
+        }
         await router.register(binding)
         try verify()
     }

@@ -1,8 +1,8 @@
 import CryptoKit
 import Foundation
 
-/// Only presentation resources and the existing runtime launch are held
-/// here; task authority and messages remain in the durable coordinator.
+/// Live launch coordination only; task authority remains in the durable store.
+/// A managed child never retains a terminal presentation sink or callback.
 struct SessionTaskLaunchContext: Sendable {
     struct WakeReservation: Sendable {
         let operationID: UUID
@@ -11,12 +11,8 @@ struct SessionTaskLaunchContext: Sendable {
     }
     let childID: UUID
     let projectID: UUID
-    let rows: UInt16
-    let columns: UInt16
-    let output: any TerminalOutputSink
-    let ready: @MainActor @Sendable (RuntimeLaunch) async -> Void
     let modeFromUserDefault: Bool
-    var launch: RuntimeLaunch?
+    var managedRun: ManagedTaskRun?
     var starting = false
     var stopRequested = false
     var firstInputEffect: SessionTaskInputEffectMarker?
@@ -24,6 +20,8 @@ struct SessionTaskLaunchContext: Sendable {
     var wakeInFlight = false
     var wakeRetryRequested = false
     var wakeReservation: WakeReservation?
+
+    var currentRunID: UUID? { managedRun?.runID }
 }
 
 struct SessionTaskInterruptWaiter {
@@ -41,6 +39,12 @@ struct SessionTaskInterruptWaiter {
     var retryRequested = false
 }
 
+struct ManagedCodexInterruptSignal {
+    let parentRunID: UUID
+    let childRunID: UUID
+    let continuation: AsyncStream<Void>.Continuation
+}
+
 private final class SessionTaskInterruptClock: @unchecked Sendable {
     private let lock = NSLock()
     private var value: Double?
@@ -56,11 +60,8 @@ private final class SessionTaskInterruptClock: @unchecked Sendable {
 }
 
 extension SessionRuntime {
-    func approveTaskRequest(_ spec: OpenSessionSpec, rows: UInt16, columns: UInt16,
-                            outputSink: (any TerminalOutputSink)?,
-                            onTerminalReady: (@MainActor @Sendable (RuntimeLaunch) async -> Void)?) async throws -> RuntimeLaunch {
+    func approveManagedTaskRequest(_ spec: OpenSessionSpec) async throws -> UUID {
         guard let grant = spec.task, let coordinator = taskCoordinator,
-              let outputSink, let onTerminalReady,
               let reservation = taskChildReservations[grant.taskID], reservation.childID == grant.childID,
               reservation.operationID == grant.operationID, let fingerprint = reservation.fingerprint,
               taskLaunchContexts[grant.taskID] == nil else { throw SessionTaskError.unauthorized }
@@ -72,17 +73,17 @@ extension SessionRuntime {
         guard taskLaunchContexts[task.id] == nil,
               await authenticateTaskRun(reservation.parent) == task.parentBinding else { throw SessionTaskError.unauthorized }
         taskLaunchContexts[task.id] = SessionTaskLaunchContext(childID: grant.childID, projectID: spec.projectID,
-            rows: rows, columns: columns, output: outputSink, ready: onTerminalReady,
             modeFromUserDefault: spec.modeFromUserDefault)
         _ = try await coordinator.deliverPending(taskID: task.id)
-        guard let launch = taskLaunchContexts[task.id]?.launch else { throw SessionTaskError.unverified }
+        guard let run = taskLaunchContexts[task.id]?.managedRun,
+              await supervisor.runContext(runID: run.runID) != nil else { throw SessionTaskError.unverified }
         markTaskNeedsDelivery(task.id)
-        return launch
+        return run.sessionID
     }
 
     func taskTerminalAttached(_ runID: UUID) {
         for (taskID, context) in taskLaunchContexts {
-            if context.launch?.runID == runID { scheduleTaskDelivery(taskID) }
+            if context.currentRunID == runID { scheduleTaskDelivery(taskID) }
             if context.wakeNeeded && taskChildReservations[taskID]?.parent.managedRunID == runID { scheduleTaskWake(taskID) }
         }
         if let sessionID = taskRunPlans.first(where: { $0.value.claim.managedRunID == runID })?.key {
@@ -133,15 +134,16 @@ extension SessionRuntime {
             let deliveryNeeded = taskLaunchContexts.contains { taskID, context in
                 let parent = taskChildReservations[taskID]?.parent
                 let parentMatches = parent?.sessionID == sessionID && parent?.managedRunID == runID
-                return (tasksNeedingDelivery.contains(taskID) && (context.launch?.runID == runID || parentMatches)) ||
+                return (tasksNeedingDelivery.contains(taskID) && (context.currentRunID == runID || parentMatches)) ||
                     (context.wakeNeeded && parentMatches)
             }
-            let proofNeeded = taskExpectedInputs[runID]?.rolloutCandidate != nil &&
-                taskProofWaiters.values.contains { $0.binding.managedRunID == runID }
+            let proofNeeded = taskProofWaiters.values.contains { $0.binding.managedRunID == runID }
             let interruptNeeded = taskInterruptWaiters.values.contains {
                 $0.target.binding.managedRunID == runID || $0.parentBinding.managedRunID == runID
-            }
-            if deliveryNeeded || proofNeeded || interruptNeeded || peersNeedingDelivery.contains(sessionID) {
+            } || managedCodexInterruptSignals.values.contains { $0.parentRunID == runID || $0.childRunID == runID }
+            let presentationNeeded = runs[runID]?.server != nil &&
+                taskLaunchContexts.values.contains { $0.currentRunID == runID }
+            if deliveryNeeded || proofNeeded || interruptNeeded || presentationNeeded || peersNeedingDelivery.contains(sessionID) {
                 plan.lease.observeQuiescence { [weak self] in
                     Task { await self?.taskRunBecameQuiescent(sessionID: sessionID, runID: runID) }
                 }
@@ -149,12 +151,24 @@ extension SessionRuntime {
         }
     }
 
-    func taskRunBecameQuiescent(sessionID: UUID, runID: UUID) {
+    func taskRunBecameQuiescent(sessionID: UUID, runID: UUID) async {
+        for signal in managedCodexInterruptSignals.values where signal.parentRunID == runID || signal.childRunID == runID {
+            signal.continuation.yield(())
+        }
+        if let plan = taskRunPlans[sessionID], plan.claim.managedRunID == runID,
+           plan.lease.permits({ true }) != nil, let expected = taskExpectedInputs[runID],
+           expected.confirmedObservation != nil {
+            finishTaskProofWaiters(runID: runID, observation: expected)
+        }
         if peersNeedingDelivery.contains(sessionID) { schedulePeerDelivery(sessionID) }
+        if runs[runID]?.server != nil,
+           let taskID = taskLaunchContexts.first(where: { $0.value.currentRunID == runID })?.key {
+            await refreshManagedCodexStatus(taskID: taskID, runID: runID)
+        }
         for (taskID, context) in taskLaunchContexts {
             let parent = taskChildReservations[taskID]?.parent
             let parentMatches = parent?.sessionID == sessionID && parent?.managedRunID == runID
-            if tasksNeedingDelivery.contains(taskID) && (context.launch?.runID == runID || parentMatches) {
+            if tasksNeedingDelivery.contains(taskID) && (context.currentRunID == runID || parentMatches) {
                 scheduleTaskDelivery(taskID)
             }
             if context.wakeNeeded && parentMatches { scheduleTaskWake(taskID) }
@@ -243,7 +257,7 @@ extension SessionRuntime {
             guard var context = taskLaunchContexts[taskID], context.firstInputEffect?.hasEffect != true else { continue }
             context.stopRequested = true
             taskLaunchContexts[taskID] = context
-            if context.launch != nil && !shuttingDown {
+            if context.managedRun != nil && !shuttingDown {
                 let childID = context.childID
                 Task { [weak self] in
                     _ = await self?.stopTaskChild(taskID: taskID, childSessionID: childID, binding: nil)
@@ -272,183 +286,19 @@ extension SessionRuntime {
         }
     }
 
-    private func rememberTaskLaunch(_ taskID: UUID, launch: RuntimeLaunch) -> Bool {
-        guard var context = taskLaunchContexts[taskID], context.childID == launch.sessionID,
-              context.launch == nil else { return false }
-        context.launch = launch
-        taskLaunchContexts[taskID] = context
-        return true
-    }
-
-    private func launchedTaskBinding(_ launch: RuntimeLaunch) async -> SessionTaskBinding? {
-        guard let plan = taskRunPlans[launch.sessionID], plan.claim.managedRunID == launch.runID,
-              let binding = await supervisor.taskBinding(for: plan.claim),
-              taskRunPlans[launch.sessionID]?.lease === plan.lease, plan.lease.isEnabled else { return nil }
-        return binding
-    }
-
-    private func waitForTaskBinding(_ launch: RuntimeLaunch, stream: AsyncStream<SessionEventFrame>) async -> SessionTaskBinding? {
-        if let binding = await launchedTaskBinding(launch) { return binding }
-        return await withTaskGroup(of: SessionTaskBinding?.self) { group in
-            group.addTask { [weak self] in
-                for await _ in stream {
-                    guard !Task.isCancelled, let self else { return nil }
-                    if let binding = await self.launchedTaskBinding(launch) { return binding }
-                }
-                return nil
-            }
-            group.addTask {
-                try? await Task.sleep(for: .seconds(5))
-                return nil
-            }
-            let binding = await group.next() ?? nil
-            group.cancelAll()
-            return binding
-        }
-    }
-
     func submitTaskInput(_ intent: SessionTaskInputIntent) async -> SessionTaskInputEffect {
         let task = intent.task
-        guard !shuttingDown, var context = taskLaunchContexts[task.id], !context.stopRequested,
+        guard !shuttingDown, let context = taskLaunchContexts[task.id], !context.stopRequested,
               let reservation = taskChildReservations[task.id],
               await authenticateTaskRun(reservation.parent) == task.parentBinding else { return .deferred }
-        if task.childBinding == nil {
-            guard !context.starting, context.launch == nil, let provider = task.harness.provider else { return .unknown }
-            context.starting = true
-            taskLaunchContexts[task.id] = context
-            let stream = await supervisor.events.subscribe()
-            let ready: @MainActor @Sendable (RuntimeLaunch) async -> Void = { [weak self, callback = context.ready] launch in
-                guard let self, await self.rememberTaskLaunch(task.id, launch: launch) else { return }
-                await callback(launch)
-            }
-            do {
-                let launch = try await startConversation(provider: provider, projectID: context.projectID,
-                    rows: context.rows, columns: context.columns, outputSink: context.output,
-                    opening: SessionOpening(approvedTask: task, firstMessage: "", modeFromUserDefault: context.modeFromUserDefault),
-                    onTerminalReady: ready)
-                await ready(launch) // Claude returns before its caller adopts; Codex already called it.
-                taskLaunchContexts[task.id]?.starting = false
-                guard let binding = await waitForTaskBinding(launch, stream: stream) else {
-                    if taskLaunchContexts[task.id]?.stopRequested == true {
-                        _ = await stopTaskChild(taskID: task.id, childSessionID: launch.sessionID, binding: nil)
-                    }
-                    return .unknown
-                }
-                let current = try? await taskCoordinator?.projectionForUser(taskID: task.id)
-                guard taskLaunchContexts[task.id]?.stopRequested == false,
-                      current?.lifecycle == .active,
-                      await authenticateTaskRun(reservation.parent) == task.parentBinding else {
-                    _ = await stopTaskChild(taskID: task.id, childSessionID: launch.sessionID, binding: binding)
-                    return .started(binding: binding)
-                }
-                return .started(binding: binding)
-            } catch {
-                taskLaunchContexts[task.id]?.starting = false
-                if taskLaunchContexts[task.id]?.launch != nil {
-                    _ = await stopTaskChild(taskID: task.id, childSessionID: task.childSessionID, binding: nil)
-                }
-                return .unknown
-            }
-        }
-        guard let binding = task.childBinding, let launch = context.launch,
-              launch.sessionID == binding.sessionID, launch.runID == binding.managedRunID,
-              let parentPlan = taskRunPlans[task.parentSessionID], let childPlan = taskRunPlans[binding.sessionID],
-              parentPlan.claim.managedRunID == task.parentBinding.managedRunID,
-              parentPlan.claim.generation == task.parentBinding.generation,
-              childPlan.claim.managedRunID == binding.managedRunID, childPlan.claim.generation == binding.generation,
-              let transport = harnesses[launch.provider]?.taskTransport,
-              await taskNativeStatus(binding) == .ready else { return .deferred }
-        // This succeeds only for a newly attached, untouched terminal. After a
-        // proved task input, confirmAutomaticInput establishes later boundaries.
-        _ = inputGate.establishFreshCleanInput(runID: binding.managedRunID)
-        guard let ticket = inputGate.reserveAutomaticInput(runID: binding.managedRunID) else {
-            _ = inputGate.notifyWhenAutomaticMayProceed(runID: binding.managedRunID) { [weak self] in
-                Task { await self?.scheduleTaskDelivery(task.id) }
-            }
-            return .deferred
-        }
-        let purpose = SessionTaskExpectedInput.Purpose.child(taskID: task.id, roundID: intent.round.id,
-                                                             operationID: intent.round.operationID)
-        let pointer = "Sphyrna task: run \"$SPHYRNA_CLI\" task input --task \(task.id.uuidString.lowercased()) --round \(intent.round.id.uuidString.lowercased()) --operation \(intent.round.operationID.uuidString.lowercased()); report using task --help."
-        let digest = Data(SHA256.hash(data: Data(pointer.utf8)))
-        let clientMessageID = transport == .ownedAppServer ? UUID().uuidString.lowercased() : nil
-        var candidate: CodexTaskInputProofCandidate?
-        if transport == .ownedAppServer, intent.round.ordinal == 1, let clientMessageID,
-           let server = runs[binding.managedRunID]?.server, let rollout = server.initialTaskRollout,
-           rollout.runID == binding.managedRunID, rollout.threadID == binding.nativeSessionID,
-           let cwd = await supervisor.runContext(runID: binding.managedRunID)?.session.workingDirectory {
-            let home = server.profileHome, path = rollout.path, native = binding.nativeSessionID
-            candidate = await Task.detached {
-                CodexTaskInputProofReader.prepare(home: home, path: path, threadID: native,
-                                                  workingDirectory: cwd, clientMessageID: clientMessageID)
-            }.value
-        }
-        let effect = SessionTaskInputEffectMarker()
-        if taskLaunchContexts[task.id]?.firstInputEffect?.hasEffect != true {
-            taskLaunchContexts[task.id]?.firstInputEffect = effect
-        }
-        guard await prepareTaskInput(purpose: purpose, binding: binding, digest: digest, effect: effect, ticket: ticket,
-                                     requiresNativeReceipt: transport == .ownedAppServer,
-                                     clientMessageID: clientMessageID, rolloutCandidate: candidate),
-              let parentRevision = parentPlan.lease.admit({ $0 }), let childRevision = childPlan.lease.admit({ $0 }),
-              taskLaunchContexts[task.id]?.stopRequested == false else {
-            inputGate.releaseReservedAutomatic(runID: binding.managedRunID, ticket: ticket)
-            clearTaskExpectation(purpose, binding: binding)
-            return .deferred
-        }
-        let transaction: TerminalWriteTransaction = { write in
-            try parentPlan.lease.withOptionalAdmission(revision: parentRevision) {
-                try childPlan.lease.withOptionalAdmission(revision: childRevision) {
-                    try effect.write(write)
-                }
-            }
-        }
-        if transport == .ownedAppServer {
-            guard let client = runs[binding.managedRunID]?.server?.client else {
-                inputGate.releaseReservedAutomatic(runID: binding.managedRunID, ticket: ticket)
-                clearTaskExpectation(purpose, binding: binding)
-                return .deferred
-            }
-            let gate = inputGate
-            do {
-                let turn = try await client.startTaskTurn(threadID: binding.nativeSessionID, text: pointer,
-                                                          clientMessageID: clientMessageID, transaction: { write in
-                    try transaction { try gate.writeReservedAutomatic(runID: binding.managedRunID, ticket: ticket, write) ?? 0 }
-                })
-                guard let turn else {
-                    inputGate.releaseReservedAutomatic(runID: binding.managedRunID, ticket: ticket)
-                    clearTaskExpectation(purpose, binding: binding)
-                    return .deferred
-                }
-                guard confirmCodexTaskTurn(turn, purpose: purpose, binding: binding) else { return .unknown }
-                return .submitted(binding: binding, nativeTurnID: turn, actualModel: nil, actualEffort: nil, actualMode: nil)
-            } catch { return .unknown }
-        }
-        guard transport == .terminalHook,
-              inputGate.enqueueReservedAutomatic(runID: binding.managedRunID, ticket: ticket,
-                                                 bytes: Data((pointer + "\r").utf8), transaction: transaction) else {
-            inputGate.releaseReservedAutomatic(runID: binding.managedRunID, ticket: ticket)
-            clearTaskExpectation(purpose, binding: binding)
-            _ = inputGate.notifyWhenAutomaticMayProceed(runID: binding.managedRunID) { [weak self] in
-                Task { await self?.scheduleTaskDelivery(task.id) }
-            }
-            return .deferred
-        }
-        switch await ticket.writeOutcome() {
-        case .written:
-            return .submitted(binding: binding, nativeTurnID: nil, actualModel: nil, actualEffort: nil, actualMode: nil)
-        case .notWritten:
-            clearTaskExpectation(purpose, binding: binding)
-            return .deferred
-        case .unknown: return .unknown
-        }
+        if task.childBinding == nil { return await submitInitialManagedTaskInput(intent, context: context) }
+        return await submitManagedTaskInput(intent, context: context)
     }
 
     func clearTaskExpectation(_ purpose: SessionTaskExpectedInput.Purpose, binding: SessionTaskBinding) {
         guard let current = taskExpectedInputs[binding.managedRunID], current.purpose == purpose,
               current.binding == binding, !current.effect.hasEffect else { return }
-        if let retained = current.retainedChild,
-           inputGate.hasInputGeneration(runID: binding.managedRunID, generation: retained.generation) {
+        if let retained = current.retainedChild {
             taskExpectedInputs[binding.managedRunID] = .restoring(retained)
         } else { taskExpectedInputs[binding.managedRunID] = nil }
     }
@@ -628,8 +478,86 @@ extension SessionRuntime {
               target.execution == nil || target.execution == observation,
               await taskNativeStatus(binding) == .working,
               parentPlan.lease.permits(revision: parentRevision), childPlan.lease.permits(revision: childRevision),
-              let record = runs[binding.managedRunID], let transport = harnesses[record.provider]?.taskTransport,
-              let ticket = inputGate.reserveAutomaticInput(runID: binding.managedRunID) else { return .deferred }
+              let record = runs[binding.managedRunID], let transport = harnesses[record.provider]?.taskTransport else { return .deferred }
+        if let managed = managedTaskControllers[binding.managedRunID], managed.run.sessionID == binding.sessionID {
+            guard await supervisor.taskBinding(for: childPlan.claim) == binding,
+                  taskRunPlans[task.parentSessionID]?.lease === parentPlan.lease,
+                  taskRunPlans[binding.sessionID]?.lease === childPlan.lease,
+                  parentPlan.lease.permits(revision: parentRevision), childPlan.lease.permits(revision: childRevision) else {
+                return .deferred
+            }
+            let outcome = await managed.controller.interrupt(target) { write in
+                var result: Result<Int?, Error>?
+                let allowed = target.attemptInterrupt {
+                    result = Result {
+                        try parentPlan.lease.withOptionalAdmission(revision: parentRevision) {
+                            try childPlan.lease.withOptionalAdmission(revision: childRevision) { try write() }
+                        }
+                    }
+                    return true
+                }
+                guard allowed, let result else { return nil }
+                return try result.get()
+            }
+            guard case .verified = outcome else { return outcome }
+            guard target.attemptInterrupt({ true }),
+                  await taskInputObservation(purpose: .child(taskID: target.taskID, roundID: target.roundID,
+                      operationID: target.inputOperationID), binding: binding) == observation,
+                  await taskNativeStatus(binding) == .ready,
+                  taskRunPlans[task.parentSessionID]?.lease === parentPlan.lease,
+                  taskRunPlans[binding.sessionID]?.lease === childPlan.lease,
+                  parentPlan.lease.permits({ true }) != nil, childPlan.lease.permits({ true }) != nil,
+                  target.attemptInterrupt({ true }) else { return .unknown }
+            return .verified
+        }
+        if taskLaunchContexts[target.taskID]?.managedRun?.runID == binding.managedRunID,
+           transport == .ownedAppServer, let turn = target.nativeTurnID, observation == .nativeTurn(turn),
+           let client = record.server?.client {
+            guard managedCodexInterruptSignals.count < 32 else { return .deferred }
+            let signalID = UUID()
+            var continuation: AsyncStream<Void>.Continuation!
+            let stream = AsyncStream<Void>(bufferingPolicy: .bufferingNewest(1)) { continuation = $0 }
+            managedCodexInterruptSignals[signalID] = ManagedCodexInterruptSignal(
+                parentRunID: parentPlan.claim.managedRunID, childRunID: binding.managedRunID, continuation: continuation)
+            updateTaskQuiescenceObservers()
+            defer {
+                managedCodexInterruptSignals.removeValue(forKey: signalID)?.continuation.finish()
+                updateTaskQuiescenceObservers()
+            }
+            do {
+                let accepted = try await client.interruptTaskTurn(threadID: binding.nativeSessionID, turnID: turn) { write in
+                    var result: Result<Int?, Error>?
+                    let allowed = target.attemptInterrupt {
+                        result = Result {
+                            try parentPlan.lease.withOptionalAdmission(revision: parentRevision) {
+                                try childPlan.lease.withOptionalAdmission(revision: childRevision) { try write() }
+                            }
+                        }
+                        return true
+                    }
+                    guard allowed, let result else { return nil }
+                    return try result.get()
+                }
+                guard accepted else { return .deferred }
+            } catch { return .unknown }
+            let ended = await withTaskGroup(of: Bool.self) { group in
+                group.addTask { [weak self] in
+                    guard let self else { return false }
+                    if await self.managedCodexInterruptEnded(target, parentPlan: parentPlan, childPlan: childPlan) { return true }
+                    for await _ in stream {
+                        guard !Task.isCancelled else { return false }
+                        if await self.managedCodexInterruptEnded(target, parentPlan: parentPlan, childPlan: childPlan) { return true }
+                    }
+                    return false
+                }
+                group.addTask { try? await Task.sleep(for: .seconds(5)); return false }
+                let value = await group.next() ?? false
+                group.cancelAll()
+                return value
+            }
+            return ended ? .verified : .unknown
+        }
+        guard let ticket = inputGate.reserveAutomaticInput(runID: binding.managedRunID) else { return .deferred }
         guard await supervisor.taskBinding(for: childPlan.claim) == binding,
               taskRunPlans[task.parentSessionID]?.lease === parentPlan.lease,
               taskRunPlans[binding.sessionID]?.lease === childPlan.lease,
@@ -715,36 +643,59 @@ extension SessionRuntime {
         }
     }
 
-    func stopTaskChild(taskID: UUID, childSessionID: UUID, binding: SessionTaskBinding?) async -> SessionTaskEffect {
-        guard var context = taskLaunchContexts[taskID], context.childID == childSessionID else { return .unknown }
-        context.stopRequested = true
-        taskLaunchContexts[taskID] = context
-        guard let launch = context.launch, binding == nil ||
-              (binding?.sessionID == launch.sessionID && binding?.managedRunID == launch.runID) else { return .unknown }
-        if let binding {
-            let live = taskRunPlans[binding.sessionID].map {
-                $0.claim.managedRunID == binding.managedRunID && $0.claim.generation == binding.generation
-            } ?? false
-            let retired = retiredTaskRuns[binding.sessionID].map {
-                $0.runID == binding.managedRunID && $0.generation == binding.generation
-            } ?? false
-            guard live || retired else { return .unknown }
-        }
-        let current = await supervisor.session(id: childSessionID)
-        if current?.currentRun == nil {
-            let report = await supervisor.lastStopReport(sessionID: childSessionID)
-            return report?.runID == launch.runID && report?.succeeded == true ? .verified : .unknown
-        }
-        guard current?.currentRun?.id == launch.runID else { return .unknown }
-        do {
-            let report = try await stopConversation(sessionID: childSessionID, expectedRunID: launch.runID)
-            let after = await supervisor.session(id: childSessionID)
-            return report.sessionID == childSessionID && report.runID == launch.runID && report.succeeded &&
-                after?.currentRun == nil && taskRunPlans[childSessionID] == nil ? .verified : .unknown
-        } catch {
-            let report = await supervisor.lastStopReport(sessionID: childSessionID)
-            let current = await supervisor.session(id: childSessionID)
-            return report?.runID == launch.runID && report?.succeeded == true && current?.currentRun == nil ? .verified : .unknown
-        }
+    private func managedCodexInterruptEnded(_ target: SessionTaskRoundTarget, parentPlan: SessionTaskRunPlan,
+                                            childPlan: SessionTaskRunPlan) async -> Bool {
+        let binding = target.binding
+        guard let turn = target.nativeTurnID, target.attemptInterrupt({ true }),
+              taskRunPlans[parentPlan.claim.sessionID]?.lease === parentPlan.lease,
+              taskRunPlans[binding.sessionID]?.lease === childPlan.lease,
+              parentPlan.lease.isEnabled, childPlan.lease.isEnabled,
+              let status = await harnesses.codex.adapter.status(sessionID: binding.sessionID),
+              status.providerThreadID == binding.nativeSessionID, status.lastCompletedTurnID == turn,
+              status.nativeThreadStatus == .idle, await supervisor.taskBinding(for: childPlan.claim) == binding,
+              taskRunPlans[parentPlan.claim.sessionID]?.lease === parentPlan.lease,
+              taskRunPlans[binding.sessionID]?.lease === childPlan.lease,
+              parentPlan.lease.permits({ true }) != nil, childPlan.lease.permits({ true }) != nil else { return false }
+        return target.attemptInterrupt { true }
     }
+
+    func finishManagedCodexInterruptSignals(runID: UUID) {
+        let ids = managedCodexInterruptSignals.compactMap { id, signal in
+            signal.parentRunID == runID || signal.childRunID == runID ? id : nil
+        }
+        for id in ids { managedCodexInterruptSignals.removeValue(forKey: id)?.continuation.finish() }
+        updateTaskQuiescenceObservers()
+    }
+
+    func stopTaskChild(taskID: UUID, childSessionID: UUID, binding: SessionTaskBinding?) async -> SessionTaskEffect {
+        if var context = taskLaunchContexts[taskID] {
+            guard context.childID == childSessionID else { return .unknown }
+            context.stopRequested = true
+            taskLaunchContexts[taskID] = context
+            guard let run = context.managedRun, binding == nil ||
+                  (binding?.sessionID == run.sessionID && binding?.managedRunID == run.runID &&
+                   binding?.generation == run.generation) else { return .unknown }
+            let current = await supervisor.session(id: childSessionID)
+            if let active = current?.currentRun {
+                guard active.id == run.runID else { return .unknown }
+                do {
+                    let report = try await stopConversation(sessionID: childSessionID, expectedRunID: run.runID)
+                    let after = await supervisor.session(id: childSessionID)
+                    return report.sessionID == childSessionID && report.runID == run.runID && report.succeeded &&
+                        after?.currentRun == nil && taskRunPlans[childSessionID] == nil ? .verified : .unknown
+                } catch { return .unknown }
+            }
+            revokeTaskRun(sessionID: childSessionID, runID: run.runID)
+        }
+        // After restart only the exact persisted scope receipt can settle a
+        // child; an absent in-memory run alone is never evidence of Stop.
+        guard let coordinator = taskCoordinator,
+              await supervisor.session(id: childSessionID)?.currentRun == nil,
+              taskRunPlans[childSessionID] == nil,
+              (try? await coordinator.managedChildStopped(taskID: taskID, sessionID: childSessionID, binding: binding)) == true,
+              await supervisor.session(id: childSessionID)?.currentRun == nil,
+              taskRunPlans[childSessionID] == nil else { return .unknown }
+        return .verified
+    }
+
 }

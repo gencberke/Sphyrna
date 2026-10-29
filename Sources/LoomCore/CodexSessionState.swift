@@ -62,6 +62,8 @@ public struct CodexSessionStatus: Equatable, Sendable {
     public var lastAssistantMessage: String?
     /// Retained even when a newer active thread determines the current UI state.
     public var lastTurnOutcome: CodexTurnOutcome?
+    /// The exact live-stream completion, never inferred from a history snapshot.
+    public var lastCompletedTurnID: String?
     public var pendingRequestCount: Int
     public var backgroundTerminalCount: Int
     /// The provider's current thread status, independent of the last turn outcome.
@@ -74,6 +76,7 @@ public struct CodexSessionStatus: Equatable, Sendable {
         lastEventAt = nil
         lastAssistantMessage = nil
         lastTurnOutcome = nil
+        lastCompletedTurnID = nil
         pendingRequestCount = 0
         backgroundTerminalCount = 0
         nativeThreadStatus = nil
@@ -141,6 +144,7 @@ public actor CodexEventStateTracker {
         currentStatus.lastEventAt = receivedAt
         currentStatus.lastUsedAt = snapshot.lastTurnStartedAt ?? currentStatus.lastUsedAt
         currentStatus.lastAssistantMessage = snapshot.lastAssistantMessage
+        currentStatus.lastCompletedTurnID = nil
         if let outcome = snapshot.lastTurnOutcome { currentStatus.lastTurnOutcome = outcome }
         currentStatus.nativeThreadStatus = snapshot.status
         // A completed older turn is not the current activity when the native
@@ -239,10 +243,13 @@ public actor CodexEventStateTracker {
             case .unknown: currentStatus.activity = .unknown
             }
         case .turnStarted:
+            currentStatus.lastCompletedTurnID = nil
             currentStatus.nativeThreadStatus = .active([])
             currentStatus.activity = .working
             currentStatus.lastUsedAt = receivedAt
-        case let .turnCompleted(_, _, outcome, message):
+        case let .turnCompleted(_, turnID, outcome, message):
+            currentStatus.lastCompletedTurnID = !turnID.isEmpty && turnID.utf8.count <= 256 && !turnID.utf8.contains(0)
+                ? turnID : nil
             currentStatus.lastTurnOutcome = outcome
             currentStatus.lastAssistantMessage = message
             switch outcome {
