@@ -12,7 +12,21 @@ final class SessionTaskRunLease: @unchecked Sendable {
     private var revision: UInt64 = 0
     private var unclassifiedInput = false
     private var quiescent: (@Sendable () -> Void)?
+    private var quiescencePending = false
+    private var quiescenceDirty = false
     func observeQuiescence(_ callback: (@Sendable () -> Void)?) { lock.withLock { quiescent = callback } }
+    /// Called after the scheduled consumer returns. Any edge that arrived
+    /// while it was waiting gets one recheck, never one task per frame.
+    func finishQuiescenceNotification() {
+        let callback = lock.withLock { () -> (@Sendable () -> Void)? in
+            guard quiescencePending else { return nil }
+            quiescencePending = false
+            guard quiescenceDirty else { return nil }
+            quiescenceDirty = false
+            return quiescenceCallbackIfReady()
+        }
+        callback?()
+    }
     func revoke() { lock.withLock { enabled = false } }
     func revokeIfCurrent(revision admitted: UInt64) -> Bool {
         lock.withLock {
@@ -25,6 +39,13 @@ final class SessionTaskRunLease: @unchecked Sendable {
         guard revision < .max else { reliable = false; return }
         revision += 1
     }
+    /// The caller holds `lock`; callback invocation stays outside it.
+    private func quiescenceCallbackIfReady() -> (@Sendable () -> Void)? {
+        guard enabled, reliable, hooksInFlight == 0, codexEvents.isEmpty, let quiescent else { return nil }
+        if quiescencePending { quiescenceDirty = true; return nil }
+        quiescencePending = true
+        return quiescent
+    }
     func beginHook() {
         lock.withLock {
             guard enabled, reliable else { return }
@@ -36,7 +57,7 @@ final class SessionTaskRunLease: @unchecked Sendable {
         let callback = lock.withLock { () -> (@Sendable () -> Void)? in
             guard hooksInFlight > 0 else { return nil }
             hooksInFlight -= 1
-            return enabled && reliable && hooksInFlight == 0 && codexEvents.isEmpty ? quiescent : nil
+            return quiescenceCallbackIfReady()
         }
         callback?()
     }
@@ -51,7 +72,7 @@ final class SessionTaskRunLease: @unchecked Sendable {
     func finishCodexEvent(_ sequence: UInt64) {
         let callback = lock.withLock { () -> (@Sendable () -> Void)? in
             guard codexEvents.remove(sequence) != nil else { return nil }
-            return enabled && reliable && hooksInFlight == 0 && codexEvents.isEmpty ? quiescent : nil
+            return quiescenceCallbackIfReady()
         }
         callback?()
     }

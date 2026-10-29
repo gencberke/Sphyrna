@@ -144,8 +144,12 @@ extension SessionRuntime {
             let presentationNeeded = runs[runID]?.server != nil &&
                 taskLaunchContexts.values.contains { $0.currentRunID == runID }
             if deliveryNeeded || proofNeeded || interruptNeeded || presentationNeeded || peersNeedingDelivery.contains(sessionID) {
-                plan.lease.observeQuiescence { [weak self] in
-                    Task { await self?.taskRunBecameQuiescent(sessionID: sessionID, runID: runID) }
+                plan.lease.observeQuiescence { [weak self, weak lease = plan.lease] in
+                    guard let lease else { return }
+                    Task {
+                        await self?.taskRunBecameQuiescent(sessionID: sessionID, runID: runID)
+                        lease.finishQuiescenceNotification()
+                    }
                 }
             } else { plan.lease.observeQuiescence(nil) }
         }

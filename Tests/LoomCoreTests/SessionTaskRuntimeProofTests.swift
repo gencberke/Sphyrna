@@ -7,8 +7,49 @@ private extension SessionRuntime {
     func taskServerIDForTest(runID: UUID) -> UUID? { runs[runID]?.server?.id }
 }
 
+private final class QuiescenceBurstProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var scheduled = 0
+    private var nativeStatus = 0
+    private var displayedStatus = 0
+    func publish(_ value: Int) { lock.withLock { nativeStatus = value } }
+    func notify() { lock.withLock { scheduled += 1 } }
+    func consume() -> Int { lock.withLock { displayedStatus = nativeStatus; return displayedStatus } }
+    var notifications: Int { lock.withLock { scheduled } }
+    var currentDisplay: Int { lock.withLock { displayedStatus } }
+}
+
 @Suite(.serialized, .processHeavy, .timeLimit(.minutes(1)))
 struct SessionTaskRuntimeProofTests {
+    @Test func quiescenceBurstKeepsOnePendingCallbackAndRechecksTheFinalStatus() throws {
+        let lease = SessionTaskRunLease(), probe = QuiescenceBurstProbe()
+        lease.observeQuiescence { probe.notify() }
+        let before = try #require(lease.admit { $0 })
+        lease.beginHook(); probe.publish(1); lease.finishHook()
+        #expect(probe.notifications == 1)
+        let firstObserved = probe.consume()
+        for index in 2...1_000 {
+            lease.beginHook()
+            lease.beginCodexEvent(UInt64(index))
+            probe.publish(index)
+            lease.finishHook()
+            lease.finishCodexEvent(UInt64(index))
+        }
+        #expect(probe.notifications == 1, "a held consumer must not accumulate callbacks")
+        #expect(!lease.permits(revision: before), "coalescing must not weaken input admission")
+        // If another input is arriving when the consumer finishes, its final
+        // drain must still schedule the one recheck for the latest state.
+        lease.beginHook()
+        lease.finishQuiescenceNotification()
+        #expect(probe.notifications == 1)
+        lease.finishHook()
+        #expect(probe.notifications == 2)
+        _ = probe.consume()
+        #expect(firstObserved == 1 && probe.currentDisplay == 1_000)
+        lease.finishQuiescenceNotification()
+        #expect(probe.notifications == 2)
+    }
+
     @Test func aDeferredFollowupRestoresOnlyThePriorProvedExecution() async throws {
         let context = try await SessionRuntimeTests.makeContext()
         defer { context.cleanup() }
