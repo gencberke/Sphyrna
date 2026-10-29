@@ -50,6 +50,7 @@ struct HomeEntry: Identifiable, Equatable {
     /// What it waits for or did last (V03), one bounded line.
     let reason: SessionReasonLine?
     let lastActivityAt: Date
+    var allowsTranscriptFallback = false
 
     /// The card's line: the reason when the hub has one, else what the state itself says.
     var line: String {
@@ -61,6 +62,26 @@ struct HomeEntry: Identifiable, Equatable {
     }
 
     var canMarkRead: Bool { indicator.canMarkRead }
+
+    static func allowsFallback(indicator: SessionIndicator, reason: StatusReason?) -> Bool {
+        guard case .unviewedCompletion = indicator else { return false }
+        guard let reason else { return true }
+        guard case .turnDone = reason.kind else { return false }
+        let detail = reason.detail?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let note = reason.note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return detail.isEmpty && note.isEmpty && reason.work.isEmpty
+    }
+
+    func displayedLine(fallback: String?) -> String {
+        if allowsTranscriptFallback, let fallback { return fallback }
+        return line
+    }
+}
+
+struct HomeTranscriptKey: Equatable, Sendable {
+    let sessionID: UUID
+    let activity: Date
+    let source: TranscriptSourceKey
 }
 
 /// The two lists that make the Dock badge's number: sessions that need the user, and sessions that finished
@@ -112,6 +133,19 @@ enum HomeLimits {
 }
 
 extension CatalogModel {
+    func homeTranscriptKey(for entry: HomeEntry) -> HomeTranscriptKey? {
+        guard entry.allowsTranscriptFallback, let source = transcriptSource(for: entry.provider), source.directory != nil,
+              rowModels[entry.id]?.record != nil || liveRecords[entry.id] != nil else { return nil }
+        return HomeTranscriptKey(sessionID: entry.id, activity: entry.lastActivityAt, source: source)
+    }
+
+    func homeTranscriptFallback(for entry: HomeEntry, key: HomeTranscriptKey) async -> String? {
+        guard homeTranscriptKey(for: entry) == key,
+              let record = rowModels[entry.id]?.record ?? liveRecords[entry.id], !Task.isCancelled else { return nil }
+        await sidebarPeek.load(record, model: self)
+        guard !Task.isCancelled, homeTranscriptKey(for: entry) == key else { return nil }
+        return sidebarPeek.answer(for: entry.id)
+    }
     /// "Home": shows the Home screen. Deselects the current session (its run keeps going); nothing is stopped or started.
     public func showHome() { navigate(to: .home) }
 
@@ -135,10 +169,12 @@ extension CatalogModel {
         for id in AttentionOrder.ordered(candidates) {
             guard let candidate = byID[id], let record = rowModels[id]?.record ?? liveRecords[id] else { continue }
             let name = projectName(for: record)
+            let reason = liveStates[id]?.displayReason
             let entry = HomeEntry(
                 id: id, title: record.displayTitle(projectName: name), projectName: name,
                 tone: projectTone(forProject: record.projectID), provider: record.session.provider, indicator: candidate.indicator,
-                reason: SessionReasonLine(liveStates[id]?.displayReason), lastActivityAt: candidate.lastActivityAt)
+                reason: SessionReasonLine(reason), lastActivityAt: candidate.lastActivityAt,
+                allowsTranscriptFallback: HomeEntry.allowsFallback(indicator: candidate.indicator, reason: reason))
             if HomeBoard.isFinished(candidate.indicator) { board.finished.append(entry) } else { board.needsYou.append(entry) }
         }
         return board

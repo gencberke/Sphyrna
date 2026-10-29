@@ -69,6 +69,47 @@ enum UsageCodexTokens {
     }
 }
 
+/// A separate view of the local, bounded Sphyrna-session index; it is never added to the account reading.
+struct CodexLocalSummary: Equatable {
+    struct Model: Equatable, Identifiable {
+        let name: String
+        let tokens: UsageTokens
+        var id: String { name }
+    }
+
+    let tokens: UsageTokens
+    let models: [Model]
+    let sessions: Int
+    let partial: Bool
+
+    static func make(report: CodexUsageIndexReport, period: UsagePeriod, now: Date, timeZone: TimeZone) -> Self {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let start: Date
+        if let days = period.dayCount {
+            let today = calendar.startOfDay(for: now)
+            start = calendar.date(byAdding: .day, value: -(days - 1), to: today) ?? today
+        } else {
+            start = now.addingTimeInterval(-86_400)
+        }
+        var byModel: [String: UsageTokens] = [:]
+        var partial = !report.complete
+        for reading in report.sessions.values {
+            if !reading.complete { partial = true }
+            for increment in reading.increments {
+                guard let date = increment.timestamp else { partial = true; continue }
+                guard date >= start else { continue }
+                let name = increment.model ?? "Unknown model"
+                byModel[name, default: UsageTokens()].add(increment.tokens)
+            }
+        }
+        let models = byModel.map { Model(name: $0.key, tokens: $0.value) }.sorted { $0.name < $1.name }
+        var total = UsageTokens()
+        for model in models { total.add(model.tokens) }
+        return Self(tokens: total, models: models, sessions: report.sessions.count, partial: partial)
+    }
+}
+
 // MARK: Views
 
 private typealias S = LoomTheme.Settings
@@ -78,8 +119,11 @@ struct UsageCodexCardView: View {
     let card: UsageCodexCard
     let period: UsagePeriod
     let timeZone: TimeZone
+    var local: CodexLocalSummary? = nil
+    var localFailure = false
 
     var body: some View {
+        VStack(alignment: .leading, spacing: S.cardGap) {
         switch card {
         case let .figures(figures, failure):
             VStack(alignment: .leading, spacing: S.limitCardGap) {
@@ -101,10 +145,20 @@ struct UsageCodexCardView: View {
                 .accessibilityElement(children: .combine)
             }
         }
+            if let local {
+                UsageCard(title: "Local Codex sessions", meta: UsageCardText.periodTitle(period)) {
+                    localContent(local)
+                }
+            } else {
+                Text(localFailure ? "Local Codex session usage could not be read." : "Local Codex session usage has not been read.")
+                    .projectType(S.fine).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            }
+        }
     }
 
     private func content(_ figures: UsageCodexPeriod) -> some View {
         VStack(alignment: .leading, spacing: 0) {
+            Text("Account-reported totals").projectType(S.caption).foregroundStyle(LoomTheme.Text.secondaryStyle)
             VStack(alignment: .leading, spacing: 0) {
                 Text(UsageFormat.tokens(figures.total)).projectType(S.total).foregroundStyle(LoomTheme.Text.primary)
                     .lineLimit(1).frame(minHeight: S.totalLine, alignment: .leading)
@@ -131,5 +185,29 @@ struct UsageCodexCardView: View {
                 .projectType(S.fine).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 .fixedSize(horizontal: false, vertical: true).padding(.top, S.fineTop)
         }
+    }
+
+    private func localContent(_ summary: CodexLocalSummary) -> some View {
+        VStack(alignment: .leading, spacing: S.limitCardGap) {
+            Text("\(UsageFormat.tokens(summary.tokens.total)) tokens")
+                .projectType(S.total).foregroundStyle(LoomTheme.Text.primary)
+            Text(summary.partial ? "Known Sphyrna sessions · partial reading" : "Known Sphyrna sessions on this Mac")
+                .projectType(S.fine).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            Text("Input \(UsageFormat.tokens(summary.tokens.input)) · Cache read \(UsageFormat.tokens(summary.tokens.cacheRead)) · Cache write \(UsageFormat.tokens(summary.tokens.cacheWrite)) · Output \(UsageFormat.tokens(summary.tokens.output))")
+                .projectType(S.fine).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            ForEach(summary.models) { model in
+                HStack {
+                    Text(verbatim: model.name)
+                    Spacer(minLength: 0)
+                    Text("\(UsageFormat.tokens(model.tokens.total)) tokens")
+                }
+                .projectType(S.fine).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            }
+            if localFailure {
+                Text("The latest local refresh failed; these figures may be old.")
+                    .projectType(S.fine).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 }

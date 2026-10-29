@@ -321,7 +321,10 @@ public final class CatalogModel {
     /// Set once by the app before the first view exists; the sidebar footer and Settings read it.
     @ObservationIgnored public var usage: UsageModel? {
         // A scan can bring a session's first or newer main-thread model: the cards read theirs again.
-        didSet { usage?.onScanned = { [weak self] in self?.refreshCardModels() } }
+        didSet {
+            usage?.onScanned = { [weak self] in self?.refreshCardModels() }
+            usage?.configureCodex(home: codexConfigDirectory, catalog: catalog)
+        }
     }
     /// The models the sidebar's cards name (`SidebarCardModels`) and the read that fills them.
     @ObservationIgnored let cardModels = SidebarCardModels()
@@ -514,6 +517,26 @@ public final class CatalogModel {
     /// the runtime (`setClaudeConfigDirectory`); nil means there is nothing to read, and the Chat view draws its
     /// fallback.
     public internal(set) var claudeConfigDirectory: URL?
+    /// The resolved Codex home, supplied by the existing toolchain or health path; nil means unavailable.
+    public internal(set) var codexConfigDirectory: URL?
+    public private(set) var codexConfigGeneration: UInt64 = 0
+
+    public func setCodexConfigDirectory(_ directory: URL?) {
+        guard directory != codexConfigDirectory else { return }
+        codexConfigDirectory = directory
+        codexConfigGeneration &+= 1
+        changes.invalidateCodexReads(to: codexConfigGeneration)
+        sidebarPeek.invalidate()
+        let codexIDs = Set(projectPage.records.compactMap { record -> UUID? in
+            guard let source = transcriptSource(for: record.session.provider), case .codex = source.kind else { return nil }
+            return record.session.id
+        })
+        var lines = projectPage.lastLines
+        for id in codexIDs { lines[id] = nil }
+        if lines != projectPage.lastLines { projectPage.lastLines = lines }
+        projectPage.pendingLines.subtract(codexIDs)
+        usage?.configureCodex(home: directory, catalog: catalog)
+    }
 
     /// `catalog == nil` means the catalog could not be opened (`startupError`
     /// says why); nothing is created or overwritten in that state.

@@ -174,7 +174,8 @@ private struct ProjectSessionRow: View {
         .padding(.top, isFirst ? 0 : LoomTheme.ProjectPage.rowPillGap).padding(.bottom, LoomTheme.ProjectPage.rowPillGap)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth = $0 }
         // A last line from the transcript is read only for a row that is drawn and holds no line of its own.
-        .task(id: ProjectSessionLine.holdsLine(reason)) {
+        .task(id: ProjectLastLineTaskKey(holdsLine: ProjectSessionLine.holdsLine(reason),
+                                          source: model.transcriptSource(for: provider))) {
             if !ProjectSessionLine.holdsLine(reason) { await model.loadProjectLastLine(record) }
         }
         .accessibilityElement(children: .ignore)
@@ -182,6 +183,11 @@ private struct ProjectSessionRow: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("project-session-row")
     }
+}
+
+private struct ProjectLastLineTaskKey: Equatable {
+    let holdsLine: Bool
+    let source: TranscriptSourceKey?
 }
 
 /// A row's last line in two voices: the words in 12 secondary and a command or a path in mono 11.5 primary.

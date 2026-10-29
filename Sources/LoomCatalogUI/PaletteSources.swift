@@ -17,6 +17,7 @@ protocol PaletteSources: AnyObject {
 struct PaletteSessionRef: Sendable {
     let id: UUID
     let conversationID: String
+    let kind: HarnessTranscriptKind
     let workingDirectory: String
     let title: String
     let project: String?
@@ -38,6 +39,7 @@ struct PaletteCandidates: Sendable {
 enum PaletteLocation: Sendable {
     case found(PaletteTranscriptFile)
     case missing
+    case unavailable
 }
 
 @MainActor
@@ -53,6 +55,9 @@ final class LivePaletteSources: PaletteSources {
     /// candidates, and where the transcript of each is. A second query asks the catalog and the disk for neither.
     private var candidates: PaletteCandidates?
     private var locations: [UUID: PaletteLocation] = [:]
+    private var locatedProjects: URL?
+    private var locatedCodexHome: URL?
+    private var locatedCodexGeneration: UInt64 = 0
     /// How many transcripts were looked for on disk, and how many times the catalog was asked for the candidates
     /// (a test counts them: after the first query a second one adds none).
     private(set) var locateCalls = 0
@@ -72,40 +77,73 @@ final class LivePaletteSources: PaletteSources {
 
     func searchTranscripts(query: String, budget: PaletteSearchBudget,
                            progress: @escaping @MainActor (PaletteTranscriptOutcome) -> Void) async throws -> PaletteTranscriptOutcome {
-        guard let catalog = model.catalog, let projects = transcriptsDirectory() else {
+        guard let catalog = model.catalog else {
             var outcome = PaletteTranscriptOutcome()
             outcome.coverage.unavailable = true
             return outcome
         }
+        let projects = transcriptsDirectory()
+        let codexHome = model.codexConfigDirectory
+        let sourceGeneration = model.codexConfigGeneration
+        guard projects != nil || codexHome != nil else {
+            var outcome = PaletteTranscriptOutcome()
+            outcome.coverage.unavailable = true
+            return outcome
+        }
+        if locatedProjects != projects || locatedCodexHome != codexHome || locatedCodexGeneration != sourceGeneration {
+            locations.removeAll()
+            locatedProjects = projects
+            locatedCodexHome = codexHome
+            locatedCodexGeneration = sourceGeneration
+        }
         let cutoff = Date().addingTimeInterval(-budget.window)
         let pool = try await candidatePool(catalog)
+        guard currentSource(projects: projects, codexHome: codexHome, generation: sourceGeneration) else { throw CancellationError() }
         let wanted = pool.refs.filter { $0.lastActivityAt >= cutoff }
         // Only the transcripts not looked for yet in this open (the older pass adds the ones past 14 days).
         let unknown = wanted.filter { locations[$0.id] == nil }
         if !unknown.isEmpty {
             locateCalls += unknown.count
-            for (id, location) in await Self.locate(unknown, projects: projects) { locations[id] = location }
+            let found = await Self.locate(unknown, projects: projects, codexHome: codexHome)
+            guard currentSource(projects: projects, codexHome: codexHome, generation: sourceGeneration) else { throw CancellationError() }
+            for (id, location) in found { locations[id] = location }
         }
         let files: [PaletteTranscriptFile] = wanted.compactMap { ref in
             guard case .found(let file)? = locations[ref.id] else { return nil }
             return file
         }
-        var outcome = await Self.scan(query: query, files: files, budget: budget) { outcome in
-            Task { @MainActor in progress(outcome) }
+        var outcome = await Self.scan(query: query, files: files, budget: budget) { [weak self] outcome in
+            Task { @MainActor [weak self] in
+                guard let self, self.currentSource(projects: projects, codexHome: codexHome, generation: sourceGeneration) else { return }
+                progress(outcome)
+            }
+        }
+        guard currentSource(projects: projects, codexHome: codexHome, generation: sourceGeneration) else { throw CancellationError() }
+        outcome.coverage.unavailable = wanted.contains { ref in
+            guard let location = locations[ref.id] else { return true }
+            if case .unavailable = location { return true }
+            return false
         }
         if pool.cuts(since: cutoff) { outcome.coverage.sessionCap = maximumSessions }
         return outcome
     }
 
-    /// The newest sessions of the catalog that have a Claude conversation, read once per open.
+    private func currentSource(projects: URL?, codexHome: URL?, generation: UInt64) -> Bool {
+        !Task.isCancelled && transcriptsDirectory() == projects && model.codexConfigDirectory == codexHome
+            && model.codexConfigGeneration == generation
+    }
+
+    /// The newest sessions of the catalog with a supported transcript identity, read once per open.
     private func candidatePool(_ catalog: SessionCatalog) async throws -> PaletteCandidates {
         if let candidates { return candidates }
         candidateReads += 1
         let recent = try await catalog.searchSessions(search: "", order: .recentActivity, groupLimit: maximumSessions)
         let refs: [PaletteSessionRef] = recent.sessions.compactMap { record in
-            guard model.capabilities(of: record.session.provider).readsTranscript, let conversation = record.session.providerConversationID else { return nil }
+            guard model.capabilities(of: record.session.provider).readsTranscript,
+                  let conversation = record.session.providerConversationID,
+                  let kind = HarnessTranscriptKind(provider: record.session.provider) else { return nil }
             let project = model.projectName(for: record)
-            return PaletteSessionRef(id: record.session.id, conversationID: conversation,
+            return PaletteSessionRef(id: record.session.id, conversationID: conversation, kind: kind,
                                      workingDirectory: record.session.workingDirectory,
                                      title: record.displayTitle(projectName: project), project: project,
                                      lastActivityAt: record.lastActivityAt)
@@ -115,27 +153,36 @@ final class LivePaletteSources: PaletteSources {
         return pool
     }
 
-    /// Finds the transcript of each session in the one folder Claude names after its working directory and nowhere
-    /// else (a miss lists no other folder), off the main actor. Stops when the calling task is cancelled; what it
-    /// found until then is returned.
-    private nonisolated static func locate(_ refs: [PaletteSessionRef], projects: URL) async -> [(UUID, PaletteLocation)] {
+    /// Finds transcripts off the main actor using each harness's bounded locator. Claude searches only the folder
+    /// for the session's working directory; Codex searches the configured home's recorded session ids. Stops when cancelled.
+    private nonisolated static func locate(_ refs: [PaletteSessionRef], projects: URL?, codexHome: URL?) async -> [(UUID, PaletteLocation)] {
         var found: [(UUID, PaletteLocation)] = []
+        let codexIDs = refs.compactMap { ref -> String? in
+            if case .codex = ref.kind { return ref.conversationID }
+            return nil
+        }
+        let codex = codexHome.map { CodexRolloutLocator.locate(sessionIDs: codexIDs, home: $0) }
         for ref in refs {
             if Task.isCancelled { break }
-            guard let located = ClaudeTranscriptLocator.locate(
-                sessionID: ref.conversationID, projectsDirectory: projects, onlyIn: ref.workingDirectory)
-            else {
-                found.append((ref.id, .missing))
-                continue
+            let path: String?
+            switch ref.kind {
+            case .claude:
+                guard let projects else { found.append((ref.id, .unavailable)); continue }
+                path = ClaudeTranscriptLocator.locate(
+                    sessionID: ref.conversationID, projectsDirectory: projects, onlyIn: ref.workingDirectory)?.path
+            case .codex:
+                guard let codex, codex.complete else { found.append((ref.id, .unavailable)); continue }
+                path = UUID(uuidString: ref.conversationID).flatMap { codex.files[$0.uuidString.lowercased()]?.path }
             }
+            guard let path else { found.append((ref.id, .missing)); continue }
             var info = stat()
-            guard stat(located.path, &info) == 0 else {
+            guard stat(path, &info) == 0 else {
                 found.append((ref.id, .missing))
                 continue
             }
             found.append((ref.id, .found(PaletteTranscriptFile(
-                sessionID: ref.id, path: located.path, title: ref.title, project: ref.project,
-                modified: Date(timeIntervalSince1970: TimeInterval(info.st_mtimespec.tv_sec))))))
+                sessionID: ref.id, path: path, title: ref.title, project: ref.project,
+                modified: Date(timeIntervalSince1970: TimeInterval(info.st_mtimespec.tv_sec)), kind: ref.kind))))
         }
         return found
     }

@@ -229,8 +229,22 @@ public final class UsageModel {
     public private(set) var sessionUsages: [String: SessionUsage] = [:]
     /// Sessions whose use could not be read the last time.
     public private(set) var sessionUsageFailures: Set<String> = []
+    /// Codex's rollout readings are kept apart from Claude and from Codex's account-reported totals.
+    public private(set) var codexContexts: [String: ContextUsage] = [:]
+    public private(set) var codexRecordedModels: [String: String] = [:]
+    public private(set) var codexSessionUsages: [String: SessionUsage] = [:]
+    public private(set) var codexSessionUsageFailures: Set<String> = []
+    public private(set) var codexLocalReport: CodexUsageIndexReport?
+    public private(set) var codexLocalFailure = false
 
     @ObservationIgnored private let index: any UsageIndexing
+    @ObservationIgnored private var codexIndex: CodexUsageIndex?
+    @ObservationIgnored private var codexHome: URL?
+    @ObservationIgnored private var codexCatalog: SessionCatalog?
+    @ObservationIgnored private var codexLocalTask: Task<Void, Never>?
+    @ObservationIgnored private var codexSessionOrder: [String] = []
+    @ObservationIgnored private var codexSessionTickets: [String: UInt64] = [:]
+    @ObservationIgnored private var nextCodexSessionTicket: UInt64 = 0
     @ObservationIgnored private let limitsSource: (any PlanLimitsFetching)?
     @ObservationIgnored private let cadence: PlanLimitsCadence
     @ObservationIgnored private var limitsTask: Task<Void, Never>?
@@ -368,6 +382,7 @@ public final class UsageModel {
         case .manual:
             start()
             fetchLimitsIfDue(after: cadence.afterPageOpened)
+            requestCodexLocalRefresh()
             // Update on the page reads Codex again whatever its last answer said.
             if usagePageVisible { refreshHarnesses(askCodex: true, force: true) }
         case .settingsOpened, .dayChanged:
@@ -433,11 +448,16 @@ public final class UsageModel {
     }
 
     private func pageVisibilityChanged(from before: Bool) {
+        if before && !usagePageVisible {
+            codexLocalTask?.cancel()
+            codexLocalTask = nil
+        }
         guard usagePageVisible, !before else { return }
         // The page shows what the last chip-only refresh skipped: read it now.
         if reportOutdated { start() } else { refresh(reason: .activation) }
         fetchLimitsIfDue(after: cadence.afterPageOpened)
         refreshHarnesses(askCodex: true, force: false)
+        requestCodexLocalRefresh()
     }
 
     /// The catalog model's minute tick while the window is active: the chip says "Today", so a new
@@ -463,6 +483,7 @@ public final class UsageModel {
         await limitsTask?.value
         await harnessTask?.value
         await contextTask?.value
+        await codexLocalTask?.value
     }
 
     public func select(_ newPeriod: UsagePeriod) {
@@ -692,14 +713,150 @@ public final class UsageModel {
 
     /// Reads one session's use: its own transcripts are tailed first (so the turn that just ended counts), then the index's
     /// aggregates. Off the main actor (the index is an actor); nothing else of the profile is walked.
-    public func loadSessionUsage(conversationID: String) async {
+    public func loadSessionUsage(conversationID: String, kind: HarnessTranscriptKind = .claude) async {
         guard !conversationID.isEmpty else { return }
+        if case .codex = kind {
+            await loadCodexSessionUsage(conversationID: conversationID)
+            return
+        }
         do {
             let usage = try await index.sessionUsage(session: conversationID, refresh: true)
             if sessionUsages[conversationID] != usage { sessionUsages[conversationID] = usage }
             sessionUsageFailures.remove(conversationID)
         } catch {
             if !Task.isCancelled { sessionUsageFailures.insert(conversationID) }
+        }
+    }
+
+    /// A resolved home is passed in by the app; nil is unavailable and never means a guessed default directory.
+    public func configureCodex(home: URL?, catalog: SessionCatalog?) {
+        guard home != codexHome || (codexCatalog == nil && catalog != nil) else { return }
+        codexLocalTask?.cancel()
+        codexLocalTask = nil
+        codexHome = home
+        codexCatalog = catalog
+        codexIndex = home.map { CodexUsageIndex(home: $0) }
+        codexContexts = [:]
+        codexRecordedModels = [:]
+        codexSessionUsages = [:]
+        codexSessionUsageFailures = []
+        codexSessionOrder = []
+        codexSessionTickets = [:]
+        codexLocalReport = nil
+        codexLocalFailure = home == nil
+        requestCodexLocalRefresh()
+    }
+
+    public func contextUsage(conversationID: String, kind: HarnessTranscriptKind) -> ContextUsage? {
+        switch kind {
+        case .claude: contexts[conversationID]
+        case .codex: codexContexts[conversationID]
+        }
+    }
+
+    public func sessionUsage(conversationID: String, kind: HarnessTranscriptKind) -> SessionUsage? {
+        switch kind {
+        case .claude: sessionUsages[conversationID]
+        case .codex: codexSessionUsages[conversationID]
+        }
+    }
+
+    public func recordedModel(conversationID: String, kind: HarnessTranscriptKind) -> String? {
+        switch kind {
+        case .claude: nil
+        case .codex: codexRecordedModels[conversationID]
+        }
+    }
+
+    public func sessionUsageFailed(conversationID: String, kind: HarnessTranscriptKind) -> Bool {
+        switch kind {
+        case .claude: sessionUsageFailures.contains(conversationID)
+        case .codex: codexSessionUsageFailures.contains(conversationID)
+        }
+    }
+
+    private func loadCodexSessionUsage(conversationID: String) async {
+        codexSessionOrder.removeAll { $0 == conversationID }
+        codexSessionOrder.append(conversationID)
+        nextCodexSessionTicket &+= 1
+        let ticket = nextCodexSessionTicket
+        codexSessionTickets[conversationID] = ticket
+        if codexSessionOrder.count > CodexUsageIndex.maximumSessions {
+            let old = codexSessionOrder.removeFirst()
+            codexSessionTickets[old] = nil
+            codexContexts[old] = nil
+            codexRecordedModels[old] = nil
+            codexSessionUsages[old] = nil
+            codexSessionUsageFailures.remove(old)
+        }
+        guard let index = codexIndex, let id = UUID(uuidString: conversationID)?.uuidString.lowercased() else {
+            codexContexts[conversationID] = nil
+            codexSessionUsageFailures.insert(conversationID)
+            return
+        }
+        do {
+            let report = try await index.refresh(sessionIDs: [id])
+            guard !Task.isCancelled, codexIndex === index, codexSessionTickets[conversationID] == ticket else { return }
+            guard let reading = report.sessions[id] else {
+                codexContexts[conversationID] = nil
+                codexSessionUsageFailures.insert(conversationID)
+                return
+            }
+            if !reading.hasUsage && !report.complete {
+                codexContexts[conversationID] = nil
+                codexSessionUsageFailures.insert(conversationID)
+                return
+            }
+            let part = SessionUsage.Part(tokens: reading.total, estimatedCostUSD: nil, messageCountKnown: false)
+            let usage = SessionUsage(main: part, subagentBreakdownKnown: false, partial: !report.complete)
+            if codexSessionUsages[conversationID] != usage { codexSessionUsages[conversationID] = usage }
+            if codexContexts[conversationID] != reading.context { codexContexts[conversationID] = reading.context }
+            if codexRecordedModels[conversationID] != reading.model { codexRecordedModels[conversationID] = reading.model }
+            codexSessionUsageFailures.remove(conversationID)
+        } catch {
+            if !Task.isCancelled, codexIndex === index, codexSessionTickets[conversationID] == ticket {
+                codexContexts[conversationID] = nil
+                codexSessionUsageFailures.insert(conversationID)
+            }
+        }
+    }
+
+    /// Uses the same visible Usage-page and explicit-refresh events as the existing index.
+    private func requestCodexLocalRefresh() {
+        guard usagePageVisible, section == .tokens, connectedHarnesses.contains(.codex),
+              let index = codexIndex, let catalog = codexCatalog else { return }
+        codexLocalTask?.cancel()
+        codexLocalTask = Task { [weak self] in
+            do {
+                let pool = try await catalog.searchSessions(search: "", order: .recentActivity, groupLimit: 400)
+                let ids = pool.sessions.compactMap { record -> String? in
+                    guard let kind = HarnessTranscriptKind(provider: record.session.provider),
+                          let id = record.session.providerConversationID else { return nil }
+                    if case .codex = kind { return id }
+                    return nil
+                }
+                let report = try await index.refresh(sessionIDs: ids, catalogTruncated: pool.next != nil)
+                guard !Task.isCancelled, let self, self.codexIndex === index, self.connectedHarnesses.contains(.codex) else { return }
+                if self.codexLocalReport?.sessions != report.sessions || self.codexLocalReport?.complete != report.complete
+                    || self.codexLocalReport?.sessionsRequested != report.sessionsRequested {
+                    self.codexLocalReport = report
+                }
+                self.codexLocalFailure = false
+            } catch {
+                guard !Task.isCancelled, let self, self.codexIndex === index, self.connectedHarnesses.contains(.codex) else { return }
+                self.codexLocalFailure = true
+            }
+        }
+    }
+
+    func codexAvailabilityChanged() {
+        if connectedHarnesses.contains(.codex) {
+            requestCodexLocalRefresh()
+        } else {
+            codexLocalTask?.cancel()
+            codexLocalTask = nil
+            codexLocalReport = nil
+            codexLocalFailure = false
         }
     }
 
@@ -767,6 +924,8 @@ public final class UsageModel {
         guard next != section else { return }
         section = next
         onSectionChange?(next)
+        if case .tokens = next { requestCodexLocalRefresh() }
+        else { codexLocalTask?.cancel(); codexLocalTask = nil }
     }
 
     /// Whether Sphyrna offers `harness` (the connect switch); on when no switch was attached.

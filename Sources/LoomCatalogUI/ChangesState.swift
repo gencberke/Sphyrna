@@ -7,7 +7,7 @@ import Observation
 // the comment drafts and the state of a send. Nothing here reads a file or runs a program; the reads are
 // `CatalogModel+Changes.swift`, and they happen only while the tab is open.
 
-/// What the tab compares: Claude's edits of the last turn or of the whole session, or the branch against its base.
+/// What the tab compares: recorded edits of the last turn or of the whole session, or the branch against its base.
 enum ChangesScope: String, CaseIterable, Sendable {
     case lastTurn
     case wholeSession
@@ -81,6 +81,8 @@ struct ChangesScopeData: Equatable, Sendable {
     var hunks: [String: [DiffHunk]] = [:]
     /// The byte bound ended the edit scan before the scope was complete.
     var truncated = false
+    /// Some records may be missing, including gaps other than the byte bound, so the missing coverage is not necessarily older edits.
+    var partial = false
     /// Branch files past the reader's cap.
     var omittedFiles = 0
     /// The branch scope's base ("main") and whether the session is on it (then the files are the uncommitted changes).
@@ -160,6 +162,8 @@ enum ChangesSendStatus: Equatable, Sendable {
 /// The tab's holder for one session. In memory only: drafts are not kept across a relaunch.
 @MainActor @Observable
 final class SessionChanges {
+    @ObservationIgnored private weak var owner: ChangesState?
+    @ObservationIgnored private var codexSourceGeneration: UInt64?
     var scope: ChangesScope = .lastTurn
     private(set) var states: [ChangesScope: ChangesScopeState] = [:]
     private(set) var selected: [ChangesScope: String] = [:]
@@ -177,12 +181,27 @@ final class SessionChanges {
     /// Moves with every branch list, so a diff read for an older list is dropped.
     @ObservationIgnored private(set) var branchGeneration = 0
 
-    func state(_ scope: ChangesScope) -> ChangesScopeState { states[scope] ?? .idle }
+    init(owner: ChangesState? = nil) { self.owner = owner }
+
+    func state(_ scope: ChangesScope) -> ChangesScopeState {
+        if scope.isEdits, let generation = codexSourceGeneration,
+           let owner, generation != owner.codexSourceGeneration { return .idle }
+        return states[scope] ?? .idle
+    }
     var currentState: ChangesScopeState { state(scope) }
 
     func setState(_ state: ChangesScopeState, for scope: ChangesScope) {
         guard states[scope] != state else { return }
         states[scope] = state
+    }
+
+    /// Stale Codex turn results are hidden immediately by `state`; release their bytes when this session is read again.
+    func prepareCodexRead() {
+        let generation = owner?.codexSourceGeneration ?? 0
+        guard codexSourceGeneration != generation else { return }
+        states[.lastTurn] = nil
+        states[.wholeSession] = nil
+        codexSourceGeneration = generation
     }
 
     func select(_ id: String?, in scope: ChangesScope) {
@@ -240,17 +259,21 @@ final class ChangesState {
     @ObservationIgnored var reader = ChangesReader.unavailable
     /// Replaces the send path of a test; nil sends through the session's Chat driver.
     @ObservationIgnored var sendOverride: (@MainActor (String, UUID) async throws -> Void)?
+    private(set) var codexSourceGeneration: UInt64 = 0
 
     init() {}
 
     func session(for id: UUID) -> SessionChanges {
         if let existing = sessions[id] { return existing }
-        let made = SessionChanges()
+        let made = SessionChanges(owner: self)
         sessions[id] = made
         return made
     }
 
     func existing(_ id: UUID) -> SessionChanges? { sessions[id] }
+
+    /// Invalidates only Codex turn reads, without walking retained sessions or disturbing drafts and branch state.
+    func invalidateCodexReads(to generation: UInt64) { codexSourceGeneration = generation }
 
     /// The session was deleted: what it read, its open file and its comment drafts go.
     func forget(_ id: UUID) { sessions[id] = nil }
@@ -267,6 +290,18 @@ struct ChangesReader: Sendable {
     var editScan: @Sendable (Transcript, EditScan.Scope) async -> EditScanResult
     var gitList: @Sendable (_ directory: String) async -> GitChangesState
     var gitDiff: @Sendable (GitChangeFile, GitChangeList) async -> GitFileDiff
+    var codexScan: @Sendable (Transcript, EditScan.Scope) async -> CodexChangesResult? = { transcript, scope in
+        await readCodex(transcript, scope: scope)
+    }
+
+    @concurrent
+    private static func readCodex(_ transcript: Transcript, scope: EditScan.Scope) async -> CodexChangesResult? {
+        guard !Task.isCancelled, let id = UUID(uuidString: transcript.sessionID)?.uuidString.lowercased(),
+              let workspace = transcript.workingDirectory,
+              let file = CodexRolloutLocator.locate(sessionIDs: [id], home: transcript.configDirectory).files[id] else { return nil }
+        let kind: CodexChangesReader.Scope = scope == .lastTurn ? .lastTurn : .wholeSession
+        return CodexChangesReader.scan(file: file, workspace: workspace, scope: kind)
+    }
 
     /// The scan runs on its own task off the main actor; git goes through `GitChanges` (nil: Git cannot be reached).
     static func live(git: GitChanges?) -> ChangesReader {
@@ -298,4 +333,5 @@ struct ChangesTrigger: Equatable, Sendable {
     var session: UUID
     var scope: ChangesScope
     var revision: Int
+    var source: TranscriptSourceKey? = nil
 }

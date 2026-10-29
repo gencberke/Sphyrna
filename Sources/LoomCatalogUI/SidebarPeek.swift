@@ -1,4 +1,5 @@
 import Foundation
+import Dispatch
 import LoomCore
 import Observation
 import SwiftUI
@@ -19,22 +20,34 @@ final class SidebarPeekStore {
         /// The session's `lastActivityAt` when it was read.
         var activity: Date
         var peek: ProjectLastLine.Peek
+        var harnessName: String
     }
 
     private(set) var entries: [UUID: Entry] = [:]
     @ObservationIgnored private var order: [UUID] = []
+    @ObservationIgnored private let reader = SidebarPeekReader()
     /// Reads that ran (tests).
     @ObservationIgnored private(set) var reads = 0
 
-    /// The tooltip for a session: "You: <ask>" and, on the next line, "Claude: <answer>"; nil while nothing is known.
-    func tooltip(for id: UUID) -> String? {
-        entries[id].flatMap { Self.tooltip(for: $0.peek) }
+    func invalidate() {
+        entries.removeAll()
+        order.removeAll()
     }
 
-    static func tooltip(for peek: ProjectLastLine.Peek) -> String? {
+    /// The tooltip for a session: "You: <ask>" and, on the next line, its harness and answer; nil while nothing is known.
+    func tooltip(for id: UUID) -> String? {
+        entries[id].flatMap { Self.tooltip(for: $0.peek, harnessName: $0.harnessName) }
+    }
+
+    func answer(for id: UUID) -> String? {
+        guard let entry = entries[id], let answer = entry.peek.answer else { return nil }
+        return ProjectLastLine.firstLine(of: "\(entry.harnessName): \(answer)")
+    }
+
+    static func tooltip(for peek: ProjectLastLine.Peek, harnessName: String = "Claude") -> String? {
         var lines: [String] = []
         if let ask = peek.ask { lines.append("You: " + ask) }
-        if let answer = peek.answer { lines.append("Claude: " + answer) }
+        if let answer = peek.answer { lines.append(harnessName + ": " + answer) }
         return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 
@@ -45,19 +58,26 @@ final class SidebarPeekStore {
               entries[id]?.activity != record.lastActivityAt else { return }
         reads += 1
         let activity = record.lastActivityAt
-        let peek = await Self.read(target)
-        guard !Task.isCancelled, let peek else { return }
-        entries[id] = Entry(activity: activity, peek: peek)
+        let peek = await reader.read(target)
+        guard !Task.isCancelled, model.transcriptSource(for: record.session.provider) == target.source, let peek else { return }
+        entries[id] = Entry(activity: activity, peek: peek, harnessName: target.harnessName)
         order.removeAll { $0 == id }
         order.append(id)
         if order.count > Self.limit { entries[order.removeFirst()] = nil }
     }
 
-    @concurrent
-    private static func read(_ target: CatalogModel.PeekTarget) async -> ProjectLastLine.Peek? {
+}
+
+/// Serializes Home and sidebar tail reads. A row cancelled while queued opens no file.
+private actor SidebarPeekReader {
+    private let queue = DispatchSerialQueue(label: "loom.peek.reader", qos: .utility)
+    nonisolated var unownedExecutor: UnownedSerialExecutor { queue.asUnownedSerialExecutor() }
+
+    func read(_ target: CatalogModel.PeekTarget) -> ProjectLastLine.Peek? {
         guard !Task.isCancelled else { return nil }
         return ProjectLastLine.readPeek(
-            sessionID: target.conversation, configDirectory: target.configDirectory, workingDirectory: target.workingDirectory)
+            sessionID: target.conversation, configDirectory: target.configDirectory, workingDirectory: target.workingDirectory,
+            kind: target.kind)
     }
 }
 
@@ -66,15 +86,19 @@ extension CatalogModel {
         var conversation: String
         var configDirectory: URL
         var workingDirectory: String
+        var kind: HarnessTranscriptKind
+        var harnessName: String
+        var source: TranscriptSourceKey
     }
 
     /// Where a row's peek is read from: a session whose harness reads a transcript, with its conversation id, and the profile
-    /// to look in. Nil for any other (a Codex session, one that never ran), whose row keeps its tooltip as it is.
+    /// to look in. Nil when that identity or its configured profile is unavailable.
     func peekTarget(for record: CatalogSession) -> PeekTarget? {
         guard capabilities(of: record.session.provider).readsTranscript,
               let conversation = record.session.providerConversationID, !conversation.isEmpty,
-              let directory = claudeConfigDirectory else { return nil }
-        return PeekTarget(conversation: conversation, configDirectory: directory, workingDirectory: record.session.workingDirectory)
+              let source = transcriptSource(for: record.session.provider), let directory = source.directory else { return nil }
+        return PeekTarget(conversation: conversation, configDirectory: directory, workingDirectory: record.session.workingDirectory,
+                          kind: source.kind, harnessName: capabilities(of: record.session.provider).displayName, source: source)
     }
 }
 

@@ -5,9 +5,8 @@ import SwiftUI
 
 /// What the Overview tab says about a session, as a plain value so the words can be tested without a view: the facts of
 /// the session (its state, when it started, the Claude Code version, the model and its effort, the permission mode), the
-/// worktree (project, branch and its base, folder), the files of the last turn and the subagents. The context is drawn
-/// separately from `UsageModel.contexts`. A Codex session has what it always had (its state, start, project, branch and
-/// folder); nothing is asked of Codex for the rest.
+/// worktree (project, branch and its base, folder), the files of the last turn and the subagents. Context and recorded
+/// Codex usage are read separately by `UsageModel`.
 struct InspectorOverviewContent: Equatable {
     /// The permission mode: the title under Loom's name, and the key the mode's icon and tone are looked up by.
     struct Mode: Equatable {
@@ -30,12 +29,14 @@ struct InspectorOverviewContent: Equatable {
         /// Files past `LoomTheme.Overview.maxFiles`.
         let more: Int
         let isRead: Bool
+        let harnessName: String
+        let notice: String?
         /// All the files of the turn, and their lines added and removed (the head's headline).
         var fileCount = 0
         var added = 0
         var removed = 0
 
-        var isEmpty: Bool { isRead && files.isEmpty }
+        var isEmpty: Bool { isRead && files.isEmpty && notice == nil }
 
         /// "4 files +120 −8"; nil before the turn was read or when it edited nothing.
         var headline: String? {
@@ -63,6 +64,7 @@ struct InspectorOverviewContent: Equatable {
     let claudeCode: String?
     /// The model's short name (the header segment's source); nil for a session with no reading and no model picked.
     let model: String?
+    let modelIsRecorded: Bool
     /// The effort in the CLI's own word, lowercase ("high"); nil when none is known.
     let effort: String?
     let mode: Mode?
@@ -73,7 +75,7 @@ struct InspectorOverviewContent: Equatable {
     /// The folder as the row shows it ("~/…/loom-v2/wt/ink") and in full (what the copy button copies).
     let folder: String
     let folderPath: String
-    /// Nil where the harness's edits are not read (Codex): no section.
+    /// Nil where the harness's edits are not read: no section.
     let lastTurn: LastTurn?
     /// Nil for a session that never had a subagent: no section.
     let agents: Agents?
@@ -81,15 +83,19 @@ struct InspectorOverviewContent: Equatable {
     /// `reportedMode` and `reportedEffort` are the run's own words (the Chat composer's, else the hooks'); `launchedMode` and
     /// `launchedEffort` are the stored launch choices, which hold until the run reports (and for a stopped session).
     init(status: String, createdAt: Date, now: Date, provider: ManagedSession.Provider, claudeVersion: String?, model: String?,
+         recordedModel: String? = nil,
          reportedMode: String?, launchedMode: String?, reportedEffort: String?, launchedEffort: String?,
          project: String?, branch: String?, base: String?, directory: String,
          edits: [ChangesFile]?, readsEdits: Bool, subagents: [SubagentRecord]?, waiting: Set<String> = [],
+         editsState: ChangesScopeState? = nil,
          home: String = NSHomeDirectory(), calendar: Calendar = .current, locale: Locale = .current) {
         let reportsRun = HarnessCapabilities.intrinsic(of: provider).reportsRunSettings
         self.status = status
         started = LoomDateFormat.started(createdAt, now: now, calendar: calendar, locale: locale)
         claudeCode = reportsRun ? claudeVersion.flatMap { $0.isEmpty ? nil : "Claude Code \($0)" } : nil
-        self.model = reportsRun ? model : nil
+        let recorded = recordedModel.flatMap { $0.isEmpty ? nil : $0 }
+        self.model = recorded ?? (reportsRun ? model : nil)
+        modelIsRecorded = recorded != nil
         effort = reportsRun ? Self.effortWord(reportedEffort ?? launchedEffort) : nil
         mode = reportsRun ? Self.mode(reportedMode ?? launchedMode) : nil
         self.project = project
@@ -102,8 +108,21 @@ struct InspectorOverviewContent: Equatable {
                 FileRow(id: file.id, name: (file.displayPath as NSString).lastPathComponent, path: file.displayPath,
                         added: file.added, removed: file.removed)
             }
+            let notice: String?
+            if case .some(.codex) = HarnessTranscriptKind(provider: provider) {
+                switch editsState {
+                case let .some(.off(reason)): notice = reason
+                case let .some(.failed(reason)): notice = "The changes could not be read. \(reason)"
+                case .some(.timedOut): notice = "Reading the changes timed out."
+                case let .some(.ready(data)) where data.partial || data.truncated: notice = "Some edits could not be read."
+                default: notice = nil
+                }
+            } else {
+                notice = nil
+            }
             lastTurn = LastTurn(files: Array(rows.prefix(LoomTheme.Overview.maxFiles)),
                                 more: max(0, rows.count - LoomTheme.Overview.maxFiles), isRead: edits != nil,
+                                harnessName: HarnessCapabilities.intrinsic(of: provider).displayName, notice: notice,
                                 fileCount: rows.count, added: rows.reduce(0) { $0 + $1.added },
                                 removed: rows.reduce(0) { $0 + $1.removed })
         } else {
@@ -211,14 +230,18 @@ struct OverviewUsageText: Equatable {
             Row(title: title, tokens: UsageFormat.tokens(part.tokens.total) + " tokens",
                 cost: part.estimatedCostUSD.map(UsageFormat.cost) ?? "\u{2014}")
         }
-        rows = [row("Main", usage.main), row("Subagents", usage.subagents), row("Total", usage.total)]
+        rows = usage.subagentBreakdownKnown
+            ? [row("Main", usage.main), row("Subagents", usage.subagents), row("Total", usage.total)]
+            : [row("Session", usage.total)]
         headline = usage.total.estimatedCostUSD.map(UsageFormat.cost)
         func column(_ title: String, _ part: SessionUsage.Part) -> Column {
             Column(title: title, input: UsageFormat.tokens(part.tokens.input), cacheWrite: UsageFormat.tokens(part.tokens.cacheWrite),
                    cacheRead: UsageFormat.tokens(part.tokens.cacheRead), output: UsageFormat.tokens(part.tokens.output),
                    cost: part.estimatedCostUSD.map(UsageFormat.cost) ?? "\u{2014}")
         }
-        columns = [column("Main", usage.main), column("Subagents", usage.subagents), column("Total", usage.total)]
+        columns = usage.subagentBreakdownKnown
+            ? [column("Main", usage.main), column("Subagents", usage.subagents), column("Total", usage.total)]
+            : [column("Session", usage.total)]
     }
 
     static let costLabel = "API equivalent"

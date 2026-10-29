@@ -16,11 +16,11 @@ struct HarnessCapabilitiesTests {
             usageLimits: true, modelCatalog: true, reportsRunSettings: true, displayName: "Claude")
     }
 
-    /// Codex's row: today's answers (nothing read, nothing deleted), plus the two a later package reads.
+    /// Codex's bounded transcript, context and edit reads do not enable Chat, subagents or deletion.
     private static func codex(startable: Bool) -> HarnessCapabilities {
         HarnessCapabilities(
-            hasHarness: true, startable: startable, structuredFace: false, readsTranscript: false, sideChats: false,
-            readsContext: false, readsEdits: false, subagents: false, rewind: false, quickQuestion: false, deletes: false,
+            hasHarness: true, startable: startable, structuredFace: false, readsTranscript: true, sideChats: false,
+            readsContext: true, readsEdits: true, subagents: false, rewind: false, quickQuestion: false, deletes: false,
             usageLimits: true, modelCatalog: true, reportsRunSettings: false, displayName: "Codex")
     }
 
@@ -31,7 +31,7 @@ struct HarnessCapabilitiesTests {
         #expect(HarnessCapabilities.of(.claude, startable: [.codex]) == Self.claude(startable: false))
     }
 
-    @Test func codexIsStartableOnlyWhereTheBuildSaysSoAndReadsNothing() {
+    @Test func codexIsStartableOnlyWhereTheBuildSaysSoAndReadsRecordedData() {
         #expect(HarnessCapabilities.of(.codex, startable: Self.production) == Self.codex(startable: false))
         #expect(HarnessCapabilities.of(.codex, startable: Self.development) == Self.codex(startable: true))
     }

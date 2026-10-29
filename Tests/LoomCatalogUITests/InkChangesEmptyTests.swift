@@ -20,6 +20,8 @@ import Testing
         let edits = "Claude's file edits. Shell commands and subagents show under Branch."
         #expect(ChangesBodyWords.note(scope: .lastTurn, state: .ready(data())) == edits)
         #expect(ChangesBodyWords.note(scope: .wholeSession, state: .ready(data())) == edits)
+        let truncated = ChangesScopeData(files: [], truncated: true)
+        #expect(ChangesBodyWords.note(scope: .lastTurn, state: .ready(truncated)) == edits + " Older edits were not read.")
         #expect(ChangesBodyWords.note(scope: .branch, state: .ready(data(base: "develop"))) == "Your working tree against develop.")
         #expect(ChangesBodyWords.note(scope: .branch, state: .ready(data(onBase: true)))
                 == "You are on main. Showing the uncommitted changes.")

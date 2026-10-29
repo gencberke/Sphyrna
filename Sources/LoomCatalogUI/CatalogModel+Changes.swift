@@ -29,10 +29,18 @@ extension CatalogModel {
         guard let id = selectedSessionID else { return nil }
         if isChangesTabOpen(on: id) {
             let session = changes.session(for: id)
-            return ChangesTrigger(session: id, scope: session.scope, revision: session.revision)
+            return ChangesTrigger(session: id, scope: session.scope, revision: session.revision,
+                                  source: changesSource(for: id, scope: session.scope))
         }
         guard isOverviewReadingEdits(on: id) else { return nil }
-        return ChangesTrigger(session: id, scope: .lastTurn, revision: changes.session(for: id).revision)
+        return ChangesTrigger(session: id, scope: .lastTurn, revision: changes.session(for: id).revision,
+                              source: changesSource(for: id, scope: .lastTurn))
+    }
+
+    private func changesSource(for id: UUID, scope: ChangesScope) -> TranscriptSourceKey? {
+        guard scope.isEdits, let provider = changesRow(id)?.record.session.provider,
+              let source = transcriptSource(for: provider), case .codex = source.kind else { return nil }
+        return source
     }
 
     /// The tab's count: the files of the current scope, once it was read.
@@ -93,7 +101,12 @@ extension CatalogModel {
         let session = changes.session(for: trigger.session)
         guard let row = changesRow(trigger.session) else { return }
         guard capabilities(of: row.record.session.provider).readsEdits else {
-            session.setState(.off("Claude's file edits are read from Claude sessions"), for: trigger.scope)
+            let harness = capabilities(of: row.record.session.provider).displayName
+            session.setState(.off("File changes are not read for \(harness) sessions yet."), for: trigger.scope)
+            return
+        }
+        if let kind = HarnessTranscriptKind(provider: row.record.session.provider), case .codex = kind {
+            await readCodexEdits(trigger, scan: scan, row: row)
             return
         }
         var result = EditScanResult.empty
@@ -117,6 +130,61 @@ extension CatalogModel {
                 status: .edit(isCreate: file.edits.first?.isCreate == true)))
         }
         session.setState(.ready(ChangesScopeData(files: files, hunks: hunks, truncated: result.truncated)), for: trigger.scope)
+        selectFirstFileIfNeeded(session, scope: trigger.scope)
+    }
+
+    private func readCodexEdits(_ trigger: ChangesTrigger, scan: EditScan.Scope, row: SessionRowModel) async {
+        let session = changes.session(for: trigger.session)
+        session.prepareCodexRead()
+        guard let conversation = row.live?.conversationID ?? row.record.session.providerConversationID,
+              !conversation.isEmpty, let home = codexConfigDirectory else {
+            session.setState(.off("Codex's session files have not been located."), for: trigger.scope)
+            return
+        }
+        let directory = row.record.session.workingDirectory
+        if session.state(trigger.scope).data == nil { session.setState(.loading, for: trigger.scope) }
+        let result = await changes.reader.codexScan(
+            ChangesReader.Transcript(sessionID: conversation, configDirectory: home, workingDirectory: directory), scan)
+        guard !Task.isCancelled, changesTrigger == trigger, codexConfigDirectory == home else { return }
+        guard let result else {
+            session.setState(.off("Codex's recorded file changes could not be read."), for: trigger.scope)
+            return
+        }
+        guard !result.changes.isEmpty else {
+            let reason = result.partial
+                ? "Some recorded file changes could not be read."
+                : (result.eventsSeen == 0 ? "No structured file-change records were found for this session."
+                                          : "No in-workspace file changes were recorded.")
+            session.setState(.off(reason), for: trigger.scope)
+            return
+        }
+        var order: [String] = []
+        var grouped: [String: [CodexRecordedChange]] = [:]
+        for change in result.changes {
+            if grouped[change.path] == nil { order.append(change.path) }
+            grouped[change.path, default: []].append(change)
+        }
+        var files: [ChangesFile] = []
+        var hunks: [String: [DiffHunk]] = [:]
+        for path in order {
+            guard let changes = grouped[path], let last = changes.last else { continue }
+            let shown = changes.flatMap(\.hunks)
+            hunks[path] = shown
+            let status: ChangesFileStatus
+            if last.oldPath != nil { status = .renamed }
+            else {
+                switch last.kind {
+                case .added: status = .added
+                case .modified: status = .modified
+                case .deleted: status = .deleted
+                }
+            }
+            files.append(ChangesFile(id: path, displayPath: EditScan.shorten(path, workingDirectory: directory), absolutePath: path,
+                                     added: shown.reduce(0) { $0 + $1.added }, removed: shown.reduce(0) { $0 + $1.removed },
+                                     isTooLarge: shown.reduce(0) { $0 + $1.lines.count } > LoomTheme.Changes.maxDiffLines,
+                                     status: status, oldPath: last.oldPath))
+        }
+        session.setState(.ready(ChangesScopeData(files: files, hunks: hunks, partial: result.partial)), for: trigger.scope)
         selectFirstFileIfNeeded(session, scope: trigger.scope)
     }
 

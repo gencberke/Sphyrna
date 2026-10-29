@@ -50,6 +50,9 @@ struct HomeEntryRow: View {
     let model: CatalogModel
     let entry: HomeEntry
     @State private var hovering = false
+    @State private var isVisible = false
+    @State private var fallbackKey: HomeTranscriptKey?
+    @State private var fallbackText: String?
     @FocusState private var focus: Action?
 
     enum Action: Hashable { case open, markRead }
@@ -58,6 +61,8 @@ struct HomeEntryRow: View {
         let key = "home-entry:\(entry.id)"
         let hot = hovering || LookEvidence.forcesHover(key)
         let revealed = HomeRowActions.revealed(hovering: hot, focused: focus != nil)
+        let transcriptKey = isVisible && model.windowIsVisible ? model.homeTranscriptKey(for: entry) : nil
+        let fallback = transcriptKey.flatMap { fallbackKey == $0 ? fallbackText : nil }
         VStack(spacing: 0) {
             HomeRule()
             VStack(alignment: .leading, spacing: LoomTheme.Home.rowLineGap) {
@@ -68,7 +73,7 @@ struct HomeEntryRow: View {
                     HomeAgeLabel(model: model, date: entry.lastActivityAt)
                 }
                 HStack(alignment: .top, spacing: LoomTheme.Home.rowColumnGap) {
-                    HomeReasonLine(entry: entry)
+                    HomeReasonLine(entry: entry, fallback: fallback)
                     Spacer(minLength: 0)
                     HStack(spacing: LoomTheme.Home.rowActionsGap) {
                         Button("Open Session") { model.select(entry.id) }
@@ -98,6 +103,14 @@ struct HomeEntryRow: View {
             .sessionDragSource(entry.id, title: entry.title)
             .onHover { hovering = $0 }
         }
+        .onScrollVisibilityChange(threshold: 0.01) { isVisible = $0 }
+        .task(id: transcriptKey) {
+            guard let transcriptKey else { fallbackKey = nil; fallbackText = nil; return }
+            let text = await model.homeTranscriptFallback(for: entry, key: transcriptKey)
+            guard !Task.isCancelled else { return }
+            fallbackKey = transcriptKey
+            fallbackText = text
+        }
         .accessibilityElement(children: .contain)
         // The buttons are not in the tree while they are hidden, so the actions are the row's own at all times.
         .accessibilityActions {
@@ -111,15 +124,18 @@ struct HomeEntryRow: View {
 /// The reason line (DESIGN §9 Row): small secondary, two lines at most, the command or the path the machine said in mono.
 struct HomeReasonLine: View {
     let entry: HomeEntry
+    var fallback: String? = nil
 
     var body: some View {
         Group {
-            if let reason = entry.reason, let mono = reason.mono {
+            if entry.allowsTranscriptFallback, let fallback {
+                Text(fallback).lineLimit(1)
+            } else if let reason = entry.reason, let mono = reason.mono {
                 let lead = Text(reason.lead)
                 let machine = Text(mono).font(LoomTheme.Home.reasonMono.font)
                 Text("\(lead)\(machine)")
             } else {
-                Text(entry.line)
+                Text(entry.displayedLine(fallback: fallback))
             }
         }
         .homeType(LoomTheme.Home.reason)

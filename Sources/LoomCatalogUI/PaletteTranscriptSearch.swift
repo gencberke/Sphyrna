@@ -10,7 +10,7 @@ import LoomCore
 /// A chunk is lower-cased (ASCII) into a second buffer and searched with `memmem` for the query's bytes; only a
 /// line that contains them is decoded, and only its user and assistant text blocks are matched again with the
 /// query folded for case and accents. Tool results, thinking and meta lines never match, so a hit is always
-/// something the user or Claude said. The byte gate is ASCII-case-insensitive and accent-exact: "Cafe" finds
+/// something the user or harness said. The byte gate is ASCII-case-insensitive and accent-exact: "Cafe" finds
 /// "cafe" but not "café".
 struct PaletteTranscriptFile: Equatable, Sendable {
     let sessionID: UUID
@@ -18,6 +18,17 @@ struct PaletteTranscriptFile: Equatable, Sendable {
     let title: String
     let project: String?
     let modified: Date
+    let kind: HarnessTranscriptKind
+
+    init(sessionID: UUID, path: String, title: String, project: String?, modified: Date,
+         kind: HarnessTranscriptKind = .claude) {
+        self.sessionID = sessionID
+        self.path = path
+        self.title = title
+        self.project = project
+        self.modified = modified
+        self.kind = kind
+    }
 }
 
 struct PaletteSearchBudget: Equatable, Sendable {
@@ -187,7 +198,7 @@ enum PaletteTranscriptScanner {
                             continue
                         }
                         let line = UnsafeRawBufferPointer(start: buffer + lineStart, count: length)
-                        guard isMessageLine(line) else { continue }
+                        guard isMessageLine(line, kind: file.kind) else { continue }
                         outcome.coverage.linesDecoded += 1
                         if let hit = decode(line: line, query: query, file: file, offset: baseOffset + UInt64(lineStart)) {
                             outcome.hits.append(hit)
@@ -267,6 +278,10 @@ enum PaletteTranscriptScanner {
     private static let userMarkers = [#""type":"user""#, #""type": "user""#].map { Array($0.utf8) }
     private static let assistantMarkers = [#""type":"assistant""#, #""type": "assistant""#].map { Array($0.utf8) }
     private static let toolResultMarkers = [#""type":"tool_result""#, #""type": "tool_result""#].map { Array($0.utf8) }
+    private static let responseMarkers = [#""type":"response_item""#, #""type": "response_item""#].map { Array($0.utf8) }
+    private static let messageMarkers = [#""type":"message""#, #""type": "message""#].map { Array($0.utf8) }
+    private static let roleMarkers = [#""role":"user""#, #""role": "user""#,
+                                      #""role":"assistant""#, #""role": "assistant""#].map { Array($0.utf8) }
 
     private static func contains(_ line: UnsafeRawBufferPointer, any markers: [[UInt8]]) -> Bool {
         markers.contains { marker in
@@ -276,8 +291,13 @@ enum PaletteTranscriptScanner {
 
     /// A cheap look before the parse: the line says it is a user or assistant message and holds no tool result
     /// (text a person typed carries these markers escaped, so it cannot be mistaken for one).
-    static func isMessageLine(_ line: UnsafeRawBufferPointer) -> Bool {
-        (contains(line, any: userMarkers) || contains(line, any: assistantMarkers)) && !contains(line, any: toolResultMarkers)
+    static func isMessageLine(_ line: UnsafeRawBufferPointer, kind: HarnessTranscriptKind) -> Bool {
+        switch kind {
+        case .claude:
+            (contains(line, any: userMarkers) || contains(line, any: assistantMarkers)) && !contains(line, any: toolResultMarkers)
+        case .codex:
+            contains(line, any: responseMarkers) && contains(line, any: messageMarkers) && contains(line, any: roleMarkers)
+        }
     }
 
     private static let snippetBefore = 48
@@ -287,18 +307,28 @@ enum PaletteTranscriptScanner {
     /// contain the query (the gate matched something else, such as a tool result).
     static func decode(line: UnsafeRawBufferPointer, query: String, file: PaletteTranscriptFile, offset: UInt64) -> PaletteTranscriptHit? {
         guard let base = line.baseAddress,
-              let object = try? JSONSerialization.jsonObject(with: Data(bytes: base, count: line.count)) as? [String: Any],
-              let type = object["type"] as? String, type == "user" || type == "assistant",
-              object["isMeta"] as? Bool != true, object["isCompactSummary"] as? Bool != true,
-              let message = object["message"] as? [String: Any]
+              let object = try? JSONSerialization.jsonObject(with: Data(bytes: base, count: line.count)) as? [String: Any]
         else { return nil }
         let text: String
-        switch message["content"] {
-        case let string as String: text = string
-        case let blocks as [Any]:
-            text = blocks.compactMap { ($0 as? [String: Any]).flatMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil } }
-                .joined(separator: "\n")
-        default: return nil
+        let role: PaletteSnippet.Role
+        switch file.kind {
+        case .codex:
+            guard let codex = CodexRolloutText.message(in: object) else { return nil }
+            text = codex.text
+            role = codex.role == .user ? .you : .codex
+        case .claude:
+            guard let type = object["type"] as? String, type == "user" || type == "assistant",
+                  object["isMeta"] as? Bool != true, object["isCompactSummary"] as? Bool != true,
+                  let message = object["message"] as? [String: Any] else { return nil }
+            role = type == "user" ? .you : .claude
+            switch message["content"] {
+            case let string as String: text = string
+            case let blocks as [Any]:
+                text = blocks.compactMap {
+                    ($0 as? [String: Any]).flatMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }
+                }.joined(separator: "\n")
+            default: return nil
+            }
         }
         // The snippet quotes the words, not the Markdown around them. A query that only the raw text holds (a
         // link's address) still finds its hit, quoted from the raw text.
@@ -313,7 +343,7 @@ enum PaletteTranscriptScanner {
             + (head.last?.isWhitespace == true ? " " : "")
         let after = (tail.first?.isWhitespace == true ? " " : "")
             + edge(oneLine(tail), cut: to < quoted.endIndex, leading: false)
-        let snippet = PaletteSnippet(role: type == "user" ? .you : .claude, before: before,
+        let snippet = PaletteSnippet(role: role, before: before,
                                      match: oneLine(quoted[range]), after: after)
         return PaletteTranscriptHit(
             sessionID: file.sessionID, title: file.title, project: file.project, snippet: snippet,

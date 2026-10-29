@@ -43,7 +43,7 @@ extension CatalogModel {
         environment.codexModels = { [weak self] in self?.modelCatalog.models(for: .codex) ?? [] }
         environment.sessionCandidates = { [weak self, weak feed] in
             guard let self, let feed else { return [] }
-            return paletteSessions().filter { capabilities(of: $0.provider).readsTranscript && $0.id != feed.card }.map {
+            return paletteSessions().filter { capabilities(of: $0.provider).structuredFace && $0.id != feed.card }.map {
                 ComposerSessionCandidate(id: $0.id, title: $0.title, project: $0.project, lastActivity: $0.lastActivityAt)
             }
         }
@@ -64,7 +64,7 @@ extension CatalogModel {
     /// chat and not one being deleted. Nil for any other.
     func composerMentionTarget(for id: UUID) -> ComposerMention? {
         guard let record = rowModels[id]?.record ?? liveRecords[id], !record.isSideChat, !isDeleting(id),
-              capabilities(of: record.session.provider).readsTranscript else { return nil }
+              capabilities(of: record.session.provider).structuredFace else { return nil }
         return ComposerMention(id: id, title: record.displayTitle(projectName: projectName(for: record)), provider: record.session.provider)
     }
 

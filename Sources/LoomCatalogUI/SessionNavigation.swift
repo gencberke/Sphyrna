@@ -143,7 +143,7 @@ extension SessionRowModel {
     /// The provider's id of a session whose transcript Loom reads (a Claude session); nil for other providers and for a
     /// session that has none yet.
     public var claudeSessionID: String? {
-        guard HarnessCapabilities.intrinsic(of: record.session.provider).readsTranscript,
+        guard HarnessCapabilities.intrinsic(of: record.session.provider).structuredFace,
               let id = record.session.providerConversationID, !id.isEmpty else { return nil }
         return id
     }

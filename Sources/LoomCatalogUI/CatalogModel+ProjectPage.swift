@@ -262,7 +262,20 @@ extension CatalogModel {
         page.sessionsLoad = .done
 
         let cutoff = Date().addingTimeInterval(-Self.projectPageWeekSlack)
-        let identifiers = collected.filter { $0.lastActivityAt >= cutoff }.compactMap { record -> String? in
+        let weekRecords = collected.filter { $0.lastActivityAt >= cutoff }
+        // The Claude index alone cannot describe a mixed project's total. Do not start a rollout scan here.
+        let hasCodexRecords = weekRecords.contains { record in
+            guard let kind = HarnessTranscriptKind(provider: record.session.provider) else { return false }
+            if case .codex = kind { return true }
+            return false
+        }
+        if hasCodexRecords {
+            page.usage = nil
+            page.usageFailed = true
+            page.usageLoad = .done
+            return
+        }
+        let identifiers = weekRecords.compactMap { record -> String? in
             guard capabilities(of: record.session.provider).readsTranscript, let id = record.session.providerConversationID, !id.isEmpty else { return nil }
             return id
         }
@@ -311,17 +324,23 @@ extension CatalogModel {
         guard page.projectID != nil, page.projectID == record.projectID, page.lastLines[id] == nil,
               !page.pendingLines.contains(id), capabilities(of: record.session.provider).readsTranscript,
               let conversation = record.session.providerConversationID, !conversation.isEmpty,
-              let directory = claudeConfigDirectory, !Task.isCancelled else { return }
+              let source = transcriptSource(for: record.session.provider), let directory = source.directory,
+              !Task.isCancelled else { return }
         page.pendingLines.insert(id)
         let generation = page.generation
-        defer { if page.generation == generation { page.pendingLines.remove(id) } }
+        defer {
+            if page.generation == generation, transcriptSource(for: record.session.provider) == source {
+                page.pendingLines.remove(id)
+            }
+        }
         page.reads.transcriptTails += 1
         let text = await page.tails.lastLine(
-            sessionID: conversation, configDirectory: directory, workingDirectory: record.session.workingDirectory,
+            sessionID: conversation, configDirectory: directory, workingDirectory: record.session.workingDirectory, kind: source.kind,
             generation: generation, page: page.pageGeneration)
         // A read that was dropped (the row scrolled off, the page closed) leaves no line behind, so the row
         // asks again if it is drawn again.
-        guard !Task.isCancelled, page.generation == generation else { return }
+        guard !Task.isCancelled, page.generation == generation,
+              transcriptSource(for: record.session.provider) == source else { return }
         page.lastLines[id] = text ?? ""
     }
 

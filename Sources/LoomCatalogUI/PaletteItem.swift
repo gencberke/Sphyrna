@@ -19,8 +19,15 @@ public struct PaletteSnippet: Equatable, Sendable {
     public enum Role: Equatable, Sendable {
         case you
         case claude
+        case codex
 
-        public var label: String { self == .you ? "You" : "Claude" }
+        public var label: String {
+            switch self {
+            case .you: "You"
+            case .claude: "Claude"
+            case .codex: "Codex"
+            }
+        }
     }
 
     public let role: Role

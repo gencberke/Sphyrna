@@ -1,8 +1,7 @@
 import Foundation
 
-/// Token counters by billing class. Provider-generic; Claude is the only
-/// producer today. `cacheWrite5m` also carries the legacy single-field cache
-/// creation count (older transcripts do not split by TTL).
+/// Provider-generic token counters by billing class. `cacheWrite5m` also carries an unsplit cache-write count when a transcript does not report a TTL;
+/// consumers must not infer a five-minute TTL for that value.
 public struct UsageTokens: Sendable, Equatable {
     public var input: Int64
     public var output: Int64

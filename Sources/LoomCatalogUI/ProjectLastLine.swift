@@ -3,7 +3,28 @@ import LoomChat
 import LoomCore
 import Synchronization
 
-/// The last thing Claude said in a session of a past run, read from the end of its transcript. The project
+/// A profile identity remains distinct even if the user switches away and back to the same path.
+struct TranscriptSourceKey: Equatable, Sendable {
+    let kind: HarnessTranscriptKind
+    let directory: URL?
+    let generation: UInt64
+}
+
+extension CatalogModel {
+    func transcriptSource(for provider: ManagedSession.Provider) -> TranscriptSourceKey? {
+        guard let kind = HarnessTranscriptKind(provider: provider) else { return nil }
+        let generation: UInt64
+        switch kind {
+        case .claude: generation = 0
+        case .codex: generation = codexConfigGeneration
+        }
+        return TranscriptSourceKey(kind: kind,
+                                   directory: kind.directory(claude: claudeConfigDirectory, codex: codexConfigDirectory),
+                                   generation: generation)
+    }
+}
+
+/// The last thing the harness said in a session of a past run, read from the end of its transcript. The project
 /// page asks for it only for rows that are on screen, one session at a time, and every ask is bounded: the
 /// last `pageBytes` of the file, at most `maxPages` times, and no line over `maxLineBytes` is read.
 enum ProjectLastLine {
@@ -13,57 +34,74 @@ enum ProjectLastLine {
     /// The longest line kept; a longer one ends in an ellipsis.
     static let maxLength = 160
 
-    /// The first line of Claude's last answer in the session, or nil when its transcript is missing, unreadable
-    /// or holds no answer in the part read. Only the working directory's own project folder is looked in: a
-    /// transcript elsewhere is a miss, so a miss never lists the profile's other folders.
-    static func read(sessionID: String, configDirectory: URL, workingDirectory: String) -> String? {
-        guard let file = ClaudeTranscriptLocator.locate(
-            sessionID: sessionID, configDirectory: configDirectory, onlyIn: workingDirectory),
-            let reader = ClaudeTranscriptReader(file: file) else { return nil }
+    /// The first line of the harness's last answer, or nil when its transcript is missing, unreadable or holds no
+    /// answer in the part read. Claude looks only in the working directory's project folder; Codex locates the
+    /// recorded session id under its configured home with a bounded search.
+    static func read(sessionID: String, configDirectory: URL, workingDirectory: String,
+                     kind: HarnessTranscriptKind = .claude) -> String? {
+        guard let reader = open(sessionID: sessionID, configDirectory: configDirectory,
+                                workingDirectory: workingDirectory, kind: kind) else { return nil }
         defer { reader.close() }
-        return read(from: reader)
+        return read(from: reader, kind: kind)
     }
 
-    static func read(from reader: ClaudeTranscriptReader) -> String? {
+    static func read(from reader: any TranscriptReader, kind: HarnessTranscriptKind = .claude) -> String? {
         for _ in 0..<maxPages {
+            guard !Task.isCancelled else { return nil }
             let page = reader.readBackward(pageBytes: pageBytes, maximumLineBytes: maxLineBytes)
             for record in page.records.reversed() {
-                if let bytes = record.bytes, let text = answer(in: bytes) { return summary(of: text) }
+                if let bytes = record.bytes, let text = answer(in: bytes, kind: kind) { return summary(of: text) }
             }
             if page.reachedStart { break }
         }
         return nil
     }
 
-    /// What the sidebar's Peek shows: the user's last ask and the first line of Claude's answer to it, each cut at `maxLength`.
+    /// What the sidebar's Peek shows: the user's last ask and the first line of the harness's answer, each cut at `maxLength`.
     struct Peek: Equatable, Sendable {
         var ask: String?
         var answer: String?
     }
 
-    /// The last ask and the answer after it, from one bounded backward read (the same bounds and the same folder rule as
+    /// The last ask and the answer after it, from one bounded backward read (the same bounds and source rules as
     /// `read(sessionID:configDirectory:workingDirectory:)`). Nil when the transcript is missing or unreadable.
-    static func readPeek(sessionID: String, configDirectory: URL, workingDirectory: String) -> Peek? {
-        guard let file = ClaudeTranscriptLocator.locate(
-            sessionID: sessionID, configDirectory: configDirectory, onlyIn: workingDirectory),
-            let reader = ClaudeTranscriptReader(file: file) else { return nil }
+    static func readPeek(sessionID: String, configDirectory: URL, workingDirectory: String,
+                         kind: HarnessTranscriptKind = .claude) -> Peek? {
+        guard let reader = open(sessionID: sessionID, configDirectory: configDirectory,
+                                workingDirectory: workingDirectory, kind: kind) else { return nil }
         defer { reader.close() }
-        return peek(from: reader)
+        return peek(from: reader, kind: kind)
+    }
+
+    private static func open(sessionID: String, configDirectory: URL, workingDirectory: String,
+                             kind: HarnessTranscriptKind) -> (any TranscriptReader)? {
+        guard !Task.isCancelled else { return nil }
+        switch kind {
+        case .claude:
+            guard let file = ClaudeTranscriptLocator.locate(
+                sessionID: sessionID, configDirectory: configDirectory, onlyIn: workingDirectory) else { return nil }
+            return ClaudeTranscriptReader(file: file)
+        case .codex:
+            guard let id = UUID(uuidString: sessionID)?.uuidString.lowercased(),
+                  let file = CodexRolloutLocator.locate(sessionIDs: [id], home: configDirectory).files[id] else { return nil }
+            return CodexRolloutReader(file: file)
+        }
     }
 
     /// Reads from the end: the first answer met is the last one, and the first ask met is the last one. An answer older than
     /// the last ask belongs to an earlier turn and is not shown with it, so the read ends at the ask.
-    static func peek(from reader: ClaudeTranscriptReader) -> Peek {
+    static func peek(from reader: any TranscriptReader, kind: HarnessTranscriptKind = .claude) -> Peek {
         var peek = Peek()
         var answered = false
         for _ in 0..<maxPages {
+            guard !Task.isCancelled else { return peek }
             let page = reader.readBackward(pageBytes: pageBytes, maximumLineBytes: maxLineBytes)
             for record in page.records.reversed() {
                 guard let bytes = record.bytes else { continue }
-                if !answered, let text = answer(in: bytes) {
+                if !answered, let text = answer(in: bytes, kind: kind) {
                     answered = true
                     peek.answer = summary(of: text)
-                } else if let text = TranscriptLens.humanPromptText(in: bytes) {
+                } else if let text = prompt(in: bytes, kind: kind) {
                     peek.ask = firstLine(of: text)
                     return peek
                 }
@@ -74,7 +112,18 @@ enum ProjectLastLine {
     }
 
     /// The text of the last text block of a main-thread assistant line; nil for any other line.
-    static func answer(in line: Data) -> String? {
+    private static func prompt(in line: Data, kind: HarnessTranscriptKind) -> String? {
+        switch kind {
+        case .claude: TranscriptLens.humanPromptText(in: line)
+        case .codex:
+            CodexRolloutText.message(in: line).flatMap { $0.role == .user ? $0.text : nil }
+        }
+    }
+
+    static func answer(in line: Data, kind: HarnessTranscriptKind = .claude) -> String? {
+        if case .codex = kind {
+            return CodexRolloutText.message(in: line).flatMap { $0.role == .assistant ? $0.text : nil }
+        }
         guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
               object["type"] as? String == "assistant", object["isSidechain"] as? Bool != true,
               let message = object["message"] as? [String: Any] else { return nil }
@@ -132,10 +181,11 @@ final class ProjectPageGeneration: Sendable {
 actor ProjectTailReader {
     private(set) var reads = 0
 
-    func lastLine(sessionID: String, configDirectory: URL, workingDirectory: String,
+    func lastLine(sessionID: String, configDirectory: URL, workingDirectory: String, kind: HarnessTranscriptKind = .claude,
                   generation: Int, page: ProjectPageGeneration) -> String? {
         guard !Task.isCancelled, page.current == generation else { return nil }
         reads += 1
-        return ProjectLastLine.read(sessionID: sessionID, configDirectory: configDirectory, workingDirectory: workingDirectory)
+        return ProjectLastLine.read(sessionID: sessionID, configDirectory: configDirectory, workingDirectory: workingDirectory,
+                                    kind: kind)
     }
 }

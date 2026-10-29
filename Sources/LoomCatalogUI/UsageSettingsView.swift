@@ -55,6 +55,7 @@ private struct UsageContent: View {
         }
         .onAppear { usage.setUsageSectionSelected(true) }
         .onDisappear { usage.setUsageSectionSelected(false) }
+        .onChange(of: connected) { _, _ in usage.codexAvailabilityChanged() }
     }
 
     /// The page's first lines, which scroll with it: the section switch and the harness filter, and for Tokens the period
@@ -162,7 +163,10 @@ private struct UsageContent: View {
         UsageCodexCardView(
             card: UsageCodexTokens.card(reading: usage.readings[.codex], failure: usage.readFailures[.codex],
                                         period: usage.period, now: Date(), timeZone: usage.timeZone),
-            period: usage.period, timeZone: usage.timeZone)
+            period: usage.period, timeZone: usage.timeZone,
+            local: usage.codexLocalReport.map { CodexLocalSummary.make(report: $0, period: usage.period, now: Date(),
+                                                                       timeZone: usage.timeZone) },
+            localFailure: usage.codexLocalFailure)
     }
 
     /// Each harness's total for the period, when both have one.

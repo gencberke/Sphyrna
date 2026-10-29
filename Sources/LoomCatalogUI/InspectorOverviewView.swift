@@ -42,19 +42,25 @@ struct InspectorOverview: View {
             launchedMode: launched.permissionMode(of: row.id), launchedEffort: launched.effort(of: row.id))
         let chip = model.headerChip(of: record)
         let provider = record.session.provider
+        let recordedModel = record.session.providerConversationID.flatMap { id in
+            HarnessTranscriptKind(provider: provider).flatMap { kind in
+                model.usage?.recordedModel(conversationID: id, kind: kind)
+            }
+        }
         let readsEdits = model.capabilities(of: provider).readsEdits
-        let edits = readsEdits ? model.changes.session(for: row.id).state(.lastTurn).data?.files : nil
+        let editsState = readsEdits ? model.changes.session(for: row.id).state(.lastTurn) : nil
+        let edits = editsState?.data?.files
         let base = baseKey.flatMap { key in baseRead.flatMap { $0.key == key ? $0.name : nil } }
         return InspectorOverviewContent(
             status: [row.indicator.label ?? (record.lifecycle == .active ? "Not running" : "\u{2014}"),
                      BackgroundWorkText.of(row.reason)].compactMap { $0 }.joined(separator: " · "),
             createdAt: record.createdAt, now: model.now, provider: provider,
-            claudeVersion: words.version, model: model.modelContent(of: record)?.name,
+            claudeVersion: words.version, model: model.modelContent(of: record)?.name, recordedModel: recordedModel,
             reportedMode: words.reportedMode, launchedMode: words.launchedMode,
             reportedEffort: words.reportedEffort, launchedEffort: words.launchedEffort,
             project: model.projectName(for: record), branch: chip?.branch, base: base, directory: directory,
             edits: edits, readsEdits: readsEdits, subagents: model.agentRecords(for: row),
-            waiting: SubagentWaiting.ids(in: row.live))
+            waiting: SubagentWaiting.ids(in: row.live), editsState: editsState)
     }
 
     var body: some View {
@@ -79,9 +85,11 @@ struct InspectorOverview: View {
         }
         .loadsLaunchModel(model, row: row)
         // The session's use is read when the tab shows and again each time a turn ends (the indicator leaves Working).
-        .task(id: UsageReadKey(conversationID: usageConversationID, working: row.indicator == .working)) {
-            guard let id = usageConversationID, row.indicator != .working else { return }
-            await model.usage?.loadSessionUsage(conversationID: id)
+        .task(id: UsageReadKey(conversationID: usageConversationID, working: row.indicator == .working,
+                               source: model.transcriptSource(for: row.record.session.provider))) {
+            guard let id = usageConversationID, row.indicator != .working,
+                  let kind = HarnessTranscriptKind(provider: row.record.session.provider) else { return }
+            await model.usage?.loadSessionUsage(conversationID: id, kind: kind)
         }
         // The runtime's toolchain probe is read again when a run begins: a start is what resolves it.
         .task(id: row.live?.runID) { await model.launchModels.loadClaudeVersion(from: model.intents) }
@@ -116,7 +124,9 @@ struct InspectorOverview: View {
                     OverviewFact(model.capabilities(of: row.record.session.provider).displayName) {
                         HStack(spacing: LoomTheme.Overview.valueGap) {
                             ProviderIcon(provider: row.record.session.provider, size: LoomTheme.Overview.harnessMark)
-                            OverviewRunValue(claudeCode: content.claudeCode, model: content.model, effort: content.effort)
+                            OverviewRunValue(claudeCode: content.claudeCode,
+                                             model: content.model.map { content.modelIsRecorded ? "Last recorded: \($0)" : $0 },
+                                             effort: content.effort)
                         }
                     }
                 }
@@ -138,9 +148,15 @@ struct InspectorOverview: View {
 
     @ViewBuilder private var context: some View {
         if !model.capabilities(of: row.record.session.provider).readsContext {
-            note("The context is read for Claude sessions.")
-        } else if let id = row.record.session.providerConversationID, let usage = model.usage?.contexts[id] {
+            note("The context is not read for \(model.capabilities(of: row.record.session.provider).displayName) sessions yet.")
+        } else if let id = row.record.session.providerConversationID,
+                  let kind = HarnessTranscriptKind(provider: row.record.session.provider),
+                  let usage = model.usage?.contextUsage(conversationID: id, kind: kind) {
             OverviewContext(usage: usage)
+        } else if let id = row.record.session.providerConversationID,
+                  let kind = HarnessTranscriptKind(provider: row.record.session.provider),
+                  model.usage?.sessionUsageFailed(conversationID: id, kind: kind) == true {
+            note("The context could not be read.")
         } else {
             note("No reading yet. It appears after the session's first reply.")
         }
@@ -148,23 +164,27 @@ struct InspectorOverview: View {
 
     private var contextHeadline: String? {
         guard model.capabilities(of: row.record.session.provider).readsContext,
-              let id = row.record.session.providerConversationID, let usage = model.usage?.contexts[id] else { return nil }
+              let id = row.record.session.providerConversationID,
+              let kind = HarnessTranscriptKind(provider: row.record.session.provider),
+              let usage = model.usage?.contextUsage(conversationID: id, kind: kind) else { return nil }
         return OverviewContextText.sectionHeadline(usage)
     }
 
     // MARK: Usage
 
     private func usageHeadline(_ conversationID: String) -> String? {
-        guard let usage = model.usage?.sessionUsages[conversationID], !usage.isEmpty else { return nil }
+        guard let kind = HarnessTranscriptKind(provider: row.record.session.provider),
+              let usage = model.usage?.sessionUsage(conversationID: conversationID, kind: kind), !usage.isEmpty else { return nil }
         return OverviewUsageText(usage).headline
     }
 
     private struct UsageReadKey: Equatable {
         let conversationID: String?
         let working: Bool
+        let source: TranscriptSourceKey?
     }
 
-    /// A Claude session with an id has a Usage block.
+    /// A supported session with an id has a Usage block.
     private var usageConversationID: String? {
         guard model.capabilities(of: row.record.session.provider).readsContext, model.usage != nil,
               let id = row.record.session.providerConversationID, !id.isEmpty else { return nil }
@@ -172,9 +192,15 @@ struct InspectorOverview: View {
     }
 
     @ViewBuilder private func usageBlock(_ conversationID: String) -> some View {
-        if let usage = model.usage?.sessionUsages[conversationID], !usage.isEmpty {
+        if let kind = HarnessTranscriptKind(provider: row.record.session.provider),
+           let usage = model.usage?.sessionUsage(conversationID: conversationID, kind: kind), !usage.isEmpty {
             OverviewUsageTable(text: OverviewUsageText(usage))
-        } else if model.usage?.sessionUsageFailures.contains(conversationID) == true {
+            if usage.partial { note("This reading is partial.") }
+            if model.usage?.sessionUsageFailed(conversationID: conversationID, kind: kind) == true {
+                note("The latest reading failed; these figures may be old.")
+            }
+        } else if let kind = HarnessTranscriptKind(provider: row.record.session.provider),
+                  model.usage?.sessionUsageFailed(conversationID: conversationID, kind: kind) == true {
             note(OverviewUsageText.failed)
         } else {
             note(OverviewUsageText.none)
@@ -219,9 +245,10 @@ struct InspectorOverview: View {
         })) {
             VStack(alignment: .leading, spacing: 0) {
                 if lastTurn.isEmpty {
-                    note("Claude has not edited files in the last turn.")
+                    note("\(lastTurn.harnessName) has not edited files in the last turn.")
                 }
                 ForEach(lastTurn.files) { file in OverviewFileRow(file: file) }
+                if let notice = lastTurn.notice { note(notice) }
                 if lastTurn.more > 0 {
                     Text("\(lastTurn.more) more").inspectorType(LoomTheme.Overview.caption)
                         .foregroundStyle(LoomTheme.Inspector.quiet(overlays: overlays))

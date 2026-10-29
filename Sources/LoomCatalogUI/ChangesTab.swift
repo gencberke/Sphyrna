@@ -2,8 +2,8 @@ import AppKit
 import SwiftUI
 
 /// The inspector's Changes tab (V20): a scope control, the files of the scope, the open file's diff, and the footer that
-/// sends the line comments to Claude. Last turn and Whole session show Claude's own file edits (read from the session's
-/// transcript); Branch shows the working tree against the merge base with the base branch (read from git). It reads only
+/// sends line comments where the session supports them. Last turn and Whole session show recorded file edits;
+/// Branch shows the working tree against the merge base with the base branch (read from git). It reads only
 /// while it is on screen (`CatalogModel.changesTrigger`).
 struct ChangesTab: View {
     let model: CatalogModel
@@ -60,7 +60,7 @@ private struct ChangesBody: View {
         let scope = session.scope
         let state = session.currentState
         VStack(alignment: .leading, spacing: LoomTheme.Changes.sectionGap) {
-            if let note = ChangesBodyWords.note(scope: scope, state: state) {
+            if let note = ChangesBodyWords.note(scope: scope, state: state, harnessName: harnessName) {
                 Text(verbatim: note).font(LoomTheme.Typography.caption).foregroundStyle(LoomTheme.Text.secondaryStyle)
             }
             switch state {
@@ -80,7 +80,7 @@ private struct ChangesBody: View {
                 ChangesNote(text: "The changes could not be read. \(message)", retry: { model.retryChanges(for: sessionID) })
             case let .ready(data):
                 if data.files.isEmpty {
-                    InspectorEmptyState(text: ChangesBodyWords.emptyText(scope: scope, data: data))
+                    InspectorEmptyState(text: ChangesBodyWords.emptyText(scope: scope, data: data, harnessName: harnessName))
                 } else {
                     ChangesFileList(model: model, sessionID: sessionID, session: session, data: data)
                     if let file = session.selected[scope].flatMap({ id in data.files.first { $0.id == id } }) {
@@ -91,6 +91,11 @@ private struct ChangesBody: View {
                 }
             }
         }
+    }
+
+    private var harnessName: String {
+        let row = model.selectedRow?.id == sessionID ? model.selectedRow : model.rowModels[sessionID]
+        return row.map { model.capabilities(of: $0.record.session.provider).displayName } ?? "Session"
     }
 
     static func content(of file: ChangesFile, scope: ChangesScope, data: ChangesScopeData,
@@ -112,11 +117,12 @@ private struct ChangesBody: View {
 /// What the tab says in words.
 enum ChangesBodyWords {
     /// The one quiet line of the scope: what it leaves out, what was not read, or where the branch stands.
-    static func note(scope: ChangesScope, state: ChangesScopeState) -> String? {
+    static func note(scope: ChangesScope, state: ChangesScopeState, harnessName: String = "Claude") -> String? {
         switch scope {
         case .lastTurn, .wholeSession:
             guard case .off = state else {
-                let base = "Claude's file edits. Shell commands and subagents show under Branch."
+                let base = "\(harnessName)'s file edits. Shell commands and subagents show under Branch."
+                if state.data?.partial == true { return base + " Some edits could not be read." }
                 return state.data?.truncated == true ? base + " Older edits were not read." : base
             }
             return nil
@@ -136,10 +142,10 @@ enum ChangesBodyWords {
         "\(branchCommand) \u{00B7} \(Int(max(0, elapsed)) + 1) s"
     }
 
-    static func emptyText(scope: ChangesScope, data: ChangesScopeData) -> String {
+    static func emptyText(scope: ChangesScope, data: ChangesScopeData, harnessName: String = "Claude") -> String {
         switch scope {
-        case .lastTurn: "Claude has not edited files in the last turn."
-        case .wholeSession: "Claude has not edited files in this session."
+        case .lastTurn: "\(harnessName) has not edited files in the last turn."
+        case .wholeSession: "\(harnessName) has not edited files in this session."
         case .branch: data.onBase ? "No uncommitted changes." : "No changes against \(data.baseName ?? "the base branch")."
         }
     }
