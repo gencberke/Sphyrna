@@ -10,11 +10,13 @@ The rules (comments and strings blanked unless a rule reads comments):
   wait-helper       a wait helper defined in a test file (`func waitUntil…`, `waitFor…`, `until`, `eventually`, `wait`):
                     the shared bounded wait lives in Tests/LoomTestSupport/
   silent-wait       `#expect`/`#require` of an awaited wait with no message: a failure names nothing it saw
+  spin-wait         a loop that only yields (`while … { await Task.yield() }`): it keeps a pool thread busy, has no bound
+                    and names nothing when its condition never comes; use the shared bounded wait
   key-window        a window made key or ordered in outside the window tests (LoomWindowTests), or
                     LoomTestSupport's `host(…, key: true)` there
-  global-state      a write to process-wide state that parallel suites share (ChatPresentation's verifier, HoverForce,
-                    DragActivity, ChatUserText.watchedID, SessionDragProbe), or a render probe watched or reset in a file
-                    without the `.renderProbe` trait
+  global-state      a write to process-wide state that parallel suites share (the old static row check, the held hover,
+                    DragActivity, ChatUserText's counters, SessionDragProbe) outside the probe lock's helpers
+                    (RenderProbeExclusive), or a render probe watched or reset in a file without the `.renderProbe` trait
   real-input        a test reads the Mac's real input state (mouse buttons, pointer location, modifier keys) or drives a
                     product object whose default reader does (`DragActivity.shared`): a press anywhere on the Mac changes
                     the result. The owner injects a reader (0f48daf)
@@ -61,13 +63,18 @@ QUARANTINE_DAYS = 14
 
 BLOCKING = re.compile(r'(?<![\w.])(usleep|sleep)\s*\(|Thread\.sleep\s*\(|\.waitUntilExit\s*\(|\.readDataToEndOfFile\s*\('
                       r'|\b\w*([Ss]emaphore|[Cc]ondition|[Gg]roup|[Ss]ignal|[Gg]ate|[Ll]ock)\w*\.wait\s*\(')
-SYNC_APIS = re.compile(r'(?<!\w)(exchange|readTUIFrame|helper)\s*\(|\.waitUntilExit\s*\(|\.readDataToEndOfFile\s*\('
+SYNC_APIS = re.compile(r'(?<!\w)(exchange|readTUIFrame|helper)\s*\(|OpenSessionCommand\.run\s*\(|\.waitUntilExit\s*\(|\.readDataToEndOfFile\s*\('
                        r'|(?<![\w.])usleep\s*\(|Thread\.sleep\s*\(|\.wait\s*\(')
 WAIT_HELPER = re.compile(r'\bfunc\s+(waitUntil\w*|waitFor\w*|until|eventually|wait)\s*[(<]')
 WAIT_CALL = re.compile(r'(?<![\w.])(waitUntil\w*|waitFor\w*|until|eventually|wait)\s*[({]')
 KEY_WINDOW = re.compile(r'\.makeKeyAndOrderFront\s*\(|\.orderFrontRegardless\s*\(|\.orderFront\s*\(|\.makeKey\s*\(')
-GLOBAL_WRITES = re.compile(r'ChatPresentation\.(verifiesRows|onMismatch)\s*=(?!=)|HoverForce\.shared\b|DragActivity\.shared\b'
-                           r'|ChatUserText\.watchedID\s*=(?!=)|SessionDragProbe\.watch\s*\(')
+GLOBAL_WRITES = re.compile(r'ChatPresentation\.(verifiesRows|onMismatch)\b|HoverForce\.shared\b|DragActivity\.shared\b'
+                           r'|LookEvidence\.(arm|setHover)\s*\(|ChatUserText\.(watchedID\s*=(?!=)|resetProbe\s*\()'
+                           r'|SessionDragProbe\.(watch|stop)\s*\(')
+# The probe lock's own file: its helpers check the lock and the trait lets the switches go (RenderProbeExclusive.swift).
+PROBE_LOCK_FILE = 'RenderProbeExclusive.swift'
+# The pane tone every view reads, and the terminal background that follows it: written only under the probe lock.
+TONE_WRITES = re.compile(r'ThemeState\.shared\.tone\s*=(?!=)|\.setPaneTone\s*\(|\.installTheme\s*\(|TerminalTheme\.setBackground\s*\(')
 PROBE_USE = re.compile(r'\b(Sidebar|Chat|Header|StatusBar)RenderProbe\.(watch|reset)\s*\(|ChatSelectionProbe\.reset\s*\(')
 REAL_INPUT = re.compile(r'\bNSEvent\.(pressedMouseButtons|mouseLocation|modifierFlags)\b'
                         r'|\bCGEventSource\.(buttonState|flagsState|keyState)\b|\bDragActivity\.shared\b')
@@ -75,7 +82,7 @@ MILESTONE = re.compile(r'FixRound|^B\d|Release[A-Z]|^V\d\d|Polish|Review')
 FLAKE = re.compile(r'//\s*flake:\s*(\S+)\s+(\d{4}-\d{2}-\d{2})\s+\S')
 DECISION = re.compile(r'\bD-(\d{2,3})\b')
 
-RATCHETED = ['pool-block', 'detached-block', 'sleep', 'wait-helper', 'silent-wait', 'key-window', 'global-state',
+RATCHETED = ['pool-block', 'detached-block', 'sleep', 'wait-helper', 'silent-wait', 'spin-wait', 'key-window', 'global-state',
              'real-input', 'superseded', 'milestone-name', 'disabled', 'serialized']
 
 
@@ -108,13 +115,17 @@ def test_files(root):
 
 
 def own_thread_spans(code):
-    """The spans of `onOwnThread(…) { … }` closures and of `Thread { … }` bodies: they run on threads of their own, where
-    blocking is their purpose."""
+    """The spans of `onOwnThread(…) { … }` and `onTestThread(…) { … }` closures, of `Thread { … }` bodies and of blocks given to a dispatch queue
+    (`queue.async { … }`, `.asyncAfter(…) { … }`): they run on threads of their own or of GCD, never on the cooperative
+    pool, where blocking is their purpose."""
     spans = []
     for m in re.finditer(r'(?<![\w.])Thread\s*(\{|\(block:\s*\{)', code):
         brace = m.end() - 1
         spans.append((brace, swift.closing_brace(code, brace)))
-    for start in swift.call_sites('onOwnThread', code):
+    for m in re.finditer(r'\.async(?:After\s*\([^{}]*?\))?\s*(?:\(\s*execute:\s*)?\{', code):
+        brace = m.end() - 1
+        spans.append((brace, swift.closing_brace(code, brace)))
+    for start in swift.call_sites('onOwnThread', code) + swift.call_sites('onTestThread', code):
         paren = code.index('(', start)
         after = swift.closing_paren(code, paren) + 1
         brace = code.find('{', after)
@@ -239,6 +250,10 @@ def scan(path, text, superseded):
         before = code[:m.start()].rstrip()
         # `await gate.wait()` suspends; `func sleep(` is a fake's declaration.
         if not inside(spans, m.start()) and not before.endswith('await') and not re.search(r'\bfunc$', before):
+            # The support's actor freeze gate (ActorFreezeGate.swift) is the one wait a test makes on the pool on purpose.
+            n = swift.line_of(code, m.start())
+            if support and re.search(r'//\s*actor freeze:\s*\S', lines[n - 2] if n >= 2 else ''):
+                continue
             add('pool-block', m.start())
     for start in [m.start() for m in re.finditer(r'\bTask\.detached\b', code)]:
         brace = code.find('{', start)
@@ -264,6 +279,8 @@ def scan(path, text, superseded):
             first = code[args[0][0]:args[0][1]]
             if 'await' in first and WAIT_CALL.search(first):
                 add('silent-wait', m.start())
+    for m in re.finditer(r'\bwhile\b[^\n]*\{\s*await\s+Task\.yield\(\)\s*\}[ \t]*$', code, re.M):
+        add('spin-wait', m.start())
     # The support's window host is where a test's window is made; whether it is key is the caller's ask, counted below.
     if not is_window_file(path, text) and not support:
         for m in KEY_WINDOW.finditer(code):
@@ -272,10 +289,13 @@ def scan(path, text, superseded):
         for start in swift.call_sites('host', code):
             if code[start - 1:start] != '.' and re.search(r'\bkey:\s*true\b', code[start:swift.closing_paren(code, code.index('(', start))]):
                 add('key-window', start)
-    for m in GLOBAL_WRITES.finditer(code):
-        add('global-state', m.start())
-    if not re.search(r'\.renderProbe\b', code) and not path.endswith('RenderProbeExclusive.swift'):
+    if not path.endswith(PROBE_LOCK_FILE):
+        for m in GLOBAL_WRITES.finditer(code):
+            add('global-state', m.start())
+    if not re.search(r'\.renderProbe\b', code) and not path.endswith(PROBE_LOCK_FILE):
         for m in PROBE_USE.finditer(code):
+            add('global-state', m.start())
+        for m in TONE_WRITES.finditer(code):
             add('global-state', m.start())
     for m in REAL_INPUT.finditer(code):
         add('real-input', m.start())
@@ -442,6 +462,7 @@ def list_decision(root, decision):
 PLANTED = {
     'pool-block': ('func f() async { usleep(10); let s = DispatchSemaphore(value: 0); s.wait() }\n'
                    'func g() async throws { try await onOwnThread("x") { usleep(5); p.waitUntilExit() } }\n'
+                   'func h() { DispatchQueue.global().async { usleep(5) }; q.asyncAfter(deadline: .now() + 1) { s.wait() } }\n'
                    'func h() async { await gate.wait() }\nfunc sleep(until date: Date) async throws {}\n'
                    'func i() { while lock.withLock({ n }) < 1 { usleep(10_000) }; _ = pipe.readDataToEndOfFile() }\n'
                    'let t = Thread { _ = done.wait(timeout: .now() + 5); Thread.sleep(forTimeInterval: 1) }\n', 4),
@@ -455,10 +476,13 @@ PLANTED = {
     'silent-wait': ('#expect(await waitUntil { x })\n#expect(await waitUntil { x }, "saw \\(x)")\n'
                     '#expect(await eventually { a == nil }, "the drag ends")\n'
                     '#expect(await model.count == 1)\nlet ok = try #require(await until(timeout: 1) { y })\n', 2),
+    'spin-wait': ('while !done { await Task.yield() }\nwhile n.withLock({ $0 }) == 0, clock.now < deadline { await Task.yield() }\n'
+                  'await Task.yield()\nwhile !done { await Task.yield(); n += 1 }\n', 2),
     'key-window': ('window.makeKeyAndOrderFront(nil)\nwindow.orderFrontRegardless()\n'
                    'let (w, _) = host(view, size: s, key: true)\nlet (v, _) = host(view, size: s)\n', 3),
-    'global-state': ('ChatPresentation.verifiesRows = true\nif ChatPresentation.verifiesRows == true {}\n'
-                     'SidebarRenderProbe.watch([])\n', 2),
+    'global-state': ('ChatPresentation.verifiesRows = true\nLookEvidence.setHover("k")\nRenderProbeExclusive.holdHover("k")\n'
+                     'ChatUserText.watchedID = id\nif ChatUserText.watchedID == id {}\nSidebarRenderProbe.watch([])\n'
+                     'LoomTheme.ThemeState.shared.tone = .warm\nmodel.setPaneTone(.cool)\nlet t = ThemeState.shared.tone == .warm\n', 6),
     'real-input': ('let down = NSEvent.pressedMouseButtons != 0\nlet a = DragActivity.shared\n'
                    'let b = DragActivity(buttonsDown: mouse.buttonsDown)\nlet f = event.modifierFlags\n', 2),
     'superseded': ('// D-28: Codex frozen\n// D-28, now D-94\n// D-94\n', 1),
@@ -479,6 +503,11 @@ def self_test():
     for rule, (text, n) in PLANTED.items():
         got = len(scan('Tests/LoomCoreTests/PlantedTests.swift', text, superseded).get(rule, []))
         expect(got == n, f'{rule}: {n} expected, {got} found')
+    freeze = 'func hold() {\n    // actor freeze: the step waits for the test\n    while !released { condition.wait() }\n}\n'
+    expect(not scan('Tests/LoomTestSupport/ActorFreezeGate.swift', freeze, set()).get('pool-block'),
+           'pool-block: the support\'s actor freeze gate, marked, may wait')
+    expect(scan('Tests/LoomCoreTests/Gate.swift', freeze, set()).get('pool-block'),
+           'pool-block: the marker counts only in the support target')
     expect(not scan('Tests/LoomTestSupport/Waits.swift', PLANTED['wait-helper'][0], set()).get('wait-helper'),
            'wait-helper: the support target may define waits')
     expect(not scan('Tests/LoomWindowTests/W.swift', PLANTED['key-window'][0], set()).get('key-window'),
@@ -487,6 +516,8 @@ def self_test():
            .get('key-window'), 'key-window: the namespace alone no longer exempts a file outside LoomWindowTests')
     expect(not scan('Tests/LoomCoreTests/P.swift', '@Suite(.renderProbe) struct S {}\nSidebarRenderProbe.watch([])\n', set())
            .get('global-state'), 'global-state: a file with .renderProbe may watch the probe')
+    expect(not scan('Tests/LoomCatalogUITestRigs/RenderProbeExclusive.swift', PLANTED['global-state'][0], set())
+           .get('global-state'), 'global-state: the probe lock\'s helpers set the switches')
     expect(scan('Tests/LoomCoreTests/B2FixRoundTests.swift', '', set()).get('milestone-name') == [1], 'milestone-name')
     expect(scan('Tests/LoomCoreTests/CTests.swift', '// usleep(1) in a comment\nlet s = "usleep(1)"\n', set()) == {},
            'comments and strings are not code')
