@@ -24,12 +24,13 @@
 
 | Tree | Branch / checkpoint | Owner / state |
 | --- | --- | --- |
-| `~/Library/Caches/loom-v2/wt/v2` | local `v2`, `1beb330` (+ this STATUS commit) | Claude planner continuation; clean after each commit |
+| `~/Library/Caches/loom-v2/wt/v2` | local `v2`, `427c362` (+ this STATUS commit) | Claude planner continuation; clean after each commit |
 | `wt/r9-tests` | `slice/r9-tests` (first stop integrated, `0e4ff16`) | running: the test revision's step 5 (D-119), session `test-infra-review` |
-| `wt/r9-d2x` | `slice/r9-d2x` from `bd55e63` | running (D-120): D2's Codex deletion through an owned endpoint, under D-121 |
+| `wt/r9-d2y` | `slice/r9-d2y` from `427c362` | running: Codex's Delete in the UI (the capability, readable reasons, the sheets' wording) and resume of a deleted Codex thread reading "history unavailable" |
 | `wt/r9-acc` | `slice/r9-acc` from `1beb330` | running (D-120): the first live acceptance (ordinary Claude, Claude↔Codex child over 3 rounds, Changes→session) and its repeatable driver under `scripts/acceptance/` |
 | `wt/r9-opt` | detached at `de810bb`, read-only | running: the closing `@optimizer` (D-06, two `strict-reviewer` passes on Opus 5.5 / max: LoomCore and helpers; UI and app), started early so its fixes fit the night; the late changes (deletion, acceptance fixes) get a delta pass at the end. Reports go to `evidence/r9/optimizer-closing/` |
 | (integrated) `r9-f2`, `r9-later`, `r9-i1` | merged into `v2` (`bc30467`, `10659fa`, `1beb330`) | F2: Changes comments reach a live terminal session through F1's mailbox; Coming later for opencode and agy (D-120 as built); I1: the run host reads Sphyrna Run Host, the title rule pinned (Claude `-n`; Codex has no start-time name), `evidence/r9/i1/MIGRATION.md` (no rename, D-123) |
+| (integrated) `r9-d2x` | merged into `v2` (`427c362`) | D2's Codex deletion (D-121): a deletion-only app-server on the recorded home, a descendant preflight, typed `thread/delete`, absence proven three ways, `history.jsonl` kept byte-identical; one real isolated deletion PASS (`evidence/r9/d2x/REAL.md`). Limits: a native delete interrupted halfway may read as absent; the home is the current toolchain's at request time |
 | (integrated) `r9-pool` | merged into `v2` | the three bounded waits on their own threads, plan limits at `.utility`; failing-first tests (`evidence/r9/pool/`) |
 | (removed) `r9-e1r`, `r9-e2n` | no commits | opencode and agy frozen for 1.8.0 (D-120). opencode: Sphyrna has no plain route yet; its native route works (`evidence/r9/e1r/`). agy: an owned `HOME` hides the keychain sign-in, and there is no config-folder flag; for later, its hook answers `PreToolUse` with allow, and its updater runs outside the process group (`evidence/r9/e2n/`). |
 | `wt/r9-m1` | `slice/r9-m1`, `ae9774b`, clean | c4 completed; integrated, report in `r9/m1` |
@@ -38,7 +39,7 @@
 | `~/Documents/github/loom-dev` | `swarm/1` | guarded canonical/reference mirror; never Sources/build/commit |
 | `~/Documents/github/loom` | `main` | public release tree, release-script-only; untouched |
 
-File locks: the test revision holds `Tests/**`, `Package.swift` (test targets and `LoomTestSupport`), `scripts/check.sh` and the test guards and ledger, DEVELOPMENT §2 and §3.1, and its product seams (`OwnThread.swift`'s access, the `ChatPresentation` verifier, the git-hook and join timeouts as parameters, its Codex/runtime test seams). `r9-d2x`: `ConversationDeletion.swift`, `SessionCatalog+Deletions.swift`, `CodexHarness.swift`, `SessionRuntime+Codex.swift`, `CodexAppServer.swift`, new Codex deletion files, SPEC §5.1. `r9-acc`: `scripts/acceptance/`, dev-only `Sources/loom-app/Evidence/` commands, small product fixes outside the other locks. Do not restart completed workers or repeat accepted slices.
+File locks: the test revision holds `Tests/**`, `Package.swift` (test targets and `LoomTestSupport`), `scripts/check.sh` and the test guards and ledger, DEVELOPMENT §2 and §3.1, and its product seams (`OwnThread.swift`'s access, the `ChatPresentation` verifier, the git-hook and join timeouts as parameters, its Codex/runtime test seams). `r9-d2y`: `HarnessCapabilities.swift` (Codex `deletes`), `CatalogModel+Deletion.swift`, `DeletionViews.swift`, the cleanup sheet, the Codex resume answer. `r9-acc`: `scripts/acceptance/`, dev-only `Sources/loom-app/Evidence/` commands, small product fixes outside the other locks. Do not restart completed workers or repeat accepted slices.
 
 ## Next actions by role
 
