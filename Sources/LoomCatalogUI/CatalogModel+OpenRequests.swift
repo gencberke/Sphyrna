@@ -20,9 +20,9 @@ extension CatalogModel {
     public func approveOpenRequest(_ id: UUID) {
         guard actionsAvailable else { return }
         intents?.approveOpen(requestID: id)
-        if let projectID = openRequests.first(where: { $0.id == id })?.projectID,
-           projects.first(where: { $0.id == projectID })?.collapsed == true {
-            Task { [weak self] in await self?.expandProject(projectID) }
+        if let request = openRequests.first(where: { $0.id == id }), request.send == nil,
+           projects.first(where: { $0.id == request.projectID })?.collapsed == true {
+            Task { [weak self] in await self?.expandProject(request.projectID) }
         }
     }
 

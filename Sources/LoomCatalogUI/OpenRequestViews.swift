@@ -69,7 +69,7 @@ struct OpenRequestBox: View {
         .depth(LoomTheme.Elevation.card)
         .fadesIn()
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(request.task == nil ? "Request to open a session" : "Request to delegate a task"): \(request.title)")
+        .accessibilityLabel("\(request.send != nil ? "Request to send a message" : request.task == nil ? "Request to open a session" : "Request to delegate a task"): \(request.title)")
     }
 
     private func header(_ content: OpenRequestBoxContent) -> some View {
@@ -97,13 +97,15 @@ struct OpenRequestBox: View {
                 .foregroundStyle(LoomTheme.Text.primary).lineLimit(2).textSelection(.enabled)
             HStack(spacing: LoomTheme.OpenRequest.metaGap) {
                 if let provider = content.provider { HarnessMark(provider: provider) }
-                Text([content.harnessName, content.model, content.effort, content.mode].joined(separator: " \u{00B7} "))
+                Text((request.send == nil ? [content.harnessName, content.model, content.effort, content.mode] : [content.harnessName]).joined(separator: " \u{00B7} "))
                     .font(LoomTheme.OpenRequest.meta).foregroundStyle(LoomTheme.Text.tertiaryStyle)
-                Text("\u{00B7}").font(LoomTheme.OpenRequest.meta).foregroundStyle(LoomTheme.Text.faint)
-                ProjectMarkView(name: content.projectName,
-                                tone: model.projectTone(forProject: request.projectID), size: .card)
-                Text(content.projectName).font(LoomTheme.OpenRequest.meta)
-                    .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                if request.send == nil {
+                    Text("\u{00B7}").font(LoomTheme.OpenRequest.meta).foregroundStyle(LoomTheme.Text.faint)
+                    ProjectMarkView(name: content.projectName,
+                                    tone: model.projectTone(forProject: request.projectID), size: .card)
+                    Text(content.projectName).font(LoomTheme.OpenRequest.meta)
+                        .foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                }
             }
             .lineLimit(1)
         }
@@ -113,7 +115,7 @@ struct OpenRequestBox: View {
     @ViewBuilder private func message(_ content: OpenRequestBoxContent) -> some View {
         let shape = RoundedRectangle(cornerRadius: LoomTheme.OpenRequest.messageRadius)
         Group {
-            if showsFullMessage {
+            if showsFullMessage || request.send != nil {
                 ScrollView {
                     Text(content.message).font(LoomTheme.OpenRequest.body)
                         .foregroundStyle(LoomTheme.Text.primary).textSelection(.enabled)
@@ -132,7 +134,7 @@ struct OpenRequestBox: View {
         .padding(.vertical, LoomTheme.OpenRequest.messagePaddingV)
         .padding(.horizontal, LoomTheme.OpenRequest.messagePaddingH)
         .background(shape.fill(LoomTheme.OpenRequest.messageFill))
-        if content.hasMore {
+        if content.hasMore && request.send == nil {
             HStack {
                 Button(showsFullMessage ? "Show less" : "Show full message") { showsFullMessage.toggle() }
                     .buttonStyle(ControlButtonStyle(kind: .link))
@@ -156,10 +158,10 @@ struct OpenRequestBox: View {
                             .frame(width: LoomTheme.OpenRequest.spinnerWidth,
                                    height: LoomTheme.Control.Size.regular.height)
                             .accessibilityElement(children: .ignore)
-                            .accessibilityLabel("Opening…")
+                            .accessibilityLabel(request.send == nil ? "Opening…" : "Sending…")
                     } else {
                         // Neither button is the default action: Return belongs to the terminal below.
-                        Button("Open Session") { model.approveOpenRequest(request.id) }
+                        Button(request.send == nil ? "Open Session" : "Send") { model.approveOpenRequest(request.id) }
                             .buttonStyle(ControlButtonStyle(kind: .default))
                             .disabled(content.actionsDisabled)
                     }
@@ -181,7 +183,7 @@ struct OpenRequestFoldLine: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: LoomTheme.OpenRequest.foldRadius)
         HStack(spacing: LoomTheme.OpenRequest.headerGap) {
-            Circle().fill(fold.outcome == .opened ? LoomTheme.OpenRequest.openedMark : LoomTheme.OpenRequest.deniedMark)
+            Circle().fill(fold.outcome == .denied ? LoomTheme.OpenRequest.deniedMark : LoomTheme.OpenRequest.openedMark)
                 .frame(width: LoomTheme.OpenRequest.dot, height: LoomTheme.OpenRequest.dot)
                 .accessibilityHidden(true)
             Text(fold.text).font(LoomTheme.OpenRequest.fold)

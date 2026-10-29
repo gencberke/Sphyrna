@@ -487,16 +487,23 @@ public final class SessionService {
     /// box (the runtime keeps it as failed) and never retried. Refused while the request's approval is in flight.
     @discardableResult
     public func approveOpen(requestID: UUID, provider: ManagedSession.Provider = .claude) -> Task<Void, Never>? {
-        guard capabilities(of: provider).startable else {
-            failureHandler(SessionFailure(.startFailed(provider), LoomError.message("The harness cannot be started")))
-            return nil
-        }
         guard approving.insert(requestID).inserted else {
             LoomLog.debug(.session, "Open request \(Self.requestRef(requestID)): approval already under way")
             return nil
         }
         return Task {
             let request = await runtime.openRequestSnapshot().first { $0.id == requestID }
+            if request?.send != nil {
+                defer { approving.remove(requestID) }
+                do { try await runtime.approvePeerSendRequest(requestID) }
+                catch { failureHandler(SessionFailure(.openRequestNotAnswered, error)) }
+                return
+            }
+            guard capabilities(of: provider).startable else {
+                approving.remove(requestID)
+                failureHandler(SessionFailure(.startFailed(provider), LoomError.message("The harness cannot be started")))
+                return
+            }
             if request?.task == nil, facePolicy.faceOfApprovedOpening(capabilities(of: provider)) == .chat,
                let host = structuredHost {
                 await approveOpenInStructuredFace(requestID: requestID, host: host).value

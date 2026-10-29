@@ -85,6 +85,9 @@ extension SessionRuntime {
             if context.launch?.runID == runID { scheduleTaskDelivery(taskID) }
             if context.wakeNeeded && taskChildReservations[taskID]?.parent.managedRunID == runID { scheduleTaskWake(taskID) }
         }
+        if let sessionID = taskRunPlans.first(where: { $0.value.claim.managedRunID == runID })?.key {
+            markPeerNeedsDelivery(sessionID)
+        }
     }
 
     func scheduleTaskDelivery(_ taskID: UUID) {
@@ -138,7 +141,7 @@ extension SessionRuntime {
             let interruptNeeded = taskInterruptWaiters.values.contains {
                 $0.target.binding.managedRunID == runID || $0.parentBinding.managedRunID == runID
             }
-            if deliveryNeeded || proofNeeded || interruptNeeded {
+            if deliveryNeeded || proofNeeded || interruptNeeded || peersNeedingDelivery.contains(sessionID) {
                 plan.lease.observeQuiescence { [weak self] in
                     Task { await self?.taskRunBecameQuiescent(sessionID: sessionID, runID: runID) }
                 }
@@ -147,6 +150,7 @@ extension SessionRuntime {
     }
 
     func taskRunBecameQuiescent(sessionID: UUID, runID: UUID) {
+        if peersNeedingDelivery.contains(sessionID) { schedulePeerDelivery(sessionID) }
         for (taskID, context) in taskLaunchContexts {
             let parent = taskChildReservations[taskID]?.parent
             let parentMatches = parent?.sessionID == sessionID && parent?.managedRunID == runID
@@ -438,7 +442,7 @@ extension SessionRuntime {
         }
     }
 
-    private func clearTaskExpectation(_ purpose: SessionTaskExpectedInput.Purpose, binding: SessionTaskBinding) {
+    func clearTaskExpectation(_ purpose: SessionTaskExpectedInput.Purpose, binding: SessionTaskBinding) {
         guard let current = taskExpectedInputs[binding.managedRunID], current.purpose == purpose,
               current.binding == binding, !current.effect.hasEffect else { return }
         if let retained = current.retainedChild,

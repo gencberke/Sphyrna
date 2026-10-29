@@ -31,7 +31,8 @@ public enum OpenSessionCommand {
         """
 
     /// The top-level help: every command.
-    public static let overview = usage + "\n\n" + sessionsUsage + "\n\n" + whoAmIUsage
+    public static let overview = usage + "\n\n" + sessionsUsage + "\n\n" + whoAmIUsage +
+        "\n\nUse task --help for delegated work and send --help for approved session messages."
 
     public struct Output {
         public var standardOutput: (String) -> Void

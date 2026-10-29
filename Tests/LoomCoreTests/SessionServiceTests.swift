@@ -402,6 +402,44 @@ struct SessionServiceTests {
         #expect((await rig.context.runtime.shutdown()).succeeded)
     }
 
+    @Test func anApprovedPeerSendDoesNotOpenAChildOrRequireAStartableHarness() async throws {
+        let rig = try await makeRig(runsIn: .chat, startable: [], claudeVersion: "2.0.0")
+        defer { rig.context.cleanup() }
+        let folder = rig.context.root.appendingPathComponent("service-peer", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let project = try await rig.context.catalog.addProject(path: folder.path).project
+        let sender = try await rig.context.runtime.startConversation(provider: .claude, projectID: project.id)
+        let target = try await rig.context.runtime.startConversation(provider: .claude, projectID: project.id)
+        let claim = try #require(await rig.context.runtime.taskRunPlans[sender.sessionID]?.claim)
+        let targetClaim = try #require(await rig.context.runtime.taskRunPlans[target.sessionID]?.claim)
+        let runtime = rig.context.runtime
+        let deadline = ProcessInfo.processInfo.systemUptime + 3
+        while ProcessInfo.processInfo.systemUptime < deadline {
+            let first = await runtime.authenticateTaskRun(claim)
+            let second = await runtime.authenticateTaskRun(targetClaim)
+            if first != nil && second != nil { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await runtime.authenticateTaskRun(claim) != nil)
+        #expect(await runtime.authenticateTaskRun(targetClaim) != nil)
+        let id = UUID()
+        var call = SessionTaskWireRequest(command: "peer-send", sessionID: claim.sessionID, runID: claim.managedRunID,
+                                          generation: claim.generation, credential: claim.credential)
+        call.operationID = id; call.targetSessionID = target.sessionID; call.message = "Review this"
+        let reply = Task { await rig.context.runtime.submitPeerSend(call) }
+        while ProcessInfo.processInfo.systemUptime < deadline {
+            if await runtime.openRequestSnapshot().contains(where: { $0.id == id }) { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await runtime.openRequestSnapshot().contains { $0.id == id })
+        await rig.service.approveOpen(requestID: id, provider: .claude)?.value
+        #expect(await reply.value.status == "sent")
+        #expect(rig.host.opened.isEmpty && rig.sinks.requested == 0)
+        #expect(try await rig.context.catalog.sessions().count == 2)
+        #expect(try await rig.context.runtime.sessionMailboxHasUnread(sessionID: target.sessionID))
+        #expect((await rig.context.runtime.shutdown()).succeeded)
+    }
+
     @Test func anApprovalCannotUseAnotherHarnessGateToStartDisabledCodex() async throws {
         let rig = try await makeRig(runsIn: .terminal, startable: [.claude])
         defer { rig.context.cleanup() }

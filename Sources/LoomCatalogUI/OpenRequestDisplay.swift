@@ -74,7 +74,8 @@ struct OpenRequestBoxContent: Equatable {
     /// `position` and `count` are the card's place among the requests of this session, oldest first. The coordinator
     /// has already resolved the mode; nil model and effort mean the harness's own defaults.
     init(_ request: OpenSessionRequest, position: Int = 1, count: Int = 1) {
-        heading = request.task == nil ? "Open a new session?" : "Delegate a task?"
+        heading = request.send.map { "Send to \($0.targetTitle)?" }
+            ?? (request.task == nil ? "Open a new session?" : "Delegate a task?")
         taskBounds = request.task.map { "Up to \($0.childInputLimit) child inputs, \($0.parentWakeLimit) parent wakes, for 1 hour." }
         requester = "from " + (request.requesterTitle ?? SessionOrigin.unknownRequester)
         counter = count > 1 ? "\(position) of \(count)" : nil
@@ -99,7 +100,7 @@ struct OpenRequestBoxContent: Equatable {
             actions = [.deny, .openSession]
             actionsDisabled = false
         case .starting:
-            status = "Opening…"
+            status = request.send == nil ? "Opening…" : "Sending…"
             showsSpinner = true
             failure = nil
             actions = [.deny, .openSession]
@@ -130,7 +131,7 @@ struct OpenRequestBoxContent: Equatable {
 /// One answered request, folded to a one-line notice for `LoomTheme.OpenRequest.foldLinger`: "Opened: <title>" with a way to
 /// the new session, or "Denied: <title>". A dismissed failure just goes: there is nothing to report.
 struct OpenRequestFold: Identifiable, Equatable {
-    enum Outcome: Equatable { case opened, denied }
+    enum Outcome: Equatable { case opened, sent, denied }
 
     /// The answered request's id.
     let id: UUID
@@ -142,6 +143,7 @@ struct OpenRequestFold: Identifiable, Equatable {
     var text: String {
         switch outcome {
         case .opened: "Opened: " + title
+        case .sent: "Sent: " + title
         case .denied: "Denied: " + title
         }
     }
@@ -164,7 +166,7 @@ extension OpenSessionRequest {
     var answeredFold: OpenRequestFold.Outcome? {
         switch phase {
         case .waiting: return .denied
-        case .starting: return .opened
+        case .starting: return send == nil ? .opened : .sent
         case .failed: return nil
         }
     }

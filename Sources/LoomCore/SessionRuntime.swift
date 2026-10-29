@@ -350,6 +350,15 @@ public actor SessionRuntime {
     var taskExpectedInputs: [UUID: SessionTaskExpectedInput] = [:]
     var taskProofWaiters: [UUID: SessionTaskProofWaiter] = [:]
     var taskInterruptWaiters: [UUID: SessionTaskInterruptWaiter] = [:]
+    var peerMailbox: SessionMailbox?
+    var peerReadFence: SessionTaskReadFence?
+    let peerTargetFences = PeerTargetFences()
+    var peerPendingRequests: [UUID: PeerPendingRequest] = [:]
+    var peersNeedingDelivery: Set<UUID> = []
+    var peerDeliveriesInFlight: Set<UUID> = []
+    var peerDeliveriesRequested: Set<UUID> = []
+    var peerApprovalsInFlight: [UUID: Int] = [:]
+    var peerApprovalWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
     var taskChildReservations: [UUID: SessionTaskChildReservation] = [:]
     var taskLaunchContexts: [UUID: SessionTaskLaunchContext] = [:]
     var taskDeliveriesInFlight: Set<UUID> = []
@@ -841,7 +850,12 @@ public actor SessionRuntime {
         retiredTaskRuns.removeAll()
         taskReadFence?.stop()
         taskReadFence = nil
+        peerReadFence?.stop()
+        peerReadFence = nil
         await claudeLimitObserver?.cancelAll()
+        await peerMailbox?.shutdown()
+        peerMailbox = nil
+        peerPendingRequests.removeAll()
         let taskSocketStopped = if let socket = taskSocket { await socket.stopAndWait() } else { true }
         taskSocket = nil
         taskSocketPath = nil

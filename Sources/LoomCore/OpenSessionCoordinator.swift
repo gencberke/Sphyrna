@@ -38,6 +38,7 @@ public struct OpenSessionRequest: Identifiable, Equatable, Sendable {
     /// True only when the agent omitted --mode and the user's default supplied it.
     public let modeFromUserDefault: Bool
     public let task: OpenSessionTaskRequest?
+    public let send: OpenSessionSendRequest?
     public let receivedAt: Date
     public internal(set) var phase: Phase
 
@@ -45,7 +46,8 @@ public struct OpenSessionRequest: Identifiable, Equatable, Sendable {
         id: UUID = UUID(), requesterID: UUID, requesterTitle: String? = nil, projectID: UUID,
         projectName: String, title: String, message: String,
         choices: HarnessLaunchChoices = HarnessLaunchChoices(), modeFromUserDefault: Bool = false,
-        task: OpenSessionTaskRequest? = nil, receivedAt: Date = Date(), phase: Phase = .waiting
+        task: OpenSessionTaskRequest? = nil, send: OpenSessionSendRequest? = nil,
+        receivedAt: Date = Date(), phase: Phase = .waiting
     ) {
         self.id = id
         self.requesterID = requesterID
@@ -57,6 +59,7 @@ public struct OpenSessionRequest: Identifiable, Equatable, Sendable {
         self.choices = choices
         self.modeFromUserDefault = modeFromUserDefault
         self.task = task
+        self.send = send
         self.receivedAt = receivedAt
         self.phase = phase
     }
@@ -108,6 +111,7 @@ struct OpenSessionSpec: Sendable {
     let choices: HarnessLaunchChoices
     let modeFromUserDefault: Bool
     let task: OpenSessionTaskRequest?
+    let send: OpenSessionSendRequest?
 }
 
 /// Keeps the requests of agents until the user decides (contract section 7: nothing starts
@@ -182,6 +186,24 @@ actor OpenSessionCoordinator {
     func submitTask(_ call: OpenSessionCall, task: OpenSessionTaskRequest,
                     authorizeTask: @escaping @Sendable () async -> Bool) async -> OpenSessionReply {
         await submit(call, task: task, authorizeTask: authorizeTask)
+    }
+
+    /// A peer send uses the same sender-card queue but has its own explicit
+    /// approval and never opens a new session.
+    func submitSend(_ request: OpenSessionRequest, authorize: @Sendable () async -> Bool) async -> Bool {
+        guard request.send != nil, request.task == nil, !shutDown, await authorize(), !shutDown,
+              !entries.contains(where: { $0.request.id == request.id ||
+                  ($0.request.requesterID == request.requesterID && $0.request.isUndecided) }),
+              entries.filter({ $0.request.isUndecided }).count < Self.maximumWaiting else { return false }
+        entries.append(Entry(request: request, waiter: nil, timeout: nil))
+        trimEntries(); publish()
+        return true
+    }
+
+    /// Called only after the target's verified stop and mailbox deletion.
+    func forgetPeerTarget(_ target: UUID) {
+        let ids = entries.filter { $0.request.send?.targetSessionID == target }.map { $0.request.id }
+        for id in ids { remove(id) }
     }
 
     private func submit(_ call: OpenSessionCall, task: OpenSessionTaskRequest?,
@@ -407,7 +429,7 @@ actor OpenSessionCoordinator {
             let sessionID = try await start(OpenSessionSpec(
                 requesterID: request.requesterID, projectID: request.projectID, title: request.title,
                 message: request.message, choices: request.choices, modeFromUserDefault: request.modeFromUserDefault,
-                task: request.task
+                task: request.task, send: request.send
             ))
             resolveWaiter(id, OpenSessionReply(status: .started, sessionID: sessionID, title: request.title))
             remove(id)

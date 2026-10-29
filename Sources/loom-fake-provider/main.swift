@@ -72,6 +72,18 @@ func fakeSphyrnaTaskCreate(_ command: String) -> Bool {
     return result?.0 == 0 && result?.1.contains("pending") == true
 }
 
+func fakeSphyrnaPeerSend(_ command: String) -> String {
+    let words = command.split(separator: " ").map(String.init)
+    guard words.count == 4, words[0] == "/fake-sphyrna-send",
+          let target = UUID(uuidString: words[1]), let operation = UUID(uuidString: words[2]) else { return "REFUSED" }
+    let result = fakeSphyrnaTaskCommand(["send", target.uuidString.lowercased(), "--operation",
+        operation.uuidString.lowercased(), "--message-file", words[3]])
+    guard let result else { return "REFUSED" }
+    if result.0 == 0 && result.1.split(separator: "\n").contains("sent") { return "SENT" }
+    if result.0 == 1 && result.1.split(separator: "\n").contains("denied") { return "DENIED" }
+    return "REFUSED"
+}
+
 func fakeSphyrnaTaskRound(_ pointer: String, report: Bool = true) -> Bool {
     guard ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_ROUNDS"] == "1" else { return false }
     let words = pointer.split(separator: " ").map(String.init)
@@ -414,6 +426,7 @@ struct FakeClaude {
                 exit(1)
             }
             out("RESUMED \(id) remembered=\(lines(for: id).count)\r\n")
+            if environment["LOOM_FAKE_PEER_RESUME_DELAY"] == "1" { usleep(750_000) }
         }
         registry("idle")
         hook("SessionStart", ["source": resume ? "resume" : "startup"])
@@ -427,6 +440,10 @@ struct FakeClaude {
         currentPrompt = line
         defer { currentPrompt = nil }
         switch line.split(separator: " ").first.map(String.init) ?? "" {
+            case "/fake-sphyrna-send" where environment["LOOM_FAKE_TASK_ROUNDS"] == "1":
+                hook("UserPromptSubmit", ["prompt_id": "p\(promptCount)"])
+                out("FAKE-PEER-\(fakeSphyrnaPeerSend(line))\r\n")
+                hook("Stop", ["last_assistant_message": "fixture send finished"])
             case "/fake-registry-busy" where environment["LOOM_FAKE_TASK_REGISTRY_CONTROL"] == "1":
                 registry("busy")
                 out("FAKE-REGISTRY-BUSY\r\n")

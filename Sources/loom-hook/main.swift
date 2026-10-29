@@ -9,6 +9,13 @@ struct LoomHook {
         // Claude runs the helper with no arguments for a hook event. Any argument makes it the
         // command agents use (`"$LOOM_CLI" open ...` or `sessions ...`); the hook path below is unchanged.
         if !arguments.isEmpty {
+            if arguments.first == "send" || arguments.first == "inbox" {
+                exit(SendMessageCommand.run(arguments: arguments, environment: ProcessInfo.processInfo.environment,
+                    output: .init(
+                        standardOutput: { FileHandle.standardOutput.write(Data(($0 + "\n").utf8)) },
+                        standardError: { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
+                    )))
+            }
             if arguments.first == "task" {
                 exit(SessionTaskCommand.run(arguments: arguments, environment: ProcessInfo.processInfo.environment,
                     readStandardInput: { try readStandardInput(limit: SessionTaskLimits.payloadBytes + 1) },

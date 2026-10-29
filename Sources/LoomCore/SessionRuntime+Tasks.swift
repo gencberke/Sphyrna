@@ -9,19 +9,25 @@ extension SessionRuntime {
             let database = catalog.dataRoot.appendingPathComponent("session-tasks/tasks.sqlite3")
             let coordinator = try await SessionTaskCoordinator.open(url: database, host: host)
             guard !shuttingDown else { return }
+            let mailbox = try? await SessionMailbox.open(url: catalog.dataRoot.appendingPathComponent("session-mailbox/mailbox.sqlite3"), exclusive: true)
             let path = configuration.socketDirectory
                 .appendingPathComponent("c-\(UUID().uuidString.prefix(8)).sock").path
             let router = SessionTaskWireRouter(coordinator: coordinator, create: { [weak self] call in
                 guard let self else { return .init(status: "unavailable") }
                 return await self.submitTaskRequest(call)
             }, requested: { [weak self] id in await self?.markTaskNeedsDelivery(id) },
-               reported: { [weak self] id in await self?.markTaskNeedsWake(id) })
+               reported: { [weak self] id in await self?.markTaskNeedsWake(id) },
+               peerSend: { [weak self] call in await self?.submitPeerSend(call) ?? .init(status: "unavailable") },
+               peerInbox: { [weak self] call in await self?.peerInbox(call) ?? Data(#"{"version":5,"status":"unavailable"}"#.utf8) },
+               peerAck: { [weak self] call in await self?.peerInboxAck(call) ?? .init(status: "unavailable") })
             let socket = try SessionTaskSocket(path: path, handler: router.handle)
             guard !shuttingDown else { _ = await socket.stopAndWait(); return }
             taskCoordinator = coordinator
             taskSocketPath = path
             taskSocket = socket
             taskReadFence = router.readFence
+            peerMailbox = mailbox
+            peerReadFence = SessionTaskReadFence { [weak self] id in Task { await self?.markPeerNeedsDelivery(id) } }
             inputGate.observeRegistrations { [weak self] runID in Task { await self?.taskTerminalAttached(runID) } }
         } catch {
             LoomLog.error(.lifecycle, "Task channel unavailable (\(LoomLog.category(of: error)))")
@@ -60,6 +66,7 @@ extension SessionRuntime {
 
     func beginTaskRun(sessionID: UUID, runID: UUID) {
         guard taskSocketPath != nil, !shuttingDown else { return }
+        peerTargetFences.rotate(sessionID)
         if let old = taskRunPlans[sessionID] {
             revokeTaskRun(sessionID: sessionID, runID: old.claim.managedRunID)
         }
@@ -72,6 +79,9 @@ extension SessionRuntime {
     func revokeTaskRun(sessionID: UUID, runID: UUID? = nil, identityChanged: Bool = false) {
         guard let plan = taskRunPlans[sessionID], runID == nil || plan.claim.managedRunID == runID else { return }
         plan.lease.revoke()
+        peerTargetFences.rotate(sessionID)
+        peersNeedingDelivery.remove(sessionID)
+        failPeerRequests(from: plan.claim)
         taskParentRevoked(plan.claim)
         if retiredTaskRuns[sessionID] == nil, retiredTaskRuns.count >= 256, let first = retiredTaskRuns.keys.first {
             retiredTaskRuns[first] = nil
@@ -171,7 +181,10 @@ extension SessionRuntime {
             guard old.binding == binding, old.purpose != purpose, old.confirmedObservation != nil else { return false }
             if let generation = old.acceptedGeneration,
                !inputGate.hasInputGeneration(runID: binding.managedRunID, generation: generation) { return false }
-            if case .wake = purpose { retained = old.retainedChildProof() ?? old.retainedChild }
+            switch purpose {
+            case .wake, .peer: retained = old.retainedChildProof() ?? old.retainedChild
+            case .child: break
+            }
         }
         guard digest.count == 32, let plan = taskRunPlans[binding.sessionID], plan.lease.isEnabled,
               plan.claim.managedRunID == binding.managedRunID, plan.claim.generation == binding.generation,

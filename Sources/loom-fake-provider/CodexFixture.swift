@@ -726,6 +726,22 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
                 return
             }
             if ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_ROUNDS"] == "1",
+               text.hasPrefix("Sphyrna: message") || text.hasPrefix("/fake-sphyrna-send ") {
+                broadcast("item/started", ["threadId": threadID, "turnId": turn.id, "item": [
+                    "type": "userMessage", "clientId": clientID.map { $0 as Any } ?? NSNull(),
+                    "content": [["type": "text", "text": text, "text_elements": []]]
+                ]])
+                if text.hasPrefix("Sphyrna: message") {
+                    complete(threadID, turnID: turn.id, status: "completed", message: "FAKE-PEER-WAKE")
+                } else {
+                    let turnID = turn.id
+                    DispatchQueue.global().async {
+                        taskCompletions.add(thread: threadID, turn: turnID, message: "FAKE-PEER-\(fakeSphyrnaPeerSend(text))")
+                    }
+                }
+                return
+            }
+            if ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_ROUNDS"] == "1",
                text.hasPrefix("Sphyrna task:") || text.hasPrefix("/fake-sphyrna-task-create ") {
                 broadcast("item/started", ["threadId": threadID, "turnId": turn.id, "item": [
                     "type": "userMessage", "clientId": clientID.map { $0 as Any } ?? NSNull(),

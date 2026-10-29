@@ -132,6 +132,7 @@ struct SessionTaskExpectedInput: Sendable {
     enum Purpose: Sendable, Equatable {
         case child(taskID: UUID, roundID: UUID, operationID: UUID)
         case wake(taskID: UUID, operationID: UUID)
+        case peer(targetID: UUID, operationID: UUID)
     }
     struct RetainedChildProof: Sendable {
         let purpose: Purpose

@@ -18,33 +18,29 @@ public enum ClaudeLoomPlugin {
     static let skill = """
         ---
         name: open-session
-        description: This session runs inside Sphyrna. List sessions, ask to open another, or, in a terminal session, delegate tasks to a reusable child with the user's approval.
+        description: This session runs inside Sphyrna. List or open sessions, send approved messages, or delegate tasks to a reusable child in a terminal session.
         ---
 
         # Sessions in Sphyrna
 
-        `"$SPHYRNA_CLI"` connects Sphyrna sessions; Claude's own cross-session messages are refused.
+        `"$SPHYRNA_CLI"` connects sessions; native cross-session messages are refused.
 
-        ## List and identify
+        `"$SPHYRNA_CLI" sessions` lists metadata, no session content; use --project, --all,
+        --limit or --json to adjust it. `"$SPHYRNA_CLI" whoami` identifies this session;
+        do not guess an ID.
 
-        `"$SPHYRNA_CLI" sessions` lists session metadata, no session content. It defaults to this project;
-        `--project <name|path>`, `--all`, `--limit <n>` and `--json` adjust the list.
+        `"$SPHYRNA_CLI" open --help` lists choices. `"$SPHYRNA_CLI" open --title "<topic>"
+        [--project <name|path>] --message-file <file>` (`--message -` reads stdin) waits up to 85 seconds.
+        Tell the user `started <id>`, `pending: ...`, `denied` or `error: ...`. Never retry a denial or pick Full access.
+        `open` always starts a new session; ask the user to approve a send when reusing an ordinary session.
 
-        `"$SPHYRNA_CLI" whoami` identifies this session, its opener and sessions it opened. Do not guess an id.
+        In terminal sessions, `"$SPHYRNA_CLI" task --help` describes approved child tasks,
+        replies, status and event-driven wait. Reuse printed task and operation IDs on retry.
+        A child reads its exact input and reports completed, failed, or needsParentInput;
+        after needsParentInput, finish the current turn so the parent can reply. Native tool approvals belong to the user.
 
-        ## Open another session
-
-        `"$SPHYRNA_CLI" open --help` lists choices. `"$SPHYRNA_CLI" open --title "<topic>" --message-file <file>`
-        (`--message -` reads stdin) asks to start a new session; provide its goal and context. It waits up to 85 seconds.
-        Tell the user `started <id>`, `pending: ...`, `denied` or `error: ...`; do not duplicate or retry a denial.
-        Full access is never yours to pick. `open` always starts a new session; to reuse an ordinary session, ask the user first.
-
-        ## Delegate a task (terminal sessions)
-
-        Run `"$SPHYRNA_CLI" task --help` for approved child tasks, replies, status and event-driven wait. The user approves
-        the child and its bounded follow-ups. Reuse printed task and operation IDs on retry; never guess another run's ID.
-        A child reads its exact input using the supplied pointer and reports completed, failed, or needsParentInput; after
-        needsParentInput, finish the current turn so the parent can reply. Native tool approvals belong to the user.
+        `"$SPHYRNA_CLI" send --help` and `"$SPHYRNA_CLI" inbox --help` describe messaging
+        an existing session. Every ordinary send needs user approval; read notifications with inbox.
 
         """
 

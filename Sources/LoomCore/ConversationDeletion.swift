@@ -145,8 +145,9 @@ extension SessionRuntime {
         if try await catalog.isDeletionPending(id) { return try await retryDeletion(id: id) }
         guard !startingSessions.contains(id) else { throw SessionRuntimeError.alreadyStarting(id) }
         guard deletionsInFlight.insert(id).inserted else { throw SessionRuntimeError.deletionInProgress(id) }
+        peerTargetFences.block(id)
+        defer { deletionsInFlight.remove(id); peerTargetFences.unblock(id) }
         await claudeLimitObserver?.forget(sessionID: id)
-        defer { deletionsInFlight.remove(id) }
         // The session's side chats go first, each through this same path (V22): none may outlive its parent.
         try await deleteSideChats(of: id)
         let candidate = try await deletionCandidate(id)
@@ -169,7 +170,8 @@ extension SessionRuntime {
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
         guard try await catalog.isDeletionPending(id) else { throw SessionRuntimeError.deletionNotPending(id) }
         guard deletionsInFlight.insert(id).inserted else { throw SessionRuntimeError.deletionInProgress(id) }
-        defer { deletionsInFlight.remove(id) }
+        peerTargetFences.block(id)
+        defer { deletionsInFlight.remove(id); peerTargetFences.unblock(id) }
         LoomLog.notice(.deletion, "Deletion \(LoomLog.ref(id)): retried")
         return try await runDeletion(id)
     }
@@ -182,7 +184,8 @@ extension SessionRuntime {
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
         guard !startingSessions.contains(id) else { throw SessionRuntimeError.alreadyStarting(id) }
         guard deletionsInFlight.insert(id).inserted else { throw SessionRuntimeError.deletionInProgress(id) }
-        defer { deletionsInFlight.remove(id) }
+        peerTargetFences.block(id)
+        defer { deletionsInFlight.remove(id); peerTargetFences.unblock(id) }
         // Its side chats are removed from Loom the same way, first (V22).
         for child in try await catalog.sideChats(of: id, includingDeleting: true) { try await removeFromLoomOnly(id: child.session.id) }
         let providerIDs: [String]
@@ -253,7 +256,8 @@ extension SessionRuntime {
         for record in records {
             guard !shuttingDown else { return }
             guard deletionsInFlight.insert(record.sessionID).inserted else { continue }
-            defer { deletionsInFlight.remove(record.sessionID) }
+            peerTargetFences.block(record.sessionID)
+            defer { deletionsInFlight.remove(record.sessionID); peerTargetFences.unblock(record.sessionID) }
             do { _ = try await runDeletion(record.sessionID) } catch {
                 LoomLog.error(.deletion, "Deletion \(LoomLog.ref(record.sessionID)): its resume failed (\(LoomLog.category(of: error)))")
             }
@@ -529,6 +533,23 @@ extension SessionRuntime {
     private func finishLoomSide(of id: UUID, providerIDs: [String]) async throws {
         do { try await forgetTasksAfterVerifiedStop(sessionID: id) }
         catch { throw DeletionStepFailure("task_stop_unverified") }
+        await waitForPeerApprovals(target: id)
+        if let peerMailbox {
+            do { try await peerMailbox.forget(target: id) }
+            catch { throw DeletionStepFailure("mailbox_forget_failed") }
+        } else {
+            // A runtime may be used for deletion without ever being started.
+            // A present or inaccessible store must never be silently skipped.
+            let path = catalog.dataRoot.appendingPathComponent("session-mailbox/mailbox.sqlite3").path
+            for suffix in ["", "-wal", "-shm", "-journal"] {
+                var info = stat()
+                if lstat(path + suffix, &info) == 0 || errno != ENOENT {
+                    throw DeletionStepFailure("mailbox_unavailable")
+                }
+            }
+        }
+        peerPendingRequests = peerPendingRequests.filter { $0.value.targetID != id }
+        await openRequests.forgetPeerTarget(id)
         for forgetter in configuration.forgetters.registered {
             do { try await forgetter.forget(sessionID: id, providerIDs: providerIDs) }
             catch { throw DeletionStepFailure("forget_hook_failed") }

@@ -3,6 +3,33 @@ import Foundation
 import Testing
 @testable import LoomCore
 
+private actor PeerDeletionGate {
+    private(set) var entered = false
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var released = false
+    func hold() async {
+        entered = true
+        guard !released else { return }
+        await withCheckedContinuation { continuation = $0 }
+    }
+    func release() { released = true; continuation?.resume(); continuation = nil }
+}
+
+private final class PeerDeletionStepGate: @unchecked Sendable {
+    private let condition = NSCondition()
+    private var waiting = false
+    private var released = false
+    var entered: Bool { condition.withLock { waiting } }
+    func hold() {
+        condition.lock(); waiting = true
+        while !released { condition.wait() }
+        condition.unlock()
+    }
+    func release() {
+        condition.lock(); released = true; condition.broadcast(); condition.unlock()
+    }
+}
+
 /// CP4-C: deleting a conversation end to end through the production runtime, driven by the fake
 /// provider and temp trees only. Nothing here reads or writes the real ~/.claude: the Claude
 /// profile is a directory under the test's own root (the toolchain names it explicitly) and tier 2
@@ -435,6 +462,25 @@ struct ConversationDeletionTests {
         #expect((await world.runtime.shutdown()).succeeded)
     }
 
+    @Test func anUnopenedMailboxWithResidualWALCannotBeSilentlySkipped() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let world = try await Self.makeWorld(env, start: false)
+        let target = try await Self.addConversation(world)
+        let directory = env.root.appendingPathComponent("session-mailbox", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        let wal = directory.appendingPathComponent("mailbox.sqlite3-wal")
+        try Data("synthetic retained data".utf8).write(to: wal)
+        let outcome = try await world.runtime.deleteConversation(id: target.id)
+        guard case let .incomplete(pending) = outcome else {
+            Issue.record("a residual mailbox WAL was skipped"); _ = await world.runtime.shutdown(); return
+        }
+        #expect(pending.lastFailure?.contains("mailbox_unavailable") == true)
+        #expect(try Data(contentsOf: wal) == Data("synthetic retained data".utf8))
+        #expect((await world.runtime.shutdown()).succeeded)
+    }
+
     // MARK: Stop must be verified
 
     @Test func anUnverifiedStopKeepsTheRowAndTheFilesUntilARetryVerifiesIt() async throws {
@@ -446,6 +492,12 @@ struct ConversationDeletionTests {
         try await screen.send("hello")
         #expect(await screen.contains("echo: hello"))
         let providerID = try await Self.providerID(world, launch.sessionID)
+        let mailbox = try #require(await world.runtime.peerMailbox)
+        let sender = SessionTaskBinding(sessionID: UUID(), nativeSessionID: "owned-sender", managedRunID: UUID(), generation: UUID())
+        let message = PeerSendOffer(id: UUID(), sender: sender, senderTitle: "Sender", targetID: launch.sessionID,
+            targetNativeID: providerID, targetTitle: "Target", targetHarness: .claude, message: "keep until verified")
+        _ = try await mailbox.offer(message)
+        _ = try await mailbox.decide(id: message.id, accept: true)
         let ids = [launch.sessionID.uuidString.lowercased(), providerID]
         try env.seed(ids)
         let before = try env.snapshot(of: ids)
@@ -469,6 +521,7 @@ struct ConversationDeletionTests {
         #expect(pending.lastFailure?.contains("stop_unverified") == true)
         // Nothing was removed: row, files, the live run and the in-memory conversation all remain.
         #expect(try await world.catalog.session(id: launch.sessionID) != nil)
+        #expect(try await mailbox.unread(target: launch.sessionID).map(\.message) == ["keep until verified"])
         #expect(try env.snapshot(of: ids) == before)
         #expect(await world.supervisor.session(id: launch.sessionID)?.currentRun != nil)
         #expect(try await world.runtime.pendingDeletions().map(\.id) == [launch.sessionID])
@@ -483,7 +536,74 @@ struct ConversationDeletionTests {
         #expect(retried == .deleted)
         #expect(try env.snapshot(of: ids).isEmpty)
         #expect(try await world.catalog.session(id: launch.sessionID) == nil)
+        #expect(try await mailbox.unread(target: launch.sessionID).isEmpty)
         #expect(await world.supervisor.runningSessionIDs().isEmpty)
+        #expect((await world.runtime.shutdown()).succeeded)
+    }
+
+    @Test func deletionFencesPendingPeerApprovalAndPreservesUnreadUntilVerifiedRetry() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let world = try await Self.makeWorld(env)
+        let (target, _) = try await Self.launch(world)
+        let (sender, _) = try await Self.launch(world)
+        let senderClaim = try #require(await world.runtime.taskRunPlans[sender.sessionID]?.claim)
+        let targetClaim = try #require(await world.runtime.taskRunPlans[target.sessionID]?.claim)
+        #expect(await SessionRuntimeTests.waitUntil(3) {
+            let first = await world.runtime.authenticateTaskRun(senderClaim)
+            let second = await world.runtime.authenticateTaskRun(targetClaim)
+            return first != nil && second != nil
+        })
+        @Sendable func call(_ id: UUID, _ message: String) -> SessionTaskWireRequest {
+            var result = SessionTaskWireRequest(command: "peer-send", sessionID: senderClaim.sessionID,
+                runID: senderClaim.managedRunID, generation: senderClaim.generation, credential: senderClaim.credential)
+            result.operationID = id; result.targetSessionID = target.sessionID; result.message = message
+            return result
+        }
+        let firstID = UUID(), first = Task { await world.runtime.submitPeerSend(call(firstID, "retained")) }
+        guard await SessionRuntimeTests.waitUntil(3, { await world.runtime.openRequestSnapshot().contains { $0.id == firstID } }) else {
+            first.cancel(); Issue.record("first card not offered"); _ = await world.runtime.shutdown(); return
+        }
+        try await world.runtime.approvePeerSendRequest(firstID)
+        #expect(await first.value.status == "sent")
+        let secondID = UUID(), second = Task { await world.runtime.submitPeerSend(call(secondID, "blocked")) }
+        guard await SessionRuntimeTests.waitUntil(3, { await world.runtime.openRequestSnapshot().contains { $0.id == secondID } }) else {
+            second.cancel(); Issue.record("second card not offered"); _ = await world.runtime.shutdown(); return
+        }
+        let fences = await world.runtime.peerTargetFences
+        let originalFence = try #require(fences.acquire(target.sessionID))
+        let stepGate = PeerDeletionStepGate()
+        await world.runtime.setDeletionFailpointForTesting { state, phase in
+            if state == .requested && phase == .before { stepGate.hold() }
+        }
+        let gate = PeerDeletionGate(), attempts = AttemptCounter()
+        try await world.supervisor.registerStopHooks(runID: target.runID, hooks: ManagedRunStopHooks(prepare: {
+            if attempts.next() == 1 { await gate.hold(); throw LoomError.message("stop unverified") }
+        }, completed: {}))
+        let deletion = Task { try await world.runtime.deleteConversation(id: target.sessionID) }
+        let stepReached = await SessionRuntimeTests.waitUntil(3) { stepGate.entered }
+        if stepReached {
+            #expect(!originalFence.attempt { true }, "target input is fenced before the stop begins")
+        } else { Issue.record("deletion did not enter the requested step") }
+        stepGate.release()
+        let reached = await SessionRuntimeTests.waitUntil(3) { await gate.entered }
+        if reached {
+            #expect(!originalFence.isActive, "deletion revokes the previously granted target fence before waiting")
+            await #expect(throws: SessionTaskError.unauthorized) {
+                try await world.runtime.approvePeerSendRequest(secondID)
+            }
+            #expect(await second.value.status == "failed")
+        } else { second.cancel(); Issue.record("deletion did not reach its stop") }
+        await gate.release()
+        let outcome = try await deletion.value
+        if case .incomplete = outcome {} else { Issue.record("expected unverified stop") }
+        let mailbox = try #require(await world.runtime.peerMailbox)
+        #expect(try await mailbox.unread(target: target.sessionID).map(\.message) == ["retained"])
+        #expect(await world.runtime.submitPeerSend(call(UUID(), "still blocked")).status == "refused")
+        #expect(try await world.runtime.retryDeletion(id: target.sessionID) == .deleted)
+        #expect(try await mailbox.unread(target: target.sessionID).isEmpty)
+        #expect(await world.runtime.openRequestSnapshot().allSatisfy { $0.send?.targetSessionID != target.sessionID })
+        #expect(try await world.catalog.session(id: sender.sessionID) != nil)
         #expect((await world.runtime.shutdown()).succeeded)
     }
 

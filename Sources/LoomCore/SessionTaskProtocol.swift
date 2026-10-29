@@ -13,6 +13,7 @@ struct SessionTaskWireRequest: Codable, Sendable {
     var generation: UUID
     var credential: String
     var taskID: UUID?
+    var targetSessionID: UUID?
     var roundID: UUID?
     var operationID: UUID?
     var nextOperationID: UUID?
@@ -62,13 +63,20 @@ struct SessionTaskWireRouter: Sendable {
     let coordinator: SessionTaskCoordinator
     let create: @Sendable (SessionTaskWireRequest) async -> SessionTaskWireReply
     let requested: @Sendable (UUID) async -> Void
+    let peerSend: @Sendable (SessionTaskWireRequest) async -> SessionTaskWireReply
+    let peerInbox: @Sendable (SessionTaskWireRequest) async -> Data
+    let peerAck: @Sendable (SessionTaskWireRequest) async -> SessionTaskWireReply
     let readFence: SessionTaskReadFence
 
     init(coordinator: SessionTaskCoordinator,
          create: @escaping @Sendable (SessionTaskWireRequest) async -> SessionTaskWireReply = { _ in .init(status: "unavailable") },
          requested: @escaping @Sendable (UUID) async -> Void = { _ in },
-         reported: @escaping @Sendable (UUID) async -> Void = { _ in }) {
+         reported: @escaping @Sendable (UUID) async -> Void = { _ in },
+         peerSend: @escaping @Sendable (SessionTaskWireRequest) async -> SessionTaskWireReply = { _ in .init(status: "unavailable") },
+         peerInbox: @escaping @Sendable (SessionTaskWireRequest) async -> Data = { _ in Data(#"{"version":5,"status":"unavailable"}"#.utf8) },
+         peerAck: @escaping @Sendable (SessionTaskWireRequest) async -> SessionTaskWireReply = { _ in .init(status: "unavailable") }) {
         self.coordinator = coordinator; self.create = create; self.requested = requested
+        self.peerSend = peerSend; self.peerInbox = peerInbox; self.peerAck = peerAck
         readFence = SessionTaskReadFence { id in Task { await reported(id) } }
     }
 
@@ -77,6 +85,9 @@ struct SessionTaskWireRouter: Sendable {
               call.version == 5 else { return reply(.init(status: "invalid")) }
         do {
             if call.command == "create" { return reply(await create(call)) }
+            if call.command == "peer-send" { return reply(await peerSend(call)) }
+            if call.command == "peer-inbox" { return await peerInbox(call) }
+            if call.command == "peer-inbox-ack" { return reply(await peerAck(call)) }
             if call.command == "identity" {
                 return reply(.init(status: "ok", binding: try await coordinator.identity(for: call.claim)))
             }

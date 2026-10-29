@@ -20,8 +20,38 @@ struct PeerMailboxEntry: Equatable, Sendable {
     let id: UUID
     let senderID: UUID
     let senderTitle: String
+    let targetNativeID: String?
     let createdAt: Date
     let message: String
+}
+
+struct PeerPointerIntent: Sendable {
+    let targetID: UUID
+    let operationID: UUID
+    let nativeSessionID: String
+    let senderTitle: String
+    let lease: SessionTaskWakeLease
+    func attemptDelivery(_ body: () -> Bool) -> Bool { lease.attempt(body) }
+}
+
+/// Only one live runtime may recover its transient, unapproved offers. The
+/// kernel releases this private lock on process exit; an unrelated live owner
+/// cannot have its requests retired by a second runtime.
+private final class PeerMailboxOwner {
+    private let fd: Int32
+    init(directory: URL) throws {
+        let path = directory.appendingPathComponent("owner.lock").path
+        let descriptor = Darwin.open(path, O_CREAT | O_RDWR | O_NOFOLLOW | O_CLOEXEC, mode_t(0o600))
+        guard descriptor >= 0 else { throw SessionTaskError.storage }
+        var info = stat()
+        guard fstat(descriptor, &info) == 0, info.st_uid == geteuid(), info.st_nlink == 1,
+              info.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG), info.st_mode & 0o077 == 0,
+              flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
+            close(descriptor); throw SessionTaskError.storage
+        }
+        fd = descriptor
+    }
+    deinit { close(fd) }
 }
 
 /// The actor stores approved peer messages and request receipts; the runtime
@@ -31,9 +61,10 @@ private final class PeerMailboxStore {
     private let now: @Sendable () -> Date
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private let owner: PeerMailboxOwner?
     private var pending: [UUID: PeerSendOffer] = [:]
 
-    init(url: URL, now: @escaping @Sendable () -> Date) throws {
+    init(url: URL, now: @escaping @Sendable () -> Date, exclusive: Bool) throws {
         self.now = now
         let directory = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
@@ -43,6 +74,7 @@ private final class PeerMailboxStore {
               info.st_mode & mode_t(S_IFMT) == mode_t(S_IFDIR), info.st_mode & 0o077 == 0 else {
             throw SessionTaskError.storage
         }
+        owner = try exclusive ? PeerMailboxOwner(directory: directory) : nil
         let fd = Darwin.open(url.path, O_CREAT | O_EXCL | O_RDWR | O_NOFOLLOW | O_CLOEXEC, mode_t(0o600))
         if fd >= 0 { close(fd) }
         else if errno == EEXIST {
@@ -64,7 +96,8 @@ private final class PeerMailboxStore {
             try exec("PRAGMA secure_delete = ON")
             let appID = try scalar("PRAGMA application_id"), version = try scalar("PRAGMA user_version")
             let tables = try scalar("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-            guard (appID == 0 && version == 0 && tables == 0) || (appID == 1_397_608_242 && version == 1) else {
+            guard (appID == 0 && version == 0 && tables == 0) ||
+                    (appID == 1_397_608_242 && (version == 1 || version == 2)) else {
                 throw SessionTaskError.storage
             }
             if version == 0 {
@@ -79,12 +112,50 @@ private final class PeerMailboxStore {
                     try exec("CREATE INDEX peer_sender ON peer_messages(sender, created)")
                     try exec("CREATE INDEX peer_sender_state ON peer_messages(sender, state)")
                     try exec("CREATE INDEX peer_target_unread ON peer_messages(target, unread, sequence)")
-                    try exec("PRAGMA user_version = 1")
+                    try exec("""
+                        CREATE TABLE peer_notifications(target TEXT PRIMARY KEY, revision INTEGER NOT NULL,
+                          state TEXT NOT NULL, operation TEXT, claimed_revision INTEGER)
+                        """)
+                    try exec("CREATE INDEX peer_state ON peer_messages(state)")
+                    try exec("CREATE TABLE peer_rates(id TEXT PRIMARY KEY, sender TEXT NOT NULL, created REAL NOT NULL)")
+                    try exec("CREATE INDEX peer_rates_sender ON peer_rates(sender,created)")
+                    try exec("PRAGMA user_version = 2")
                 }
             }
-            guard try scalarText("PRAGMA quick_check") == "ok",
-                  try scalarText("PRAGMA journal_mode = WAL").lowercased() == "wal" else { throw SessionTaskError.storage }
+            if version == 1 {
+                // One-time migration from the earlier mailbox schema. Rate
+                // receipts contain no target, message or body derivative.
+                try transaction {
+                    try exec("""
+                        CREATE TABLE IF NOT EXISTS peer_notifications(target TEXT PRIMARY KEY, revision INTEGER NOT NULL,
+                          state TEXT NOT NULL, operation TEXT, claimed_revision INTEGER)
+                        """)
+                    try exec("CREATE INDEX IF NOT EXISTS peer_state ON peer_messages(state)")
+                    try exec("CREATE TABLE peer_rates(id TEXT PRIMARY KEY, sender TEXT NOT NULL, created REAL NOT NULL)")
+                    try exec("CREATE INDEX peer_rates_sender ON peer_rates(sender,created)")
+                    let cutoff = now().timeIntervalSince1970 - 3_600
+                    guard cutoff.isFinite else { throw SessionTaskError.storage }
+                    try run("INSERT INTO peer_rates(id,sender,created) SELECT id,sender,created FROM peer_messages WHERE created>=?", [String(cutoff)])
+                    try exec("PRAGMA user_version = 2")
+                }
+            }
+            guard try scalarText("PRAGMA journal_mode = WAL").lowercased() == "wal" else { throw SessionTaskError.storage }
             try exec("PRAGMA synchronous = FULL")
+            if owner != nil {
+                let pendingIDs = try statement("SELECT id FROM peer_messages WHERE state='pending' LIMIT 33", []) { stmt in
+                    var ids: [String] = []
+                    var step = sqlite3_step(stmt)
+                    while step == SQLITE_ROW {
+                        guard let id = sqlite3_column_text(stmt, 0) else { throw SessionTaskError.storage }
+                        ids.append(String(cString: id)); step = sqlite3_step(stmt)
+                    }
+                    guard step == SQLITE_DONE, ids.count <= OpenSessionCoordinator.maximumWaiting else { throw SessionTaskError.storage }
+                    return ids
+                }
+                try transaction {
+                    for id in pendingIDs { try run("UPDATE peer_messages SET state='failed' WHERE id=? AND state='pending'", [id]) }
+                }
+            }
         } catch {
             sqlite3_close(db)
             throw error
@@ -94,12 +165,13 @@ private final class PeerMailboxStore {
     deinit { sqlite3_close(db) }
 
     func offer(_ offer: PeerSendOffer) throws -> PeerSendStatus {
+        if let terminal = try terminalStatus(id: offer.id, sender: offer.sender) { return terminal }
         try SessionTaskLimits.text(offer.message)
         guard offer.sender.sessionID != offer.targetID,
               [offer.senderTitle, offer.targetTitle].allSatisfy({ !$0.isEmpty && $0.utf8.count <= 512 && !$0.utf8.contains(0) }),
               !offer.sender.nativeSessionID.isEmpty, !offer.sender.nativeSessionID.utf8.contains(0),
               offer.targetNativeID.map({ !$0.isEmpty && !$0.utf8.contains(0) && $0.utf8.count <= 256 }) ?? true,
-              offer.targetHarness.provider != nil else { throw SessionTaskError.invalidPayload }
+              HarnessCatalogue.descriptor(for: offer.targetHarness)?.provider != nil else { throw SessionTaskError.invalidPayload }
         let timestamp = now().timeIntervalSince1970
         guard timestamp.isFinite else { throw SessionTaskError.storage }
         var inserted = false
@@ -128,12 +200,18 @@ private final class PeerMailboxStore {
                 throw SessionTaskError.pendingInput
             }
             guard pending.count < OpenSessionCoordinator.maximumWaiting else { throw SessionTaskError.tooManyWaiters }
-            let count = try integer("SELECT count(*) FROM peer_messages WHERE sender=? AND created>=?",
+            try run("DELETE FROM peer_rates WHERE sender=? AND created<?", [offer.sender.sessionID.uuidString, String(timestamp - 3_600)])
+            if try exists("SELECT 1 FROM peer_rates WHERE id=? LIMIT 1", [offer.id.uuidString]) {
+                throw SessionTaskError.conflictingOperation
+            }
+            let count = try integer("SELECT count(*) FROM peer_rates WHERE sender=? AND created>=?",
                                     [offer.sender.sessionID.uuidString, String(timestamp - 3_600)])
             guard count < 10 else { throw SessionTaskError.needsApproval }
             try run("INSERT INTO peer_messages(id,sender,sender_run,sender_generation,target,created,state,body) VALUES(?,?,?,?,?,?,'pending','')",
                     [offer.id.uuidString, offer.sender.sessionID.uuidString, offer.sender.managedRunID.uuidString,
                      offer.sender.generation.uuidString, offer.targetID.uuidString, String(timestamp)])
+            try run("INSERT INTO peer_rates(id,sender,created) VALUES(?,?,?)",
+                    [offer.id.uuidString, offer.sender.sessionID.uuidString, String(timestamp)])
             inserted = true
             return .pending
         }
@@ -152,6 +230,13 @@ private final class PeerMailboxStore {
             try run("UPDATE peer_messages SET state=?, unread=?, body=? WHERE id=? AND state='pending'",
                     [next.rawValue, accept ? "1" : "0", body, id.uuidString])
             guard sqlite3_changes(db) == 1 else { throw SessionTaskError.storage }
+            if accept {
+                try run("""
+                    INSERT INTO peer_notifications(target,revision,state) VALUES(?,1,'pending')
+                    ON CONFLICT(target) DO UPDATE SET revision=revision+1,
+                      state=CASE WHEN state IN ('idle','delivered') THEN 'pending' ELSE state END
+                    """, [offer.targetID.uuidString])
+            }
             return next
         }
         pending[id] = nil
@@ -159,6 +244,13 @@ private final class PeerMailboxStore {
     }
 
     func status(id: UUID) throws -> PeerSendStatus? { try metadata(id)?.status }
+
+    func terminalStatus(id: UUID, sender: SessionTaskBinding) throws -> PeerSendStatus? {
+        guard let prior = try metadata(id) else { return nil }
+        guard prior.sender == sender.sessionID.uuidString, prior.run == sender.managedRunID.uuidString,
+              prior.generation == sender.generation.uuidString else { throw SessionTaskError.unauthorized }
+        return prior.status == .denied || prior.status == .failed ? prior.status : nil
+    }
 
     func unread(target: UUID, after: Int64 = 0, limit: Int = 50) throws -> [PeerMailboxEntry] {
         guard after >= 0, (1...SessionTaskLimits.pageSize).contains(limit) else { throw SessionTaskError.invalidPage }
@@ -172,6 +264,7 @@ private final class PeerMailboxStore {
                 let offer = try decoder.decode(PeerSendOffer.self, from: data)
                 result.append(PeerMailboxEntry(sequence: sqlite3_column_int64(stmt, 0), id: offer.id,
                     senderID: offer.sender.sessionID, senderTitle: offer.senderTitle,
+                    targetNativeID: offer.targetNativeID,
                     createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 1)), message: offer.message))
                 step = sqlite3_step(stmt)
             }
@@ -180,24 +273,92 @@ private final class PeerMailboxStore {
         }
     }
 
-    func acknowledge(target: UUID, ids: [UUID]) throws {
+    func acknowledge(target: UUID, ids: [UUID]) throws -> Bool {
         guard !ids.isEmpty, ids.count <= SessionTaskLimits.pageSize, Set(ids).count == ids.count else {
             throw SessionTaskError.invalidPage
         }
-        try transaction {
+        return try transaction {
+            var changed = false
             for id in ids {
                 guard let row = try record(id), row.offer.targetID == target, row.status == .sent else {
                     throw SessionTaskError.notFound
                 }
-                try run("UPDATE peer_messages SET unread=0 WHERE id=? AND target=?", [id.uuidString, target.uuidString])
+                try run("UPDATE peer_messages SET unread=0 WHERE id=? AND target=? AND unread=1", [id.uuidString, target.uuidString])
+                if sqlite3_changes(db) > 0 { changed = true }
             }
+            if try !exists("SELECT 1 FROM peer_messages WHERE target=? AND unread=1 LIMIT 1", [target.uuidString]) {
+                try run("UPDATE peer_notifications SET state='idle', operation=NULL, claimed_revision=NULL WHERE target=?",
+                        [target.uuidString])
+            }
+            return changed
         }
     }
 
     func forget(target: UUID) throws {
-        try transaction { try run("DELETE FROM peer_messages WHERE target=?", [target.uuidString]) }
+        try transaction {
+            try run("DELETE FROM peer_messages WHERE target=?", [target.uuidString])
+            try run("DELETE FROM peer_notifications WHERE target=?", [target.uuidString])
+            try run("DELETE FROM peer_rates WHERE sender=?", [target.uuidString])
+        }
         pending = pending.filter { $0.value.targetID != target }
         try exec("PRAGMA wal_checkpoint(TRUNCATE)")
+    }
+
+    func hasUnread(target: UUID) throws -> Bool {
+        try exists("SELECT 1 FROM peer_messages WHERE target=? AND unread=1 LIMIT 1", [target.uuidString])
+    }
+
+    func failPending(id: UUID) throws -> PeerSendStatus {
+        let result = try transaction {
+            guard let meta = try metadata(id) else { throw SessionTaskError.notFound }
+            guard meta.status == .pending else { return meta.status }
+            try run("UPDATE peer_messages SET state='failed' WHERE id=? AND state='pending'", [id.uuidString])
+            return PeerSendStatus.failed
+        }
+        pending[id] = nil
+        return result
+    }
+
+    func pendingIDs(target: UUID) -> [UUID] {
+        pending.compactMap { $0.value.targetID == target ? $0.key : nil }
+    }
+
+    func beginPointer(target: UUID, nativeSessionID: String) throws -> (UUID, String)? {
+        try transaction {
+            guard let notification = try notification(target), notification.state == "pending",
+                  let entry = try unread(target: target, limit: 1).first,
+                  let row = try record(entry.id), row.offer.targetNativeID == nativeSessionID else { return nil }
+            let operation = UUID()
+            try run("UPDATE peer_notifications SET state='unknown', operation=?, claimed_revision=revision WHERE target=? AND state='pending'",
+                    [operation.uuidString, target.uuidString])
+            guard sqlite3_changes(db) == 1 else { throw SessionTaskError.storage }
+            return (operation, entry.senderTitle)
+        }
+    }
+
+    func settlePointer(target: UUID, operation: UUID, outcome: SessionTaskEffect) throws {
+        try transaction {
+            guard let value = try notification(target), value.state == "unknown", value.operation == operation.uuidString else { return }
+            let next: String
+            switch outcome {
+            case .deferred: next = "pending"
+            case .unknown: return
+            case .verified: next = value.revision > (value.claimedRevision ?? value.revision) ? "pending" : "delivered"
+            }
+            try run("UPDATE peer_notifications SET state=?, operation=NULL, claimed_revision=NULL WHERE target=? AND operation=?",
+                    [next, target.uuidString, operation.uuidString])
+        }
+    }
+
+    private func notification(_ target: UUID) throws -> (revision: Int64, state: String, operation: String?, claimedRevision: Int64?)? {
+        try statement("SELECT revision,state,operation,claimed_revision FROM peer_notifications WHERE target=?", [target.uuidString]) { stmt in
+            let step = sqlite3_step(stmt)
+            if step == SQLITE_DONE { return nil }
+            guard step == SQLITE_ROW, let state = sqlite3_column_text(stmt, 1) else { throw SessionTaskError.storage }
+            let operation = sqlite3_column_text(stmt, 2).map { String(cString: $0) }
+            let claimed = sqlite3_column_type(stmt, 3) == SQLITE_NULL ? nil : sqlite3_column_int64(stmt, 3)
+            return (sqlite3_column_int64(stmt, 0), String(cString: state), operation, claimed)
+        }
     }
 
     func record(_ id: UUID) throws -> (offer: PeerSendOffer, status: PeerSendStatus)? {
@@ -282,19 +443,112 @@ private final class PeerMailboxStore {
 
 
 actor SessionMailbox {
+    private struct Waiter {
+        let requestID: UUID
+        let continuation: CheckedContinuation<PeerSendStatus, Never>
+        let timeout: Task<Void, Never>
+    }
     private let store: PeerMailboxStore
+    private var waiters: [UUID: Waiter] = [:]
+    private var pointerLeases: [UUID: SessionTaskWakeLease] = [:]
+    private var observers: [UUID: AsyncStream<UInt64>.Continuation] = [:]
+    private var revision: UInt64 = 0
     private init(store: PeerMailboxStore) { self.store = store }
 
-    static func open(url: URL, now: @escaping @Sendable () -> Date = { Date() }) async throws -> SessionMailbox {
-        try await Task.detached { try SessionMailbox(store: PeerMailboxStore(url: url, now: now)) }.value
+    static func open(url: URL, now: @escaping @Sendable () -> Date = { Date() }, exclusive: Bool = false) async throws -> SessionMailbox {
+        try await Task.detached { try SessionMailbox(store: PeerMailboxStore(url: url, now: now, exclusive: exclusive)) }.value
     }
     func offer(_ offer: PeerSendOffer) throws -> PeerSendStatus { try store.offer(offer) }
-    func decide(id: UUID, accept: Bool) throws -> PeerSendStatus { try store.decide(id: id, accept: accept) }
+    func decide(id: UUID, accept: Bool) throws -> PeerSendStatus {
+        let result = try store.decide(id: id, accept: accept)
+        if let target = try store.record(id)?.offer.targetID { publish(target) }
+        finishWaiters(requestID: id, result: result)
+        return result
+    }
     func status(id: UUID) throws -> PeerSendStatus? { try store.status(id: id) }
+    func terminalStatus(id: UUID, sender: SessionTaskBinding) throws -> PeerSendStatus? {
+        try store.terminalStatus(id: id, sender: sender)
+    }
     func unread(target: UUID, after: Int64 = 0, limit: Int = 50) throws -> [PeerMailboxEntry] {
         try store.unread(target: target, after: after, limit: limit)
     }
-    func acknowledge(target: UUID, ids: [UUID]) throws { try store.acknowledge(target: target, ids: ids) }
-    func forget(target: UUID) throws { try store.forget(target: target) }
+    func acknowledge(target: UUID, ids: [UUID]) throws {
+        let mutation = { try self.store.acknowledge(target: target, ids: ids) }
+        let changed = if let lease = pointerLeases[target] { try lease.cancelIfChanged(mutation) } else { try mutation() }
+        if changed { publish(target) }
+    }
+    func forget(target: UUID) throws {
+        pointerLeases[target]?.cancel()
+        let ids = store.pendingIDs(target: target)
+        try store.forget(target: target)
+        for id in ids { finishWaiters(requestID: id, result: .failed) }
+        publish(target)
+    }
     func record(_ id: UUID) throws -> (offer: PeerSendOffer, status: PeerSendStatus)? { try store.record(id) }
+    func hasUnread(target: UUID) throws -> Bool { try store.hasUnread(target: target) }
+    func failPending(id: UUID) throws {
+        let result = try store.failPending(id: id)
+        finishWaiters(requestID: id, result: result)
+    }
+
+    func beginPointer(target: UUID, nativeSessionID: String) throws -> PeerPointerIntent? {
+        guard pointerLeases[target] == nil, let (operation, title) = try store.beginPointer(target: target, nativeSessionID: nativeSessionID) else { return nil }
+        let lease = SessionTaskWakeLease()
+        pointerLeases[target] = lease
+        return PeerPointerIntent(targetID: target, operationID: operation, nativeSessionID: nativeSessionID,
+                                 senderTitle: title, lease: lease)
+    }
+
+    func settlePointer(_ intent: PeerPointerIntent, outcome: SessionTaskEffect) throws {
+        if pointerLeases[intent.targetID] === intent.lease { pointerLeases[intent.targetID] = nil }
+        try store.settlePointer(target: intent.targetID, operation: intent.operationID, outcome: outcome)
+    }
+
+    func waitForDecision(id: UUID, seconds: TimeInterval = 85) async -> PeerSendStatus {
+        guard let status = try? store.status(id: id) else { return .failed }
+        guard status == .pending else { return status }
+        guard waiters.count < OpenSessionCoordinator.maximumWaiting, seconds > 0, seconds <= 85 else { return .failed }
+        let waiterID = UUID()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if Task.isCancelled { continuation.resume(returning: .failed); return }
+                let timeout = Task { [weak self] in
+                    do { try await Task.sleep(for: .seconds(seconds)) } catch { return }
+                    await self?.finishWaiter(waiterID, result: .pending)
+                }
+                waiters[waiterID] = Waiter(requestID: id, continuation: continuation, timeout: timeout)
+            }
+        } onCancel: { Task { await self.finishWaiter(waiterID, result: .failed) } }
+    }
+
+    func updates() -> AsyncStream<UInt64> {
+        guard observers.count < OpenSessionCoordinator.maximumWaiting else { return AsyncStream { $0.finish() } }
+        let pair = AsyncStream<UInt64>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let id = UUID(); observers[id] = pair.continuation
+        pair.continuation.onTermination = { [weak self] _ in Task { await self?.removeObserver(id) } }
+        pair.continuation.yield(revision)
+        return pair.stream
+    }
+
+    func shutdown() {
+        for lease in pointerLeases.values { lease.cancel() }
+        pointerLeases.removeAll()
+        for id in Array(waiters.keys) { finishWaiter(id, result: .failed) }
+        for observer in observers.values { observer.finish() }
+        observers.removeAll()
+    }
+
+    private func removeObserver(_ id: UUID) { observers[id] = nil }
+    private func publish(_ target: UUID) {
+        revision &+= 1
+        for observer in observers.values { observer.yield(revision) }
+    }
+    private func finishWaiters(requestID: UUID, result: PeerSendStatus) {
+        let ids = waiters.compactMap { $0.value.requestID == requestID ? $0.key : nil }
+        for id in ids { finishWaiter(id, result: result) }
+    }
+    private func finishWaiter(_ id: UUID, result: PeerSendStatus) {
+        guard let waiter = waiters.removeValue(forKey: id) else { return }
+        waiter.timeout.cancel(); waiter.continuation.resume(returning: result)
+    }
 }

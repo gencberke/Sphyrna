@@ -23,6 +23,9 @@ extension SessionRuntime {
         expectedProvider: ManagedSession.Provider? = nil,
         onTerminalReady: (@MainActor @Sendable (RuntimeLaunch) async -> Void)? = nil
     ) async throws -> RuntimeLaunch {
+        if await openRequests.snapshot().first(where: { $0.id == requestID })?.send != nil {
+            throw SessionTaskError.unauthorized
+        }
         if let expectedProvider {
             guard let request = await openRequests.snapshot().first(where: { $0.id == requestID }) else {
                 throw OpenSessionError.unknownRequest(requestID)
@@ -33,6 +36,7 @@ extension SessionRuntime {
         }
         let launched = LaunchBox()
         let sessionID = try await openRequests.approve(requestID) { spec in
+            guard spec.send == nil else { throw SessionTaskError.unauthorized }
             if spec.task != nil {
                 let launch = try await self.approveTaskRequest(spec, rows: rows, columns: columns,
                     outputSink: outputSink, onTerminalReady: onTerminalReady)
@@ -68,8 +72,12 @@ extension SessionRuntime {
     public func approveOpenRequestInChat(
         _ requestID: UUID, sessionID: UUID = UUID(), outputSink: any PipeOutputSink
     ) async throws -> RuntimeOpenedChat {
+        if await openRequests.snapshot().first(where: { $0.id == requestID })?.send != nil {
+            throw SessionTaskError.unauthorized
+        }
         let launched = ChatLaunchBox()
         let started = try await openRequests.approve(requestID) { spec in
+            guard spec.send == nil else { throw SessionTaskError.unauthorized }
             guard spec.task == nil else { throw SessionTaskError.notReady }
             guard spec.choices.claudeChoices != nil else {
                 let name = HarnessCatalogue.descriptor(for: spec.choices.harness)?.displayName ?? spec.choices.harness.rawValue
@@ -92,15 +100,25 @@ extension SessionRuntime {
 
     /// The agent's command is answered `denied`; nothing starts.
     public func denyOpenRequest(_ requestID: UUID) async throws {
-        let taskID = await openRequests.snapshot().first { $0.id == requestID }?.task?.taskID
+        let request = await openRequests.snapshot().first { $0.id == requestID }
+        let taskID = request?.task?.taskID
         try await openRequests.deny(requestID)
+        if request?.send != nil {
+            _ = try await peerMailbox?.decide(id: requestID, accept: false)
+            peerPendingRequests[requestID] = nil
+        }
         if let taskID { taskChildReservations[taskID] = nil }
     }
 
     /// Removes a failed request (a request still waiting counts as denied).
     public func dismissOpenRequest(_ requestID: UUID) async throws {
-        let taskID = await openRequests.snapshot().first { $0.id == requestID }?.task?.taskID
+        let request = await openRequests.snapshot().first { $0.id == requestID }
+        let taskID = request?.task?.taskID
         try await openRequests.dismiss(requestID)
+        if request?.send != nil {
+            if request?.phase == .waiting { _ = try await peerMailbox?.decide(id: requestID, accept: false) }
+            peerPendingRequests[requestID] = nil
+        }
         if let taskID { taskChildReservations[taskID] = nil }
     }
 }

@@ -41,6 +41,23 @@ private func openRequest(
 struct OpenRequestTests {
     // MARK: Box content
 
+    @Test func peerRequestIsDistinctAndFoldsAsSent() {
+        let id = UUID(), target = UUID()
+        let send = OpenSessionSendRequest(targetSessionID: target, targetTitle: "Reviewer", targetHarness: .codex, operationID: id)
+        let request = OpenSessionRequest(id: id, requesterID: UUID(), requesterTitle: "Planner", projectID: UUID(),
+            projectName: "", title: "Reviewer", message: "Please review", choices: HarnessLaunchChoices(harness: .codex),
+            send: send)
+        let content = OpenRequestBoxContent(request)
+        #expect(content.heading == "Send to Reviewer?" && content.requester == "from Planner")
+        #expect(content.title == "Reviewer" && content.harnessName == "Codex" && content.message == "Please review")
+        #expect(content.actions == [.deny, .openSession])
+        let starting = OpenSessionRequest(id: id, requesterID: request.requesterID, requesterTitle: "Planner",
+            projectID: request.projectID, projectName: "", title: "Reviewer", message: request.message,
+            choices: request.choices, send: send, phase: .starting)
+        #expect(starting.answeredFold == .sent && OpenRequestBoxContent(starting).status == "Sending…")
+        #expect(!OpenRequestFold(id: id, outcome: .sent, title: "Reviewer", requesterID: request.requesterID).showsGoToSession)
+    }
+
     @Test func theBoxStatesTheRequestAndOffersDenyAndOpenSessionOnlyWhileItWaits() {
         let waiting = OpenRequestBoxContent(openRequest(message: "line 1\nline 2"))
         #expect(waiting.heading == "Open a new session?")

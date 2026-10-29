@@ -65,8 +65,8 @@ import Testing
         #expect(skill.fields["name"] == "open-session")
         // Today's text, character for character: a change to what every session lists is a decision, and changes this line.
         // It says first where the session runs (C5c, D-85), then what Sphyrna can do and when to use it.
-        let description = "This session runs inside Sphyrna. List sessions, ask to open another, or, in a terminal session, "
-            + "delegate tasks to a reusable child with the user's approval."
+        let description = "This session runs inside Sphyrna. List or open sessions, send approved messages, "
+            + "or delegate tasks to a reusable child in a terminal session."
         #expect(skill.fields["description"] == description)
         #expect(description.count <= 300, "the description is in every session's context: \(description.count) characters")
         #expect(skill.body.count <= 1_500, "the skill's body: \(skill.body.count) characters")

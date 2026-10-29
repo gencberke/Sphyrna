@@ -7,7 +7,7 @@ enum SessionTaskSkill {
     static let content = """
         ---
         name: sphyrna
-        description: This session runs inside Sphyrna. Its task channel delegates work, returns results, and connects sessions; run "$SPHYRNA_CLI" task --help for details.
+        description: This session runs inside Sphyrna. Delegate tasks or send approved messages between sessions. Run "$SPHYRNA_CLI" task --help or send --help for details.
         ---
 
         # Sphyrna task channel
