@@ -92,11 +92,23 @@ public actor CodexEventStateTracker {
     private var currentStatus: CodexSessionStatus
     private var pendingRequestSequences: [UInt64: JSONValue] = [:]
 
-    public init(threadID: String, managedRunID: UUID, after sequence: UInt64) {
+    public init(threadID: String, managedRunID: UUID, after sequence: UInt64,
+                initialStatus: CodexThreadStatus? = nil) {
         self.threadID = threadID
         self.managedRunID = managedRunID
         minimumSequence = sequence
         currentStatus = CodexSessionStatus(providerThreadID: threadID)
+        if let initialStatus {
+            switch initialStatus {
+            case .idle: currentStatus.activity = .atPrompt
+            case let .active(flags):
+                if flags.contains(.waitingOnApproval) { currentStatus.activity = .waitingForApproval }
+                else if flags.contains(.waitingOnUserInput) { currentStatus.activity = .waitingForInput }
+                else { currentStatus.activity = .working }
+            case .systemError: currentStatus.activity = .failed("systemError")
+            case .notLoaded, .unknown: break
+            }
+        }
     }
 
     public func beginRun(_ runID: UUID, after sequence: UInt64) {

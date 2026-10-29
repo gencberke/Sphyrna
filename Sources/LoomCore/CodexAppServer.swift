@@ -115,14 +115,17 @@ public struct CodexThreadIdentity: Equatable, Sendable {
     public let originator: String?
     public let source: String?
     public let ephemeral: Bool?
+    /// Provider-reported status in this same thread/started event; nil when absent.
+    public let initialStatus: CodexThreadStatus?
 
     public init(id: String, workingDirectory: String?, originator: String?, source: String?,
-                ephemeral: Bool? = nil) {
+                ephemeral: Bool? = nil, initialStatus: CodexThreadStatus? = nil) {
         self.id = id
         self.workingDirectory = workingDirectory
         self.originator = originator
         self.source = source
         self.ephemeral = ephemeral
+        self.initialStatus = initialStatus
     }
 }
 
@@ -837,7 +840,8 @@ public actor CodexAppServerClient {
                 id: id, workingDirectory: thread["cwd"]?.string,
                 originator: thread["originator"]?.string,
                 source: thread["source"]?.string,
-                ephemeral: thread["ephemeral"]?.bool
+                ephemeral: thread["ephemeral"]?.bool,
+                initialStatus: thread["status"].map { decodeStatus($0) }
             ))
         case "thread/status/changed":
             guard let threadID = object["threadId"]?.string else {

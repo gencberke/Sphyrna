@@ -276,7 +276,10 @@ public actor CodexSessionCoordinator {
             switch decision {
             case let .initialLaunchMatched(binding, sequence):
                 do {
-                    try await installBinding(binding, after: sequence)
+                    let initialStatus: CodexThreadStatus?
+                    if case let .event(_, .threadStarted(identity)) = inbound { initialStatus = identity.initialStatus }
+                    else { initialStatus = nil }
+                    try await installBinding(binding, after: sequence, initialStatus: initialStatus)
                     guard await router.launchMatcher.commitMatched(binding) else {
                         await unbind(runID: binding.managedRunID)
                         throw CancellationError()
@@ -373,7 +376,8 @@ public actor CodexSessionCoordinator {
     }
 
     private func installBinding(
-        _ binding: CodexRunBinding, after sequence: UInt64, alreadyBound: Bool = false
+        _ binding: CodexRunBinding, after sequence: UInt64, alreadyBound: Bool = false,
+        initialStatus: CodexThreadStatus? = nil
     ) async throws {
         guard acceptingJoins else { throw CancellationError() }
         if joins[binding.managedRunID]?.binding == binding { return }
@@ -387,7 +391,7 @@ public actor CodexSessionCoordinator {
         }
         if !alreadyBound {
             try await adapter.bind(sessionID: binding.sessionID, runID: binding.managedRunID,
-                threadID: binding.threadID, after: sequence)
+                threadID: binding.threadID, after: sequence, initialStatus: initialStatus)
             try verify()
         }
         try await supervisor.setIdentityState(.known, runID: binding.managedRunID)

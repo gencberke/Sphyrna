@@ -479,7 +479,7 @@ public actor CodexSessionAdapter {
 
     public func bind(
         sessionID: UUID, runID: UUID, threadID: String,
-        after sequence: UInt64, at date: Date = Date()
+        after sequence: UInt64, at date: Date = Date(), initialStatus: CodexThreadStatus? = nil
     ) async throws {
         guard let context = await supervisor.runContext(runID: runID),
               context.activeSessionID == sessionID else {
@@ -490,10 +490,11 @@ public actor CodexSessionAdapter {
             transition: .bind, at: date
         )
         ambiguousThreads[runID] = nil
-        trackers[runID] = CodexEventStateTracker(
-            threadID: threadID, managedRunID: runID, after: sequence
-        )
+        let tracker = CodexEventStateTracker(threadID: threadID, managedRunID: runID,
+                                             after: sequence, initialStatus: initialStatus)
+        trackers[runID] = tracker
         lastStatuses[sessionID] = nil
+        if initialStatus != nil { try await publish(runID: runID, tracker: tracker) }
     }
 
     @discardableResult
