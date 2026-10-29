@@ -9,11 +9,16 @@ public struct ManagedTaskRun: Equatable, Sendable {
     public let generation: UUID
     public let workingDirectory: String
     public let requestedChoices: HarnessLaunchChoices
+    /// The app-selected `--session-id` for a fresh Claude launch, or a saved
+    /// resume identity. This expectation is not a provider observation.
+    public let expectedNativeSessionID: String?
 
     public init(taskID: UUID, sessionID: UUID, runID: UUID, generation: UUID,
-                workingDirectory: String, requestedChoices: HarnessLaunchChoices) {
+                workingDirectory: String, requestedChoices: HarnessLaunchChoices,
+                expectedNativeSessionID: String? = nil) {
         self.taskID = taskID; self.sessionID = sessionID; self.runID = runID; self.generation = generation
         self.workingDirectory = workingDirectory; self.requestedChoices = requestedChoices
+        self.expectedNativeSessionID = expectedNativeSessionID
     }
 }
 
@@ -33,17 +38,25 @@ public struct ManagedTaskEffectiveSettings: Equatable, Sendable {
 public struct ManagedTaskInput: Equatable, Sendable {
     public static let maximumBytes = 1_024
     public let taskID: UUID
+    public let run: ManagedTaskRun
     public let roundID: UUID
     public let operationID: UUID
-    public let binding: SessionTaskBinding
+    /// Nil is reserved for the first input of a fresh, app-ID-pinned Claude
+    /// pipe. Later inputs require the actually observed native binding.
+    public let binding: SessionTaskBinding?
     public let clientMessageID: UUID
     public let pointer: String
 
-    public init(taskID: UUID, roundID: UUID, operationID: UUID, binding: SessionTaskBinding,
+    public init(run: ManagedTaskRun, roundID: UUID, operationID: UUID, binding: SessionTaskBinding?,
                 clientMessageID: UUID, pointer: String) throws {
         guard !pointer.isEmpty, pointer.utf8.count <= Self.maximumBytes,
-              pointer.utf8.allSatisfy({ (0x20...0x7e).contains($0) }) else { throw SessionTaskError.invalidPayload }
-        self.taskID = taskID; self.roundID = roundID; self.operationID = operationID
+              pointer.utf8.allSatisfy({ (0x20...0x7e).contains($0) }),
+              binding.map({ $0.sessionID == run.sessionID && $0.managedRunID == run.runID &&
+                            $0.generation == run.generation }) ??
+                  (run.expectedNativeSessionID.flatMap(UUID.init(uuidString:)) != nil) else {
+            throw SessionTaskError.invalidPayload
+        }
+        self.taskID = run.taskID; self.run = run; self.roundID = roundID; self.operationID = operationID
         self.binding = binding; self.clientMessageID = clientMessageID; self.pointer = pointer
     }
 }
@@ -53,10 +66,18 @@ public struct ManagedTaskInput: Equatable, Sendable {
 /// fabricated provider-native turn ID.
 public struct ManagedTaskInputObservation: Equatable, Sendable {
     public let input: ManagedTaskInput
+    /// Observed native identity, never the unverified first-launch expectation.
+    public let binding: SessionTaskBinding
     public let execution: SessionTaskExecutionReference
 
-    public init(input: ManagedTaskInput, execution: SessionTaskExecutionReference) {
-        self.input = input; self.execution = execution
+    public init(input: ManagedTaskInput, binding: SessionTaskBinding, execution: SessionTaskExecutionReference) throws {
+        let run = input.run
+        guard binding.sessionID == run.sessionID, binding.managedRunID == run.runID,
+              binding.generation == run.generation, input.binding == nil || input.binding == binding,
+              run.expectedNativeSessionID.map({ $0.caseInsensitiveCompare(binding.nativeSessionID) == .orderedSame }) ?? true else {
+            throw SessionTaskError.staleBinding
+        }
+        self.input = input; self.binding = binding; self.execution = execution
     }
 }
 
