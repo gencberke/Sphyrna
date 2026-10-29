@@ -89,7 +89,8 @@ struct HarnessCapabilitiesTests {
     /// ternary, not a mention in a comment or a case label.
     static func asksWhichHarness(_ line: String) -> Bool {
         let code = line.trimmingCharacters(in: .whitespaces)
-        guard !code.hasPrefix("//") else { return false }
+        // A comparison needs `=` and the ternary needs `?`: the other lines (most of the sources) skip both regexes.
+        guard !code.hasPrefix("//"), code.contains("=") || code.contains("?") else { return false }
         let comparison = #"(==|!=)\s*\.(claude|codex|opencode|agy|pi)\b(?!\w)|\.(claude|codex|opencode|agy|pi)\s*(==|!=)"#
         let ternary = #"\?\s*"(claude|codex|opencode|agy|pi)"\s*:\s*""#
         return code.range(of: comparison, options: .regularExpression) != nil
