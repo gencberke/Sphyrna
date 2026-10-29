@@ -393,21 +393,14 @@ struct ConversationDeletionTests {
 
     // MARK: Refusals
 
-    @Test func codexSyntheticSharedAndUnknownConversationsAreRefusedBeforeAnythingIsRecorded() async throws {
+    // Codex deletion has its own suite (`CodexDeletionTests`).
+    @Test func syntheticSharedAndUnknownConversationsAreRefusedBeforeAnythingIsRecorded() async throws {
         let env = try Env()
         defer { env.cleanup() }
         let world = try await Self.makeWorld(env)
-        let codex = try await Self.addConversation(world, provider: .codex, seed: false)
         let synthetic = try await Self.addConversation(world, provider: .synthetic, seed: false)
-        for session in [codex, synthetic] {
-            await #expect(throws: SessionRuntimeError.self) { _ = try await world.runtime.deleteConversation(id: session.id) }
-            await #expect(throws: SessionRuntimeError.self) { _ = try await world.runtime.deletionPreview(id: session.id) }
-        }
-        do { _ = try await world.runtime.deleteConversation(id: codex.id) }
-        catch let error as SessionRuntimeError {
-            guard case let .deletionRefused(reason) = error else { throw error }
-            #expect(reason.contains("Codex"))
-        }
+        await #expect(throws: SessionRuntimeError.self) { _ = try await world.runtime.deleteConversation(id: synthetic.id) }
+        await #expect(throws: SessionRuntimeError.self) { _ = try await world.runtime.deletionPreview(id: synthetic.id) }
         let unknown = UUID()
         await #expect(throws: SessionRuntimeError.sessionNotFound(unknown)) {
             _ = try await world.runtime.deleteConversation(id: unknown)
@@ -1173,7 +1166,7 @@ struct ConversationDeletionTests {
         try await world.supervisor.createSession(elsewhere, projectID: nil)
         try env.seed(Self.ids(elsewhere), project: ClaudeTranscriptLocator.folderName(forWorkingDirectory: otherFolder.path))
         let empty = try await Self.addConversation(world, seed: false)
-        let codex = try await Self.addConversation(world, provider: .codex, providerID: nil, seed: false)
+        let refused = try await Self.addConversation(world, provider: .synthetic, providerID: nil, seed: false)
         // The home folder's own project folder is a link (it blocks the home conversations only), another project's is one too
         // (it blocks nobody), and a tier-2 and a residual entry exist.
         let own = ClaudeTranscriptLocator.folderName(forWorkingDirectory: env.home.path)
@@ -1184,14 +1177,14 @@ struct ConversationDeletionTests {
         try Self.link(env, "projects/-some-other-project", to: away)
         try env.write("projects/p/memory/note.md", "kept")
 
-        let ids = [first.id, second.id, elsewhere.id, empty.id, codex.id]
+        let ids = [first.id, second.id, elsewhere.id, empty.id, refused.id]
         let batch = await world.runtime.deletionPreviews(ids: ids)
         for session in [first, second, elsewhere, empty] {
             let single = try await world.runtime.deletionPreview(id: session.id)
             #expect(batch[session.id] == single, "\(session.id)")
         }
-        #expect(batch[codex.id] == nil, "a conversation its own preview refuses has no entry")
-        await #expect(throws: SessionRuntimeError.self) { _ = try await world.runtime.deletionPreview(id: codex.id) }
+        #expect(batch[refused.id] == nil, "a conversation its own preview refuses has no entry")
+        await #expect(throws: SessionRuntimeError.self) { _ = try await world.runtime.deletionPreview(id: refused.id) }
         // The numbers are not trivial: files and bytes counted, the own-folder link blocks, the other project's does not.
         let firstPreview = try #require(batch[first.id])
         #expect(firstPreview.fileCount > 0 && firstPreview.byteCount > 0)

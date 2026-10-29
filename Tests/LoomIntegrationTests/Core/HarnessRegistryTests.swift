@@ -25,11 +25,11 @@ struct HarnessRegistryTests {
 
     @Test func eachHarnessAnswersTheRulesTheRuntimeAsksOfIt() throws {
         let harnesses = try registry()
-        // Both supported terminal harnesses take openings and drafts; only Claude data can be removed from Loom.
+        // Both supported terminal harnesses take openings and drafts; Claude's and Codex's data can be removed from Loom.
         #expect(harnesses.claude.takesOpeningOrDraft)
         #expect(harnesses.claude.deletionRefusal == nil)
         #expect(harnesses.codex.takesOpeningOrDraft)
-        #expect(harnesses.codex.deletionRefusal == "Codex sessions cannot be deleted from Sphyrna yet")
+        #expect(harnesses.codex.deletionRefusal == nil)
         #expect(harnesses.agy.takesOpeningOrDraft)
         #expect(harnesses.agy.deletionRefusal != nil)
     }

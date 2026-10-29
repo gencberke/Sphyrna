@@ -7,7 +7,8 @@ struct CodexHarness: Harness {
     var provider: ManagedSession.Provider { .codex }
     var taskTransport: SessionTaskTransport? { .ownedAppServer }
     var takesOpeningOrDraft: Bool { true }
-    var deletionRefusal: String? { "Codex sessions cannot be deleted from Sphyrna yet" }
+    /// Deletion runs through the session's own Codex home and a deletion-owned app-server (`CodexDataDeletion`, D-121).
+    var deletionRefusal: String? { nil }
 
     func startTerminal(in runtime: isolated SessionRuntime, _ start: HarnessTerminalStart) async throws -> RuntimeLaunch {
         let choices = start.draft?.choices ?? start.opening?.choices
@@ -71,6 +72,9 @@ struct CodexHarness: Harness {
 
     /// Codex's per-run teardown (its app-server and scope) is the runtime's `tearDown`, which acts on the run's record.
     func runEnded(runID: UUID, in runtime: isolated SessionRuntime) async {}
+
+    /// A deleted session's state in the adapter goes (its runs' trackers ended with the runs).
+    func forget(sessionID: UUID) async { await adapter.forget(sessionID: sessionID) }
 
     func noteToolchain(_ toolchain: ProviderToolchain, previous: ProviderToolchain?, in runtime: isolated SessionRuntime) {}
 }

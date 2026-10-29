@@ -425,6 +425,52 @@ extension SessionRuntime {
         return server
     }
 
+    // MARK: A deletion's own server
+
+    /// The features a deletion's server runs without (P0 delete-zero's command): none may start or reach the default
+    /// daemon, or write memories or spawn agents for the session being deleted.
+    static let codexDeletionServerArguments = [
+        "--disable", "daemon_auto_start", "--disable", "memories", "--disable", "multi_agent",
+    ]
+
+    /// Runs `body` against an app-server started for one deletion and nothing else: its own socket, its own run scope when
+    /// scopes are on, the Codex home the deletion recorded (never a default), no coordinator and no TUI. It is torn down
+    /// afterwards, also when `body` throws; a teardown that cannot show the server and its scope gone throws
+    /// `CodexDeletionServerError.stopUnverified`, and `body`'s own error wins only when the teardown was verified.
+    func withCodexDeletionServer<T>(card: UUID, home: URL,
+                                    _ body: (CodexAppServerClient) async throws -> T) async throws -> T {
+        guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
+        let toolchain = try await toolchain(for: .codex)
+        guard toolchain.capabilities.supportsListen else { throw LoomError.message("Codex app-server lacks --listen") }
+        try FileManager.default.createDirectory(
+            at: configuration.socketDirectory, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        let socket = configuration.socketDirectory.appendingPathComponent("c-\(UUID().uuidString.prefix(8)).sock").path
+        let scope = supervisor.runScopesEnabled ? try await supervisor.openScope() : nil
+        let manager = CodexAppServerManager(supervisor: supervisor, configuration: CodexAppServerConfiguration(
+            executable: toolchain.executable, capabilities: toolchain.capabilities, home: home,
+            baseEnvironment: toolchain.environment, workingDirectory: configuration.homeDirectory, socketPath: socket,
+            clientVersion: configuration.clientVersion, startupTimeout: configuration.codexServerStartupTimeout,
+            scope: scope, serverArguments: Self.codexDeletionServerArguments
+        ))
+        // Listed with the conversation servers, so Quit stops it like them.
+        let server = CodexServer(ownerCard: card, manager: manager, socket: socket, scope: scope, profileHome: home)
+        codexServers.append(server)
+        let outcome: Result<T, any Error>
+        do {
+            let client = try await manager.start()
+            server.client = client
+            outcome = .success(try await body(client))
+        } catch { outcome = .failure(error) }
+        let errors = await tearDown(server)
+        guard errors.isEmpty else {
+            LoomLog.error(.deletion, "Deletion \(LoomLog.ref(card)): its Codex app-server could not be shown stopped")
+            throw CodexDeletionServerError.stopUnverified
+        }
+        return try outcome.get()
+    }
+
     private func requireCodexSetup(_ server: CodexServer, _ id: UUID) throws {
         try Task.checkCancellation()
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }

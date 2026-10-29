@@ -60,6 +60,8 @@ public struct ConversationDeletionPreview: Sendable, Equatable {
     public let unreachable: [String]
     /// How many side chats (V22) the session has: deleting it deletes them first, each through the same path.
     public var sideChatCount: Int = 0
+    /// Whose data it is: Claude's files, or Codex's (then `configDirectory` is the Codex home and the files are its rollouts).
+    public var provider: ManagedSession.Provider = .claude
 }
 
 /// A deletion that has not finished, as the UI shows it.
@@ -95,6 +97,7 @@ extension SessionRuntime {
     /// What deleting this conversation would remove, without removing anything. Throws the same
     /// refusals as `deleteConversation` (Codex, shared provider data, unusable config directory).
     public func deletionPreview(id: UUID) async throws -> ConversationDeletionPreview {
+        if case .codex? = try await catalog.session(id: id)?.session.provider { return try await codexDeletionPreview(id) }
         let candidate = try await deletionCandidate(id)
         return await preview(id, plan: candidate.plan)
     }
@@ -104,19 +107,24 @@ extension SessionRuntime {
     /// `deletionPreview(id:)` gives for it.
     public func deletionPreviews(ids: [UUID]) async -> [UUID: ConversationDeletionPreview] {
         var requests: [(id: UUID, request: DeletionRequest)] = []
+        var previews: [UUID: ConversationDeletionPreview] = [:]
         for id in ids {
+            // A Codex session is not in Claude's scan: its own preview reads its Codex home.
+            if case .codex? = (try? await catalog.session(id: id))??.session.provider {
+                previews[id] = try? await codexDeletionPreview(id)
+                continue
+            }
             guard let request = try? await deletionRequest(id) else { continue }
             requests.append((id, request))
         }
-        guard let first = requests.first?.request else { return [:] }
+        guard let first = requests.first?.request else { return previews }
         let configDirectory = first.configDirectory, temporaryRoot = first.temporaryRoot
         let dryRuns = requests.map {
             ClaudeDataInventory.DryRunRequest(sessionIDs: $0.request.fileIDs, workingDirectory: $0.request.workingDirectory)
         }
         guard let plans = try? await Task.detached(operation: {
             try ClaudeDataInventory.dryRunPlans(dryRuns, configDirectory: configDirectory, temporaryRoot: temporaryRoot)
-        }).value else { return [:] }
-        var previews: [UUID: ConversationDeletionPreview] = [:]
+        }).value else { return previews }
         for (entry, plan) in zip(requests, plans) { previews[entry.id] = await preview(entry.id, plan: plan) }
         return previews
     }
@@ -134,11 +142,12 @@ extension SessionRuntime {
         )
     }
 
-    /// Deletes one Claude conversation completely: stops its run, removes its provider files and
-    /// catalog rows, verifies, then announces the removal. A step that cannot finish leaves the
+    /// Deletes one Claude or Codex conversation completely: stops its run, removes its provider data
+    /// and catalog rows, verifies, then announces the removal. A step that cannot finish leaves the
     /// conversation visible as pending (`pendingDeletions`) and returns `.incomplete`; the
-    /// deletion record, not this call, is the authority. Codex and synthetic conversations are
-    /// refused (D-28), as is one that shares provider data with another conversation.
+    /// deletion record, not this call, is the authority. A harness that cannot delete (agy) and
+    /// synthetic conversations are refused, as is one that shares provider data with another
+    /// conversation, and a Codex session whose native subagent sessions are not its own (D-121).
     @discardableResult
     public func deleteConversation(id: UUID) async throws -> ConversationDeletionOutcome {
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
@@ -150,17 +159,24 @@ extension SessionRuntime {
         await claudeLimitObserver?.forget(sessionID: id)
         // The session's side chats go first, each through this same path (V22): none may outlive its parent.
         try await deleteSideChats(of: id)
-        let candidate = try await deletionCandidate(id)
+        let plan: CatalogDeletionPlan
+        let itemCount: Int
+        if case .codex? = try await catalog.session(id: id)?.session.provider {
+            let candidate = try await codexDeletionCandidate(id, preflight: true)
+            // The home is the one this session's Codex runs used, recorded now and never reconstructed later.
+            plan = CatalogDeletionPlan(provider: .codex, providerIDs: candidate.providerIDs,
+                                       configDirectory: candidate.home.path, workingDirectory: candidate.workingDirectory)
+            itemCount = candidate.inventory.rollouts.count
+        } else {
+            let candidate = try await deletionCandidate(id)
+            plan = CatalogDeletionPlan(provider: .claude, providerIDs: candidate.providerIDs,
+                                       configDirectory: candidate.plan.configDirectory,
+                                       workingDirectory: candidate.workingDirectory)
+            itemCount = candidate.plan.items.count + candidate.plan.temporaryItems.count
+        }
         // From here every start, resume, view and input for the id is refused.
-        try await catalog.beginDeletion(
-            sessionID: id,
-            plan: CatalogDeletionPlan(
-                provider: .claude, providerIDs: candidate.providerIDs,
-                configDirectory: candidate.plan.configDirectory,
-                workingDirectory: candidate.workingDirectory
-            )
-        )
-        LoomLog.notice(.deletion, "Deletion \(LoomLog.ref(id)): started (\(candidate.plan.items.count + candidate.plan.temporaryItems.count) item(s))")
+        try await catalog.beginDeletion(sessionID: id, plan: plan)
+        LoomLog.notice(.deletion, "Deletion \(LoomLog.ref(id)): started (\(itemCount) item(s))")
         return try await runDeletion(id)
     }
 
@@ -193,22 +209,23 @@ extension SessionRuntime {
             providerIDs = record.plan.providerIDs
         } else {
             guard let record = try await catalog.session(id: id) else { throw SessionRuntimeError.sessionNotFound(id) }
-            guard HarnessCapabilities.intrinsic(of: record.session.provider).deletes else {
-                throw SessionRuntimeError.deletionRefused("Only Claude sessions can be removed this way")
+            let provider = record.session.provider
+            guard let harness = harnesses[provider], harness.deletionRefusal == nil else {
+                throw SessionRuntimeError.deletionRefused("Only Claude and Codex sessions can be removed this way")
             }
             providerIDs = try await catalog.providerIDs(of: id)
             for providerID in providerIDs {
                 if try await catalog.isProviderIDShared(providerID, excluding: id) {
-                    throw SessionRuntimeError.deletionRefused("Another session uses the same Claude session data")
+                    throw SessionRuntimeError.deletionRefused(Self.sharedDataRefusal(provider))
                 }
             }
             // From here every start, resume, view and input for the id is refused, as in a deletion.
-            // The record names no Claude folder: should Loom stop before the end, a launch shows the
+            // The record names no provider folder: should Loom stop before the end, a launch shows the
             // session as an unfinished deletion and offers this again.
             try await catalog.beginDeletion(
                 sessionID: id,
                 plan: CatalogDeletionPlan(
-                    provider: .claude, providerIDs: providerIDs, configDirectory: nil,
+                    provider: provider, providerIDs: providerIDs, configDirectory: nil,
                     workingDirectory: record.session.workingDirectory
                 )
             )
@@ -217,7 +234,8 @@ extension SessionRuntime {
         do {
             try await stopRun(of: id)
             try await catalog.deleteSessionRows(sessionID: id)
-            try await dropRuntimeState(of: id, providerIDs: providerIDs)
+            let provider = try await catalog.deletion(for: id)?.plan.provider ?? .claude
+            try await dropRuntimeState(of: id, provider: provider, providerIDs: providerIDs)
             try await finishLoomSide(of: id, providerIDs: providerIDs)
         } catch let failure as DeletionStepFailure {
             LoomLog.error(.deletion, "Remove from Sphyrna only \(LoomLog.ref(id)) failed (\(failure.failure.category))")
@@ -282,8 +300,9 @@ extension SessionRuntime {
         let temporaryRoot: URL?
     }
 
-    /// The refusals, and what the dry-run plan is made for.
-    private func deletionRequest(_ id: UUID) async throws -> DeletionRequest {
+    /// The refusals every harness shares: a provider session whose harness deletes, with provider ids no
+    /// other session uses.
+    func deletableSession(_ id: UUID) async throws -> (session: ManagedSession, providerIDs: [String]) {
         guard let record = try await catalog.session(id: id) else { throw SessionRuntimeError.sessionNotFound(id) }
         guard let harness = harnesses[record.session.provider] else {
             throw SessionRuntimeError.deletionRefused("This is not a provider session")
@@ -292,11 +311,20 @@ extension SessionRuntime {
         let providerIDs = try await catalog.providerIDs(of: id)
         for providerID in providerIDs {
             if try await catalog.isProviderIDShared(providerID, excluding: id) {
-                throw SessionRuntimeError.deletionRefused(
-                    "Another session uses the same Claude session data"
-                )
+                throw SessionRuntimeError.deletionRefused(Self.sharedDataRefusal(record.session.provider))
             }
         }
+        return (record.session, providerIDs)
+    }
+
+    static func sharedDataRefusal(_ provider: ManagedSession.Provider) -> String {
+        "Another session uses the same \(HarnessCapabilities.intrinsic(of: provider).displayName) session data"
+    }
+
+    /// The refusals, and what the dry-run plan is made for.
+    private func deletionRequest(_ id: UUID) async throws -> DeletionRequest {
+        let (session, providerIDs) = try await deletableSession(id)
+        guard case .claude = session.provider else { throw SessionRuntimeError.deletionRefused("This is not a Claude session") }
         let configDirectory = claudeConfigDirectory()
         switch Self.configFolderState(configDirectory.path) {
         case .present: break
@@ -306,7 +334,7 @@ extension SessionRuntime {
         }
         return DeletionRequest(
             providerIDs: providerIDs, fileIDs: Self.fileIDs(providerIDs),
-            workingDirectory: record.session.workingDirectory,
+            workingDirectory: session.workingDirectory,
             configDirectory: configDirectory, temporaryRoot: configuration.claudeTemporaryRoot
         )
     }
@@ -442,9 +470,13 @@ extension SessionRuntime {
     }
 
     private func removeProviderData(_ record: CatalogDeletion) async throws {
-        guard HarnessCapabilities.intrinsic(of: record.plan.provider).deletes, let directory = record.plan.configDirectory else {
-            throw DeletionStepFailure("unsupported_provider")
+        // Codex's data goes through its own app-server, and is verified gone, before this step ends (D-121).
+        switch record.plan.provider {
+        case .codex: return try await removeCodexData(record)
+        case .claude: break
+        case .agy, .synthetic: throw DeletionStepFailure("unsupported_provider")
         }
+        guard let directory = record.plan.configDirectory else { throw DeletionStepFailure("unsupported_provider") }
         switch Self.configFolderState(directory) {
         case .absent: return   // a folder that is gone has nothing left to claim
         case .unavailable: throw DeletionStepFailure("config_unavailable")
@@ -501,8 +533,16 @@ extension SessionRuntime {
                 throw DeletionStepFailure("provider_id_reappeared")
             }
         }
-        try await dropRuntimeState(of: id, providerIDs: providerIDs)
-        if let directory = record.plan.configDirectory {
+        try await dropRuntimeState(of: id, provider: record.plan.provider, providerIDs: providerIDs)
+        if case .codex = record.plan.provider {
+            // Recheck for late recreation; anything back is deleted again natively and looked for once more.
+            var leftovers = try await remainingCodexData(of: record)
+            if !leftovers.isEmpty {
+                try await removeCodexData(record)
+                leftovers = try await remainingCodexData(of: record)
+            }
+            if let first = leftovers.first { throw DeletionStepFailure("leftover_files", file: first) }
+        } else if let directory = record.plan.configDirectory {
             switch Self.configFolderState(directory) {
             case .absent: break
             case .unavailable: throw DeletionStepFailure("config_unavailable")
@@ -522,11 +562,15 @@ extension SessionRuntime {
         try await finishLoomSide(of: id, providerIDs: providerIDs)
     }
 
-    /// What the supervisor and the Claude adapter keep for the conversation.
-    private func dropRuntimeState(of id: UUID, providerIDs: [String]) async throws {
+    /// What the supervisor and the session's harness adapter keep for the conversation.
+    private func dropRuntimeState(of id: UUID, provider: ManagedSession.Provider, providerIDs: [String]) async throws {
         do { try await supervisor.discardSession(id, providerIDs: providerIDs) }
         catch { throw DeletionStepFailure("still_running") }
-        await harnesses.claude.forget(sessionID: id)
+        switch provider {
+        case .claude: await harnesses.claude.forget(sessionID: id)
+        case .codex: await harnesses.codex.forget(sessionID: id)
+        case .agy, .synthetic: break
+        }
     }
 
     /// Every registered component drops its copy, then the deletion record (when there is one) goes.

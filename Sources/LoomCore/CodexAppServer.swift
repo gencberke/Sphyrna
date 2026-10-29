@@ -713,6 +713,73 @@ public actor CodexAppServerClient {
         return try CodexResumeSettings.decodeNative(result, threadID: threadID, workingDirectory: workingDirectory)
     }
 
+    /// Whether `error` is the server's answer that `threadID` does not exist, and nothing else. Codex 0.164 answers a
+    /// `thread/read` of an id it has no record of with "thread not loaded: <id>" (an existing thread that is not loaded is
+    /// read, with status `notLoaded`), and a `thread/delete` of one with "no rollout found for thread id <id>" or
+    /// "thread not found: <id>" (D2x REAL.md). Only these exact answers about this exact id count.
+    public static func isAbsentThreadAnswer(_ error: any Error, threadID: String) -> Bool {
+        guard case let .rpc(_, message, _)? = error as? CodexAppServerError else { return false }
+        let id = threadID.lowercased()
+        return ["thread not loaded: \(id)", "thread not found: \(id)", "no rollout found for thread id \(id)"]
+            .contains(message.lowercased().trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// Whether the server still has the persisted thread: a history-free `thread/read` that answers it (true) or answers
+    /// that there is no such thread (false, `isAbsentThreadAnswer`). Any other answer or error is thrown, never read as absent.
+    public func threadExists(_ threadID: String, timeout: TimeInterval = 20) async throws -> Bool {
+        do {
+            let result = try await request(method: "thread/read",
+                params: .object(["threadId": .string(threadID), "includeTurns": .bool(false)]), timeout: timeout)
+            guard result.object?["thread"]?.object?["id"]?.string?.lowercased() == threadID.lowercased() else {
+                throw CodexAppServerError.protocolViolation("thread/read returned a missing or different thread identity")
+            }
+            return true
+        } catch let error where Self.isAbsentThreadAnswer(error, threadID: threadID) { return false }
+    }
+
+    /// Every native thread spawned from `threadID` at any depth, active and archived (`thread/list` with
+    /// `ancestorThreadId` over every source kind, page by page). A list that does not end within `maximumPages` throws.
+    public func spawnedDescendants(of threadID: String, maximumPages: Int = 20,
+                                   timeout: TimeInterval = 20) async throws -> Set<String> {
+        let kinds = ["cli", "vscode", "exec", "appServer", "subAgent", "subAgentReview", "subAgentCompact",
+                     "subAgentThreadSpawn", "subAgentOther", "unknown"].map(JSONValue.string)
+        var found: Set<String> = []
+        for archived in [false, true] {
+            var cursor: String?
+            var pages = 0
+            repeat {
+                guard pages < maximumPages else {
+                    throw CodexAppServerError.protocolViolation("thread/list did not end within \(maximumPages) pages")
+                }
+                pages += 1
+                var params: [String: JSONValue] = [
+                    "ancestorThreadId": .string(threadID), "sourceKinds": .array(kinds),
+                    "archived": .bool(archived), "limit": .number(100),
+                ]
+                if let cursor { params["cursor"] = .string(cursor) }
+                let page = try await request(method: "thread/list", params: .object(params), timeout: timeout)
+                guard let data = page.object?["data"]?.array else {
+                    throw CodexAppServerError.protocolViolation("thread/list has no data array")
+                }
+                for item in data {
+                    guard let id = item.object?["id"]?.string else {
+                        throw CodexAppServerError.protocolViolation("thread/list item is missing id")
+                    }
+                    found.insert(id.lowercased())
+                }
+                cursor = page.object?["nextCursor"]?.string
+            } while cursor != nil
+        }
+        found.remove(threadID.lowercased())
+        return found
+    }
+
+    /// Permanently deletes a persisted thread and its native spawn subtree (`thread/delete`). The server's own deletion
+    /// removes the rollout, its state rows and its session-index records; its error is thrown unchanged.
+    public func deleteThread(_ threadID: String, timeout: TimeInterval = 60) async throws {
+        _ = try await request(method: "thread/delete", params: .object(["threadId": .string(threadID)]), timeout: timeout)
+    }
+
     public func unsubscribe(threadID: String) async throws {
         _ = try await request(
             method: "thread/unsubscribe",

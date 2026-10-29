@@ -27,6 +27,18 @@ import Testing
         #expect(DeleteSessionFacts.removedTitle == "Removed" && DeleteSessionFacts.keptTitle == "Kept")
     }
 
+    @Test func aCodexSessionsFactsNameCodexAndKeepItsPromptHistory() {
+        var codex = preview(files: 1, folder: "/tmp/codex-home")
+        codex.provider = .codex
+        let facts = DeleteSessionFacts(codex)
+        #expect(facts.lead == "Sphyrna removes it from Sphyrna and deletes Codex's local files for it. This can't be undone.")
+        #expect(facts.removed == ["The session's rollout and Codex's record of it", "Its entry in Codex's session index"])
+        #expect(facts.totals == "1 file · 0 bytes · in /tmp/codex-home")
+        #expect(facts.kept == ["Your prompts in Codex's shared prompt history", "Project files and worktrees",
+                               "Anything already sent to OpenAI"])
+        #expect(!(facts.lead + facts.removed.joined() + facts.kept.joined()).contains("Claude"))
+    }
+
     @Test func theCountSizeAndFolderComeFromTheDryRun() {
         let bytes: Int64 = 18_200_000
         let home = NSHomeDirectory() + "/.claude"

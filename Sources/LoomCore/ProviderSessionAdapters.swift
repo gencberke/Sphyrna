@@ -452,6 +452,9 @@ public actor CodexSessionAdapter {
 
     public init(supervisor: ProcessSupervisor) { self.supervisor = supervisor }
 
+    /// A deleted session's last status goes; idempotent.
+    func forget(sessionID: UUID) { lastStatuses[sessionID] = nil }
+
     public func markAmbiguous(_ candidates: [CodexRunBinding], threadID: String) async throws {
         for candidate in candidates {
             ambiguousThreads[candidate.managedRunID, default: []].insert(threadID)
