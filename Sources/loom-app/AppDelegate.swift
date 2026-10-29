@@ -544,9 +544,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let evidence = evidenceToolchains(root: root, supervisor: supervisor, origin: origin)
         let resolve: ProviderToolchainResolver = evidence ?? { provider in try await system.toolchain(for: provider) }
         let toolchains: ProviderToolchainResolver = { [weak model] provider in
-            let generation = provider == .codex ? await MainActor.run { model?.codexConfigGeneration } : nil
+            let generation: UInt64?
+            switch HarnessTranscriptKind(provider: provider) {
+            case .some(.codex): generation = await MainActor.run { model?.codexConfigGeneration }
+            default: generation = nil
+            }
             let value = try await resolve(provider)
-            if provider == .codex, let generation {
+            if let generation {
                 await MainActor.run {
                     guard let model, model.codexConfigGeneration == generation else { return }
                     model.setCodexConfigDirectory(value.profileDirectory)
@@ -577,7 +581,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             claudePluginDirectory: root.appendingPathComponent("claude-plugin", isDirectory: true),
             // A failed start makes the next one read the CLI again instead of reusing the cache.
             toolchainInvalidator: { [weak model] provider in
-                if provider == .codex {
+                if case .some(.codex) = HarnessTranscriptKind(provider: provider) {
                     await MainActor.run { model?.setCodexConfigDirectory(nil, refresh: true) }
                 }
                 await system.invalidate(provider)

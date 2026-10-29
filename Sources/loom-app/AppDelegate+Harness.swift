@@ -33,7 +33,9 @@ extension AppDelegate {
         model.harnessProbe = HarnessProbe(connections: connections, sources: sources, onReading: { [weak model] reading in
             Task { @MainActor in
                 catalog.apply(reading)
-                if reading.provider == .codex { model?.applyCodexTranscriptAccount(reading.account) }
+                if case .some(.codex) = HarnessTranscriptKind(provider: reading.provider) {
+                    model?.applyCodexTranscriptAccount(reading.account)
+                }
             }
         })
         model.harnessConnections = connections
