@@ -462,7 +462,7 @@ struct RealCodexDraftAcceptanceTests {
                     try await Task.sleep(for: .milliseconds(100))
                 } while ProcessInfo.processInfo.systemUptime < deadline
                 guard let pending else { throw RealAcceptanceFailure("approval-not-observed") }
-                let allowed: Set<String> = ["threadId", "turnId", "itemId", "command", "cwd", "availableDecisions", "reason"]
+                let allowed = RealCodexApprovalGuard.allowedKeys
                 let parameters = pending.request.params.object ?? [:]
                 result.approvalParameterKeys = parameters.keys.sorted()
                 result.approvalNonNullExtraKeys = parameters.filter { !allowed.contains($0.key) && $0.value != .null }.keys.sorted()
@@ -662,20 +662,12 @@ struct RealCodexDraftAcceptanceTests {
                                              threadID: String, cwd: String, script: String) throws {
         let request = pending.request
         let params = request.params.object ?? [:]
-        let decisions = params["availableDecisions"]?.array ?? []
-        let amendment = decisions.compactMap { $0.object?["acceptWithExecpolicyAmendment"]?.object?["execpolicy_amendment"]?.array }
-        let scriptArguments: [JSONValue] = [.string("/bin/zsh"), .string("-lc"), .string(script)]
-        let direct = params["command"]?.string == script
-        let knownDisplay = params["command"]?.string == "/bin/zsh -lc \"\(script)\"" && amendment.contains(scriptArguments)
-        let allowed: Set<String> = ["threadId", "turnId", "itemId", "command", "cwd", "availableDecisions", "reason"]
-        let noExtraAuthority = params.allSatisfy { allowed.contains($0.key) || $0.value == .null }
         try requireAcceptance(request.kind == .commandExecution && request.method == "item/commandExecution/requestApproval" &&
             request.threadID == threadID && pending.binding.threadID == threadID &&
             pending.binding.sessionID == launch.sessionID && pending.binding.managedRunID == launch.runID &&
             isExactOwnedDirectory(pending.binding.workingDirectory, cwd: cwd) &&
             isExactOwnedDirectory(params["cwd"]?.string, cwd: cwd) &&
-            params["turnId"]?.string != nil && decisions.contains(.string("accept")) && noExtraAuthority &&
-            (direct || knownDisplay),
+            params["turnId"]?.string != nil && RealCodexApprovalGuard.matches(params, script: script),
             "approval-action-mismatch")
     }
 
@@ -716,5 +708,120 @@ struct RealCodexDraftAcceptanceTests {
         defer { close(fd) }
         let count = data.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) }
         try requireAcceptance(count == data.count && fsync(fd) == 0, "evidence-write")
+    }
+}
+
+/// Acceptance-only guard; it never executes or expands the provider's display command.
+private enum RealCodexApprovalGuard {
+    // Codex 0.164 item.rs defines these metadata fields. An offered future
+    // execpolicy rule is not chosen: runtime.respond sends plain `accept`.
+    static let allowedKeys: Set<String> = [
+        "threadId", "turnId", "itemId", "command", "cwd", "availableDecisions", "reason",
+        "commandActions", "environmentId", "kind", "startedAtMs", "proposedExecpolicyAmendment",
+    ]
+
+    static func matches(_ params: [String: JSONValue], script: String) -> Bool {
+        let decisions = params["availableDecisions"]?.array ?? []
+        guard decisions.contains(.string("accept")),
+              params.allSatisfy({ allowedKeys.contains($0.key) || $0.value == .null }),
+              let command = params["command"]?.string, command.utf8.count <= 4_096,
+              params["kind"] == nil || params["kind"]?.string == "command" else { return false }
+        if let environment = params["environmentId"], environment != .null, environment.string == nil { return false }
+        if let actions = params["commandActions"], actions != .null, actions.array == nil { return false }
+        if let started = params["startedAtMs"], started != .null {
+            guard case let .number(value) = started, value.isFinite, value >= 0, value.rounded(.towardZero) == value else { return false }
+        }
+        if let amendment = params["proposedExecpolicyAmendment"], amendment != .null {
+            guard let words = amendment.array, words.allSatisfy({ $0.string != nil }) else { return false }
+        }
+        // Additional permissions and network approval are deliberately absent
+        // from allowedKeys. This client negotiates experimentalApi:true, so
+        // Codex does not hide those fields for legacy-client compatibility.
+        return command == script || arguments(command) == ["/bin/zsh", "-lc", script]
+    }
+
+    /// A bounded POSIX display-word decoder, not a shell. Reject expansions,
+    /// command operators and multiline input instead of interpreting them.
+    private static func arguments(_ command: String) -> [String]? {
+        enum Quote { case none, single, double }
+        let characters = Array(command)
+        var index = 0, words: [String] = [], word = "", active = false
+        var quote = Quote.none
+        while index < characters.count {
+            let character = characters[index]
+            guard character != "\n", character != "\r", character != "\0" else { return nil }
+            switch quote {
+            case .single:
+                if character == "'" { quote = .none } else { word.append(character) }
+            case .double:
+                if character == "\"" { quote = .none }
+                else if character == "$" || character == "`" { return nil }
+                else if character == "\\" {
+                    index += 1
+                    guard index < characters.count else { return nil }
+                    let escaped = characters[index]
+                    guard escaped != "\n", escaped != "\r", escaped != "\0" else { return nil }
+                    if !["$", "`", "\"", "\\"].contains(escaped) { word.append("\\") }
+                    word.append(escaped)
+                } else { word.append(character) }
+            case .none:
+                if character == " " || character == "\t" {
+                    if active { words.append(word); word = ""; active = false }
+                    guard words.count <= 3 else { return nil }
+                } else {
+                    active = true
+                    if character == "'" { quote = .single }
+                    else if character == "\"" { quote = .double }
+                    else if character == "\\" {
+                        index += 1
+                        guard index < characters.count, !["\n", "\r", "\0"].contains(characters[index]) else { return nil }
+                        word.append(characters[index])
+                    } else if ";|&<>()$`".contains(character) { return nil }
+                    else { word.append(character) }
+                }
+            }
+            index += 1
+        }
+        guard quote == .none else { return nil }
+        if active { words.append(word) }
+        return words.count == 3 ? words : nil
+    }
+}
+
+@Suite struct RealCodexApprovalValidationTests {
+    private let script = "printf 'LOOM_D1_REAL_FILE_OK\\n' > /private/tmp/loom-real/owned/marker.txt"
+
+    private func params(command: String) -> [String: JSONValue] {
+        ["command": .string(command), "availableDecisions": .array([.string("accept"), .string("decline")])]
+    }
+
+    @Test func nativeDisplayMetadataDoesNotTurnOneOccurrenceIntoARuleApproval() {
+        var value = params(command: script)
+        value["kind"] = .string("command")
+        value["environmentId"] = .string("local")
+        value["commandActions"] = .array([])
+        value["startedAtMs"] = .number(1_000)
+        value["proposedExecpolicyAmendment"] = .array([.string("/bin/zsh")])
+        #expect(RealCodexApprovalGuard.matches(value, script: script))
+    }
+
+    @Test func shellDisplayIsComparedAsAnExactArgumentVector() {
+        let quoted = "'" + script.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        #expect(RealCodexApprovalGuard.matches(params(command: "/bin/zsh -lc " + quoted), script: script))
+        #expect(!RealCodexApprovalGuard.matches(params(command: "/bin/zsh -lc " + quoted + "; touch /tmp/extra"), script: script))
+        #expect(!RealCodexApprovalGuard.matches(params(command: "/bin/zsh -lc \"$(printf extra)\""), script: script))
+    }
+
+    @Test func extraAuthorityOrAnotherActionIsStillRejected() {
+        for (key, extra) in ["additionalPermissions": JSONValue.object(["network": .object(["enabled": .bool(true)])]),
+                             "networkApprovalContext": .object(["host": .string("example.invalid")]),
+                             "kind": .string("writeStdin"), "futureAuthority": .bool(true)] {
+            var value = params(command: script)
+            value[key] = extra
+            #expect(!RealCodexApprovalGuard.matches(value, script: script))
+        }
+        var persistent = params(command: script)
+        persistent["availableDecisions"] = .array([.string("acceptForSession")])
+        #expect(!RealCodexApprovalGuard.matches(persistent, script: script))
     }
 }
