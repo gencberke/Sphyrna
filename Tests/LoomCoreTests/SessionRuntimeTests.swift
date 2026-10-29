@@ -84,10 +84,13 @@ final class ToolchainSwitch: @unchecked Sendable {
     private let lock = NSLock()
     private var failure: (any Error)?
     private(set) var calls = 0
+    private var begun = 0
     private var pause: TimeInterval = 0
 
     func slow(by seconds: TimeInterval) { lock.withLock { pause = seconds } }
     var delay: TimeInterval { lock.withLock { pause } }
+    func beginResolution() { lock.withLock { begun += 1 } }
+    var resolutionsBegun: Int { lock.withLock { begun } }
 
     func fail(with error: (any Error)?) { lock.withLock { failure = error } }
 
@@ -173,6 +176,7 @@ struct SessionRuntimeTests {
         let toolchainSwitch = ToolchainSwitch()
         let fake = fakePath
         let resolver: ProviderToolchainResolver = { provider in
+            toolchainSwitch.beginResolution()
             if toolchainSwitch.delay > 0 { try await Task.sleep(for: .seconds(toolchainSwitch.delay)) }
             try toolchainSwitch.check()
             return ProviderToolchain(

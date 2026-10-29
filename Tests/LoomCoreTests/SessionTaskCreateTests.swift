@@ -89,6 +89,42 @@ struct SessionTaskCreateTests {
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
+    @Test func parentStopDuringAwaitedChildSpawnNeverSubmitsTheFirstInput() async throws {
+        let context = try await SessionRuntimeTests.makeContext(claudeVersion: "2.0.0")
+        defer { context.cleanup() }
+        let folder = context.root.appendingPathComponent("stop-during-spawn", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let project = try await context.catalog.addProject(path: folder.path).project
+        let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id)
+        let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+        #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+        let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
+        #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                message: "Must not run", harness: "codex").0 == 0)
+        let childID = try #require(await context.runtime.openRequestSnapshot().first?.task?.childID)
+        let screen = SessionRuntimeTests.Screen(), gate = context.runtime.inputGate
+        context.toolchainSwitch.slow(by: 0.7)
+        let approval = Task {
+            try? await context.runtime.approveOpenRequest(taskID, outputSink: screen, expectedProvider: .codex,
+                onTerminalReady: { launch in
+                    screen.attach(launch.terminal)
+                    gate.register(runID: launch.runID, queue: TerminalInputQueue(endpoint: launch.terminal, onError: { _ in }))
+                })
+        }
+        #expect(await SessionRuntimeTests.waitUntil(3) { context.toolchainSwitch.resolutionsBegun >= 2 })
+        #expect(try await context.runtime.stopConversation(sessionID: parent.sessionID).succeeded)
+        let child = await approval.value
+        #expect(try await SessionRuntimeTests.waitUntil(5) { await context.supervisor.session(id: childID)?.currentRun == nil })
+        if let child {
+            let report = await context.supervisor.lastStopReport(sessionID: childID)
+            #expect(report?.runID == child.runID && report?.succeeded == true)
+        }
+        let methods = (try? String(contentsOf: context.state.appendingPathComponent("codex-methods.log"), encoding: .utf8)) ?? ""
+        #expect(!methods.split(separator: "\n").contains("turn/start"))
+        #expect(!screen.snapshot.contains("Sphyrna task:"))
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
     @Test func realHelperCreatesOneBoundedApprovalAndDenyLeavesNoChild() async throws {
         let context = try await SessionRuntimeTests.makeContext()
         defer { context.cleanup() }
