@@ -1,11 +1,11 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-29, 21:15 +03.
+- **Updated:** 2026-10-29, 22:10 +03.
 - **State:** `in continuation` (Claude as planner-reviewer and optimizer, D-118). The original D-112 daily-use 1.8.0 goal is **incomplete**. Pi is deferred (D-113). No public release, installed-app replacement, push, tag or PR authority.
-- **Accepted source:** local `v2` through `92d6129`: `3ac3b1e` plus the continuation's fixes. They are: the AX crash `ca1a71e`, socket test oracles `d3f3066`, icon-only menus `5f9e1cd`, stale expectations `0dabf49`/`244e478`/`c2d081a`, the empty Agents list `5cfd1af`, mixed-project usage `80e828b`/`61449e6`, the opening window `1e88c0a`, the cooperative-pool blockers `dec1b63`/`bcd59d5` with the test fixtures `1769c1b`/`e98d153`, window tests run apart `16a9158`, per-model popover state `cb06749`, and the mailbox test `92d6129`.
-- **Current verification:** the full release/window gate on `16a9158` (`200514-71144`) FAILED with **6 issues in 2 tests** (48 on `e58c2c9`, 69 at 15:04). The release build and staged release tree PASS, and the start-of-run stall is gone. Both tests are fixed since: `cb06749` with a failing-first test, and `92d6129`, a test-timing dependency. The window tests did not run, because `check.sh` stops at the first failing step. The triage, with the in-process stack probe that found the stall's cause, is in `evidence/r9/claude-continuation-20261029/gate-e58c2c9/REPORT.md`. There is no passing full gate yet: `--full --idle` on `92d6129` is due when the Mac is idle. The signed-app AX crash no longer reproduces in the scenario that crashed `3ac3b1e`.
+- **Accepted source:** local `v2` through `0f48daf`: `3ac3b1e` plus the continuation's fixes. They are: the AX crash `ca1a71e`, socket test oracles `d3f3066`, icon-only menus `5f9e1cd`, stale expectations `0dabf49`/`244e478`/`c2d081a`, the empty Agents list `5cfd1af`, mixed-project usage `80e828b`/`61449e6`, the opening window `1e88c0a`, the cooperative-pool blockers `dec1b63`/`bcd59d5` with the test fixtures `1769c1b`/`e98d153`, window tests run apart `16a9158`, per-model popover state `cb06749`, the mailbox test `92d6129`, and the drag test's real-mouse dependency `0f48daf`.
+- **Current verification:** the full release gate on `ed4d00d` (the code of `92d6129`; `211315-91632`) passed everything it ran but one test. The release build and the staged release tree PASS. The main run is 4,098 tests in the six targets, with no stall: one issue, in `DragActivityTests`, a test that read the Mac's real mouse buttons through `DragActivity.shared` and checked after a fixed 700 ms while the Mac was in use. `0f48daf` gives `DragActivity` its button reader and each test its own mouse; mutation-checked (D-119's standard). The window tests did not run (`check.sh` stops at the first failing step): they are the gate's one unrun part, due in an idle window. Gate history: 69 issues (15:04), 48 (`e58c2c9`), 6 (`16a9158`), 1 (`ed4d00d`). Triage: `evidence/r9/claude-continuation-20261029/gate-e58c2c9/REPORT.md`. No daily-use readiness claim.
 - **Evidence:** continuation `~/Library/Caches/loom-v2/evidence/r9/claude-continuation-20261029/REPORT.md` (with `claude-ax-20261029/` and `claude-ax-ca1a71e/`); final wrap `~/Library/Caches/loom-v2/evidence/r9/final-wrap-20261029/` — `TEST-EVIDENCE.md`, `UI-MATRIX.md`, `FULL-GATE-ISSUES.json`, `CANDIDATE.json`, `DELETION-BEFORE/AFTER.json`, resource metric JSON and `CLAUDE-HANDOFF.md`.
-- **Power / build:** user idle authorization persists for window/full runs when the Mac is actually idle; AC and thermal nominal at 18:06. One shared build slot, isolated scratch `~/Library/Caches/loom-v2/build/v2`. No build, test, worker or app fixture is running.
+- **Power / build:** user idle authorization persists for window/full runs when the Mac is actually idle; AC and thermal nominal at 18:06. One shared build slot, isolated scratch `~/Library/Caches/loom-v2/build/v2`. The test revision's session runs narrow checks with its own scratch `build/r9-tests`; nothing else is running.
 
 ## Evidence that matters for continuation
 
@@ -24,22 +24,23 @@
 
 | Tree | Branch / checkpoint | Owner / state |
 | --- | --- | --- |
-| `~/Library/Caches/loom-v2/wt/v2` | local `v2`, `92d6129` (+ this STATUS commit) | Claude planner continuation; clean after each commit |
+| `~/Library/Caches/loom-v2/wt/v2` | local `v2`, `0f48daf` (+ this STATUS commit) | Claude planner continuation; clean after each commit |
+| `wt/r9-tests` | `slice/r9-tests`, from `ed4d00d` | running: the test revision (D-119), session `test-infra-review`; scratch `build/r9-tests` |
 | `wt/r9-m1` | `slice/r9-m1`, `ae9774b`, clean | c4 completed; integrated, report in `r9/m1` |
 | `wt/r9-resource` | `slice/r9-resource`, `9ef909c`, clean | b3 completed; integrated, report in `r9/resource` |
 | `wt/r9-m1-ui`, `wt/r9-x2`, `wt/r9-e2`, `wt/r9-e1-native`, `wt/r9-f1`, `wt/r9-e1` | `9091534`, `ba830ea`, `f0cad4d`, `c97a34c`, `8dc5e95`, `d09e18a` | completed warm history; recovery/source-equivalence cleanup remains planner-owned, no active writes |
 | `~/Documents/github/loom-dev` | `swarm/1` | guarded canonical/reference mirror; never Sources/build/commit |
 | `~/Documents/github/loom` | `main` | public release tree, release-script-only; untouched |
 
-No implementer file locks remain. Do not restart completed workers or repeat accepted slices. Canonical/reference final writes are finished; Claude takes the planner role after the authorized brief is submitted.
+File locks: the test revision holds `Tests/**`, `Package.swift` (test targets and `LoomTestSupport`), `scripts/check.sh` and the test guards and ledger, DEVELOPMENT §2 and §3.1, and three product seams (`OwnThread.swift`'s access, the `ChatPresentation` verifier, the git-hook and join timeouts as parameters). The planner keeps the three `Task.detached` waits. Do not restart completed workers or repeat accepted slices. Canonical/reference final writes are finished; Claude takes the planner role after the authorized brief is submitted.
 
 ## Next actions by role
 
 - **@planner / Claude continuation:**
-  - Run `--full --idle` on `92d6129` when the Mac is idle, and triage it before accepting daily use. It is the first full run of the window tests on their own.
+  - Run the window tests alone when the user gives a short idle window; the next full release gate comes with the test revision's first stop.
   - Move the three bounded waits still in `Task.detached` off the pool (`RunScope.launchBlocking`, the Codex socket connect, the plan-limits exchange; ARCHITECTURE names them).
-  - Fold in the read-only test infrastructure review (session `test-infra-review`, report `evidence/r9/test-infra-review/REPORT.md`) after the user has seen it. Then the open features (managed AGY, OpenCode, D2, F2, G1, I1) and native/UI/performance acceptance, then the closing optimizer review. Preserve permission/effort settings and user-data isolation. No release/install inference.
+  - Review the test revision (D-119, `slice/r9-tests`) at each of its stops: merge into `v2`, run the gate. Then the open features (managed AGY, OpenCode, D2, F2, G1, I1) and native/UI/performance acceptance, then the closing optimizer review. Preserve permission/effort settings and user-data isolation. No release/install inference.
 - **@implementer-core:** completed, no active assignment. Reuse warm context only with a new self-contained bounded Brief; no autonomous retry or native/model run.
 - **@implementer-ink:** completed, no active assignment. Preserve the rejected AX differential and reports for diagnosis; do not repeat the same patch without new evidence.
 - **@optimizer:** early structural review and focused stalled-flow/AX advisories complete, read-only. Final full-app independent acceptance is still due after implementation and actual gates.
-- **@user:** no routine decision needed. Continue in the existing Claude session. Pi deferred; no promotion/install approval.
+- **@user:** a short idle window (about 10 min) for the window tests alone, when convenient. Continue in the existing Claude session. Pi deferred; no promotion/install approval.
