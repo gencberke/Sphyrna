@@ -2,7 +2,7 @@ import CryptoKit
 import Darwin
 import Foundation
 import Testing
-import SwiftTerm
+@testable import SwiftTerm
 @testable import LoomCore
 
 // The only provider input in this suite is the first positional message of a
@@ -114,6 +114,8 @@ private final class RealAcceptanceScreen: TerminalOutputSink, TerminalDelegate, 
     private var pendingReplies = Data()
     private var frontendReplies = 0
     private var trustAccepted = false
+    private var trustScheduled = false
+    private var trustTask: Task<Void, Never>?
     private var inputFailed = false
     private var trustedPaths: [String] = []
     private var watchdog: Task<Void, Never>?
@@ -147,7 +149,7 @@ private final class RealAcceptanceScreen: TerminalOutputSink, TerminalDelegate, 
     }
 
     func identityArrived() { lock.withLock { watchdog?.cancel(); watchdog = nil } }
-    func finish() { lock.withLock { watchdog?.cancel(); watchdog = nil; input?.close(reason: "Acceptance finished"); input = nil } }
+    func finish() { lock.withLock { watchdog?.cancel(); watchdog = nil; trustTask?.cancel(); trustTask = nil; input?.close(reason: "Acceptance finished"); input = nil } }
     func frontendEvidence() -> (replies: Int, trusted: Bool, checks: [String: Bool]) { lock.withLock { (frontendReplies, trustAccepted, screenChecks) } }
 
     func send(source: SwiftTerm.Terminal, data: ArraySlice<UInt8>) {
@@ -170,15 +172,37 @@ private final class RealAcceptanceScreen: TerminalOutputSink, TerminalDelegate, 
                 "ownedBasename": trustedPaths.contains { text.contains(URL(fileURLWithPath: $0).lastPathComponent.lowercased()) },
                 "repositoryRootWarning": text.contains("repository root"), "inputFailed": inputFailed]
             for (key, value) in checks { screenChecks[key] = screenChecks[key] == true || value }
-            if !trustAccepted, text.contains("trust this folder?"), text.contains("trust and continue"),
+            if !trustScheduled, text.contains("trust this folder?"), text.contains("trust and continue"),
                trustedPaths.contains(where: { text.contains($0.lowercased()) }) {
-                trustAccepted = true
-                pendingReplies.append(contentsOf: "\r".utf8)
+                trustScheduled = true
+                trustTask = Task { [weak self] in
+                    // Keep protocol responses separate from a person's keypress
+                    // and wait beyond the native250ms startup probe deadline.
+                    do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+                    self?.confirmOwnedTrust()
+                }
             }
             if let input, !pendingReplies.isEmpty {
                 _ = input.enqueue(pendingReplies)
                 pendingReplies.removeAll(keepingCapacity: true)
             }
+        }
+    }
+
+    private func confirmOwnedTrust() {
+        lock.withLock {
+            let text = (0..<engine.rows).compactMap { engine.getLine(row: $0)?.translateToString(trimRight: true) }
+                .joined(separator: "\n").lowercased()
+            guard let input, text.contains("trust this folder?"), text.contains("trust and continue"),
+                  trustedPaths.contains(where: { text.contains($0.lowercased()) }) else { return }
+            let encoder = KittyKeyboardEncoder(flags: engine.keyboardEnhancementFlags,
+                applicationCursor: false, applicationKeypad: false, backspaceSendsControlH: false)
+            let first = KittyKeyEvent(key: .unicode(49), modifiers: [], eventType: .press,
+                text: "1", shiftedKey: nil, baseLayoutKey: nil)
+            let enter = KittyKeyEvent(key: .functional(.enter), modifiers: [], eventType: .press,
+                text: nil, shiftedKey: nil, baseLayoutKey: nil)
+            let keys = (encoder.encode(first) ?? [49]) + (encoder.encode(enter) ?? [13])
+            trustAccepted = input.enqueue(keys)
         }
     }
 
@@ -270,6 +294,7 @@ private struct RealAcceptanceEvidence: Encodable {
     var terminalQueryCounts: [String: Int] = [:]
     var terminalErrorWords: [String] = []
     var terminalErrorPhrases: [String] = []
+    var routing: CodexRoutingDiagnostics.Snapshot? = nil
     var terminalByteCount = 0
     var frontendRepliesQueued = 0
     var trustChoiceQueued = false
@@ -537,6 +562,7 @@ struct RealCodexDraftAcceptanceTests {
         // This runs after every failure or success once the runtime exists.
         // No direct unlink/signal fallback is used when ownership is uncertain.
         if let runtime {
+            result.routing = await runtime.codexRoutingDiagnostics()
             let quit = await runtime.shutdown()
             result.quitResult = quit.succeeded && quit.remainingCountVerified == true ? "verified" : "failed-or-unknown"
             if !witnesses.isEmpty {
