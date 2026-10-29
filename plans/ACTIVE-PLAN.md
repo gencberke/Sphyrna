@@ -54,14 +54,14 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 4 | G1 Remora backends | local fake OpenCode no-tools wire proved; actual offered-backend no-tools acceptance pending |
 | 4 | I1 names and migration | pending; package identity/version/name audit is not complete |
 | 4 | Optimizer resource fixes | transcript and Changes cache fixes integrated `4e492d7`; 37 Core + 27 UI scoped tests pass `143930-72609`. Actual process metrics remain separate |
-| 5 | Z holistic gate and continuation | the continuation (`ca1a71e`…`0f48daf`) fixed the actual AX crash, the menu AX regression, two real UI regressions, the opening window, a D-94 slip, two product blockers of the cooperative pool (found by an in-process stack probe), test fixtures that held the pool, a process-wide UI state shared by parallel tests, and stale expectations and test oracles. The full gate on `ed4d00d` had 1 issue in 4,098 tests (69, 48, then 6 before), fixed in `0f48daf`; the window tests now run apart and are not yet re-run. No daily-use-ready claim |
+| 5 | Z holistic gate and continuation | the continuation (`ca1a71e`…`0f48daf`) fixed the actual AX crash, the menu AX regression, two real UI regressions, the opening window, a D-94 slip, two product blockers of the cooperative pool (found by an in-process stack probe), test fixtures that held the pool, a process-wide UI state shared by parallel tests, and stale expectations and test oracles. The full gate on `ed4d00d` had 1 issue in 4,098 tests (69, 48, then 6 before), fixed in `0f48daf`; the window tests, now run apart, passed alone (`220618-13191`). No daily-use-ready claim |
 | 5 | T test revision (D-119) | running on `slice/r9-tests` from `ed4d00d` (session `test-infra-review`); first stop after the tier targets, frozen lane included, then a gate |
 
 ## Current open work
 
 - D-118 final evidence is `evidence/r9/final-wrap-20261029/` (exact files linked from `STATUS.md`). Read the full69-issue verdict, actual AX crash reproductions, positive scoped/deletion/metric evidence and the rejected Menu differential before continuing in existing Claude with permission/effort unchanged.
 - Next:
-  - The window tests alone in an idle window: the gate on `ed4d00d` passed all it ran but one test, fixed in `0f48daf`; its window run did not start.
+  - One whole green full gate, with the test revision's first stop: the gate on `ed4d00d` passed all it ran but one test, fixed in `0f48daf`, and the window tests passed alone in debug (`220618-13191`).
   - Move the three remaining bounded `Task.detached` waits off the pool.
   - The test revision (D-119) on `slice/r9-tests`: review and integrate it at its stops, each with a gate.
   - Then the open slices.
