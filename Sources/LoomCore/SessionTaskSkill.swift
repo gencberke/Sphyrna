@@ -16,6 +16,10 @@ enum SessionTaskSkill {
         completed, failed, or needs-input result explicitly. After reporting
         needs-input, finish the current turn so the parent can reply safely.
         Native tool approvals always belong to the user.
+        Managed children show progress and permission cards; Take Over ends
+        parent automation. Read/status/wait retrieve later results. Automatic
+        nudges require an ordinary terminal parent; nested managed parents
+        must wait/read. Use only harnesses and actions currently offered by help.
 
         """
 

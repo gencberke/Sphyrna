@@ -13,6 +13,8 @@ import Testing
         #expect(skill.fields["description"]?.contains("delegate") == true)
         #expect(skill.body.contains("\"$SPHYRNA_CLI\" task --help"))
         #expect(skill.body.contains("needsParentInput") && skill.body.contains("finish the current turn"))
+        #expect(skill.body.contains("Take Over ends parent automation"))
+        #expect(skill.body.contains("nested managed parent must wait/read"))
         #expect(skill.body.count <= 1_500)
     }
     private func installed() throws -> (root: URL, files: [String]) {
@@ -66,7 +68,7 @@ import Testing
         // Today's text, character for character: a change to what every session lists is a decision, and changes this line.
         // It says first where the session runs (C5c, D-85), then what Sphyrna can do and when to use it.
         let description = "This session runs inside Sphyrna. List or open sessions, send approved messages, "
-            + "or delegate tasks to a reusable child in a terminal session."
+            + "or delegate work to a reusable managed child agent."
         #expect(skill.fields["description"] == description)
         #expect(description.count <= 300, "the description is in every session's context: \(description.count) characters")
         #expect(skill.body.count <= 1_500, "the skill's body: \(skill.body.count) characters")

@@ -18,26 +18,28 @@ public enum ClaudeLoomPlugin {
     static let skill = """
         ---
         name: open-session
-        description: This session runs inside Sphyrna. List or open sessions, send approved messages, or delegate tasks to a reusable child in a terminal session.
+        description: This session runs inside Sphyrna. List or open sessions, send approved messages, or delegate work to a reusable managed child agent.
         ---
 
         # Sessions in Sphyrna
 
         `"$SPHYRNA_CLI"` connects sessions; native cross-session messages are refused.
 
-        `"$SPHYRNA_CLI" sessions` lists metadata, no session content; use --project, --all,
-        --limit or --json to adjust it. `"$SPHYRNA_CLI" whoami` identifies this session;
-        do not guess an ID.
+        `"$SPHYRNA_CLI" sessions` lists metadata, no session content; use --help for filters.
+        `"$SPHYRNA_CLI" whoami` identifies this session; do not guess an ID.
 
         `"$SPHYRNA_CLI" open --help` lists choices. `"$SPHYRNA_CLI" open --title "<topic>"
         [--project <name|path>] --message-file <file>` (`--message -` reads stdin) waits up to 85 seconds.
         Tell the user `started <id>`, `pending: ...`, `denied` or `error: ...`. Never retry a denial or pick Full access.
-        `open` always starts a new session; ask the user to approve a send when reusing an ordinary session.
+        `open` always starts a new session; ask the user to approve reuse of an ordinary session.
 
         In terminal sessions, `"$SPHYRNA_CLI" task --help` describes approved child tasks,
         replies, status and event-driven wait. Reuse printed task and operation IDs on retry.
         A child reads its exact input and reports completed, failed, or needsParentInput;
         after needsParentInput, finish the current turn so the parent can reply. Native tool approvals belong to the user.
+        Managed children show progress and individual permission cards. Take Over ends parent automation.
+        Use status/read/wait for results and follow-up turns; automatic nudges require an ordinary terminal parent.
+        A nested managed parent must wait/read. Use only harnesses and actions currently offered by help.
 
         `"$SPHYRNA_CLI" send --help` and `"$SPHYRNA_CLI" inbox --help` describe messaging
         an existing session. Every ordinary send needs user approval; read notifications with inbox.

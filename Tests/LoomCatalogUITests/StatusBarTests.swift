@@ -202,6 +202,7 @@ import Testing
         #expect(model.workingSessionCount == 6 && changes.withLock { $0 } == 1)
     }
 
+    #if DEBUG
     @Test(.renderProbe) func closedHostedBarDoesNotRedrawForAnUnrelatedLiveHook() async throws {
         let rig = try await ListRig.make(projects: 1, perProject: 1, unassigned: 0, mode: .activity)
         defer { rig.cleanup() }
@@ -233,6 +234,7 @@ import Testing
         #expect(StatusBarRenderProbe.workingBodies == before.1)
         #expect(StatusBarRenderProbe.menuBodies == before.2)
     }
+    #endif
 
     @Test func updatesRequireARealVersionAndTheHealthRecommendation() {
         let recommended = HarnessHealth(provider: .claude, state: .ready, headline: "", version: [1],

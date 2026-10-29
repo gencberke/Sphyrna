@@ -12,6 +12,12 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
         case image, template, luminanceMask, boxedText(String)
     }
 
+    /// Consumers must select a decoder by format; general transcript reads do
+    /// not imply that a Claude JSONL reader can understand every harness.
+    public enum TranscriptFormat: Equatable, Sendable {
+        case claudeJSONL, codexRolloutJSONL
+    }
+
     public let id: HarnessID
     /// The name the user reads ("Claude", "Codex", "opencode").
     public let displayName: String
@@ -45,6 +51,7 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
     public let pinsDefaultProfile: Bool
     /// What the harness may do, with nothing startable.
     public let capabilities: HarnessCapabilities
+    public let transcriptFormat: TranscriptFormat?
     /// Whether the switch is on for a harness the person has not chosen yet: Claude and Codex yes, the others no (FB6-13).
     public let onWhenFound: Bool
     /// Whether this build has a start path for the harness at all (production narrows it further).
@@ -68,7 +75,8 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
         capabilities: HarnessCapabilities, onWhenFound: Bool, startable: Bool, provider: ManagedSession.Provider? = nil,
         markRendering: MarkRendering = .image, showsOnboardingWhenMissing: Bool = false,
         modes: [HarnessMode] = [], agentModes: [HarnessMode] = [], defaultMode: HarnessMode? = nil,
-        defaultEfforts: [String] = [], sharesCrossHarnessModes: Bool = false
+        defaultEfforts: [String] = [], sharesCrossHarnessModes: Bool = false,
+        transcriptFormat: TranscriptFormat? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -87,6 +95,7 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
         self.requiresAppServerListen = requiresAppServerListen
         self.pinsDefaultProfile = pinsDefaultProfile
         self.capabilities = capabilities
+        self.transcriptFormat = transcriptFormat
         self.onWhenFound = onWhenFound
         self.startable = startable
         self.provider = provider

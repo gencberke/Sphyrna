@@ -134,6 +134,11 @@ extension AppDelegate {
                 for (key, text) in ProcessInfo.processInfo.environment where key.hasPrefix("LOOM_FAKE_USAGE") {
                     environment[key] = text
                 }
+                // App-level managed-task acceptance uses the same explicit
+                // fixture switch as the runtime tests; never a real provider.
+                if ProcessInfo.processInfo.environment["LOOM_FAKE_TASK_ROUNDS"] == "1" {
+                    environment["LOOM_FAKE_TASK_ROUNDS"] = "1"
+                }
                 return environment
             }()
             return { provider in
