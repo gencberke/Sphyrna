@@ -140,6 +140,8 @@ public final class SystemIntegration {
     public internal(set) var keepAwake: KeepAwakeSetting = .off
     /// Settings → General → Notify when a long turn finishes (opt-in), kept beside Keep Mac awake.
     public internal(set) var notifyLongTurns = false
+    /// Settings → General → Notify when a reported limit resets (opt-in).
+    public internal(set) var notifyLimitResets = false
 
     @ObservationIgnored public var refresh: () -> Void = {}
     @ObservationIgnored public var setLoginItem: (Bool) -> Void = { _ in }
@@ -149,6 +151,7 @@ public final class SystemIntegration {
     @ObservationIgnored public var onKeepAwakeChange: () -> Void = {}
     /// Notify when a long turn finishes changed; the app reads `notifyLongTurns`.
     @ObservationIgnored public var onNotifyLongTurnsChange: () -> Void = {}
+    @ObservationIgnored public var onNotifyLimitResetsChange: () -> Void = {}
     @ObservationIgnored private var preferences: UIPreferencesStore?
 
     public init() {}
@@ -159,6 +162,7 @@ public final class SystemIntegration {
         self.preferences = preferences
         keepAwake = preferences.current.keepAwake
         notifyLongTurns = preferences.current.notifyLongTurns
+        notifyLimitResets = preferences.current.notifyLimitResets
     }
 
     public func setNotifyLongTurns(_ on: Bool) {
@@ -166,6 +170,13 @@ public final class SystemIntegration {
         notifyLongTurns = on
         persist { $0.notifyLongTurns = on }
         onNotifyLongTurnsChange()
+    }
+
+    public func setNotifyLimitResets(_ on: Bool) {
+        guard on != notifyLimitResets else { return }
+        notifyLimitResets = on
+        persist { $0.notifyLimitResets = on }
+        onNotifyLimitResetsChange()
     }
 
     public func setKeepAwake(_ setting: KeepAwakeSetting) {

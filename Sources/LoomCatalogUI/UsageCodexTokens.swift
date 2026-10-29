@@ -74,13 +74,17 @@ struct CodexLocalSummary: Equatable {
     struct Model: Equatable, Identifiable {
         let name: String
         let tokens: UsageTokens
+        let reasoningTokens: Int64?
         var id: String { name }
     }
 
     let tokens: UsageTokens
+    /// A subset of output; nil if any included increment did not report it.
+    let reasoningTokens: Int64?
     let models: [Model]
     let sessions: Int
     let partial: Bool
+    let bars: [UsageBar]
 
     static func make(report: CodexUsageIndexReport, period: UsagePeriod, now: Date, timeZone: TimeZone) -> Self {
         var calendar = Calendar(identifier: .gregorian)
@@ -92,21 +96,48 @@ struct CodexLocalSummary: Equatable {
         } else {
             start = now.addingTimeInterval(-86_400)
         }
-        var byModel: [String: UsageTokens] = [:]
+        struct Total {
+            var tokens = UsageTokens()
+            var reasoning: Int64 = 0
+            var reasoningKnown = true
+        }
+        var byModel: [String: Total] = [:]
+        var byDay: [Date: Int64] = [:]
         var partial = !report.complete
         for reading in report.sessions.values {
             if !reading.complete { partial = true }
             for increment in reading.increments {
                 guard let date = increment.timestamp else { partial = true; continue }
                 guard date >= start else { continue }
+                guard date <= now else { partial = true; continue }
                 let name = increment.model ?? "Unknown model"
-                byModel[name, default: UsageTokens()].add(increment.tokens)
+                var total = byModel[name, default: Total()]
+                total.tokens.add(increment.tokens)
+                if let reasoning = increment.reasoningTokens { total.reasoning += reasoning }
+                else { total.reasoningKnown = false }
+                byModel[name] = total
+                byDay[calendar.startOfDay(for: date), default: 0] += increment.tokens.total
             }
         }
-        let models = byModel.map { Model(name: $0.key, tokens: $0.value) }.sorted { $0.name < $1.name }
+        let models = byModel.map { Model(name: $0.key, tokens: $0.value.tokens,
+                                         reasoningTokens: $0.value.reasoningKnown ? $0.value.reasoning : nil) }
+            .sorted { $0.name < $1.name }
         var total = UsageTokens()
         for model in models { total.add(model.tokens) }
-        return Self(tokens: total, models: models, sessions: report.sessions.count, partial: partial)
+        let reasoning = !models.isEmpty && models.allSatisfy { $0.reasoningTokens != nil }
+            ? models.reduce(Int64(0)) { $0 + ($1.reasoningTokens ?? 0) } : nil
+        let bars: [UsageBar]
+        if !partial, let count = period.dayCount {
+            let today = calendar.startOfDay(for: now)
+            bars = (0..<count).reversed().map { offset in
+                let day = calendar.date(byAdding: .day, value: -offset, to: today) ?? today
+                return UsageBar(start: day, tokens: byDay[day] ?? 0, isCurrent: offset == 0)
+            }
+        } else {
+            bars = []
+        }
+        return Self(tokens: total, reasoningTokens: reasoning, models: models, sessions: report.sessions.count,
+                    partial: partial, bars: bars)
     }
 }
 
@@ -195,11 +226,25 @@ struct UsageCodexCardView: View {
                 .projectType(S.fine).foregroundStyle(LoomTheme.Text.secondaryStyle)
             Text("Input \(UsageFormat.tokens(summary.tokens.input)) · Cache read \(UsageFormat.tokens(summary.tokens.cacheRead)) · Cache write \(UsageFormat.tokens(summary.tokens.cacheWrite)) · Output \(UsageFormat.tokens(summary.tokens.output))")
                 .projectType(S.fine).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            Text(summary.reasoningTokens.map { "Reasoning \(UsageFormat.tokens($0)) (included in output)" }
+                 ?? "Reasoning unknown (included in output)")
+                .projectType(S.fine).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            if !summary.bars.isEmpty {
+                UsageBarsView(bars: summary.bars, period: period, timeZone: timeZone)
+            } else if summary.partial {
+                Text("Daily breakdown unavailable for this partial reading.")
+                    .projectType(S.fine).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            }
             ForEach(summary.models) { model in
-                HStack {
-                    Text(verbatim: model.name)
-                    Spacer(minLength: 0)
-                    Text("\(UsageFormat.tokens(model.tokens.total)) tokens")
+                VStack(alignment: .leading, spacing: S.limitCardGap) {
+                    HStack {
+                        Text(verbatim: model.name)
+                        Spacer(minLength: 0)
+                        Text("\(UsageFormat.tokens(model.tokens.total)) tokens")
+                    }
+                    Text("Input \(UsageFormat.tokens(model.tokens.input)) · Cache read \(UsageFormat.tokens(model.tokens.cacheRead)) · Cache write \(UsageFormat.tokens(model.tokens.cacheWrite)) · Output \(UsageFormat.tokens(model.tokens.output))")
+                    Text(model.reasoningTokens.map { "Reasoning \(UsageFormat.tokens($0)) (included in output)" }
+                         ?? "Reasoning unknown (included in output)")
                 }
                 .projectType(S.fine).foregroundStyle(LoomTheme.Text.secondaryStyle)
             }

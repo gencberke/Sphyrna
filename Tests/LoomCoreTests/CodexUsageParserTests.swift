@@ -36,7 +36,32 @@ import Testing
         #expect(reading.total.total == 335)
         #expect(reading.increments.map(\.model) == ["gpt-test-a", "gpt-test-b", "gpt-test-b"])
         #expect(reading.increments.map(\.tokens.total) == [110, 170, 55])
+        #expect(reading.increments.map(\.reasoningTokens) == [5, 10, 2])
         #expect(reading.context == ContextUsage(tokens: 50, window: 1_000, model: "gpt-test-b"))
+    }
+
+    @Test func absentReasoningRemainsUnknownAndRegressingReasoningIsRejected() throws {
+        var parser = CodexUsageParser()
+        var first = counts(100, 20, 0, 10)
+        first["reasoning_output_tokens"] = nil
+        parser.consume(try data(["type": "turn_context", "payload": ["model": "gpt-test"]]))
+        parser.consume(try data(event(total: first, last: first)))
+        #expect(parser.reading.increments.first?.reasoningTokens == nil)
+        var second = counts(200, 40, 0, 20)
+        second["reasoning_output_tokens"] = 8
+        var last = counts(100, 20, 0, 10)
+        last["reasoning_output_tokens"] = 3
+        parser.consume(try data(event(total: second, last: last)))
+        #expect(parser.reading.increments.last?.reasoningTokens == 3, "the last increment is explicitly reported")
+        let prior = parser.reading.total
+        var regressed = counts(300, 60, 0, 30)
+        regressed["reasoning_output_tokens"] = 7
+        parser.consume(try data(event(total: regressed, last: last)))
+        #expect(parser.reading.total == prior && !parser.reading.complete)
+        var impossible = counts(400, 80, 0, 40)
+        impossible["reasoning_output_tokens"] = 41
+        parser.consume(try data(event(total: impossible, last: last)))
+        #expect(parser.reading.total == prior)
     }
 
     @Test func unknownHistoricalAttributionAndRegressionsRemainPartial() throws {

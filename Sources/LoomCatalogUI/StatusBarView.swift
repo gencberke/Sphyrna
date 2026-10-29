@@ -81,6 +81,9 @@ private struct StatusBarUsageSegment: View {
                 } else {
                     Text("No limits read")
                 }
+                if segment.partial {
+                    Text("Partial").foregroundStyle(LoomTheme.Text.secondaryStyle)
+                }
             }
             .font(LoomTheme.StatusBar.caption)
             .fixedSize()
@@ -148,6 +151,11 @@ private struct StatusBarUsagePopover: View {
                 ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                     PlanPaceLine(content: line)
                 }
+            }
+            if reading?.windowsComplete == false {
+                Text(UsageHarnessText.partialWindows)
+                    .font(LoomTheme.StatusBar.caption).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Text("Read from \(ProviderName.title(harness)) usage. No model call.")
                 .font(LoomTheme.StatusBar.caption).foregroundStyle(LoomTheme.Text.tertiaryStyle)

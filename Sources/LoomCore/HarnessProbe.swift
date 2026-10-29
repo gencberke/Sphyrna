@@ -33,7 +33,8 @@ public enum HarnessAccount: Equatable, Sendable, CustomStringConvertible, Custom
 /// One rate-limit window of a harness: the five-hour and weekly windows of a Claude plan, a Codex bucket's primary and
 /// secondary windows.
 public struct HarnessLimitWindow: Equatable, Sendable, Identifiable {
-    /// Stable between readings: `five_hour`, `seven_day`; for Codex the bucket's limit id and `primary` or `secondary`.
+    /// Stable presentation key: provider field IDs where supplied, otherwise a key derived from a reported label.
+    /// A label-derived key is not a provider identity and must not be used to correlate a limit-reached event.
     public var id: String
     /// "5-hour", "Weekly", or a bucket's own name before the length of the window.
     public var name: String
@@ -152,15 +153,19 @@ public struct HarnessProbeAnswer: Equatable, Sendable {
     public var account: HarnessAccount?
     public var version: String?
     public var windows: [HarnessLimitWindow]?
+    /// Whether the reported windows cover all window rows the source was able to provide.
+    public var windowsComplete: Bool
     public var lifetimeTokens: Int64?
     public var tokenDays: [HarnessTokenDay]?
     public var models: [HarnessModel]?
 
     public init(account: HarnessAccount? = nil, version: String? = nil, windows: [HarnessLimitWindow]? = nil,
-                lifetimeTokens: Int64? = nil, tokenDays: [HarnessTokenDay]? = nil, models: [HarnessModel]? = nil) {
+                lifetimeTokens: Int64? = nil, tokenDays: [HarnessTokenDay]? = nil, models: [HarnessModel]? = nil,
+                windowsComplete: Bool = true) {
         self.account = account
         self.version = version
         self.windows = windows
+        self.windowsComplete = windowsComplete
         self.lifetimeTokens = lifetimeTokens
         self.tokenDays = tokenDays
         self.models = models
@@ -179,6 +184,7 @@ public struct HarnessReading: Equatable, Sendable {
     public var account: HarnessAccount?
     public var version: String?
     public var windows: [HarnessLimitWindow]
+    public var windowsComplete: Bool
     public var lifetimeTokens: Int64?
     public var tokenDays: [HarnessTokenDay]
     public var models: [HarnessModel]
@@ -187,11 +193,12 @@ public struct HarnessReading: Equatable, Sendable {
 
     public init(provider: ManagedSession.Provider, account: HarnessAccount? = nil, version: String? = nil,
                 windows: [HarnessLimitWindow] = [], lifetimeTokens: Int64? = nil, tokenDays: [HarnessTokenDay] = [],
-                models: [HarnessModel] = [], readAt: Date) {
+                models: [HarnessModel] = [], readAt: Date, windowsComplete: Bool = true) {
         self.provider = provider
         self.account = account
         self.version = version
         self.windows = windows
+        self.windowsComplete = windowsComplete
         self.lifetimeTokens = lifetimeTokens
         self.tokenDays = tokenDays
         self.models = models
@@ -208,7 +215,10 @@ public struct HarnessReading: Equatable, Sendable {
         var merged = sameAccount ? self : HarnessReading(provider: provider, readAt: now)
         merged.account = answer.account ?? merged.account
         merged.version = answer.version ?? merged.version
-        merged.windows = answer.windows ?? merged.windows
+        if let windows = answer.windows {
+            merged.windows = windows
+            merged.windowsComplete = answer.windowsComplete
+        }
         merged.lifetimeTokens = answer.lifetimeTokens ?? (answer.tokenDays == nil ? merged.lifetimeTokens : nil)
         merged.tokenDays = answer.tokenDays ?? merged.tokenDays
         merged.models = answer.models ?? merged.models

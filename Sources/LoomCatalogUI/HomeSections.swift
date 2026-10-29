@@ -150,15 +150,21 @@ struct HomeUsage: View {
         let usage = model.usage
         let paces = usage == nil ? [] : model.homePaces()
         let codex = usage == nil ? [] : model.homeCodexLimits()
-        let limitsFailure = paces.isEmpty && codex.isEmpty && usage?.isConnected(.claude) != false
+        let claudeReading = usage?.isConnected(.claude) == true ? usage?.readings[.claude] : nil
+        let partial = claudeReading.map { !$0.windowsComplete } ?? false
+        let scoped = claudeReading?.currentWindows(at: model.now).filter {
+            $0.id != ClaudeLimitWindow.fiveHour && $0.id != ClaudeLimitWindow.sevenDay
+        }.map { PlanPaceLine.Content(window: $0, measuredAt: claudeReading?.readAt ?? model.now,
+                                     now: model.now, timeZone: usage?.timeZone ?? .current) } ?? []
+        let limitsFailure = paces.isEmpty && scoped.isEmpty && codex.isEmpty && usage?.isConnected(.claude) != false
             ? usage?.limitsFailure.flatMap { $0.category == .noToolchain ? nil : $0 } : nil
         let figures = model.homeTodayFigures()
         // Nothing at all when no card has something to say: an empty stack would still take a gap in the side column.
-        if !paces.isEmpty || !codex.isEmpty || limitsFailure != nil || figures != nil {
+        if !paces.isEmpty || !scoped.isEmpty || !codex.isEmpty || partial || limitsFailure != nil || figures != nil {
             VStack(alignment: .leading, spacing: LoomTheme.Home.blockGap) {
-                if let usage, !paces.isEmpty || !codex.isEmpty {
-                    let readAt = paces.isEmpty ? usage.readings[.codex]?.readAt : usage.limits?.fetchedAt
-                    HomePlanLimits(paces: paces, codex: codex, now: model.now, timeZone: usage.timeZone,
+                if let usage, !paces.isEmpty || !scoped.isEmpty || !codex.isEmpty || partial {
+                    let readAt = paces.isEmpty && scoped.isEmpty && !partial ? usage.readings[.codex]?.readAt : claudeReading?.readAt
+                    HomePlanLimits(paces: paces, scoped: scoped, codex: codex, partial: partial, now: model.now, timeZone: usage.timeZone,
                                    updated: readAt.map { UsageText.time($0, usage.timeZone) })
                 } else if limitsFailure != nil {
                     HomeSideCard(title: "Plan limits", identifier: "home-limits") {
@@ -184,24 +190,29 @@ struct HomeLimitGroup: Equatable {
 /// The words of the Plan limits card with and without Codex: its groups, what VoiceOver reads and the tooltip. Plain data
 /// so a test can state them from fixture numbers.
 enum HomeLimitsText {
-    static func groups(paces: [PlanPace], codex: [PlanPaceLine.Content], now: Date, timeZone: TimeZone) -> [HomeLimitGroup] {
-        let claude = paces.map { PlanPaceLine.Content(pace: $0, now: now, timeZone: timeZone) }
+    static func groups(paces: [PlanPace], scoped: [PlanPaceLine.Content] = [], codex: [PlanPaceLine.Content],
+                       now: Date, timeZone: TimeZone) -> [HomeLimitGroup] {
+        let claude = paces.map { PlanPaceLine.Content(pace: $0, now: now, timeZone: timeZone) } + scoped
         if codex.isEmpty { return [HomeLimitGroup(name: nil, lines: claude)] }
-        return (paces.isEmpty ? [] : [HomeLimitGroup(name: ProviderName.title(.claude), lines: claude)]) + [HomeLimitGroup(name: ProviderName.title(.codex), lines: codex)]
+        return (claude.isEmpty ? [] : [HomeLimitGroup(name: ProviderName.title(.claude), lines: claude)]) + [HomeLimitGroup(name: ProviderName.title(.codex), lines: codex)]
     }
 
     /// "Plan limits, 5-hour window 62% left, on pace. Codex, 5-hour 77% left, Weekly 39% left".
-    static func spoken(paces: [PlanPace], codex: [PlanPaceLine.Content], now: Date, timeZone: TimeZone) -> String {
-        let claude = PlanLimitsLine(paces: paces, now: now, timeZone: timeZone).spoken
+    static func spoken(paces: [PlanPace], scoped: [PlanPaceLine.Content] = [], codex: [PlanPaceLine.Content],
+                       now: Date, timeZone: TimeZone) -> String {
+        let base = PlanLimitsLine(paces: paces, now: now, timeZone: timeZone).spoken
+        let extra = scoped.map { "\($0.title) \($0.left)" }.joined(separator: ", ")
+        let claude = extra.isEmpty ? base : (paces.isEmpty ? "Plan limits, " + extra : base + ", " + extra)
         guard !codex.isEmpty else { return claude }
         let codexText = "\(ProviderName.title(.codex)), " + codex.map { "\($0.title) \($0.left)" }.joined(separator: ", ")
-        return paces.isEmpty ? "Plan limits, " + codexText : claude + ". " + codexText
+        return paces.isEmpty && scoped.isEmpty ? "Plan limits, " + codexText : claude + ". " + codexText
     }
 
     /// Each window's sentence, Claude's first, Codex's under them with the harness name.
-    static func tooltip(paces: [PlanPace], codex: [PlanPaceLine.Content], now: Date, timeZone: TimeZone) -> String {
+    static func tooltip(paces: [PlanPace], scoped: [PlanPaceLine.Content] = [], codex: [PlanPaceLine.Content],
+                        now: Date, timeZone: TimeZone) -> String {
         let claude = PlanLimitsLine(paces: paces, now: now, timeZone: timeZone).tooltip(paces: paces, now: now, timeZone: timeZone)
-        let lines = (paces.isEmpty ? [] : [claude]) + codex.map { "\(ProviderName.title(.codex)) \($0.tooltip)" }
+        let lines = (paces.isEmpty ? [] : [claude]) + scoped.map(\.tooltip) + codex.map { "\(ProviderName.title(.codex)) \($0.tooltip)" }
         return lines.joined(separator: "\n")
     }
 }
@@ -211,15 +222,19 @@ enum HomeLimitsText {
 /// tooltip carries each window's sentence. The windows' reset lines wrap, so a time a limit runs out is never cut.
 struct HomePlanLimits: View {
     let paces: [PlanPace]
+    var scoped: [PlanPaceLine.Content] = []
     var codex: [PlanPaceLine.Content] = []
+    var partial = false
     let now: Date
     let timeZone: TimeZone
     let updated: String?
 
     var body: some View {
-        let groups = HomeLimitsText.groups(paces: paces, codex: codex, now: now, timeZone: timeZone)
+        let groups = HomeLimitsText.groups(paces: paces, scoped: scoped, codex: codex, now: now, timeZone: timeZone)
+        let summary = paces.isEmpty && scoped.isEmpty && codex.isEmpty
+            ? "Plan limits" : HomeLimitsText.spoken(paces: paces, scoped: scoped, codex: codex, now: now, timeZone: timeZone)
         HomeSideCard(title: "Plan limits", meta: updated.map { "updated " + $0 }, contentTop: LoomTheme.Home.paceGap,
-                     summary: HomeLimitsText.spoken(paces: paces, codex: codex, now: now, timeZone: timeZone),
+                     summary: summary + (partial ? ". " + UsageHarnessText.partialWindows : ""),
                      identifier: "home-limits") {
             VStack(alignment: .leading, spacing: codex.isEmpty ? LoomTheme.Home.paceGap : LoomTheme.Home.limitGroupGap) {
                 ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
@@ -234,9 +249,15 @@ struct HomePlanLimits: View {
                         }
                     }
                 }
+                if partial {
+                    Text(UsageHarnessText.partialWindows).homeType(LoomTheme.Home.reason)
+                        .foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
-        .help(HomeLimitsText.tooltip(paces: paces, codex: codex, now: now, timeZone: timeZone))
+        .help(HomeLimitsText.tooltip(paces: paces, scoped: scoped, codex: codex, now: now, timeZone: timeZone)
+              + (partial ? "\n" + UsageHarnessText.partialWindows : ""))
     }
 }
 

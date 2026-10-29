@@ -1,4 +1,6 @@
+import AppKit
 import Foundation
+import SwiftUI
 import Testing
 @testable import LoomCore
 @testable import LoomCatalogUI
@@ -84,6 +86,27 @@ import Testing
         #expect(!summary.partial && summary.sessions == 1)
         #expect(summary.tokens.total == 110 && summary.models.map(\.name) == ["gpt-test"])
         #expect(summary.tokens.input == 75 && summary.tokens.cacheRead == 20 && summary.tokens.cacheWrite == 5)
+
+        // Host the actual local card: reasoning is a subset of output, and recorded dates feed the local daily bars.
+        enableAccessibilityTree()
+        let card = UsageCodexCardView(card: .message(UsageLimitMessage(title: "No account totals", detail: nil)),
+                                      period: .days7, timeZone: TimeZone(secondsFromGMT: 0)!, local: summary)
+        let hosting = NSHostingController(rootView: card.frame(width: 680, height: 700))
+        hosting.sizingOptions = []
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 700), styleMask: [.borderless],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentViewController = hosting
+        window.setContentSize(NSSize(width: 680, height: 700))
+        defer { window.close() }
+        try await Task.sleep(for: .milliseconds(100))
+        hosting.view.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        let words = accessibilityElements(in: hosting.view).flatMap { [InkAX.value($0), InkAX.label($0)].compactMap { $0 } }
+        #expect(words.contains { $0.contains("Reasoning 2") && $0.contains("included in output") })
+        #expect(words.contains { $0.contains("Tokens per day") && $0.contains("110") })
+        #expect(!window.isVisible && !window.isKeyWindow)
+
         let recordedModel = try #require(usage.recordedModel(conversationID: id, kind: .codex))
         let overview = InspectorOverviewContent(status: "Ready", createdAt: now, now: now, provider: .codex,
             claudeVersion: nil, model: nil, recordedModel: recordedModel, reportedMode: nil, launchedMode: nil,
@@ -106,6 +129,47 @@ import Testing
         #expect(usage.codexSessionUsageFailures.count == CodexUsageIndex.maximumSessions)
         #expect(!usage.codexSessionUsageFailures.contains(ids[0]))
         #expect(usage.codexSessionUsageFailures.contains(ids[ids.count - 1]))
+    }
+
+    @Test func localDaysAndModelsUseRecordedDeltasAndKeepMissingReasoningUnknown() throws {
+        func data(_ row: [String: Any]) throws -> Data { try JSONSerialization.data(withJSONObject: row, options: [.sortedKeys]) }
+        func event(_ timestamp: String, total: [String: Int], last: [String: Int]) -> [String: Any] {
+            ["type": "event_msg", "timestamp": timestamp,
+             "payload": ["type": "token_count", "info": ["total_token_usage": total, "last_token_usage": last]]]
+        }
+        let first = ["input_tokens": 100, "cached_input_tokens": 20, "cache_write_input_tokens": 5,
+                     "output_tokens": 10, "reasoning_output_tokens": 2, "total_tokens": 110]
+        var total = ["input_tokens": 160, "cached_input_tokens": 30, "cache_write_input_tokens": 5,
+                     "output_tokens": 20, "total_tokens": 180]
+        var last = ["input_tokens": 60, "cached_input_tokens": 10, "cache_write_input_tokens": 0,
+                    "output_tokens": 10, "total_tokens": 70]
+        var parser = CodexUsageParser()
+        parser.consume(try data(["type": "turn_context", "payload": ["model": "model-a"]]))
+        parser.consume(try data(event("2026-10-27T19:00:00Z", total: first, last: first)))
+        parser.consume(try data(["type": "turn_context", "payload": ["model": "model-b"]]))
+        parser.consume(try data(event("2026-10-28T19:00:00Z", total: total, last: last)))
+        let now = ISO8601DateFormatter().date(from: "2026-10-29T00:00:00Z")!
+        let report = CodexUsageIndexReport(sessions: ["fixture": parser.reading], complete: true, sessionsRequested: 1, bytesRead: 0)
+        let summary = CodexLocalSummary.make(report: report, period: .days7, now: now, timeZone: TimeZone(secondsFromGMT: 0)!)
+        #expect(summary.tokens.total == 180 && summary.tokens.output == 20 && summary.reasoningTokens == nil)
+        #expect(summary.models.map(\.name) == ["model-a", "model-b"])
+        #expect(summary.models.map(\.reasoningTokens) == [2, nil])
+        #expect(summary.models.map { $0.tokens.total } == [110, 70])
+        #expect(summary.bars.map(\.tokens).suffix(3) == [110, 70, 0])
+
+        let partial = CodexUsageIndexReport(sessions: report.sessions, complete: false, sessionsRequested: 1, bytesRead: 0)
+        #expect(CodexLocalSummary.make(report: partial, period: .days7, now: now, timeZone: TimeZone(secondsFromGMT: 0)!).bars.isEmpty)
+
+        total["reasoning_output_tokens"] = 5
+        last["reasoning_output_tokens"] = 3
+        var complete = CodexUsageParser()
+        complete.consume(try data(["type": "turn_context", "payload": ["model": "model-a"]]))
+        complete.consume(try data(event("2026-10-27T19:00:00Z", total: first, last: first)))
+        complete.consume(try data(["type": "turn_context", "payload": ["model": "model-b"]]))
+        complete.consume(try data(event("2026-10-28T19:00:00Z", total: total, last: last)))
+        let all = CodexUsageIndexReport(sessions: ["fixture": complete.reading], complete: true, sessionsRequested: 1, bytesRead: 0)
+        let known = CodexLocalSummary.make(report: all, period: .days7, now: now, timeZone: TimeZone(secondsFromGMT: 0)!)
+        #expect(known.reasoningTokens == 5 && known.tokens.total == 180, "reasoning is already included in output")
     }
 
     @Test func aDisconnectedCodexDoesNotStartTheHiddenLocalUsageScan() async throws {

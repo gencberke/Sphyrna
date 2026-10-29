@@ -244,6 +244,8 @@ public struct UIPreferences: Codable, Equatable, Sendable {
     public var keepAwake: KeepAwakeSetting = .off
     /// Settings → General → Notify when a long turn finishes. A file written before the setting existed reads as off.
     public var notifyLongTurns = false
+    /// Settings → General → Notify when a reported limit resets. Off unless explicitly enabled.
+    public var notifyLimitResets = false
     /// The connect switch of each harness (D-98), by harness id: a harness with no entry takes its descriptor's
     /// `onWhenFound` (Claude and Codex on, opencode, agy and pi off, FB6-13). A file written before the switch existed reads
     /// as all on for the harnesses that were on then. Off only stops Sphyrna's own use of the harness; the CLI is never
@@ -377,6 +379,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         )
         keepAwake = (try? container.decodeIfPresent(KeepAwakeSetting.self, forKey: .keepAwake)) ?? .off
         notifyLongTurns = (try? container.decodeIfPresent(Bool.self, forKey: .notifyLongTurns)) ?? false
+        notifyLimitResets = (try? container.decodeIfPresent(Bool.self, forKey: .notifyLimitResets)) ?? false
         harnessConnections = ((try? container.decodeIfPresent([String: Bool].self, forKey: .harnessConnections)) ?? nil) ?? [:]
         usageSection = (try? container.decodeIfPresent(UsageSection.self, forKey: .usageSection)) ?? .limits
     }
@@ -387,7 +390,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         case windowFrame, projectColors, showInMenuBar, notifyApprovals, sidebarStyle, launchView, inspectorOpen
         case sidebarFill, sidebarOpacity
         case inspectorWidths, searchSessionText, newSessionFace, appearance, paneTone, animatedArt, remora
-        case keepAwake, notifyLongTurns, harnessConnections, usageSection
+        case keepAwake, notifyLongTurns, notifyLimitResets, harnessConnections, usageSection
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -416,6 +419,7 @@ public struct UIPreferences: Codable, Equatable, Sendable {
         try container.encode(remora, forKey: .remora)
         try container.encode(keepAwake, forKey: .keepAwake)
         try container.encode(notifyLongTurns, forKey: .notifyLongTurns)
+        try container.encode(notifyLimitResets, forKey: .notifyLimitResets)
         try container.encode(harnessConnections, forKey: .harnessConnections)
         try container.encode(usageSection, forKey: .usageSection)
     }

@@ -258,6 +258,10 @@ struct SystemSettingsCard: View {
     var body: some View {
         let notifyNotice = SettingsNotice.notifications(integration.notificationAuthorization)
         let loginNotice = SettingsNotice.loginItem(integration.loginItemStatus)
+        let resetAccountNotice = integration.notifyLimitResets
+            && !LimitResetNotifier.hasStableAccount(model.usage?.readings[.claude]?.account)
+            ? "Claude's account identity is not available yet, so no reset notification can be scheduled." : nil
+        let resetNotices = [notifyNotice?.text, resetAccountNotice].compactMap { $0 }.joined(separator: " ")
         SettingsGroup(label: "System") {
             SettingsRow(title: "Show in menu bar",
                         detail: "Show Sphyrna's mark in the menu bar, with the sessions that need you or are working.") {
@@ -280,6 +284,17 @@ struct SystemSettingsCard: View {
                         detail: "A silent banner when a turn of 30 seconds or more ends while you are elsewhere, with Open to go to the session.") {
                 SettingsSwitch(title: "Notify when a long turn finishes", isOn: Binding(
                     get: { integration.notifyLongTurns }, set: { integration.setNotifyLongTurns($0) }))
+            }
+            SettingsRowDivider()
+            SettingsRow(title: "Notify when a limit resets",
+                        detail: "A silent notification when a reached limit resets, with Continue to open the session. Sphyrna must be running, and notifications must be enabled in System Settings.",
+                        notice: resetNotices.isEmpty ? nil : resetNotices) {
+                if let notifyNotice {
+                    Button(notifyNotice.buttonTitle) { integration.openNotificationSettings() }
+                        .buttonStyle(ControlButtonStyle(kind: .outline, size: .small))
+                }
+                SettingsSwitch(title: "Notify when a limit resets", isOn: Binding(
+                    get: { integration.notifyLimitResets }, set: { integration.setNotifyLimitResets($0) }))
             }
             SettingsRowDivider()
             SettingsRow(title: "Open at login", detail: "Start Sphyrna when you log in.", notice: loginNotice?.text) {

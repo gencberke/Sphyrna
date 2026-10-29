@@ -214,6 +214,8 @@ public final class UsageModel {
     /// The last reading of each connected harness, from the probe (D-94): the windows the Limits section draws, and Codex's
     /// token days. A harness switched off has none. Claude's is the reading `limits` is read from.
     public private(set) var readings: [ManagedSession.Provider: HarnessReading] = [:]
+    /// Existing Claude reading transitions, including a disconnect, for the reset-notice owner.
+    @ObservationIgnored public var onClaudeReadingChange: ((HarnessReading?, HarnessReading?) -> Void)?
     /// Why the last ask of a harness gave nothing new (`Codex did not answer.`); absent after a good one. Claude's own
     /// reason is `limitsFailure`.
     public private(set) var readFailures: [ManagedSession.Provider: String] = [:]
@@ -899,7 +901,7 @@ public final class UsageModel {
     /// A cancelled ask is neither an answer nor a failure, so it changes nothing.
     private func takeClaude(_ outcome: HarnessProbeOutcome) {
         if let failure = outcome.failure, failure.category == .cancelled { return }
-        if readings[Self.planLimitsHarness] != outcome.reading { readings[Self.planLimitsHarness] = outcome.reading }
+        setReading(outcome.reading, of: Self.planLimitsHarness)
         if limitsFailure != outcome.failure { limitsFailure = outcome.failure }
     }
 
@@ -1006,7 +1008,7 @@ public final class UsageModel {
     /// harness has none; a cached answer clears an old failure.
     private func applyAsk(_ outcome: HarnessProbeOutcome, of harness: ManagedSession.Provider) {
         guard isConnected(harness) else { return forget(harness) }
-        if let reading = outcome.reading, readings[harness] != reading { readings[harness] = reading }
+        if let reading = outcome.reading { setReading(reading, of: harness) }
         if case .notAsked = outcome { return forget(harness) }
         if outcome.failure != nil {
             readFailures[harness] = UsageHarnessText.didNotAnswer(harness)
@@ -1018,13 +1020,20 @@ public final class UsageModel {
     /// A newer reading another surface's ask left in the probe (Claude's feeds the chip as well).
     private func takeLast(_ reading: HarnessReading, of harness: ManagedSession.Provider) {
         guard readings[harness].map({ $0.readAt < reading.readAt }) ?? true else { return }
-        readings[harness] = reading
+        setReading(reading, of: harness)
     }
 
     /// A harness switched off: its reading goes (and with it Claude's limits, which the chip and Home stop showing).
     private func forget(_ harness: ManagedSession.Provider) {
-        if readings[harness] != nil { readings[harness] = nil }
+        setReading(nil, of: harness)
         if readFailures[harness] != nil { readFailures[harness] = nil }
+    }
+
+    private func setReading(_ reading: HarnessReading?, of harness: ManagedSession.Provider) {
+        let previous = readings[harness]
+        guard previous != reading else { return }
+        readings[harness] = reading
+        if harness == Self.planLimitsHarness { onClaudeReadingChange?(previous, reading) }
     }
 
     /// The facts the diagnostics export carries from here: the index's scan report and the plan-limits failure.

@@ -6,6 +6,8 @@ public struct CodexUsageIncrement: Equatable, Sendable {
     public let timestamp: Date?
     public let model: String?
     public let tokens: UsageTokens
+    /// A subset of output, when both cumulative observations support the difference; never added to `tokens.total`.
+    public let reasoningTokens: Int64?
 }
 
 /// The accounting from one rollout. The total is the last cumulative value; increments are kept only up to a fixed cap.
@@ -26,16 +28,26 @@ public struct CodexUsageParser: Sendable {
         var cached: Int64
         var write: Int64
         var output: Int64
+        var reasoning: Int64?
 
         var tokens: UsageTokens {
             UsageTokens(input: input - cached - write, output: output, cacheWrite5m: write, cacheRead: cached)
         }
         func subtracting(_ previous: Counts) -> Counts? {
-            let result = Counts(input: input - previous.input, cached: cached - previous.cached,
-                                write: write - previous.write, output: output - previous.output)
+            var result = Counts(input: input - previous.input, cached: cached - previous.cached,
+                                write: write - previous.write, output: output - previous.output, reasoning: nil)
             guard result.input >= 0, result.cached >= 0, result.write >= 0, result.output >= 0,
                   result.cached + result.write <= result.input else { return nil }
+            if let reasoning, let before = previous.reasoning {
+                let difference = reasoning - before
+                guard difference >= 0, difference <= result.output else { return nil }
+                result.reasoning = difference
+            }
             return result
+        }
+
+        func sameTokenCounts(as other: Counts) -> Bool {
+            input == other.input && cached == other.cached && write == other.write && output == other.output
         }
     }
 
@@ -78,7 +90,7 @@ public struct CodexUsageParser: Sendable {
         }
         let window = Self.number(info["model_context_window"]).flatMap { $0 > 0 ? $0 : nil }
         context = ContextUsage(tokens: last.input, window: window, model: model ?? "")
-        let previous = cumulative ?? Counts(input: 0, cached: 0, write: 0, output: 0)
+        let previous = cumulative ?? Counts(input: 0, cached: 0, write: 0, output: 0, reasoning: 0)
         guard let delta = next.subtracting(previous) else { complete = false; return }
         cumulative = next
         guard delta.input > 0 || delta.output > 0 else { return }
@@ -87,13 +99,19 @@ public struct CodexUsageParser: Sendable {
         if timestamp == nil { complete = false }
         // When the cumulative jump exceeds `last`, only the last part can be attributed to this model.
         if let earlier = delta.subtracting(last), earlier.input > 0 || earlier.output > 0 {
-            append(CodexUsageIncrement(timestamp: nil, model: nil, tokens: earlier.tokens))
+            append(CodexUsageIncrement(timestamp: nil, model: nil, tokens: earlier.tokens, reasoningTokens: earlier.reasoning))
             complete = false
-            append(CodexUsageIncrement(timestamp: timestamp, model: model, tokens: last.tokens))
+            append(CodexUsageIncrement(timestamp: timestamp, model: model, tokens: last.tokens, reasoningTokens: last.reasoning))
         } else {
-            let attributed = delta == last ? model : nil
+            let attributed = delta.sameTokenCounts(as: last) ? model : nil
             if attributed == nil { complete = false }
-            append(CodexUsageIncrement(timestamp: timestamp, model: attributed, tokens: delta.tokens))
+            var reasoning = delta.reasoning ?? (delta.sameTokenCounts(as: last) ? last.reasoning : nil)
+            if let one = delta.reasoning, let other = last.reasoning, one != other {
+                reasoning = nil
+                complete = false
+            }
+            append(CodexUsageIncrement(timestamp: timestamp, model: attributed, tokens: delta.tokens,
+                                       reasoningTokens: reasoning))
         }
     }
 
@@ -113,10 +131,14 @@ public struct CodexUsageParser: Sendable {
               let write = value["cache_write_input_tokens"] == nil ? 0 : number(value["cache_write_input_tokens"]),
               let output = number(value["output_tokens"]), cached + write <= input else { return nil }
         if let total = value["total_tokens"], number(total) != input + output { return nil }
-        if let reasoning = value["reasoning_output_tokens"], let count = number(reasoning) {
-            guard count <= output else { return nil }
-        } else if value["reasoning_output_tokens"] != nil { return nil }
-        return Counts(input: input, cached: cached, write: write, output: output)
+        let reasoning: Int64?
+        if let raw = value["reasoning_output_tokens"], !(raw is NSNull) {
+            guard let count = number(raw), count <= output else { return nil }
+            reasoning = count
+        } else {
+            reasoning = nil
+        }
+        return Counts(input: input, cached: cached, write: write, output: output, reasoning: reasoning)
     }
 
     private static func number(_ value: Any?) -> Int64? {

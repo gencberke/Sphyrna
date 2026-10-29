@@ -38,6 +38,9 @@ extension AppDelegate {
             usageWatcher = watcher
             ConversationForgetters.shared.register { _, ids in try await index.forget(sessionIDs: ids) }
         }
+        ConversationForgetters.shared.register { [weak self] id, _ in
+            await MainActor.run { self?.approvalNotifier?.sessionDeleted(id) }
+        }
         installHarness(model: model, preferences: preferences, root: root, limits: limitsFetcher)
         // The page and Claude's limits ask go through the probe (so one child answers the account and the windows); the
         // page's section is kept in the preferences.

@@ -21,14 +21,20 @@ public struct ClaudeProbeSource: HarnessProbeSource {
     /// ones; an ask that succeeded gives the windows it found.
     static func answer(_ reading: PlanLimitsReading) -> HarnessProbeAnswer {
         HarnessProbeAnswer(account: reading.account, windows: reading.limits.map(windows(of:)),
-                           models: reading.models.isEmpty ? nil : reading.models)
+                           models: reading.models.isEmpty ? nil : reading.models,
+                           windowsComplete: reading.limits?.modelWindowsComplete ?? true)
     }
 
-    /// The five-hour and weekly windows of `limits`, five-hour first, with the ids and lengths the Claude plan has.
+    /// The main windows first, then the model-scoped weekly windows Claude actually reported.
     public static func windows(of limits: PlanLimits) -> [HarnessLimitWindow] {
         var windows: [HarnessLimitWindow] = []
         if let window = limits.fiveHour { windows.append(neutral(window, id: ClaudeLimitWindow.fiveHour, kind: .fiveHour)) }
         if let window = limits.weekly { windows.append(neutral(window, id: ClaudeLimitWindow.sevenDay, kind: .weekly)) }
+        for scoped in limits.modelWindows {
+            windows.append(HarnessLimitWindow(id: scoped.id, name: "Weekly · \(scoped.label)",
+                                              durationMinutes: Int(PlanLimitKind.weekly.duration / 60),
+                                              usedPercent: scoped.window.usedPercent, resetsAt: scoped.window.resetsAt))
+        }
         return windows
     }
 

@@ -7,6 +7,7 @@ import LoomCore
 // MARK: Words and choices
 
 enum UsageHarnessText {
+    static let partialWindows = "Some limits may be unavailable."
     static func name(_ harness: ManagedSession.Provider) -> String { ProviderName.title(harness) }
 
     /// Why a read failed when the probe says no more than that it gave nothing new.
@@ -110,6 +111,7 @@ struct UsageLimitsGroup: Identifiable, Equatable {
     let message: UsageLimitMessage?
     /// `Could not read: …`; shown beside the cards of the last good reading, or alone when there are none.
     let failure: String?
+    let warning: String?
 }
 
 enum UsageLimitsPage {
@@ -129,8 +131,10 @@ enum UsageLimitsPage {
         let name = UsageHarnessText.name(harness)
         var plan: String?
         if case let .subscription(_, named)? = reading?.account, let named, !named.isEmpty { plan = named.capitalizedFirst }
-        func group(cards: [UsageLimitCard] = [], message: UsageLimitMessage? = nil, failure: String? = nil) -> UsageLimitsGroup {
-            UsageLimitsGroup(harness: harness, heading: name, plan: plan, cards: cards, message: message, failure: failure)
+        func group(cards: [UsageLimitCard] = [], message: UsageLimitMessage? = nil, failure: String? = nil,
+                   warning: String? = nil) -> UsageLimitsGroup {
+            UsageLimitsGroup(harness: harness, heading: name, plan: plan, cards: cards, message: message, failure: failure,
+                             warning: warning)
         }
         if let account = reading?.account {
             switch account {
@@ -155,6 +159,9 @@ enum UsageLimitsPage {
         let windows = reading.currentWindows(at: now)
         guard !windows.isEmpty else {
             if failureText != nil { return group(failure: failureText) }
+            if !reading.windowsComplete {
+                return group(message: UsageLimitMessage(title: "Limits unavailable", detail: UsageHarnessText.partialWindows))
+            }
             return group(message: reading.windows.isEmpty
                 ? UsageLimitMessage(title: "No limits reported", detail: "\(name) reported no limit windows for this account.")
                 : UsageLimitMessage(title: "No limit window is running",
@@ -169,7 +176,7 @@ enum UsageLimitsPage {
                 accessibilityLabel: "\(name) \(content.title), \(content.left)",
                 accessibilityValue: "\(content.sentence). \(read)")
         }
-        return group(cards: cards, failure: failureText)
+        return group(cards: cards, failure: failureText, warning: reading.windowsComplete ? nil : UsageHarnessText.partialWindows)
     }
 }
 
@@ -190,6 +197,10 @@ struct UsageLimitsView: View {
                     if let message = group.message { UsageLimitMessageCard(message: message) }
                     if let failure = group.failure {
                         Text(failure).projectType(LoomTheme.InkType.small).foregroundStyle(LoomTheme.Status.failureLight)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let warning = group.warning {
+                        Text(warning).projectType(LoomTheme.InkType.small).foregroundStyle(LoomTheme.Text.secondaryStyle)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }

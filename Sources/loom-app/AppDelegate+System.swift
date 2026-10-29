@@ -11,6 +11,12 @@ extension AppDelegate {
         let notifier = ApprovalNotifier(model: model, service: services.notifications)
         approvalNotifier = notifier
         services.notifications.onActivate = { [weak self] id in self?.showSession(id) }
+        if let routing = services.notifications as? any ResetNotificationActivating {
+            routing.onResetActivate = { [weak notifier] identifier in notifier?.resetNotifier?.activate(identifier: identifier) }
+        }
+        model.usage?.onClaudeReadingChange = { [weak notifier] old, new in
+            notifier?.limitReadingChanged(previous: old, current: new)
+        }
         let bar = MenuBarController(model: model, actions: .init(
             showSession: { [weak self] id in self?.showSession(id) },
             bringForward: { [weak self] in self?.bringLoomForward() },
@@ -41,6 +47,7 @@ extension AppDelegate {
             keepAwake?.workingChanged(summary.working)
         }
         integration.onNotifyLongTurnsChange = { [weak notifier] in notifier?.longTurnPreferenceChanged() }
+        integration.onNotifyLimitResetsChange = { [weak notifier] in notifier?.limitResetPreferenceChanged() }
         integration.onKeepAwakeChange = { [weak integration, weak keepAwake] in
             keepAwake?.settingChanged(integration?.keepAwake ?? .off)
         }

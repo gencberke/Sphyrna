@@ -1,3 +1,4 @@
+import CoreFoundation
 import Darwin
 import Foundation
 import Synchronization
@@ -111,18 +112,36 @@ public struct PlanPace: Equatable, Sendable {
     }
 }
 
-/// The plan limits at one moment. Only the two windows the product shows are kept; nothing else
-/// the CLI answers is read into it (the account goes to `PlanLimitsReading`, in memory, and spend is dropped).
+/// A model-scoped weekly window. `id` is a presentation key; for server-labelled rows it is not a provider ID.
+public struct PlanModelLimitWindow: Equatable, Sendable {
+    public let id: String
+    public let label: String
+    public let window: PlanLimitWindow
+
+    public init(id: String, label: String, window: PlanLimitWindow) {
+        self.id = id
+        self.label = label
+        self.window = window
+    }
+}
+
+/// The plan limits at one moment; the account is held separately and spend is dropped.
 public struct PlanLimits: Equatable, Sendable {
     public var fiveHour: PlanLimitWindow?
     public var weekly: PlanLimitWindow?
+    public var modelWindows: [PlanModelLimitWindow]
+    /// False if the CLI did not provide its model-window list, or some rows exceeded the read bound or were malformed.
+    public var modelWindowsComplete: Bool
     /// When the CLI answered.
     public var fetchedAt: Date
 
-    public init(fiveHour: PlanLimitWindow?, weekly: PlanLimitWindow?, fetchedAt: Date) {
+    public init(fiveHour: PlanLimitWindow?, weekly: PlanLimitWindow?, fetchedAt: Date,
+                modelWindows: [PlanModelLimitWindow] = [], modelWindowsComplete: Bool = true) {
         self.fiveHour = fiveHour
         self.weekly = weekly
         self.fetchedAt = fetchedAt
+        self.modelWindows = modelWindows
+        self.modelWindowsComplete = modelWindowsComplete
     }
 
     /// The windows that still exist at `now`, five-hour first.
@@ -196,7 +215,7 @@ public struct PlanLimitsReading: Equatable, Sendable {
 /// runs in a Loom-owned folder, with the same executable and Claude profile as usage, and lives
 /// for about a second. It sends `initialize` before `get_usage`, only so the answer names the account
 /// (`PlanLimitsReading.account`, in memory) and lists the models (`PlanLimitsReading.models`: aliases and the releases
-/// they resolve to, for the model names). Whatever else it answers beyond the two windows is dropped
+/// they resolve to, for the model names). Other fields besides the reported windows are dropped
 /// unread, and nothing is logged or stored.
 /// Without the last three arguments the CLI would run the user's own SessionStart and SessionEnd
 /// hooks and start their MCP servers for every ask (seen with Claude Code 2.1.293).
@@ -268,12 +287,14 @@ public struct ClaudePlanLimitsFetcher: PlanLimitsFetching {
         switch run.outcome {
         case let .failure(category): return fail(category, account: run.account, models: run.models)
         case let .answer(answer):
-            guard answer.fiveHour != nil || answer.weekly != nil else {
+            guard answer.fiveHour != nil || answer.weekly != nil || !answer.modelWindows.isEmpty else {
                 return fail(.notAvailable, account: run.account, models: run.models)
             }
             status.record(nil)
             return PlanLimitsReading(
-                limits: PlanLimits(fiveHour: answer.fiveHour, weekly: answer.weekly, fetchedAt: clock()), account: run.account,
+                limits: PlanLimits(fiveHour: answer.fiveHour, weekly: answer.weekly, fetchedAt: clock(),
+                                   modelWindows: answer.modelWindows, modelWindowsComplete: answer.modelWindowsComplete),
+                account: run.account,
                 models: run.models)
         }
     }
@@ -287,10 +308,12 @@ public struct ClaudePlanLimitsFetcher: PlanLimitsFetching {
     }
 }
 
-/// What a `get_usage` answer says about the two windows.
+/// What a `get_usage` answer says about its plan windows.
 struct PlanLimitsAnswer: Equatable, Sendable {
     var fiveHour: PlanLimitWindow?
     var weekly: PlanLimitWindow?
+    var modelWindows: [PlanModelLimitWindow] = []
+    var modelWindowsComplete = true
 }
 
 /// One line of the child's stdout, judged against the request.
@@ -389,13 +412,50 @@ enum PlanLimitsWire {
         let parser = ISO8601DateFormatter()
         parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let plain = ISO8601DateFormatter()
-        let answer = PlanLimitsAnswer(
-            fiveHour: window(limits["five_hour"], parser, plain), weekly: window(limits["seven_day"], parser, plain))
-        return answer.fiveHour == nil && answer.weekly == nil ? .unavailable : .answer(answer)
+        var modelWindows: [PlanModelLimitWindow] = []
+        var complete = true
+        for (key, label) in [("seven_day_opus", "Opus"), ("seven_day_sonnet", "Sonnet")] {
+            if let value = window(limits[key], parser, plain) {
+                modelWindows.append(PlanModelLimitWindow(id: key, label: label, window: value))
+            } else if let value = limits[key], !(value is NSNull) {
+                complete = false
+            }
+        }
+        // 2.1.311 reports these labels as an array, without a separate bucket ID. Limit the work and retain
+        // distinct same-named rows without confusing them with the older named fields.
+        var labelCounts: [String: Int] = [:]
+        if let scoped = limits["model_scoped"] as? [Any] {
+            if scoped.count > 32 - modelWindows.count { complete = false }
+            for item in scoped.prefix(32 - modelWindows.count) {
+                guard let entry = item as? [String: Any], let raw = entry["display_name"] as? String else {
+                    complete = false
+                    continue
+                }
+                let label = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !label.isEmpty, label.utf8.count <= 80,
+                      label.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }),
+                      let value = window(entry, parser, plain) else {
+                    complete = false
+                    continue
+                }
+                let count = labelCounts[label, default: 0] + 1
+                labelCounts[label] = count
+                let encoded = label.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? label
+                let id = "display:\(encoded)" + (count > 1 ? ":\(count)" : "")
+                modelWindows.append(PlanModelLimitWindow(id: id, label: label, window: value))
+            }
+        } else {
+            complete = false
+        }
+        let answer = PlanLimitsAnswer(fiveHour: window(limits["five_hour"], parser, plain),
+                                      weekly: window(limits["seven_day"], parser, plain), modelWindows: modelWindows,
+                                      modelWindowsComplete: complete)
+        return answer.fiveHour == nil && answer.weekly == nil && answer.modelWindows.isEmpty ? .unavailable : .answer(answer)
     }
 
     private static func window(_ value: Any?, _ parser: ISO8601DateFormatter, _ plain: ISO8601DateFormatter) -> PlanLimitWindow? {
-        guard let object = value as? [String: Any], let number = object["utilization"] as? NSNumber else { return nil }
+        guard let object = value as? [String: Any], let number = object["utilization"] as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
         let used = number.doubleValue
         guard used.isFinite else { return nil }
         let clamped = min(max(used, 0), 100)   // before Int(): an absurd value must not trap

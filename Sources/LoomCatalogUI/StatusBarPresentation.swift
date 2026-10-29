@@ -13,13 +13,17 @@ struct StatusBarUsage: Equatable {
 
     let harness: ManagedSession.Provider
     let windows: [Window]
+    let partial: Bool
     var tightest: Window? { windows.min { $0.remainingPercent < $1.remainingPercent } }
     var accessibilityLabel: String {
-        guard !windows.isEmpty else { return "\(ProviderName.title(harness)), No limits read" }
-        return ([ProviderName.title(harness)] + windows.map { window in
+        guard !windows.isEmpty else {
+            return "\(ProviderName.title(harness)), No limits read" + (partial ? ", \(UsageHarnessText.partialWindows)" : "")
+        }
+        let text = ([ProviderName.title(harness)] + windows.map { window in
             let reset = window.spokenReset.map { ", resets in \($0)" } ?? ""
             return "\(window.name), \(window.remainingPercent)% left\(reset)"
         }).joined(separator: ", ")
+        return text + (partial ? ", \(UsageHarnessText.partialWindows)" : "")
     }
 
     static func make(harness: ManagedSession.Provider, reading: HarnessReading?, now: Date) -> Self {
@@ -28,7 +32,7 @@ struct StatusBarUsage: Equatable {
                    reset: window.resetsAt.map { UsageFormat.untilReset($0, from: now) },
                    spokenReset: window.resetsAt.map { spokenDuration($0, from: now) })
         } ?? []
-        return Self(harness: harness, windows: windows)
+        return Self(harness: harness, windows: windows, partial: reading.map { !$0.windowsComplete } ?? false)
     }
 
     static func paceLines(reading: HarnessReading?, now: Date, timeZone: TimeZone) -> [PlanPaceLine.Content] {

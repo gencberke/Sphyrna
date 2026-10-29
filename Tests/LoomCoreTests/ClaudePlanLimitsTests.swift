@@ -222,6 +222,54 @@ struct ClaudePlanLimitsTests {
         #expect(value.weekly?.resetsAt == Date(timeIntervalSince1970: 1_791_795_600))
     }
 
+    @Test func modelScopedOnlyAnswerIsNotDiscarded() {
+        // Claude Code 2.1.311's get_usage schema names this server-supplied weekly bucket `model_scoped`.
+        let line = answer(#"{"model_scoped":[{"display_name":"Fable","utilization":100,"resets_at":"2026-10-12T09:00:00Z"}]}"#)
+        guard case let .answer(value) = judge(line) else {
+            Issue.record("a reported model-scoped window is a usable limits answer")
+            return
+        }
+        #expect(value.modelWindowsComplete)
+        let mapped = ClaudeProbeSource.windows(of: PlanLimits(fiveHour: value.fiveHour, weekly: value.weekly,
+                                                              fetchedAt: now, modelWindows: value.modelWindows))
+        #expect(mapped.count == 1 && mapped[0].name == "Weekly · Fable" && mapped[0].remainingPercent == 0)
+        #expect(mapped[0].id == "display:Fable" && mapped[0].durationMinutes == 10_080)
+        #expect(mapped[0].resetsAt == ISO8601DateFormatter().date(from: "2026-10-12T09:00:00Z"))
+    }
+
+    @Test func oldAndServerNamedBucketsStayDistinctAndMalformedRowsAreSkipped() {
+        let line = answer(#"{"seven_day_opus":{"utilization":30},"seven_day_sonnet":{"utilization":40},"model_scoped":[null,{"display_name":"Fable","utilization":80,"resets_at":null},{"display_name":"Fable","utilization":60},{"display_name":"","utilization":10}]}"#)
+        guard case let .answer(value) = judge(line) else { Issue.record("expected a limits answer"); return }
+        #expect(!value.modelWindowsComplete)
+        let mapped = ClaudeProbeSource.windows(of: PlanLimits(fiveHour: nil, weekly: nil, fetchedAt: now,
+                                                              modelWindows: value.modelWindows))
+        #expect(mapped.map(\.id) == ["seven_day_opus", "seven_day_sonnet", "display:Fable", "display:Fable:2"])
+        #expect(mapped.map(\.name) == ["Weekly · Opus", "Weekly · Sonnet", "Weekly · Fable", "Weekly · Fable"])
+        #expect(mapped.map(\.remainingPercent) == [70, 60, 20, 40])
+    }
+
+    @Test func absentAndOverLimitModelListsAreMarkedPartialWithoutLosingKnownWindows() throws {
+        guard case let .answer(absent) = judge(answer(#"{"five_hour":{"utilization":10}}"#)) else {
+            Issue.record("expected a limits answer")
+            return
+        }
+        #expect(!absent.modelWindowsComplete && absent.fiveHour?.usedPercent == 10)
+        let rows = (0..<40).map { ["display_name": "Model \($0)", "utilization": $0] as [String: Any] }
+        let raw = try JSONSerialization.data(withJSONObject: ["model_scoped": rows], options: [.sortedKeys])
+        guard case let .answer(capped) = judge(answer(String(decoding: raw, as: UTF8.self))) else {
+            Issue.record("expected a model-window answer")
+            return
+        }
+        #expect(capped.modelWindows.count == 32 && !capped.modelWindowsComplete)
+        #expect(Set(capped.modelWindows.map(\.id)).count == 32)
+    }
+
+    @Test func aBooleanUtilizationIsUnknownRatherThanOnePercent() {
+        let line = answer(#"{"five_hour":{"utilization":10},"model_scoped":[{"display_name":"Fable","utilization":true}]}"#)
+        guard case let .answer(value) = judge(line) else { Issue.record("expected the valid main window"); return }
+        #expect(value.fiveHour?.usedPercent == 10 && value.modelWindows.isEmpty && !value.modelWindowsComplete)
+    }
+
     /// The shape the real CLI answers with (seen on 18 Oct 2026): microsecond fractions and a `+00:00` offset.
     @Test func theRealCliTimestampFormParses() {
         let line = answer(#"{"five_hour":{"utilization":17,"resets_at":"2026-10-18T01:49:59.781671+00:00"},"seven_day":{"utilization":30,"resets_at":"2026-10-21T08:59:59.781692+00:00"}}"#)
