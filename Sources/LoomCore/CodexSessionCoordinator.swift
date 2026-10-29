@@ -40,6 +40,7 @@ public actor CodexSessionCoordinator {
     // rather than the provider's reusable raw ID. The write's defer removes it.
     private var responding: [UUID: Bool] = [:]
     private var connectionLostHandler: (@Sendable (String) -> Void)?
+    private var identityChangeHandler: (@Sendable (UUID, UUID) async -> Void)?
     private struct Join {
         let generation: UUID
         let binding: CodexRunBinding
@@ -93,6 +94,10 @@ public actor CodexSessionCoordinator {
     /// longer be answered after this.
     public func setConnectionLostHandler(_ handler: @escaping @Sendable (String) -> Void) {
         connectionLostHandler = handler
+    }
+
+    func setIdentityChangeHandler(_ handler: @escaping @Sendable (UUID, UUID) async -> Void) {
+        identityChangeHandler = handler
     }
 
     /// Called for every issue the coordinator records (a dropped request, a
@@ -335,6 +340,7 @@ public actor CodexSessionCoordinator {
                     try await hydrateIdleThread(binding: binding, after: sequence)
                 }
             case let .newConversation(previous, identity):
+                await identityChangeHandler?(previous.sessionID, previous.managedRunID)
                 _ = invalidateJoin(runID: previous.managedRunID)
                 let sequence: UInt64
                 switch inbound {

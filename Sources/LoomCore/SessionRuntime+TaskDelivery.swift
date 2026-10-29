@@ -129,20 +129,22 @@ extension SessionRuntime {
         updateTaskQuiescenceObservers()
     }
 
-    func fenceTaskRun(sessionID: UUID, runID: UUID, generation: UUID) async {
+    func fenceTaskRun(sessionID: UUID, runID: UUID, generation: UUID, identityChanged: Bool = false) async {
         guard let coordinator = taskCoordinator else { return }
         var cursor: UUID?
         repeat {
             guard let page = try? await coordinator.projectionsForUser(parentSessionID: sessionID, after: cursor, limit: 50) else { return }
-            for task in page.items where task.lifecycle == .active && task.parentBinding.managedRunID == runID &&
+            for task in page.items where (task.lifecycle == .active || (identityChanged && task.lifecycle == .revoked)) &&
+                task.parentBinding.managedRunID == runID &&
                 task.parentBinding.generation == generation {
-                try? await coordinator.fence(taskID: task.id, binding: task.parentBinding)
+                try? await coordinator.fence(taskID: task.id, binding: task.parentBinding, identityChanged: identityChanged)
             }
             cursor = page.next
         } while cursor != nil
-        if let child = try? await coordinator.projectionForChild(sessionID), child.lifecycle == .active,
+        if let child = try? await coordinator.projectionForChild(sessionID),
+           child.lifecycle == .active || (identityChanged && child.lifecycle == .revoked),
            let binding = child.childBinding, binding.managedRunID == runID, binding.generation == generation {
-            try? await coordinator.fence(taskID: child.id, binding: binding)
+            try? await coordinator.fence(taskID: child.id, binding: binding, identityChanged: identityChanged)
         }
     }
 

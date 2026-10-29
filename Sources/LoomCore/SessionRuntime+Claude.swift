@@ -74,6 +74,10 @@ extension SessionRuntime {
             }
             if case .applied = disposition {
                 if let event {
+                    if case .sessionStart = event.kind,
+                       let active = await supervisor.activeSessionID(runID: envelope.managedRunID), active != envelope.sessionID {
+                        revokeTaskRun(sessionID: envelope.sessionID, runID: envelope.managedRunID, identityChanged: true)
+                    }
                     await observeClaudeTaskHook(envelope, event: event)
                     await noteLimitHook(event, envelope: envelope, revision: limitRevision)
                 }

@@ -220,6 +220,7 @@ extension ProcessSupervisor {
         guard let runtime = runtimes[claim.managedRunID],
               runtime.launchSessionID == claim.sessionID, runtime.activeSessionID == claim.sessionID,
               !transitioningRuns.contains(claim.managedRunID), !stoppingRuns.contains(claim.managedRunID),
+              (identityStates[claim.managedRunID] ?? .known) == .known,
               case .terminal = runtime.endpoint,
               let session = sessions[claim.sessionID], session.currentRun?.id == claim.managedRunID,
               session.currentRun?.state == .running,

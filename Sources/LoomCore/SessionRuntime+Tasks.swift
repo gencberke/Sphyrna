@@ -66,7 +66,7 @@ extension SessionRuntime {
         taskIngress.register(runID: runID, lease: plan.lease)
     }
 
-    func revokeTaskRun(sessionID: UUID, runID: UUID? = nil) {
+    func revokeTaskRun(sessionID: UUID, runID: UUID? = nil, identityChanged: Bool = false) {
         guard let plan = taskRunPlans[sessionID], runID == nil || plan.claim.managedRunID == runID else { return }
         plan.lease.revoke()
         taskParentRevoked(plan.claim)
@@ -81,7 +81,7 @@ extension SessionRuntime {
         if !shuttingDown {
             Task { [weak self] in
                 await self?.fenceTaskRun(sessionID: sessionID, runID: plan.claim.managedRunID,
-                                         generation: plan.claim.generation)
+                                         generation: plan.claim.generation, identityChanged: identityChanged)
             }
         }
     }

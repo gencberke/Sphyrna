@@ -381,6 +381,9 @@ extension SessionRuntime {
             if let lease = taskRunPlans[server.ownerCard]?.lease {
                 await coordinator.fenceTaskEvents(with: lease)
                 await client.fenceTaskEvents(with: lease)
+                await coordinator.setIdentityChangeHandler { [weak self] sessionID, runID in
+                    await self?.revokeTaskRun(sessionID: sessionID, runID: runID, identityChanged: true)
+                }
                 let serverID = server.id
                 await client.observeTaskInputs { [weak self, lease] observation in
                     let runtime = self

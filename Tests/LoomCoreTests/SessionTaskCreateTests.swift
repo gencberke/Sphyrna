@@ -125,6 +125,38 @@ struct SessionTaskCreateTests {
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
+    @Test(arguments: [ManagedSession.Provider.claude, .codex])
+    func nativeIdentityChangeRevokesTaskAndStopsAnEmptyChild(parentProvider: ManagedSession.Provider) async throws {
+        let context = try await SessionRuntimeTests.makeContext(claudeVersion: "2.0.0")
+        defer { context.cleanup() }
+        let folder = context.root.appendingPathComponent("identity-change", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let project = try await context.catalog.addProject(path: folder.path).project
+        let parentScreen = SessionRuntimeTests.Screen()
+        let parent = try await context.runtime.startConversation(provider: parentProvider, projectID: project.id, outputSink: parentScreen)
+        parentScreen.attach(parent.terminal)
+        let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+        #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+        let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
+        #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                message: "Do not retarget", harness: "claude").0 == 0)
+        let screen = SessionRuntimeTests.Screen()
+        let child = try await context.runtime.approveOpenRequest(taskID, outputSink: screen, expectedProvider: .claude,
+                                                                 onTerminalReady: { screen.attach($0.terminal) })
+        try await parentScreen.send(parentProvider == .claude ? "/clear" : "/new")
+        #expect(try await SessionRuntimeTests.waitUntil(3) {
+            await context.supervisor.activeSessionID(runID: parent.runID) != parent.sessionID
+        })
+        let coordinator = try #require(await context.runtime.taskCoordinator)
+        #expect(try await SessionRuntimeTests.waitUntil(3) {
+            try await coordinator.projectionForUser(taskID: taskID)?.lifecycle == .identityChanged
+        })
+        #expect(try await SessionRuntimeTests.waitUntil(3) { await context.supervisor.session(id: child.sessionID)?.currentRun == nil })
+        #expect(await context.runtime.authenticateTaskRun(claim) == nil)
+        #expect(!screen.snapshot.contains("Sphyrna task:"))
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
     @Test func realHelperCreatesOneBoundedApprovalAndDenyLeavesNoChild() async throws {
         let context = try await SessionRuntimeTests.makeContext()
         defer { context.cleanup() }
