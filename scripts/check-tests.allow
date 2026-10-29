@@ -30,7 +30,6 @@ sleep	Tests/LoomCatalogUITests/DailyUsePolishTests.swift	5
 sleep	Tests/LoomCatalogUITests/DragActivityTests.swift	1
 sleep	Tests/LoomCatalogUITests/EdgesViewTests.swift	2
 sleep	Tests/LoomCatalogUITests/HarnessCatalogTests.swift	1
-sleep	Tests/LoomCatalogUITests/HarnessConnectionPreferencesTests.swift	1
 sleep	Tests/LoomCatalogUITests/HeaderModelSegmentTests.swift	2
 sleep	Tests/LoomCatalogUITests/HomeRenderTests.swift	1
 sleep	Tests/LoomCatalogUITests/HomeTests.swift	2
@@ -43,7 +42,6 @@ sleep	Tests/LoomCatalogUITests/LimitResetAccountViewTests.swift	2
 sleep	Tests/LoomCatalogUITests/LimitResetNotifierTests.swift	1
 sleep	Tests/LoomCatalogUITests/ManagedAgentViewTests.swift	14
 sleep	Tests/LoomCatalogUITests/MenuBarModelTests.swift	2
-sleep	Tests/LoomCatalogUITests/ModelPickerTests.swift	8
 sleep	Tests/LoomCatalogUITests/NewSessionTests.swift	3
 sleep	Tests/LoomCatalogUITests/PaletteTests.swift	7
 sleep	Tests/LoomCatalogUITests/ProjectDraftLayoutTests.swift	1
@@ -70,13 +68,11 @@ sleep	Tests/LoomCatalogUITests/SidebarPagingTests.swift	1
 sleep	Tests/LoomCatalogUITests/SidebarParityTests.swift	1
 sleep	Tests/LoomCatalogUITests/SidebarRenderTests.swift	2
 sleep	Tests/LoomCatalogUITests/SidebarStatusTests.swift	4
-sleep	Tests/LoomCatalogUITests/StatusBarTests.swift	6
 sleep	Tests/LoomCatalogUITests/StatusBarUtilitiesTests.swift	2
 sleep	Tests/LoomCatalogUITests/StudioNavigationTests.swift	3
 sleep	Tests/LoomCatalogUITests/SubagentPanelTests.swift	7
 sleep	Tests/LoomCatalogUITests/SubagentTreeTests.swift	1
 sleep	Tests/LoomCatalogUITests/UIFixRoundTests.swift	1
-sleep	Tests/LoomCatalogUITests/UsageModelWindowTests.swift	5
 sleep	Tests/LoomChatTestRigs/DriverRig.swift	1
 sleep	Tests/LoomCoreTestRigs/OpenRig.swift	1
 sleep	Tests/LoomCoreTestRigs/RuntimeFixture.swift	1
@@ -200,13 +196,9 @@ sleep	Tests/LoomTerminalTests/RealCodexDraftAcceptanceTests.swift	4
 sleep	Tests/LoomTerminalTests/TerminalImageLimitTests.swift	1
 sleep	Tests/LoomTerminalTests/TerminalInputOriginTests.swift	3
 sleep	Tests/LoomTerminalTests/TerminalMotionTests.swift	1
-sleep	Tests/LoomWindowTests/DefaultActionTests.swift	4
 sleep	Tests/LoomWindowTests/InspectorLayoutTests.swift	1
-sleep	Tests/LoomWindowTests/PinnedFixRoundTests.swift	3
-sleep	Tests/LoomWindowTests/SearchFocusAndHitTests.swift	5
 sleep	Tests/LoomWindowTests/SelectableTextAccessibilityTests.swift	4
 sleep	Tests/LoomWindowTests/SessionDragTests.swift	1
-sleep	Tests/LoomWindowTests/SettingsWindowClickTests.swift	2
 sleep	Tests/LoomWindowTests/SidebarAccessibilityTests.swift	6
 sleep	Tests/LoomWindowTests/SidebarDraftRowTests.swift	4
 sleep	Tests/LoomWindowTests/SidebarInkTests.swift	5
