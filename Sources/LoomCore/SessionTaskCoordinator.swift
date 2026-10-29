@@ -642,7 +642,8 @@ public actor SessionTaskCoordinator {
             if let prior = try sameOperation(operationID, fingerprint: fingerprint) { return (prior, nil, false, task.authorityEpoch) }
             if task.lifecycle == .stopped {
                 let receipt = SessionTaskReceipt(operationID: operationID, taskID: taskID, roundID: nil, delivery: .verified)
-                try store.createOperation(operationID, taskID: taskID, operation: .init(fingerprint: fingerprint, receipt: receipt))
+                try store.createOperation(operationID, taskID: taskID, operation: .init(fingerprint: fingerprint, receipt: receipt),
+                                          reserveForStop: true)
                 return (receipt, nil, false, task.authorityEpoch)
             }
             guard task.lifecycle != .stopping else { throw SessionTaskError.unverified }
@@ -656,7 +657,8 @@ public actor SessionTaskCoordinator {
             task.revision += 1
             let receipt = SessionTaskReceipt(operationID: operationID, taskID: taskID, roundID: nil,
                                               delivery: task.lifecycle == .stopped ? .verified : .unknown)
-            try store.createOperation(operationID, taskID: taskID, operation: .init(fingerprint: fingerprint, receipt: receipt))
+            try store.createOperation(operationID, taskID: taskID, operation: .init(fingerprint: fingerprint, receipt: receipt),
+                                      reserveForStop: true)
             try store.save(task)
             return (receipt, task.childBinding, needsUnknownStop, task.authorityEpoch)
         }

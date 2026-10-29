@@ -36,7 +36,7 @@ public enum SessionTaskError: Error, Equatable, Sendable {
     case unauthorized, notFound, invalidPayload, conflictingOperation, childAlreadyOwned
     case pendingInput, needsApproval, staleBinding, staleRound, alreadySettled
     case unverified, notReady, missingReport, tooManyWaiters, invalidDeadline, invalidPage
-    case storage
+    case storage, capacityExceeded
 }
 
 public enum SessionTaskLifecycle: String, Codable, Sendable {

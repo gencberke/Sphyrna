@@ -5,6 +5,16 @@ import SQLite3
 /// Private task-only SQLite store. The coordinator is its sole owner; each
 /// compound mutation is committed before the host is allowed to perform work.
 final class SessionTaskStore {
+    // No accepted receipt or result is evicted. These per-task row and encoded
+    // byte ceilings bound retained content; Stop has a small separate reserve
+    // so ordinary request saturation does not prevent revoking live work.
+    private static let maximumRounds = 32
+    private static let maximumEvents = 64
+    private static let maximumOperations = 128
+    private static let stopOperationReserve = 16
+    private static let maximumTaskBytes = 64 * 1_024
+    private static let maximumPayloadRowBytes = 128 * 1_024
+    private static let maximumOperationBytes = 8 * 1_024
     struct Operation: Codable {
         let fingerprint: String
         var receipt: SessionTaskReceipt
@@ -114,11 +124,12 @@ final class SessionTaskStore {
 
     func create(_ task: SessionTaskProjection) throws {
         try run("INSERT INTO tasks(id,parent,child,body) VALUES(?,?,?,?)", [task.id.uuidString,
-            task.parentSessionID.uuidString, task.childSessionID.uuidString, try json(task)])
+            task.parentSessionID.uuidString, task.childSessionID.uuidString,
+            try json(task, limit: Self.maximumTaskBytes)])
     }
 
     func save(_ task: SessionTaskProjection) throws {
-        try run("UPDATE tasks SET body=? WHERE id=?", [try json(task), task.id.uuidString])
+        try run("UPDATE tasks SET body=? WHERE id=?", [try json(task, limit: Self.maximumTaskBytes), task.id.uuidString])
     }
 
     func childExists(_ id: UUID) throws -> Bool {
@@ -143,12 +154,13 @@ final class SessionTaskStore {
     }
 
     func create(_ round: SessionTaskRound) throws {
+        try requireRoom("rounds", taskID: round.taskID, maximum: Self.maximumRounds)
         try run("INSERT INTO rounds(id,task,ordinal,body) VALUES(?,?,?,?)", [round.id.uuidString,
-            round.taskID.uuidString, String(round.ordinal), try json(round)])
+            round.taskID.uuidString, String(round.ordinal), try json(round, limit: Self.maximumPayloadRowBytes)])
     }
 
     func save(_ round: SessionTaskRound) throws {
-        try run("UPDATE rounds SET body=? WHERE id=?", [try json(round), round.id.uuidString])
+        try run("UPDATE rounds SET body=? WHERE id=?", [try json(round, limit: Self.maximumPayloadRowBytes), round.id.uuidString])
     }
 
     func rounds(taskID: UUID, after: Int64, limit: Int) throws -> [SessionTaskRound] {
@@ -160,12 +172,15 @@ final class SessionTaskStore {
         try get("SELECT body FROM operations WHERE id=?", [id.uuidString], as: Operation.self)
     }
 
-    func createOperation(_ id: UUID, taskID: UUID, operation: Operation) throws {
-        try run("INSERT INTO operations(id,task,body) VALUES(?,?,?)", [id.uuidString, taskID.uuidString, try json(operation)])
+    func createOperation(_ id: UUID, taskID: UUID, operation: Operation, reserveForStop: Bool = false) throws {
+        try requireRoom("operations", taskID: taskID,
+                        maximum: Self.maximumOperations + (reserveForStop ? Self.stopOperationReserve : 0))
+        try run("INSERT INTO operations(id,task,body) VALUES(?,?,?)", [id.uuidString, taskID.uuidString,
+            try json(operation, limit: Self.maximumOperationBytes)])
     }
 
     func saveOperation(_ id: UUID, operation: Operation) throws {
-        try run("UPDATE operations SET body=? WHERE id=?", [try json(operation), id.uuidString])
+        try run("UPDATE operations SET body=? WHERE id=?", [try json(operation, limit: Self.maximumOperationBytes), id.uuidString])
     }
 
     func event(_ id: UUID) throws -> SessionTaskEvent? {
@@ -173,8 +188,10 @@ final class SessionTaskStore {
     }
 
     func create(_ event: SessionTaskEvent) throws {
+        try requireRoom("events", taskID: event.taskID, maximum: Self.maximumEvents)
         try run("INSERT INTO events(id,task,round,state,body) VALUES(?,?,?,'pending',?)",
-                [event.id.uuidString, event.taskID.uuidString, event.roundID.uuidString, try json(event)])
+                [event.id.uuidString, event.taskID.uuidString, event.roundID.uuidString,
+                 try json(event, limit: Self.maximumPayloadRowBytes)])
     }
 
     func pendingEventIDs(taskID: UUID, limit: Int) throws -> [UUID] {
@@ -254,8 +271,19 @@ final class SessionTaskStore {
         }
     }
 
-    private func json<T: Encodable>(_ value: T) throws -> String {
-        guard let text = String(data: try encoder.encode(value), encoding: .utf8) else { throw SessionTaskError.storage }
+    private func requireRoom(_ table: String, taskID: UUID, maximum: Int) throws {
+        // Table names are the three fixed internal names above, never input.
+        let count = try statement("SELECT count(*) FROM \(table) WHERE task=?", [taskID.uuidString]) { stmt in
+            guard sqlite3_step(stmt) == SQLITE_ROW else { throw SessionTaskError.storage }
+            return sqlite3_column_int64(stmt, 0)
+        }
+        guard count < Int64(maximum) else { throw SessionTaskError.capacityExceeded }
+    }
+
+    private func json<T: Encodable>(_ value: T, limit: Int) throws -> String {
+        let data = try encoder.encode(value)
+        guard data.count <= limit else { throw SessionTaskError.capacityExceeded }
+        guard let text = String(data: data, encoding: .utf8) else { throw SessionTaskError.storage }
         return text
     }
     private func get<T: Decodable>(_ sql: String, _ values: [String], as type: T.Type) throws -> T? {

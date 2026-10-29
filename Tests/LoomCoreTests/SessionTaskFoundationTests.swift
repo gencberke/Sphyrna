@@ -275,6 +275,54 @@ struct TaskFixture {
 
 @Suite(.serialized)
 struct SessionTaskFoundationTests {
+    @Test func taskEventCapacityKeepsReceiptsAndAllowsStop() async throws {
+        let f = try await TaskFixture.make()
+        defer { f.clean() }
+        let round = try #require(try await f.input("work").roundID)
+        _ = try await f.coordinator.deliverPending(taskID: f.taskID)
+        let firstOperation = UUID()
+        let first = try await f.report(round, kind: .needsParentInput, payload: "first", operationID: firstOperation)
+        for index in 1..<64 {
+            _ = try await f.report(round, kind: .needsParentInput, payload: "event \(index)")
+        }
+        await #expect(throws: SessionTaskError.capacityExceeded) {
+            try await f.report(round, kind: .needsParentInput, payload: "over capacity")
+        }
+        #expect(try await f.report(round, kind: .needsParentInput, payload: "first", operationID: firstOperation) == first)
+        let stopped = try await f.coordinator.stopChild(taskID: f.taskID, parent: f.parent, operationID: UUID())
+        #expect(stopped.delivery == .verified)
+    }
+
+    @Test func taskOperationCapacityKeepsOldIdempotenceAndReservesStop() async throws {
+        let f = try await TaskFixture.make()
+        defer { f.clean() }
+        let round = try #require(try await f.input("work").roundID)
+        _ = try await f.coordinator.deliverPending(taskID: f.taskID)
+        _ = try await f.report(round)
+        let firstOperation = UUID(), next = UUID()
+        let first = try await f.coordinator.interruptAndUpdate(taskID: f.taskID, parent: f.parent, roundID: round,
+            operationID: firstOperation, nextOperationID: next, message: "unused")
+        #expect(first.delivery == .alreadySettled)
+        var rejected = false
+        for _ in 0..<128 {
+            do {
+                _ = try await f.coordinator.interruptAndUpdate(taskID: f.taskID, parent: f.parent, roundID: round,
+                    operationID: UUID(), nextOperationID: UUID(), message: "unused")
+            } catch SessionTaskError.capacityExceeded {
+                rejected = true
+                break
+            }
+        }
+        #expect(rejected)
+        #expect(try await f.coordinator.interruptAndUpdate(taskID: f.taskID, parent: f.parent, roundID: round,
+            operationID: firstOperation, nextOperationID: next, message: "unused") == first)
+        let reopened = try await SessionTaskCoordinator.open(url: f.url, host: f.host, now: { f.clock.now() })
+        #expect(try await reopened.interruptAndUpdate(taskID: f.taskID, parent: f.parent, roundID: round,
+            operationID: firstOperation, nextOperationID: next, message: "unused") == first)
+        let stopped = try await f.coordinator.stopChild(taskID: f.taskID, parent: f.parent, operationID: UUID())
+        #expect(stopped.delivery == .verified)
+    }
+
     @Test func emptyStartedChildIsBoundWithoutSpendingAnInputAndStopTargetsIt() async throws {
         let f = try await TaskFixture.make()
         defer { f.clean() }
