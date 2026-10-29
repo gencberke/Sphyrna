@@ -1,9 +1,43 @@
 import Foundation
 import Darwin
+import CryptoKit
 import Testing
 @testable import LoomCore
 
 struct CodexAppServerTests {
+    @Test func taskInputObservationKeepsOnlyBoundedUserTextDigests() async throws {
+        let (client, peer) = try await CodexSocketPeer.make()
+        defer { peer.close() }
+        let capture = CodexTaskInputCapture()
+        await client.observeTaskInputs(capture.add)
+        func send(_ item: JSONValue) throws {
+            let value: JSONValue = .object(["method": .string("item/started"), "params": .object([
+                "threadId": .string("thread"), "turnId": .string("turn"), "item": item,
+            ])])
+            let data = Array(try JSONEncoder().encode(value))
+            let pieces = stride(from: 0, to: data.count, by: 100).map { Array(data[$0..<min($0 + 100, data.count)]) }
+            for (index, piece) in pieces.enumerated() {
+                try peer.rawFrame(opcode: index == 0 ? 1 : 0, final: index == pieces.count - 1, bytes: piece)
+            }
+        }
+        func user(_ text: String) -> JSONValue {
+            .object(["type": .string("userMessage"), "content": .array([
+                .object(["type": .string("text"), "text": .string(text), "text_elements": .array([])]),
+            ])])
+        }
+        try send(user("owned pointer"))
+        try send(.object(["type": .string("commandExecution"), "command": .string("private fixture")]))
+        try send(user(String(repeating: "x", count: SessionTaskLimits.payloadBytes + 1)))
+        #expect(try await SessionRuntimeTests.waitUntil { capture.values.count == 2 })
+        let values = capture.values
+        let first = try #require(values.first), last = try #require(values.last)
+        #expect(first.threadID == "thread" && first.turnID == "turn")
+        #expect(first.digest == Data(SHA256.hash(data: Data("owned pointer".utf8))))
+        #expect(last.digest == nil)
+        #expect(first.sequence < last.sequence)
+        await client.close()
+    }
+
     @Test func idleSocketsSuspendWithoutPollingAndAsyncWorkStillProgresses() async throws {
         var connections: [(CodexAppServerClient, CodexSocketPeer)] = []
         for _ in 0..<24 { connections.append(try await CodexSocketPeer.make()) }
@@ -600,6 +634,13 @@ struct CodexAppServerTests {
     private func value(_ json: String) throws -> JSONValue {
         try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
     }
+}
+
+private final class CodexTaskInputCapture: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [CodexTaskInputObservation] = []
+    func add(_ value: CodexTaskInputObservation) { lock.withLock { storage.append(value) } }
+    var values: [CodexTaskInputObservation] { lock.withLock { storage } }
 }
 
 private final class CodexSocketPeer: @unchecked Sendable {

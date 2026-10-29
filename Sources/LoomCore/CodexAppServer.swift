@@ -155,6 +155,15 @@ public enum CodexAppServerInbound: Equatable, Sendable {
 /// method (nil for responses) and byte count. The product leaves it unset.
 public typealias CodexInboundObserver = @Sendable (_ method: String?, _ bytes: Int) -> Void
 
+/// Only the digest of an accepted native user message is retained for task
+/// proof. A nil digest means the shape or size could not be verified.
+struct CodexTaskInputObservation: Equatable, Sendable {
+    let sequence: UInt64
+    let threadID: String?
+    let turnID: String?
+    let digest: Data?
+}
+
 public struct CodexThreadSnapshot: Equatable, Sendable {
     public let threadID: String
     public let lastTurnID: String?
@@ -203,6 +212,7 @@ public actor CodexAppServerClient {
     private var deadlineTaskCount = 0
     private let wireDiagnostics: CodexWireDiagnostics?
     private let inboundObserver: CodexInboundObserver?
+    private var taskInputObserver: (@Sendable (CodexTaskInputObservation) -> Void)?
     private var nextRequestID = 1
     private var sequence: UInt64 = 0
     private var terminalError: (any Error)?
@@ -349,6 +359,10 @@ public actor CodexAppServerClient {
 
     func requestWorkCounts() -> (pending: Int, deadlines: Int) {
         (pending.count, deadlineTaskCount)
+    }
+
+    func observeTaskInputs(_ observer: (@Sendable (CodexTaskInputObservation) -> Void)?) {
+        taskInputObserver = observer
     }
 
     nonisolated func readWaitCounts() -> (waiting: Bool, wakeups: Int) {
@@ -635,6 +649,13 @@ public actor CodexAppServerClient {
             }
             sequence &+= 1
             let params = object["params"] ?? .object([:])
+            if object["id"] == nil, method == "item/started", let observer = taskInputObserver {
+                if let observation = Self.taskInput(params: params, sequence: sequence) { observer(observation) }
+                // Non-user items are dropped here; their tool content never
+                // enters the bounded task observation or product event stream.
+                decoded("task-input")
+                return
+            }
             if let id = object["id"] {
                 decoded("request")
                 let inbound = CodexAppServerInbound.request(
@@ -782,6 +803,25 @@ public actor CodexAppServerClient {
         default:
             return .unknown(method: method)
         }
+    }
+
+    static func taskInput(params: JSONValue, sequence: UInt64) -> CodexTaskInputObservation? {
+        guard let value = params.object, let item = value["item"]?.object,
+              item["type"]?.string == "userMessage" else { return nil }
+        func identifier(_ value: JSONValue?) -> String? {
+            guard let text = value?.string, !text.isEmpty, text.utf8.count <= 256,
+                  !text.utf8.contains(0) else { return nil }
+            return text
+        }
+        let thread = identifier(value["threadId"]), turn = identifier(value["turnId"])
+        var digest: Data?
+        if let content = item["content"]?.array, content.count == 1,
+           let part = content[0].object, part["type"]?.string == "text", let text = part["text"]?.string,
+           text.utf8.count <= SessionTaskLimits.payloadBytes, !text.utf8.contains(0),
+           part["text_elements"] == nil || part["text_elements"]?.array?.isEmpty == true {
+            digest = Data(SHA256.hash(data: Data(text.utf8)))
+        }
+        return CodexTaskInputObservation(sequence: sequence, threadID: thread, turnID: turn, digest: digest)
     }
 
     private static func decodeStatus(_ value: JSONValue?) -> CodexThreadStatus {
