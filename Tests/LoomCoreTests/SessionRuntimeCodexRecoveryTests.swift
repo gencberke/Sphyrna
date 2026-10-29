@@ -184,16 +184,21 @@ struct SessionRuntimeCodexRecoveryTests {
     }
 
     /// SR2-P2-10: no socket outlives its server, and a discarded server session
-    /// leaves no event state.
+    /// leaves no event state. The started runtime keeps its own task socket in the
+    /// same directory (1.8.0), so the server is judged by the sockets it added.
     @Test func teardownRemovesSocketsAndEventState() async throws {
         let context = try await SessionRuntimeTests.makeContext()
         defer { context.cleanup() }
+        func sockets() -> Set<String> {
+            Set(((try? FileManager.default.contentsOfDirectory(atPath: context.socketDirectory.path)) ?? []).filter { $0.hasSuffix(".sock") })
+        }
+        let before = sockets()
         let (launch, _) = try await SessionRuntimeCodexTests.launchCodex(context)
         #expect(try await SessionRuntimeTests.waitUntil { try await threadID(context, launch.sessionID) != nil })
+        #expect(sockets().subtracting(before).contains { $0.hasPrefix("c-") }, "the server's socket exists while it runs")
         let serverSession = try #require(await context.runtime.codexServerIdentity(forSession: launch.sessionID)?.internalSessionID)
         #expect(try await context.runtime.stopConversation(sessionID: launch.sessionID).succeeded)
-        let sockets = (try? FileManager.default.contentsOfDirectory(atPath: context.socketDirectory.path)) ?? []
-        #expect(!sockets.contains { $0.hasPrefix("c-") }, "codex sockets left: \(sockets)")
+        #expect(sockets().subtracting(before).isEmpty, "codex sockets left: \(sockets().subtracting(before))")
         #expect(await context.events.snapshot().sessions[serverSession] == nil)
         #expect((await context.runtime.shutdown()).succeeded)
     }

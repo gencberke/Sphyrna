@@ -29,8 +29,10 @@ struct HarnessProbeTests {
             .split(separator: "\n").map(String.init)
     }
 
-    private func sockets(_ context: RuntimeContext) -> [String] {
-        ((try? FileManager.default.contentsOfDirectory(atPath: context.socketDirectory.path)) ?? []).filter { $0.hasSuffix(".sock") }
+    /// The sockets in the runtime's socket directory. A started runtime keeps its own there (the task channel's since 1.8.0),
+    /// so an ask is judged by what it adds: nothing may outlive it.
+    private func sockets(_ context: RuntimeContext) -> Set<String> {
+        Set(((try? FileManager.default.contentsOfDirectory(atPath: context.socketDirectory.path)) ?? []).filter { $0.hasSuffix(".sock") })
     }
 
     // MARK: Codex
@@ -82,6 +84,7 @@ struct HarnessProbeTests {
     @Test func allFiveAnswersAreReadAndTheServerAskedOnlyToRead() async throws {
         let context = try await SessionRuntimeTests.makeContext()
         defer { context.cleanup() }
+        let before = sockets(context)
         let answer = try #require(await source(context).read())
 
         #expect(answer.version == "0.0.1")
@@ -103,9 +106,9 @@ struct HarnessProbeTests {
 
         // Never a thread, never a turn: the connection made exactly the handshake and the four reads.
         #expect(methods(context) == ["initialize", "initialized", "account/read", "account/rateLimits/read", "account/usage/read", "model/list"])
-        // And nothing is left: no run, no socket file.
+        // And nothing is left: no run, no socket file of its own.
         #expect(await context.supervisor.runningSessionIDs().isEmpty)
-        #expect(sockets(context).isEmpty)
+        #expect(sockets(context) == before, "left: \(sockets(context).subtracting(before))")
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
@@ -131,12 +134,13 @@ struct HarnessProbeTests {
     @Test func aServerThatNeverAnswersTimesOutAndEverythingIsReaped() async throws {
         let context = try await SessionRuntimeTests.makeContext()
         defer { context.cleanup() }
+        let before = sockets(context)
         let start = ProcessInfo.processInfo.systemUptime
         let timedOut = await source(context, mode: "hang", timeout: 1.5).ask()
         #expect(timedOut.answer == nil && timedOut.failure?.category == .timedOut, "the reason is the timeout, not an empty answer")
         #expect(ProcessInfo.processInfo.systemUptime - start < 8, "the ask is bounded by its timeout, not by the request's")
         #expect(await context.supervisor.runningSessionIDs().isEmpty)
-        #expect(sockets(context).isEmpty)
+        #expect(sockets(context) == before, "left: \(sockets(context).subtracting(before))")
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
@@ -145,11 +149,12 @@ struct HarnessProbeTests {
         defer { context.cleanup() }
         let copy = context.root.appendingPathComponent("bin/loom-fake-provider").path
         let opened = await context.supervisor.scopesOpened
+        let before = sockets(context)
         #expect(await source(context, mode: "hang", timeout: 3, executable: copy).read() == nil)
         #expect(await context.supervisor.scopesOpened == opened + 1, "the probe ran in a scope of its own")
         #expect(await context.supervisor.liveScopes.isEmpty, "and the scope is released")
         #expect(await context.supervisor.runningSessionIDs().isEmpty)
-        #expect(sockets(context).isEmpty)
+        #expect(sockets(context) == before, "left: \(sockets(context).subtracting(before))")
         // A good ask in a scope reads the same answer and releases the scope too.
         #expect(await source(context, executable: copy).read()?.models?.count == 2)
         #expect(await context.supervisor.liveScopes.isEmpty)
