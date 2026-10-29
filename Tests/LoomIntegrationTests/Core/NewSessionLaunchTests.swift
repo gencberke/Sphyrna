@@ -188,16 +188,18 @@ struct GitWorkspaceTests {
         #expect(try await Self.branch(project) == "feat/x")
     }
 
-    @Test func aHookThatNeverReturnsTimesOutAfterThirtySecondsAndLeavesNoHungRead() async throws {
+    /// The app gives git 30 s (`GitWorkspace.begin`'s default); 3 s here. A hook that never returns (597 s) ends the call
+    /// at the deadline, not when the hook would have.
+    @Test func aHookThatNeverReturnsTimesOutAtTheDeadlineAndLeavesNoHungRead() async throws {
         let (root, project) = try await Self.makeRepository()
         defer { try? FileManager.default.removeItem(at: root); Self.killSleepers("597") }
         try Self.installHook("sleep 597 &\nsleep 597", in: project)
         let began = Date()
         await #expect(throws: GitWorkspace.Failure.git("Git did not answer in time.")) {
-            _ = try await GitWorkspace.begin(.newBranch("feat/x"), projectFolder: project)
+            _ = try await GitWorkspace.begin(.newBranch("feat/x"), projectFolder: project, timeout: 3)
         }
         let took = Date().timeIntervalSince(began)
-        #expect(took > 25 && took < 45, "took \(took) s")
+        #expect(took > 2.5 && took < 20, "bounded by the 3 s deadline, not by the hook's 597 s: took \(took) s")
         // The switch had been made when the hook hung: it is put back (without running the hook again).
         #expect(try await Self.branch(project) == "main", "the repository is back on its branch")
         #expect(!(try await GitWorkspace.run("/usr/bin/git", ["-C", project, "branch", "--list", "feat/x"], timeout: 10))
