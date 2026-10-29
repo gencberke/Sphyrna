@@ -5,10 +5,79 @@ import Testing
 @testable import LoomCore
 
 struct CodexAppServerTests {
+    @Test func alreadyReadFrameFencesTaskWriteUntilActorConsumesIt() async throws {
+        var descriptors: [Int32] = [0, 0]
+        guard socketpair(AF_UNIX, SOCK_STREAM, 0, &descriptors) == 0 else { throw CodexAppServerError.closed }
+        let transport = try CodexWebSocketTransport(descriptor: descriptors[0], bufferedFrames: [])
+        defer { transport.close(); Darwin.close(descriptors[1]) }
+        let lease = SessionTaskRunLease()
+        transport.setTaskIngress(lease)
+        let before = try #require(lease.admit { $0 })
+        let payload = Array(#"{"method":"thread/status/changed"}"#.utf8)
+        let wire = [UInt8(0x81), UInt8(payload.count)] + payload
+        #expect(wire.withUnsafeBytes { Darwin.send(descriptors[1], $0.baseAddress, $0.count, 0) } == wire.count)
+        let frames = try await transport.receive()
+        #expect(frames.count == 1)
+        #expect(lease.admit { _ in true } == nil)
+        let sends = CodexTaskWriteCapture()
+        let sent = try transport.sendTask(Data("{}".utf8), transaction: { write in
+            try lease.withAdmission(revision: before, write)
+        }, writeOnce: { _, frame in sends.record(frame.count); return frame.count })
+        #expect(!sent && sends.count == 0)
+        frames.forEach { $0.finish() }
+        let after = try #require(lease.admit { $0 })
+        let next = try transport.sendTask(Data("{}".utf8), transaction: { write in
+            try lease.withAdmission(revision: after, write)
+        }, writeOnce: { _, frame in sends.record(frame.count); return frame.count })
+        #expect(next && sends.count == 1)
+    }
+
+    @Test func partialReadFrameAlsoFencesTaskWriteUntilComplete() async throws {
+        var descriptors: [Int32] = [0, 0]
+        guard socketpair(AF_UNIX, SOCK_STREAM, 0, &descriptors) == 0 else { throw CodexAppServerError.closed }
+        let transport = try CodexWebSocketTransport(descriptor: descriptors[0], bufferedFrames: [])
+        defer { transport.close(); Darwin.close(descriptors[1]) }
+        let lease = SessionTaskRunLease()
+        transport.setTaskIngress(lease)
+        let before = try #require(lease.admit { $0 })
+        let payload = Array(#"{"method":"thread/status/changed"}"#.utf8)
+        let prefix = [UInt8(0x81), UInt8(payload.count)] + Array(payload.prefix(4))
+        #expect(prefix.withUnsafeBytes { Darwin.send(descriptors[1], $0.baseAddress, $0.count, 0) } == prefix.count)
+        let receive = Task { try await transport.receive() }
+        #expect(try await SessionRuntimeTests.waitUntil(2) { transport.readWaitCounts().waiting })
+        #expect(lease.admit { _ in true } == nil)
+        let sends = CodexTaskWriteCapture()
+        let sent = try transport.sendTask(Data("{}".utf8), transaction: { write in
+            try lease.withAdmission(revision: before, write)
+        }, writeOnce: { _, frame in sends.record(frame.count); return frame.count })
+        #expect(!sent && sends.count == 0)
+        let rest = Array(payload.dropFirst(4))
+        #expect(rest.withUnsafeBytes { Darwin.send(descriptors[1], $0.baseAddress, $0.count, 0) } == rest.count)
+        let frames = try await receive.value
+        #expect(frames.count == 1)
+        frames.forEach { $0.finish() }
+        #expect(lease.admit { _ in true } == true)
+    }
+
+    @Test func taskFrameBackpressureDefersAndPartialFrameClosesConnection() throws {
+        var descriptors: [Int32] = [0, 0]
+        guard socketpair(AF_UNIX, SOCK_STREAM, 0, &descriptors) == 0 else { throw CodexAppServerError.closed }
+        let transport = try CodexWebSocketTransport(descriptor: descriptors[0], bufferedFrames: [])
+        defer { transport.close(); Darwin.close(descriptors[1]) }
+        let denied = try transport.sendTask(Data("{}".utf8), transaction: { _ in nil })
+        #expect(!denied)
+        let blocked = try transport.sendTask(Data("{}".utf8), transaction: { try $0() }, writeOnce: { _, _ in 0 })
+        #expect(!blocked)
+        #expect(throws: CodexAppServerError.self) {
+            _ = try transport.sendTask(Data("{}".utf8), transaction: { try $0() }, writeOnce: { _, _ in 1 })
+        }
+        #expect(throws: CodexAppServerError.self) { try transport.send(Data("{}".utf8)) }
+    }
+
     @Test func taskTurnRequestsPreserveNativeSettingsAndExactIdentity() async throws {
         let (client, peer) = try await CodexSocketPeer.make()
         defer { peer.close() }
-        let start = Task { try await client.startTaskTurn(threadID: "owned-thread", text: "task pointer", timeout: 2) }
+        let start = Task { try await client.startTaskTurn(threadID: "owned-thread", text: "task pointer", transaction: { try $0() }, timeout: 2) }
         let startFrame = try await peer.nextFrame()
         let startCall = try JSONDecoder().decode(JSONValue.self, from: Data(startFrame.bytes))
         #expect(startCall["method"] == .string("turn/start"))
@@ -685,6 +754,13 @@ private final class CodexTaskInputCapture: @unchecked Sendable {
     private var storage: [CodexTaskInputObservation] = []
     func add(_ value: CodexTaskInputObservation) { lock.withLock { storage.append(value) } }
     var values: [CodexTaskInputObservation] { lock.withLock { storage } }
+}
+
+private final class CodexTaskWriteCapture: @unchecked Sendable {
+    private let lock = NSLock()
+    private var writes = 0
+    func record(_ ignored: Int) { lock.withLock { writes += 1 } }
+    var count: Int { lock.withLock { writes } }
 }
 
 private final class CodexSocketPeer: @unchecked Sendable {

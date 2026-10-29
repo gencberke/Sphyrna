@@ -195,6 +195,17 @@ public struct CodexThreadSnapshot: Equatable, Sendable {
     }
 }
 
+private enum CodexTaskSendError: Error { case deferred }
+
+private final class CodexTaskSendPermit: @unchecked Sendable {
+    private let lock = NSLock()
+    private var active = true
+    func revoke() { lock.withLock { active = false } }
+    func attempt(_ body: () throws -> Int?) rethrows -> Int? {
+        try lock.withLock { guard active else { return nil }; return try body() }
+    }
+}
+
 /// Typed async client for the installed Codex app-server protocol. The decoder
 /// intentionally keeps unrecognized methods and fields instead of failing the
 /// stream because the protocol is experimental and grows independently of Loom.
@@ -366,7 +377,10 @@ public actor CodexAppServerClient {
         taskInputObserver = observer
     }
 
-    func fenceTaskEvents(with lease: SessionTaskRunLease?) { taskEventLease = lease }
+    func fenceTaskEvents(with lease: SessionTaskRunLease?) {
+        taskEventLease = lease
+        transport.setTaskIngress(lease)
+    }
 
     nonisolated func readWaitCounts() -> (waiting: Bool, wakeups: Int) {
         transport.readWaitCounts()
@@ -376,10 +390,16 @@ public actor CodexAppServerClient {
         method: String, params: JSONValue = .object([:]),
         timeout: TimeInterval = 20
     ) async throws -> JSONValue {
+        try await request(method: method, params: params, timeout: timeout, taskTransaction: nil)
+    }
+
+    private func request(method: String, params: JSONValue, timeout: TimeInterval,
+                         taskTransaction: TerminalWriteTransaction?) async throws -> JSONValue {
         try Task.checkCancellation()
         if let terminalError { throw terminalError }
         let id = nextRequestID
         nextRequestID += 1
+        let taskPermit = taskTransaction == nil ? nil : CodexTaskSendPermit()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 deadlineTaskCount += 1
@@ -389,23 +409,29 @@ public actor CodexAppServerClient {
                         try await Task.sleep(for: .seconds(max(0.02, timeout)))
                         expired = true
                     } catch { expired = false }
+                    if expired { taskPermit?.revoke() }
                     await self?.deadlineEnded(id: id, method: method, expired: expired)
                 }
                 pending[id] = PendingRequest(continuation: continuation, deadline: deadline)
                 let transport = self.transport
                 Task.detached {
                     do {
-                        try transport.send(try JSONEncoder().encode(JSONValue.object([
-                            "id": .number(Double(id)),
-                            "method": .string(method),
-                            "params": params,
-                        ])))
+                        let data = try JSONEncoder().encode(JSONValue.object([
+                            "id": .number(Double(id)), "method": .string(method), "params": params,
+                        ]))
+                        if let taskTransaction, let taskPermit {
+                            let sent = try transport.sendTask(data, transaction: { write in
+                                try taskPermit.attempt { try taskTransaction(write) }
+                            })
+                            if !sent { throw CodexTaskSendError.deferred }
+                        } else { try transport.send(data) }
                     } catch {
                         await self.failRequest(id: id, error: error)
                     }
                 }
             }
         } onCancel: {
+            taskPermit?.revoke()
             Task { await self.failRequest(id: id, error: CancellationError()) }
         }
     }
@@ -421,14 +447,19 @@ public actor CodexAppServerClient {
 
     /// Submit one task pointer to this owned thread, retaining its native
     /// settings. A response is a submission receipt, not proof of consumption.
-    func startTaskTurn(threadID: String, text: String, timeout: TimeInterval = 20) async throws -> String {
-        guard Self.validTaskIdentifier(threadID), (try? SessionTaskLimits.text(text)) != nil else {
+    func startTaskTurn(threadID: String, text: String, transaction: @escaping TerminalWriteTransaction,
+                       timeout: TimeInterval = 20) async throws -> String? {
+        guard Self.validTaskIdentifier(threadID), !text.isEmpty, text.utf8.count <= 1_024,
+              text.utf8.allSatisfy({ (0x20...0x7e).contains($0) }) else {
             throw CodexAppServerError.protocolViolation("invalid task turn input")
         }
-        let result = try await request(method: "turn/start", params: .object([
-            "threadId": .string(threadID),
-            "input": .array([.object(["type": .string("text"), "text": .string(text), "text_elements": .array([])])]),
-        ]), timeout: timeout)
+        let result: JSONValue
+        do {
+            result = try await request(method: "turn/start", params: .object([
+                "threadId": .string(threadID),
+                "input": .array([.object(["type": .string("text"), "text": .string(text), "text_elements": .array([])])]),
+            ]), timeout: timeout, taskTransaction: transaction)
+        } catch CodexTaskSendError.deferred { return nil }
         guard let turnID = result["turn"]?["id"]?.string, Self.validTaskIdentifier(turnID) else {
             throw CodexAppServerError.protocolViolation("task turn response has no valid turn id")
         }
@@ -640,7 +671,10 @@ public actor CodexAppServerClient {
             do {
                 while !Task.isCancelled {
                     let messages = try await transport.receive()
-                    for message in messages { await self?.receive(message) }
+                    for message in messages {
+                        if let self { await self.receive(message) }
+                        else { message.finish() }
+                    }
                 }
             } catch {
                 await self?.readerStopped(error)
@@ -648,12 +682,11 @@ public actor CodexAppServerClient {
         }
     }
 
-    private func receive(_ data: Data) async {
-        // Cover decoding and diagnostics too, until the sequence is handed to
-        // the ordered consumer (or to the task-input observer).
-        let ingressLease = taskEventLease
-        ingressLease?.beginHook()
-        defer { ingressLease?.finishHook() }
+    private func receive(_ frame: CodexReceivedFrame) async {
+        // The transport fenced this frame before releasing its socket lock.
+        let data = frame.data
+        let ingressLease = frame.lease
+        defer { frame.finish() }
         let diagnosticToken = wireDiagnostics?.observe(data)
         if let inboundObserver {
             let head = try? JSONDecoder().decode(JSONValue.self, from: data)
@@ -690,7 +723,7 @@ public actor CodexAppServerClient {
             let params = object["params"] ?? .object([:])
             if object["id"] == nil, method == "item/started", let observer = taskInputObserver {
                 if let observation = Self.taskInput(params: params, sequence: sequence) {
-                    taskEventLease?.beginCodexEvent(sequence)
+                    ingressLease?.beginCodexEvent(sequence)
                     observer(observation)
                 }
                 // Non-user items are dropped here; their tool content never
@@ -709,14 +742,14 @@ public actor CodexAppServerClient {
                     )
                 )
                 if let diagnosticToken { await wireDiagnostics?.route(inbound, token: diagnosticToken) }
-                taskEventLease?.beginCodexEvent(sequence)
+                ingressLease?.beginCodexEvent(sequence)
                 yieldInbound(inbound)
             } else {
                 let event = Self.decodeEvent(method: method, params: params)
                 if case .unknown = event { decoded("unknown-event") } else { decoded("event") }
                 let inbound = CodexAppServerInbound.event(sequence: sequence, event)
                 if let diagnosticToken { await wireDiagnostics?.route(inbound, token: diagnosticToken) }
-                taskEventLease?.beginCodexEvent(sequence)
+                ingressLease?.beginCodexEvent(sequence)
                 yieldInbound(inbound)
             }
         } catch {
@@ -919,7 +952,13 @@ public actor CodexAppServerClient {
     }
 }
 
-private final class CodexWebSocketTransport: @unchecked Sendable {
+struct CodexReceivedFrame: Sendable {
+    let data: Data
+    let lease: SessionTaskRunLease?
+    func finish() { lease?.finishHook() }
+}
+
+final class CodexWebSocketTransport: @unchecked Sendable {
     private let lock = NSLock()
     private var descriptor: Int32 = -1
     private let limit = 16 * 1024 * 1024
@@ -930,6 +969,8 @@ private final class CodexWebSocketTransport: @unchecked Sendable {
     private var readSourceSuspended = true
     private var readWaiter: CheckedContinuation<Void, any Error>?
     private var testReadWakeups: Int?
+    private var taskIngress: SessionTaskRunLease?
+    private var partialIngress: SessionTaskRunLease?
 
     init(descriptor: Int32, bufferedFrames: [UInt8]) throws {
         self.descriptor = descriptor
@@ -1014,11 +1055,15 @@ private final class CodexWebSocketTransport: @unchecked Sendable {
         readSource = nil
         let waiter = readWaiter
         readWaiter = nil
+        let incomplete = partialIngress
+        partialIngress = nil
         if let source {
             if readSourceSuspended { source.resume() }
             source.cancel()
         }
         lock.unlock()
+        incomplete?.invalidate()
+        incomplete?.finishHook()
         waiter?.resume(throwing: CodexAppServerError.closed)
         // Once installed, the source's cancel handler exclusively owns close.
         if source == nil, fd >= 0 { Darwin.close(fd) }
@@ -1067,6 +1112,57 @@ private final class CodexWebSocketTransport: @unchecked Sendable {
         } onCancel: { self.close() }
     }
 
+    func setTaskIngress(_ lease: SessionTaskRunLease?) {
+        lock.withLock {
+            partialIngress?.finishHook()
+            partialIngress = nil
+            taskIngress = lease
+            if !input.isEmpty || fragments != nil {
+                lease?.beginHook()
+                partialIngress = lease
+            }
+        }
+    }
+
+    /// Task pointers are tiny. A single nonblocking send makes the admission
+    /// linearization point explicit; a partial frame closes this connection.
+    func sendTask(_ data: Data, transaction: TerminalWriteTransaction,
+                  writeOnce: (@Sendable (Int32, [UInt8]) -> Int)? = nil) throws -> Bool {
+        let payload = Array(data)
+        guard payload.count <= 4_080 else {
+            throw CodexAppServerError.protocolViolation("task frame exceeds 4 KiB")
+        }
+        var frame: [UInt8] = [0x81]
+        if payload.count < 126 { frame.append(0x80 | UInt8(payload.count)) }
+        else { frame += [0x80 | 126, UInt8(payload.count >> 8), UInt8(payload.count & 0xff)] }
+        let mask = (0..<4).map { _ in UInt8.random(in: .min ... .max) }
+        frame += mask
+        frame += payload.enumerated().map { $0.element ^ mask[$0.offset % 4] }
+        guard frame.count <= 4_096 else { throw CodexAppServerError.protocolViolation("task frame exceeds 4 KiB") }
+        lock.lock()
+        var partial = false
+        defer { lock.unlock(); if partial { close() } }
+        guard descriptor >= 0, !closed else { throw CodexAppServerError.closed }
+        let fd = descriptor, bytes = frame
+        let count = try transaction {
+            let n = if let writeOnce { writeOnce(fd, bytes) }
+                else { bytes.withUnsafeBytes { Darwin.send(fd, $0.baseAddress, $0.count, 0) } }
+            if n < 0 {
+                if errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR { return 0 }
+                throw CodexAppServerError.system(operation: "task write", code: errno)
+            }
+            return n
+        }
+        guard let count, count > 0 else { return false }
+        guard count == frame.count else {
+            partial = true
+            closed = true
+            _ = Darwin.shutdown(fd, SHUT_RDWR)
+            throw CodexAppServerError.protocolViolation("partial task frame")
+        }
+        return true
+    }
+
     func send(_ data: Data) throws {
         guard data.count <= limit else {
             throw CodexAppServerError.protocolViolation("outgoing message exceeds 16 MiB")
@@ -1076,7 +1172,7 @@ private final class CodexWebSocketTransport: @unchecked Sendable {
         try sendFrameLocked(opcode: 1, payload: Array(data))
     }
 
-    func receive() async throws -> [Data] {
+    func receive() async throws -> [CodexReceivedFrame] {
         while true {
             try Task.checkCancellation()
             let messages = try receiveReady()
@@ -1085,29 +1181,47 @@ private final class CodexWebSocketTransport: @unchecked Sendable {
         }
     }
 
-    private func receiveReady() throws -> [Data] {
+    private func receiveReady() throws -> [CodexReceivedFrame] {
         var messages: [Data] = []
         lock.lock()
         defer { lock.unlock() }
         guard descriptor >= 0, !closed else { throw CodexAppServerError.closed }
-        try parseFramesLocked(into: &messages)
-        if !messages.isEmpty { return messages }
-        var bytes = [UInt8](repeating: 0, count: 16_384)
-        let count = Darwin.recv(descriptor, &bytes, bytes.count, 0)
-        if count > 0 {
-            guard input.count + count <= limit + 14 else {
-                throw CodexAppServerError.protocolViolation("receive buffer exceeds 16 MiB")
-            }
-            input.append(contentsOf: bytes.prefix(count))
+        let lease = taskIngress
+        do {
             try parseFramesLocked(into: &messages)
-            return messages
+            if messages.isEmpty {
+                var bytes = [UInt8](repeating: 0, count: 16_384)
+                let count = Darwin.recv(descriptor, &bytes, bytes.count, 0)
+                if count > 0 {
+                    guard input.count + count <= limit + 14 else {
+                        throw CodexAppServerError.protocolViolation("receive buffer exceeds 16 MiB")
+                    }
+                    input.append(contentsOf: bytes.prefix(count))
+                    try parseFramesLocked(into: &messages)
+                } else if count == 0 {
+                    closed = true
+                    throw CodexAppServerError.closed
+                } else if errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK {
+                    throw CodexAppServerError.system(operation: "read", code: errno)
+                }
+            }
+            let frames = messages.map { data in
+                lease?.beginHook()
+                return CodexReceivedFrame(data: data, lease: lease)
+            }
+            if !input.isEmpty || fragments != nil {
+                if partialIngress == nil { lease?.beginHook(); partialIngress = lease }
+            } else {
+                partialIngress?.finishHook()
+                partialIngress = nil
+            }
+            return frames
+        } catch {
+            lease?.invalidate()
+            partialIngress?.finishHook()
+            partialIngress = nil
+            throw error
         }
-        if count == 0 {
-            closed = true
-            throw CodexAppServerError.closed
-        }
-        if errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK { return [] }
-        throw CodexAppServerError.system(operation: "read", code: errno)
     }
 
     private func upgrade(deadline: TimeInterval) throws {
