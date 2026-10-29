@@ -201,9 +201,10 @@ struct ProjectPageTests {
         // Not the 30-day-old session, not Codex, not another project's.
         #expect(Set(asked) == ["conv-recent", "conv-week"])
         #expect(model.projectPage.usage?.tokens.total == 4_800_000 && model.projectPage.usageLoad == .done)
-        // The week's Codex session is said to be left out, and nothing failed.
-        #expect(model.projectPage.usageOmitsCodex && !model.projectPage.usageFailed)
-        #expect(model.projectPageEvidence()["usageOmitsCodex"] as? Bool == true)
+        // The week's Codex session is said to be left out, by its harness's name, and nothing failed.
+        #expect(model.projectPage.usageUncounted == ["Codex"] && !model.projectPage.usageFailed)
+        #expect(model.projectPageEvidence()["usageUncounted"] as? [String] == ["Codex"])
+        #expect(ProjectUsageText.notCounted(model.projectPage.usageUncounted) == "Codex sessions are not counted.")
     }
 
     @Test func aProjectWithNoUsageIndexShowsNoUsage() async throws {

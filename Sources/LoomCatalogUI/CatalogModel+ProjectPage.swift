@@ -45,8 +45,9 @@ public final class ProjectPageState {
     public internal(set) var usage: ProjectUsage?
     /// The index could not answer: the page says the usage could not be read, not that there is none.
     public internal(set) var usageFailed = false
-    /// The week holds Codex sessions, which the usage index (Claude's) does not count: the card says so.
-    public internal(set) var usageOmitsCodex = false
+    /// The harnesses, by name, of the week's sessions whose transcripts the usage index does not count (Codex's): the card
+    /// names them.
+    public internal(set) var usageUncounted: [String] = []
     public internal(set) var usageLoad = ProjectPageLoad.idle
     var branches: ProjectBranches?
     public internal(set) var branchesLoad = ProjectPageLoad.idle
@@ -86,7 +87,7 @@ public final class ProjectPageState {
         cursor = nil
         usage = nil
         usageFailed = false
-        usageOmitsCodex = false
+        usageUncounted = []
         usageLoad = .loading
         branches = nil
         branchesLoad = .loading
@@ -111,7 +112,7 @@ public final class ProjectPageState {
         cursor = nil
         usage = nil
         usageFailed = false
-        usageOmitsCodex = false
+        usageUncounted = []
         usageLoad = .idle
         branches = nil
         branchesLoad = .idle
@@ -267,13 +268,17 @@ extension CatalogModel {
 
         let cutoff = Date().addingTimeInterval(-Self.projectPageWeekSlack)
         let weekRecords = collected.filter { $0.lastActivityAt >= cutoff }
-        // The usage index is Claude's: it counts the week's Claude sessions. No Codex rollout is scanned here, so a mixed
-        // week says its Codex sessions are not counted, never that the usage could not be read.
-        let omitsCodex = weekRecords.contains { HarnessTranscriptKind(provider: $0.session.provider) == .codex }
+        // The usage index counts the transcript formats it reads (Claude's). The week's other readable sessions are named
+        // under the figures, never a failure: no rollout is scanned here.
+        var uncounted: [String] = []
         let identifiers = weekRecords.compactMap { record -> String? in
-            guard capabilities(of: record.session.provider).readsTranscript,
-                  HarnessTranscriptKind(provider: record.session.provider) == .claude,
-                  let id = record.session.providerConversationID, !id.isEmpty else { return nil }
+            let harness = capabilities(of: record.session.provider)
+            guard harness.readsTranscript, let kind = HarnessTranscriptKind(provider: record.session.provider) else { return nil }
+            guard kind.countsInProjectUsage else {
+                if !uncounted.contains(harness.displayName) { uncounted.append(harness.displayName) }
+                return nil
+            }
+            guard let id = record.session.providerConversationID, !id.isEmpty else { return nil }
             return id
         }
         page.reads.usageLookups += 1
@@ -285,7 +290,7 @@ extension CatalogModel {
         guard isCurrent(generation) else { return }
         page.usage = usage
         page.usageFailed = usageFailed
-        page.usageOmitsCodex = omitsCodex
+        page.usageUncounted = uncounted
         page.usageLoad = .done
     }
 
@@ -406,7 +411,7 @@ extension CatalogModel {
             "loads": ["sessions": load(page.sessionsLoad), "usage": load(page.usageLoad),
                       "branches": load(page.branchesLoad), "instructions": load(page.instructionsLoad)],
             "sessions": page.records.count, "hasMore": page.hasMore, "sessionsFailed": page.sessionsFailed, "usageFailed": page.usageFailed,
-            "usageOmitsCodex": page.usageOmitsCodex, "usage": usage,
+            "usageUncounted": page.usageUncounted, "usage": usage,
             "lastLines": ["read": page.lastLines.count, "found": page.lastLines.values.filter { !$0.isEmpty }.count],
             "branches": page.branches.map { ["count": $0.branches.count, "truncated": $0.truncated] as [String: Any] } ?? [:],
             "instructions": page.instructions.map { ["lines": $0.lineCount ?? -1, "bytes": $0.byteCount, "truncated": $0.truncated] as [String: Any] } ?? [:],

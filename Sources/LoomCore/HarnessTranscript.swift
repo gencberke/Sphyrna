@@ -20,6 +20,15 @@ public enum HarnessTranscriptKind: Equatable, Sendable {
         case .codex: codex
         }
     }
+
+    /// The project page's usage index counts this format's sessions. It reads Claude's transcripts; no Codex rollout is
+    /// scanned for it.
+    public var countsInProjectUsage: Bool {
+        switch self {
+        case .claude: true
+        case .codex: false
+        }
+    }
 }
 
 public struct CodexRolloutFile: Equatable, Sendable {

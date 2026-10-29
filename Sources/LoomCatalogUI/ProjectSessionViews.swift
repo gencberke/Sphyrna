@@ -352,8 +352,11 @@ enum ProjectUsageText {
         loading ? "Reading usage\u{2026}" : failed ? "Could not read this project's usage." : "No usage in the past 7 days."
     }
 
-    /// Under the figures, or the line, of a week that holds Codex sessions: the usage index counts Claude's only.
-    static let codexNotCounted = "Codex sessions are not counted."
+    /// Under the figures, or the line, of a week with sessions the usage index does not count (it reads Claude's
+    /// transcripts): "Codex sessions are not counted."
+    static func notCounted(_ harnesses: [String]) -> String {
+        harnesses.joined(separator: " and ") + " sessions are not counted."
+    }
 }
 
 /// The project's tokens, sessions and estimated cost over the past seven days, from the usage index.
@@ -376,7 +379,7 @@ private struct ProjectUsageCard: View {
             } else {
                 ProjectCardText(text: ProjectUsageText.line(loading: page.usageLoad == .loading, failed: page.usageFailed))
             }
-            if page.usageOmitsCodex { ProjectCardText(text: ProjectUsageText.codexNotCounted) }
+            if !page.usageUncounted.isEmpty { ProjectCardText(text: ProjectUsageText.notCounted(page.usageUncounted)) }
         }
         .accessibilityLabel("Usage in the past 7 days")
         .accessibilityIdentifier("project-usage")
