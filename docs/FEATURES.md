@@ -219,8 +219,8 @@ transcript reads in two voices.
 ### F13. Harnesses & Connections
 One capability table says what each harness may do, and every gate asks it. Settings → Connections shows each
 harness's health in six states, its version advice, the vendor's install and sign-in commands (the user runs them) and
-Deep Check. Sphyrna never handles a credential. Codex is read but not started.
-- **Spec:** [SPEC §6.7](../SPEC.md) · **Status:** Live (Codex read only) · **Already after T3 Code:** D-98
+Deep Check. Sphyrna never handles a credential. Codex starts/resumes in its native terminal and supplies bounded recorded reads after D1/D2; deletion is still pending.
+- **Spec:** [SPEC §6.7](../SPEC.md) · **Status:** Live (Codex native terminal and bounded reads; deletion pending) · **Already after T3 Code:** D-98
 - **Orca:** One hook listener per agent; an installation-problem model (`src/shared/agent-cli-installation-problem.ts`).
 - **T3 Code:** One `status.ts` per provider package; a missing binary reads "… is not installed or not on PATH" (`packages/provider-grok/src/server/status.ts:443`); provider states ready, warning ("Limited"), error ("Unavailable"), disabled, unauthenticated (`apps/web/src/components/chat/ModelPickerSidebar.tsx:16-23`).
 - **Sphyrna takes:** A descriptor per harness in one catalogue, availability by PATH, On / Off / Not found (C1), every list from the catalogue (C2), Connections and Home with Not found (C3).

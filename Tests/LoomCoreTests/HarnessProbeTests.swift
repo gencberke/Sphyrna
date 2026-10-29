@@ -475,13 +475,17 @@ struct HarnessProbeTests {
                                resetsAt: Date(timeIntervalSince1970: 1_791_482_400)),
             HarnessLimitWindow(id: "seven_day", name: "Weekly", durationMinutes: 10_080, usedPercent: 82,
                                resetsAt: ISO8601DateFormatter().date(from: "2026-10-12T09:00:00Z")),
+            HarnessLimitWindow(id: "seven_day_opus", name: "Weekly · Opus", durationMinutes: 10_080,
+                               usedPercent: 5, resetsAt: nil),
         ])
+        #expect(!answer.windowsComplete, "the legacy fixture reports Opus but no model_scoped coverage")
         #expect(answer.account == .subscription(email: "someone@example.invalid", plan: "Claude Max"))
         #expect(answer.tokenDays == nil && answer.models == nil, "the usage index and the model catalog own those for Claude")
         // Through the probe: the reading holds them in memory beside the windows.
         let probe = HarnessProbe(connections: HarnessConnections(), sources: [.claude: ClaudeProbeSource(fetcher: fetcher)])
         let kept = await probe.probe(harness: .claude)
-        #expect(kept?.account == .subscription(email: "someone@example.invalid", plan: "Claude Max") && kept?.windows.count == 2)
+        #expect(kept?.account == .subscription(email: "someone@example.invalid", plan: "Claude Max") && kept?.windows == answer.windows)
+        #expect(kept?.windowsComplete == false)
     }
 
     @Test func claudeWhoseLimitsAreUnavailableStillNamesTheAccountAndKeepsNoWindows() async throws {
