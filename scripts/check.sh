@@ -1,18 +1,26 @@
 #!/bin/zsh
 # The repo's required local checks in one command (there is no CI). DEVELOPMENT.md §2.
-# Usage: scripts/check.sh [--suite <Name>...] [--tests] [--windows --idle] [--full --idle] [--release-tree]
-#                         [--scratch <path>] [--macro-plugin <dylib>]
+# Usage: scripts/check.sh [--unit] [--integration] [--tests] [--suite <Name>...] [--frozen] [--windows --idle]
+#                         [--full --idle] [--release-tree] [--scratch <path>] [--macro-plugin <dylib>]
 #   default   git diff --check, git diff --cached --check, trailing whitespace in untracked files, zsh -n on
 #             scripts/**/*.sh, py_compile on scripts/**/*.py, clang -Wall -Wextra -Werror -fsyntax-only on the C
 #             sources, the source guards and the test guard (scripts/check-source-guards.py, check-tests.py), then
 #             swift build (debug) in the build slot. After any test step the log goes into the test ledger
 #             (scripts/test-ledger.py) and the wall time per target and the five slowest tests are printed.
-#   --suite   adds swift test --filter <Name> per name (target, suite or test name, a regex).
-#   --tests   adds every test target. Tests that open a real window are skipped unless --windows.
-#   --windows includes the window tests; needs --idle (unlocked screen, Mac idle by the user's word). With --tests
-#             or --full they run in a swift test of their own, after the other tests.
-#   --full    needs --idle: release build, the staged release-tree build (--release-tree) and the full
-#             release suite, window tests included (alone, after the rest).
+#   Tests run by tier, and a tier is its targets (DEVELOPMENT §2): T1 unit is the area targets, T2 integration is
+#   LoomIntegrationTests, T3 window is LoomWindowTests, TF frozen is LoomFrozenTests.
+#   --unit    adds T1 in debug: the routine slice check.
+#   --integration  adds T2 in debug.
+#   --tests   adds T1 and T2 in debug.
+#   --suite   adds swift test --filter <Name> per name (target, suite or test name, a regex), never in the window or
+#             frozen target: --windows and --frozen run those whole.
+#   --frozen  adds TF in debug, after the rest: code D-100 and D-102 left unreachable, kept and compiled, run on demand;
+#             with --suite, the named suites there instead of the whole lane.
+#   --windows adds T3 in a swift test of its own, after every other test step; needs --idle (unlocked screen, Mac idle
+#             by the user's word).
+#   --full    needs --idle: the staged release-tree build (--release-tree), then swift test -c release over T1 and T2
+#             (the release test build), then T3 alone in release. No plain swift build -c release: packaging builds
+#             its products by name, and the release test build compiles everything the gate runs (D-119).
 #   --release-tree  exports the promote allowlist from the checked-out tree (uncommitted work included, so it
 #             equals HEAD when clean) into <scratch>-release-stage with Package.release.swift as
 #             Package.swift, runs swift build -c release there (scratch <path>-release-tree), and fails when the
@@ -29,25 +37,21 @@ root=${script_path:h:h}
 source "$root/scripts/dev-paths.sh"
 source "$root/scripts/release/allowlist.sh"
 
-# Window tests (open a real window: need an unlocked screen). Matched as regexes against test ids.
-window_tests=(
-  WindowEventTests                                              # All serialized shown-window suites, including inspector resize
-  byteQuotaCoversRasterRounding                                  # TerminalImageLimitTests
-  layerBackingStorePreservesPixelsOutsideTheDirtyRect            # TerminalPartialDrawTests
-  hostedWorkingIndicatorRunsOnlyWhenTheEnvironmentAllowsIt       # SidebarStatusTests
-  realSidebarRunsAWorkingRowOnlyForAnActiveWindowAndExpandedSidebar  # SidebarStatusTests
-  aClickOnATabSwitchesItAndAPageControlAnswersItsClick           # SettingsWindowClickTests
-)
+# The tiers, by target: a test target is its own test product and run, and its name is the one prefix a test cannot forget.
+unit_targets=(LoomCoreTests LoomTerminalTests LoomChatTests LoomRemoraTests LoomLaunchOptionsTests LoomCatalogUITests)
 
 usage() { sed -n '2,/^set -euo/p' "$script_path" | sed '$d; s/^# \{0,1\}//' >&2; }
 die_usage() { echo "check: $1" >&2; exit 2; }
 
-suites=() run_tests=0 windows=0 idle=0 full=0 release_tree=0 macro_plugin=""
+suites=() run_tests=0 unit=0 integration=0 frozen=0 windows=0 idle=0 full=0 release_tree=0 macro_plugin=""
 while (( $# )); do
   case $1 in
     --suite) shift; (( $# )) && [[ $1 != -* ]] || die_usage "--suite needs at least one name"
              while (( $# )) && [[ $1 != -* ]]; do suites+=($1); shift; done; continue ;;
     --tests) run_tests=1 ;;
+    --unit) unit=1 ;;
+    --integration) integration=1 ;;
+    --frozen) frozen=1 ;;
     --windows) windows=1 ;;
     --idle) idle=1 ;;
     --full) full=1 ;;
@@ -61,6 +65,7 @@ while (( $# )); do
 done
 (( windows && ! idle )) && die_usage "--windows needs --idle (an unlocked screen and a Mac the user declared idle)"
 (( full && ! idle )) && die_usage "--full needs --idle (release suite and window tests only when the user says the Mac is idle)"
+(( run_tests || full )) && unit=1 integration=1
 [[ -z $macro_plugin || -f $macro_plugin ]] || die_usage "--macro-plugin: no such file: $macro_plugin"
 (( full )) && windows=1
 
@@ -157,10 +162,10 @@ swift_test() { # <extra args...>
   print -r -- "swift test exited 0, but a test run has no passing summary (the test process ended early)"
   return 1
 }
-window_skips=() window_filters=()
-for t in $window_tests; do window_skips+=(--skip $t); window_filters+=(--filter $t); done
-skip_args=()
-(( windows )) || skip_args=($window_skips)
+unit_filters=(); for t in $unit_targets; do unit_filters+=(--filter "^$t\\."); done
+integration_filters=(--filter '^LoomIntegrationTests\.')
+window_filters=(--filter '^LoomWindowTests\.')
+frozen_filters=(--filter '^LoomFrozenTests\.')
 # The release flavor (what promote.sh would export: no LOOM_EVIDENCE, no Sources/loom-app/Evidence) must build and
 # must not carry the app-side evidence code. Library-side inert seams (TerminalPresentationLog, IndicatorEvidence)
 # stay in the binary on purpose.
@@ -192,30 +197,29 @@ step "user wording (session, not conversation; Sphyrna, not Loom)" zsh scripts/c
 step "selectable text labels (LoomCatalogUI, loom-app)" zsh scripts/check-selectable-labels.sh
 step "source guards (Sources/)" python3 scripts/check-source-guards.py
 step "test guard (Tests/, ratchet)" python3 scripts/check-tests.py
-if (( full )); then
-  step "swift build -c release" slot swift build -c release --scratch-path "$scratch"
-else
-  step "swift build" slot swift build --scratch-path "$scratch"
-fi
+(( full )) || step "swift build" slot swift build --scratch-path "$scratch"
 if (( full || release_tree )); then step "staged release tree (build, no evidence code)" loom_check_release_tree; fi
 test_cfg=()
 (( full )) && test_cfg=(-c release)
-(( full || run_tests || ${#suites} )) && tests_ran=1
-if (( full || run_tests )); then
-  # The window tests never share a run with the offscreen suites: those host windows that take key and first responder at
-  # the same time, and in the e58c2c9 gate the window tests' clicks, keys and focus did not land among them (each passed
-  # alone). They run in a swift test of their own, after the rest.
-  step "swift test${test_cfg:+ -c release} (all targets but the window tests)" swift_test $test_cfg $window_skips
-  if (( windows )); then
-    step "swift test${test_cfg:+ -c release} (the window tests alone)" swift_test $test_cfg $window_filters
-  fi
-elif (( ${#suites} )); then
-  filters=(); for s in $suites; do filters+=(--filter $s); done
-  step "swift test --filter ${(j:, :)suites}" swift_test $filters $skip_args
-else
-  echo "  --    tests not run (--suite <Name> or --tests)"
+(( unit || integration || frozen || windows || ${#suites} )) && tests_ran=1
+cfg_label=${test_cfg:+ -c release}
+if (( unit || integration )); then
+  tiers=() filters=()
+  (( unit )) && tiers+=(T1) filters+=($unit_filters)
+  (( integration )) && tiers+=(T2) filters+=($integration_filters)
+  step "swift test$cfg_label (${(j: and :)tiers})" swift_test $test_cfg $filters
 fi
-if (( full || run_tests || ${#suites} )); then
+if (( ${#suites} )); then
+  filters=(); for s in $suites; do filters+=(--filter $s); done
+  skips=(--skip '^LoomWindowTests\.'); (( frozen )) || skips+=(--skip '^LoomFrozenTests\.')
+  step "swift test --filter ${(j:, :)suites}" swift_test $filters $skips
+fi
+(( frozen && ! ${#suites} )) && step "swift test (TF frozen)" swift_test $frozen_filters
+# The window tests never share a run with another target: offscreen suites host windows too, and in the e58c2c9 gate the
+# window tests' clicks, keys and focus did not land among them (each passed alone).
+(( windows )) && step "swift test$cfg_label (T3 window, alone)" swift_test $test_cfg $window_filters
+(( tests_ran )) || echo "  --    tests not run (--unit, --integration, --tests, --suite <Name>, --frozen or --windows)"
+if (( tests_ran )); then
   summary=$(grep -E 'Test run with [0-9]+ tests? .*(passed|failed)|Executed [0-9]+ tests?' "$log" | tail -n 2 || true)
   [[ -n $summary ]] && print -r -- "$summary" | sed -E 's/^.*Test run with ([0-9]+) tests?.* passed.*$/\1 tests passed/'
 fi
