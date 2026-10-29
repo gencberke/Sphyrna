@@ -53,6 +53,24 @@ import Testing
         #expect(usage.contextUsage(conversationID: id, kind: .codex) == ContextUsage(tokens: 100, window: 1_000, model: "gpt-test"))
         #expect(usage.sessionUsage(conversationID: id, kind: .claude) == nil)
 
+        let generation = model.codexConfigGeneration
+        model.setCodexConfigDirectory(home, refresh: true)
+        #expect(model.codexConfigGeneration > generation)
+        #expect(usage.sessionUsage(conversationID: id, kind: .codex) == nil,
+                "an account or profile revision at the same path discards the old projection")
+        await usage.loadSessionUsage(conversationID: id, kind: .codex)
+
+        let revision = model.codexConfigGeneration
+        let firstAccount = HarnessAccount.subscription(email: "first@example.invalid", plan: "test")
+        model.applyCodexTranscriptAccount(firstAccount)
+        model.applyCodexTranscriptAccount(firstAccount)
+        #expect(model.codexConfigGeneration == revision, "unchanged probe answers keep the cached reader")
+        model.applyCodexTranscriptAccount(.subscription(email: "second@example.invalid", plan: "test"))
+        #expect(model.codexConfigGeneration > revision)
+        #expect(usage.recordedModel(conversationID: id, kind: .codex) == nil)
+        #expect(usage.sessionUsage(conversationID: id, kind: .codex) == nil)
+        await usage.loadSessionUsage(conversationID: id, kind: .codex)
+
         usage.setSettingsWindowVisible(true)
         usage.setUsageSectionSelected(true)
         usage.selectSection(.tokens)

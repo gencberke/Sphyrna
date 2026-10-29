@@ -155,7 +155,7 @@ the folder, open it in an editor or in Terminal, and copy the session ID, the re
 
 ### F7. Command palette & transcript search
 `⌘K` searches sessions, projects and actions by ranked match bands. It can also search the text inside recent
-transcripts, within fixed read limits, and it offers Ask Remora when the query reads as a question.
+Claude/Codex transcripts, within fixed read limits and the resolved profile, and it offers Ask Remora when the query reads as a question.
 - **Spec:** [SPEC §6.4](../SPEC.md) · **Status:** Live
 - **Orca:** _to study_
 - **T3 Code:** _to study_
@@ -185,7 +185,7 @@ Neither page starts anything by itself.
 
 ### F10. Inspector: Overview & usage
 The Overview shows the session's facts, its context ring, its worktree, the last turn's changes and its running agents.
-Token usage is split into Main, Subagents and Total, with an API equivalent. The inspector is resizable, with a
+Claude token usage is split into Main, Subagents and Total, with an API equivalent. Codex shows recorded session counters/model/context and explicit unknown or partial coverage; its local session index is separate from account totals. The inspector is resizable, with a
 remembered width for each width class.
 - **Spec:** [SPEC §8.2](../SPEC.md) · **Status:** Live
 - **Orca:** _to study_
@@ -193,7 +193,7 @@ remembered width for each width class.
 - **Sphyrna takes:** _open_
 
 ### F11. Changes: diff review & comments
-Read-only diffs for the last turn, the whole session (from the transcript, without git) or the branch (bounded git).
+Read-only diffs for the last turn, the whole session (from recorded structured Claude/Codex edits, without git) or the branch (bounded git). Codex omissions are labelled partial; shell output is never interpreted as a file-change record.
 Inline comments can be added, and a changed file drags out only as `@path` text.
 - **Gap since D-100:** `Send to Claude` needs the Chat face (`changesSendAvailability` returns `.notChat` when the
   harness has no structured face, `CatalogModel+Changes.swift:265`). Comments can be written today but cannot reach a

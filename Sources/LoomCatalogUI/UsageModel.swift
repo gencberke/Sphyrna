@@ -240,6 +240,7 @@ public final class UsageModel {
     @ObservationIgnored private let index: any UsageIndexing
     @ObservationIgnored private var codexIndex: CodexUsageIndex?
     @ObservationIgnored private var codexHome: URL?
+    @ObservationIgnored private var codexSourceRevision: UInt64 = 0
     @ObservationIgnored private var codexCatalog: SessionCatalog?
     @ObservationIgnored private var codexLocalTask: Task<Void, Never>?
     @ObservationIgnored private var codexSessionOrder: [String] = []
@@ -729,11 +730,12 @@ public final class UsageModel {
     }
 
     /// A resolved home is passed in by the app; nil is unavailable and never means a guessed default directory.
-    public func configureCodex(home: URL?, catalog: SessionCatalog?) {
-        guard home != codexHome || (codexCatalog == nil && catalog != nil) else { return }
+    public func configureCodex(home: URL?, catalog: SessionCatalog?, revision: UInt64 = 0) {
+        guard home != codexHome || revision != codexSourceRevision || (codexCatalog == nil && catalog != nil) else { return }
         codexLocalTask?.cancel()
         codexLocalTask = nil
         codexHome = home
+        codexSourceRevision = revision
         codexCatalog = catalog
         codexIndex = home.map { CodexUsageIndex(home: $0) }
         codexContexts = [:]

@@ -30,8 +30,11 @@ extension AppDelegate {
             workingDirectory: root.appendingPathComponent("harness-probe", isDirectory: true).path, clientVersion: "sphyrna-\(build)")
 
         // Codex's models reach the composer's lists through the catalog.
-        model.harnessProbe = HarnessProbe(connections: connections, sources: sources, onReading: { reading in
-            Task { @MainActor in catalog.apply(reading) }
+        model.harnessProbe = HarnessProbe(connections: connections, sources: sources, onReading: { [weak model] reading in
+            Task { @MainActor in
+                catalog.apply(reading)
+                if reading.provider == .codex { model?.applyCodexTranscriptAccount(reading.account) }
+            }
         })
         model.harnessConnections = connections
         installConnections(model: model, root: root)

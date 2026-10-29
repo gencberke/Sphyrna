@@ -56,4 +56,14 @@ import Testing
         parser.consume(Data(#"{"type":"event_msg","payload":{"type":"token_count",broken"#.utf8))
         #expect(!parser.reading.complete)
     }
+
+    @Test func anOmittedNativeCacheWriteCounterDefaultsToZero() throws {
+        var parser = CodexUsageParser()
+        var native = counts(100, 20, 0, 10)
+        native["cache_write_input_tokens"] = nil
+        parser.consume(try data(["type": "turn_context", "payload": ["model": "gpt-test"]]))
+        parser.consume(try data(event(total: native, last: native)))
+        #expect(parser.reading.hasUsage && parser.reading.complete)
+        #expect(parser.reading.total == UsageTokens(input: 80, output: 10, cacheRead: 20))
+    }
 }

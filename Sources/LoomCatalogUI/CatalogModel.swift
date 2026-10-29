@@ -323,7 +323,7 @@ public final class CatalogModel {
         // A scan can bring a session's first or newer main-thread model: the cards read theirs again.
         didSet {
             usage?.onScanned = { [weak self] in self?.refreshCardModels() }
-            usage?.configureCodex(home: codexConfigDirectory, catalog: catalog)
+            usage?.configureCodex(home: codexConfigDirectory, catalog: catalog, revision: codexConfigGeneration)
         }
     }
     /// The models the sidebar's cards name (`SidebarCardModels`) and the read that fills them.
@@ -520,9 +520,10 @@ public final class CatalogModel {
     /// The resolved Codex home, supplied by the existing toolchain or health path; nil means unavailable.
     public internal(set) var codexConfigDirectory: URL?
     public private(set) var codexConfigGeneration: UInt64 = 0
+    @ObservationIgnored private var codexTranscriptAccount: HarnessAccount?
 
-    public func setCodexConfigDirectory(_ directory: URL?) {
-        guard directory != codexConfigDirectory else { return }
+    public func setCodexConfigDirectory(_ directory: URL?, refresh: Bool = false) {
+        guard refresh || directory != codexConfigDirectory else { return }
         codexConfigDirectory = directory
         codexConfigGeneration &+= 1
         changes.invalidateCodexReads(to: codexConfigGeneration)
@@ -535,7 +536,16 @@ public final class CatalogModel {
         for id in codexIDs { lines[id] = nil }
         if lines != projectPage.lastLines { projectPage.lastLines = lines }
         projectPage.pendingLines.subtract(codexIDs)
-        usage?.configureCodex(home: directory, catalog: catalog)
+        usage?.configureCodex(home: directory, catalog: catalog, revision: codexConfigGeneration)
+    }
+
+    /// Existing account probes invalidate local projections without an extra provider or credential read.
+    public func applyCodexTranscriptAccount(_ account: HarnessAccount?) {
+        guard let account else { return }
+        defer { codexTranscriptAccount = account }
+        if let previous = codexTranscriptAccount, previous != account {
+            setCodexConfigDirectory(codexConfigDirectory, refresh: true)
+        }
     }
 
     /// `catalog == nil` means the catalog could not be opened (`startupError`

@@ -109,7 +109,8 @@ public struct CodexUsageParser: Sendable {
 
     private static func counts(_ raw: Any?) -> Counts? {
         guard let value = raw as? [String: Any], let input = number(value["input_tokens"]),
-              let cached = number(value["cached_input_tokens"]), let write = number(value["cache_write_input_tokens"]),
+              let cached = number(value["cached_input_tokens"]),
+              let write = value["cache_write_input_tokens"] == nil ? 0 : number(value["cache_write_input_tokens"]),
               let output = number(value["output_tokens"]), cached + write <= input else { return nil }
         if let total = value["total_tokens"], number(total) != input + output { return nil }
         if let reasoning = value["reasoning_output_tokens"], let count = number(reasoning) {

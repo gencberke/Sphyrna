@@ -542,7 +542,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         )
         let system = SystemProviderToolchains(supervisor: supervisor, origin: origin)
         let evidence = evidenceToolchains(root: root, supervisor: supervisor, origin: origin)
-        let toolchains: ProviderToolchainResolver = evidence ?? { provider in try await system.toolchain(for: provider) }
+        let resolve: ProviderToolchainResolver = evidence ?? { provider in try await system.toolchain(for: provider) }
+        let toolchains: ProviderToolchainResolver = { [weak model] provider in
+            let generation = provider == .codex ? await MainActor.run { model?.codexConfigGeneration } : nil
+            let value = try await resolve(provider)
+            if provider == .codex, let generation {
+                await MainActor.run {
+                    guard let model, model.codexConfigGeneration == generation else { return }
+                    model.setCodexConfigDirectory(value.profileDirectory)
+                }
+            }
+            return value
+        }
         toolchainSlot.provide(toolchains)
         // A delete targets the folder the login shell names (DP-CP4-8); an acceptance run has fixture providers. It shares
         // the toolchains' capture, so a launch runs the login shell once.
@@ -565,7 +576,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             claudeLoginEnvironment: loginEnvironment,
             claudePluginDirectory: root.appendingPathComponent("claude-plugin", isDirectory: true),
             // A failed start makes the next one read the CLI again instead of reusing the cache.
-            toolchainInvalidator: { provider in await system.invalidate(provider) },
+            toolchainInvalidator: { [weak model] provider in
+                if provider == .codex {
+                    await MainActor.run { model?.setCodexConfigDirectory(nil, refresh: true) }
+                }
+                await system.invalidate(provider)
+            },
             // Home's Continue lists runs by what the catalog says; it reads again once the open runs are closed.
             runsRecovered: { await model.runsWereRecovered() },
             // An opened session whose agent passed no `--mode` takes Sphyrna's default, resolved as the draft resolves it
