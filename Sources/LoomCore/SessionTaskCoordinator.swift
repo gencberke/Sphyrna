@@ -714,6 +714,34 @@ public actor SessionTaskCoordinator {
                                next: values.count == limit ? values.last?.sequence : nil)
     }
 
+    /// A child reads only the exact input the trusted host observed for its
+    /// current task, round, operation and live run. App IDs alone are not proof.
+    func childInput(taskID: UUID, child: SessionTaskClaim, roundID: UUID,
+                    inputOperationID: UUID) async throws -> String {
+        let binding = try await authenticated(child)
+        guard let task = try store.task(taskID), let round = try store.round(roundID),
+              task.lifecycle == .active, task.childSessionID == binding.sessionID,
+              round.taskID == taskID, round.operationID == inputOperationID,
+              (task.activeRoundID == roundID && round.binding == binding && round.phase == .active)
+                || (task.pendingRoundID == roundID && round.phase == .deliveringUnknown &&
+                    (task.childBinding == nil || task.childBinding == binding)) else {
+            throw SessionTaskError.staleRound
+        }
+        let target = SessionTaskRoundTarget(taskID: taskID, roundID: roundID, inputOperationID: inputOperationID,
+                                            binding: binding, nativeTurnID: round.nativeTurnID, execution: round.execution)
+        guard let observed = await host.observedChildExecution(target), Self.validExecution(observed),
+              Self.matches(observed, round: round), try await authenticated(child) == binding,
+              let current = try store.task(taskID), let currentRound = try store.round(roundID),
+              current.lifecycle == .active, current.authorityEpoch == task.authorityEpoch,
+              currentRound.operationID == inputOperationID,
+              (current.activeRoundID == roundID && currentRound.binding == binding && currentRound.phase == .active)
+                || (current.pendingRoundID == roundID && currentRound.phase == .deliveringUnknown &&
+                    (current.childBinding == nil || current.childBinding == binding)) else {
+            throw SessionTaskError.staleRound
+        }
+        return currentRound.message
+    }
+
     /// The caller explicitly read these task events. This is separate from
     /// provider consumption of a wake.
     public func acknowledgeEvents(taskID: UUID, parent: SessionTaskClaim, eventIDs: [UUID]) async throws {

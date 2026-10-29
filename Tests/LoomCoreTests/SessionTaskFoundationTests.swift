@@ -4,7 +4,7 @@ import SQLite3
 import Testing
 @testable import LoomCore
 
-private actor TaskFakeHost: SessionTaskHost {
+actor TaskFakeHost: SessionTaskHost {
     private enum ProofKind: Equatable { case nativeTurn, providerPrompt, appInput }
     private struct ChildObservation {
         let taskID: UUID
@@ -198,14 +198,14 @@ private actor TaskEarlyReportObservation {
     func markAccepted() { accepted = true }
 }
 
-private final class TaskFakeClock: @unchecked Sendable {
+final class TaskFakeClock: @unchecked Sendable {
     private let lock = NSLock()
     private var date = Date(timeIntervalSince1970: 1_000_000)
     func now() -> Date { lock.withLock { date } }
     func advance(_ seconds: TimeInterval) { lock.withLock { date = date.addingTimeInterval(seconds) } }
 }
 
-private struct TaskFixture {
+struct TaskFixture {
     let root: URL
     let url: URL
     let host: TaskFakeHost
