@@ -724,6 +724,10 @@ public actor SessionTaskCoordinator {
 
     func identity(for claim: SessionTaskClaim) async throws -> SessionTaskBinding { try await authenticated(claim) }
 
+    func projectionForChild(_ sessionID: UUID) throws -> SessionTaskProjection? {
+        try store.taskForChild(sessionID)
+    }
+
     func projectionsForUser(parentSessionID: UUID? = nil, after: UUID?, limit: Int) throws -> SessionTaskProjectionPage {
         guard (1...SessionTaskLimits.pageSize).contains(limit) else { throw SessionTaskError.invalidPage }
         let values = try store.projections(parentSessionID: parentSessionID, after: after, limit: limit)

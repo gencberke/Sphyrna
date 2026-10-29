@@ -76,6 +76,13 @@ private final class PermitOnce: @unchecked Sendable {
 
 @Suite(.timeLimit(.minutes(1)))
 struct TerminalInputQueueTests {
+    @Test func aDirtyIdleComposerDoesNotScheduleAnAutomaticRetry() {
+        let queue = TerminalInputQueue(writer: { $0.count }, onError: { _ in })
+        queue.noteUnclassifiedInput()
+        let result = IdleResult()
+        #expect(!queue.notifyWhenAutomaticMayProceed { result.append(true) })
+        #expect(result.values.isEmpty)
+    }
     @Test func externalTaskInputRequiresAnUnchangedCleanComposerAtTheActualWrite() throws {
         let queue = TerminalInputQueue(capacity: 1024, writer: { $0.count },
             automaticWriter: { bytes, transaction in try transaction { bytes.count } }, onError: { _ in })

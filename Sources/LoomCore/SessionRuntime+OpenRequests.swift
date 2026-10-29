@@ -33,7 +33,12 @@ extension SessionRuntime {
         }
         let launched = LaunchBox()
         let sessionID = try await openRequests.approve(requestID) { spec in
-            guard spec.task == nil else { throw SessionTaskError.notReady }
+            if spec.task != nil {
+                let launch = try await self.approveTaskRequest(spec, rows: rows, columns: columns,
+                    outputSink: outputSink, onTerminalReady: onTerminalReady)
+                launched.value = launch
+                return launch.sessionID
+            }
             guard let provider = spec.choices.harness.provider else {
                 let name = HarnessCatalogue.descriptor(for: spec.choices.harness)?.displayName ?? spec.choices.harness.rawValue
                 throw LoomError.message("\(name) cannot start an opened session in this build")

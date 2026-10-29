@@ -11,6 +11,8 @@ final class SessionTaskRunLease: @unchecked Sendable {
     private var codexEvents: Set<UInt64> = []
     private var revision: UInt64 = 0
     private var unclassifiedInput = false
+    private var quiescent: (@Sendable () -> Void)?
+    func observeQuiescence(_ callback: (@Sendable () -> Void)?) { lock.withLock { quiescent = callback } }
     func revoke() { lock.withLock { enabled = false } }
     private func advanceRevision() {
         guard revision < .max else { reliable = false; return }
@@ -23,7 +25,14 @@ final class SessionTaskRunLease: @unchecked Sendable {
             hooksInFlight += 1
         }
     }
-    func finishHook() { lock.withLock { hooksInFlight = max(0, hooksInFlight - 1) } }
+    func finishHook() {
+        let callback = lock.withLock { () -> (@Sendable () -> Void)? in
+            guard hooksInFlight > 0 else { return nil }
+            hooksInFlight -= 1
+            return enabled && reliable && hooksInFlight == 0 && codexEvents.isEmpty ? quiescent : nil
+        }
+        callback?()
+    }
     func beginCodexEvent(_ sequence: UInt64) {
         lock.withLock {
             guard enabled, reliable else { return }
@@ -32,7 +41,13 @@ final class SessionTaskRunLease: @unchecked Sendable {
             codexEvents.insert(sequence)
         }
     }
-    func finishCodexEvent(_ sequence: UInt64) { lock.withLock { codexEvents.remove(sequence) } }
+    func finishCodexEvent(_ sequence: UInt64) {
+        let callback = lock.withLock { () -> (@Sendable () -> Void)? in
+            guard codexEvents.remove(sequence) != nil else { return nil }
+            return enabled && reliable && hooksInFlight == 0 && codexEvents.isEmpty ? quiescent : nil
+        }
+        callback?()
+    }
     func invalidate() { lock.withLock { reliable = false } }
     func noteUnclassifiedInput() { lock.withLock { unclassifiedInput = true; advanceRevision() } }
     var hasUnclassifiedInput: Bool { lock.withLock { unclassifiedInput } }
@@ -50,6 +65,12 @@ final class SessionTaskRunLease: @unchecked Sendable {
     }
     /// Keep provider ingress and revocation ordered with the actual syscall.
     func withAdmission(revision admitted: UInt64, _ write: () throws -> Int) rethrows -> Int? {
+        try lock.withLock {
+            guard enabled, reliable, hooksInFlight == 0, codexEvents.isEmpty, revision == admitted else { return nil }
+            return try write()
+        }
+    }
+    func withOptionalAdmission(revision admitted: UInt64, _ write: () throws -> Int?) rethrows -> Int? {
         try lock.withLock {
             guard enabled, reliable, hooksInFlight == 0, codexEvents.isEmpty, revision == admitted else { return nil }
             return try write()
@@ -116,8 +137,39 @@ struct SessionTaskExpectedInput: Sendable {
     let binding: SessionTaskBinding
     let digest: Data
     let ticket: TerminalInputQueue.AutomaticInputTicket?
+    let effect: SessionTaskInputEffectMarker
+    let requiresNativeReceipt: Bool
     var observed: SessionTaskExecutionReference?
+    var expectedNativeTurn: String?
     var lastSequence: UInt64 = 0
+
+    var confirmedObservation: SessionTaskExecutionReference? {
+        guard let observed else { return nil }
+        if requiresNativeReceipt {
+            guard case let .nativeTurn(turn) = observed, expectedNativeTurn == turn else { return nil }
+        }
+        return observed
+    }
+}
+
+/// Provider input is eligible as proof only after the guarded write actually
+/// sent bytes. Ingress waits for the same short run lease at that boundary.
+final class SessionTaskInputEffectMarker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var possibleEffect = false
+    func write(_ body: () throws -> Int) rethrows -> Int {
+        try lock.withLock {
+            do {
+                let count = try body()
+                if count > 0 { possibleEffect = true }
+                return count
+            } catch {
+                possibleEffect = true
+                throw error
+            }
+        }
+    }
+    var hasEffect: Bool { lock.withLock { possibleEffect } }
 }
 
 struct SessionTaskProofWaiter {
@@ -146,11 +198,17 @@ final class SessionTaskRuntimeHost: SessionTaskHost, @unchecked Sendable {
     func nativeStatus(binding: SessionTaskBinding) async -> SessionTaskNativeStatus {
         await runtime?.taskNativeStatus(binding) ?? .unknown
     }
-    func submitIfReady(_ intent: SessionTaskInputIntent) async -> SessionTaskInputEffect { .deferred }
+    func submitIfReady(_ intent: SessionTaskInputIntent) async -> SessionTaskInputEffect {
+        await runtime?.submitTaskInput(intent) ?? .unknown
+    }
     func wakeIfReady(_ intent: SessionTaskWakeIntent) async -> SessionTaskEffect { .deferred }
     func interrupt(_ target: SessionTaskRoundTarget) async -> SessionTaskEffect { .unknown }
-    func stopChild(taskID: UUID, binding: SessionTaskBinding) async -> SessionTaskEffect { .unknown }
-    func stopUnknownChild(taskID: UUID, childSessionID: UUID) async -> SessionTaskEffect { .unknown }
+    func stopChild(taskID: UUID, binding: SessionTaskBinding) async -> SessionTaskEffect {
+        await runtime?.stopTaskChild(taskID: taskID, childSessionID: binding.sessionID, binding: binding) ?? .unknown
+    }
+    func stopUnknownChild(taskID: UUID, childSessionID: UUID) async -> SessionTaskEffect {
+        await runtime?.stopTaskChild(taskID: taskID, childSessionID: childSessionID, binding: nil) ?? .unknown
+    }
     func verifyUnknownWakeStopped(taskID: UUID, operationID: UUID, binding: SessionTaskBinding) async -> Bool { false }
     func mayForget(sessionID: UUID) async -> Bool { false }
 }

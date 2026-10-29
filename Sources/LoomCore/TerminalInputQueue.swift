@@ -162,6 +162,19 @@ public final class TerminalInputQueue: @unchecked Sendable {
         return result.accepted
     }
 
+    /// Retry only for a drain that can make the queue admissible. A dirty idle
+    /// composer must not turn a deferred task into a busy loop.
+    func notifyWhenAutomaticMayProceed(_ callback: @escaping @Sendable () -> Void) -> Bool {
+        let result = lock.withLock { () -> (accepted: Bool, immediate: Bool) in
+            guard idleWaiter == nil, failure == nil, closedReason == nil else { return (false, false) }
+            if draining { idleWaiter = callback; return (true, false) }
+            guard automaticClean, automaticOutstanding == nil, pending.count == sent else { return (false, false) }
+            return (true, true)
+        }
+        if result.immediate { callback() }
+        return result.accepted
+    }
+
     public var pendingByteCount: Int { lock.withLock { pending.count - sent } }
 
     /// Only the owner of a freshly started terminal may establish this first

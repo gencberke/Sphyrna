@@ -495,14 +495,17 @@ public final class SessionService {
             LoomLog.debug(.session, "Open request \(Self.requestRef(requestID)): approval already under way")
             return nil
         }
-        if facePolicy.faceOfApprovedOpening(capabilities(of: provider)) == .chat, let host = structuredHost {
-            return approveOpenInStructuredFace(requestID: requestID, host: host)
-        }
-        guard let sink = terminal?.newRunSink() else {
-            approving.remove(requestID)
-            return nil
-        }
         return Task {
+            let request = await runtime.openRequestSnapshot().first { $0.id == requestID }
+            if request?.task == nil, facePolicy.faceOfApprovedOpening(capabilities(of: provider)) == .chat,
+               let host = structuredHost {
+                await approveOpenInStructuredFace(requestID: requestID, host: host).value
+                return
+            }
+            guard let sink = terminal?.newRunSink() else {
+                approving.remove(requestID)
+                return
+            }
             defer { approving.remove(requestID) }
             var adopted = false
             do {

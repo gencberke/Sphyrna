@@ -71,6 +71,11 @@ public final class TerminalInputGate: @unchecked Sendable {
         return queue.notifyWhenIdle(callback)
     }
 
+    func notifyWhenAutomaticMayProceed(runID: UUID, _ callback: @escaping @Sendable () -> Void) -> Bool {
+        guard let queue = lock.withLock({ queues[runID] }) else { return false }
+        return queue.notifyWhenAutomaticMayProceed(callback)
+    }
+
     func noteUnclassifiedInput(runID: UUID) {
         lock.withLock { queues[runID] }?.noteUnclassifiedInput()
     }

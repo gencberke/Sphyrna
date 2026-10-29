@@ -5,11 +5,11 @@ import Testing
 @Suite(.serialized, .processHeavy, .timeLimit(.minutes(2)))
 struct SessionTaskCreateTests {
     private static func create(taskID: UUID, operationID: UUID, claim: SessionTaskClaim,
-                               socket: String, message: String) throws -> (Int32, String) {
+                               socket: String, message: String, harness: String = "codex") throws -> (Int32, String) {
         let process = Process()
         process.executableURL = RuntimeFixture.binaries.appendingPathComponent("loom-hook")
         process.arguments = ["task", "create", "--task", taskID.uuidString, "--operation", operationID.uuidString,
-                             "--name", "Review task", "--harness", "codex", "--message", "-"]
+                             "--name", "Review task", "--harness", harness, "--message", "-"]
         process.environment = ["SPHYRNA_TASK_SOCKET": socket, "SPHYRNA_TASK_TOKEN": claim.credential,
                                "SPHYRNA_TASK_SESSION_ID": claim.sessionID.uuidString,
                                "SPHYRNA_TASK_RUN_ID": claim.managedRunID.uuidString,
@@ -22,6 +22,71 @@ struct SessionTaskCreateTests {
         process.waitUntilExit()
         let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         return (process.terminationStatus, text)
+    }
+
+    @Test func approvingATaskStartsTheOwnedChildAndDeliversItsFirstPointerOnlyAfterReady() async throws {
+        let context = try await SessionRuntimeTests.makeContext(claudeVersion: "2.0.0")
+        defer { context.cleanup() }
+        let folder = context.root.appendingPathComponent("approved-task", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let project = try await context.catalog.addProject(path: folder.path).project
+        let parentScreen = SessionRuntimeTests.Screen()
+        let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id, outputSink: parentScreen)
+        parentScreen.attach(parent.terminal)
+        let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+        #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+        let socket = try #require(await context.runtime.taskSocketPath)
+        let taskID = UUID(), operationID = UUID()
+        #expect(try Self.create(taskID: taskID, operationID: operationID, claim: claim, socket: socket,
+                                message: "Check the synthetic change", harness: "claude").0 == 0)
+        let request = try #require(await context.runtime.openRequestSnapshot().first { $0.id == taskID })
+        let childID = try #require(request.task?.childID)
+        let screen = SessionRuntimeTests.Screen(), gate = context.runtime.inputGate
+        do {
+            let launch = try await context.runtime.approveOpenRequest(taskID, outputSink: screen, expectedProvider: .claude,
+                onTerminalReady: { launch in
+                    screen.attach(launch.terminal)
+                    gate.register(runID: launch.runID, queue: TerminalInputQueue(endpoint: launch.terminal, onError: { _ in }))
+                })
+            #expect(launch.sessionID == childID)
+            #expect(await screen.contains("FAKE-CLAUDE READY"))
+            #expect(await screen.contains("Sphyrna task:"))
+            let coordinator = try #require(await context.runtime.taskCoordinator)
+            let status = try await coordinator.status(taskID: taskID, parent: claim)
+            #expect(status.task.childBinding?.sessionID == childID && status.task.childInputsUsed == 1)
+            #expect(status.activeRound?.operationID == operationID)
+        } catch {
+            Issue.record("approved task did not start and deliver: \(error)")
+        }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
+    @Test func stoppingParentBeforeFirstAdmissionStopsTheEmptyOwnedChild() async throws {
+        let context = try await SessionRuntimeTests.makeContext(claudeVersion: "2.0.0")
+        defer { context.cleanup() }
+        let folder = context.root.appendingPathComponent("stopped-parent", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let project = try await context.catalog.addProject(path: folder.path).project
+        let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id)
+        let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+        #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+        let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
+        #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                message: "Never admitted", harness: "claude").0 == 0)
+        let screen = SessionRuntimeTests.Screen()
+        let child = try await context.runtime.approveOpenRequest(taskID, outputSink: screen, expectedProvider: .claude,
+            onTerminalReady: { screen.attach($0.terminal) }) // No input queue is registered yet.
+        #expect(await screen.contains("FAKE-CLAUDE READY"))
+        #expect(try await context.runtime.stopConversation(sessionID: parent.sessionID).succeeded)
+        #expect(try await SessionRuntimeTests.waitUntil(3) {
+            await context.supervisor.session(id: child.sessionID)?.currentRun == nil
+        })
+        let report = await context.supervisor.lastStopReport(sessionID: child.sessionID)
+        #expect(report?.runID == child.runID && report?.succeeded == true)
+        #expect(!screen.snapshot.contains("Sphyrna task:"))
+        let coordinator = try #require(await context.runtime.taskCoordinator)
+        #expect(try await coordinator.projectionForUser(taskID: taskID)?.lifecycle == .revoked)
+        #expect((await context.runtime.shutdown()).succeeded)
     }
 
     @Test func realHelperCreatesOneBoundedApprovalAndDenyLeavesNoChild() async throws {

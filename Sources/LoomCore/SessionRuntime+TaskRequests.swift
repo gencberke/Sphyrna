@@ -31,6 +31,7 @@ extension SessionRuntime {
                       existing.creationFingerprint == fingerprint else { throw SessionTaskError.conflictingOperation }
                 let receipt = try await coordinator.requestRound(taskID: taskID, parent: call.claim,
                                                                    operationID: operationID, message: message)
+                markTaskNeedsDelivery(taskID)
                 return .init(status: "ok", receipt: receipt, task: existing)
             }
             if let existing = taskChildReservations[taskID] {

@@ -350,6 +350,10 @@ public actor SessionRuntime {
     var taskExpectedInputs: [UUID: SessionTaskExpectedInput] = [:]
     var taskProofWaiters: [UUID: SessionTaskProofWaiter] = [:]
     var taskChildReservations: [UUID: SessionTaskChildReservation] = [:]
+    var taskLaunchContexts: [UUID: SessionTaskLaunchContext] = [:]
+    var taskDeliveriesInFlight: Set<UUID> = []
+    var taskDeliveriesRequested: Set<UUID> = []
+    var tasksNeedingDelivery: Set<UUID> = []
     var retiredTaskRuns: [UUID: SessionTaskRetiredRun] = [:]
     var startingTaskChildren: Set<UUID> = []
     let taskIngress = SessionTaskIngressRegistry()
@@ -804,11 +808,14 @@ public actor SessionRuntime {
     /// first; a failed shutdown stays failed so the caller can offer a retry.
     public func shutdown() async -> ShutdownReport {
         shuttingDown = true
-        for plan in taskRunPlans.values {
-            plan.lease.revoke()
-            taskIngress.remove(runID: plan.claim.managedRunID)
+        let taskPlans = Array(taskRunPlans.values)
+        for plan in taskPlans {
+            revokeTaskRun(sessionID: plan.claim.sessionID, runID: plan.claim.managedRunID)
         }
-        taskRunPlans.removeAll()
+        for plan in taskPlans {
+            await fenceTaskRun(sessionID: plan.claim.sessionID, runID: plan.claim.managedRunID,
+                               generation: plan.claim.generation)
+        }
         for id in Array(taskProofWaiters.keys) { finishTaskProofWaiter(id, result: nil) }
         taskExpectedInputs.removeAll()
         taskChildReservations.removeAll()
@@ -1072,6 +1079,11 @@ public actor SessionRuntime {
 
     private func reconcile(_ frame: SessionEventFrame) async {
         await reconcileEnded()
+        for (taskID, context) in taskLaunchContexts {
+            guard let launch = context.launch, let status = frame.sessions[launch.sessionID]?.status,
+                  status.activity == .atPrompt || status.activity == .turnComplete else { continue }
+            scheduleTaskDelivery(taskID)
+        }
         for record in Array(runs.values) {
             guard let sessionID = await supervisor.activeSessionID(runID: record.runID) else { continue }
             guard let work = frame.sessions[sessionID]?.status,

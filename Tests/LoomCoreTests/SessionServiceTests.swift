@@ -238,8 +238,8 @@ struct SessionServiceTests {
     }
 
     private func makeRig(runsIn: SessionLiveFace = .chat, host hasHost: Bool = true, startable: Set<ManagedSession.Provider> = [.claude, .codex],
-                         extraEnvironment: [String: String] = [:]) async throws -> Rig {
-        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: extraEnvironment)
+                         extraEnvironment: [String: String] = [:], claudeVersion: String = "fake 1") async throws -> Rig {
+        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: extraEnvironment, claudeVersion: claudeVersion)
         let host = FakeHost()
         let sinks = FakeSinks()
         let told = Told()
@@ -375,6 +375,31 @@ struct SessionServiceTests {
         await terminal.service.approveOpen(requestID: request)?.value
         #expect(terminal.host.opened.isEmpty && terminal.sinks.requested == 1 && terminal.sinks.failed == 1)
         #expect(terminal.told.failures == [.openRequestNotAnswered])
+    }
+
+    @Test func anApprovedTaskAlwaysUsesTheOwnedTerminalEvenWhenOrdinaryOpeningsUseChat() async throws {
+        let rig = try await makeRig(runsIn: .chat, claudeVersion: "2.0.0")
+        defer { rig.context.cleanup() }
+        let folder = rig.context.root.appendingPathComponent("service-task", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let project = try await rig.context.catalog.addProject(path: folder.path).project
+        let parent = try await rig.context.runtime.startConversation(provider: .claude, projectID: project.id)
+        let claim = try #require(await rig.context.runtime.taskRunPlans[parent.sessionID]?.claim)
+        let deadline = ProcessInfo.processInfo.systemUptime + 3
+        while await rig.context.runtime.authenticateTaskRun(claim) == nil && ProcessInfo.processInfo.systemUptime < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await rig.context.runtime.authenticateTaskRun(claim) != nil)
+        let taskID = UUID()
+        var request = SessionTaskWireRequest(command: "create", sessionID: claim.sessionID, runID: claim.managedRunID,
+                                             generation: claim.generation, credential: claim.credential, taskID: taskID)
+        request.operationID = UUID(); request.name = "Task child"; request.harness = "claude"; request.message = "Inspect"
+        #expect(await rig.context.runtime.submitTaskRequest(request).status == "pending")
+        let childID = try #require(await rig.context.runtime.openRequestSnapshot().first?.task?.childID)
+        await rig.service.approveOpen(requestID: taskID, provider: .claude)?.value
+        #expect(rig.host.opened.isEmpty)
+        #expect(rig.sinks.requested == 1 && rig.sinks.adopted.first?.sessionID == childID)
+        #expect((await rig.context.runtime.shutdown()).succeeded)
     }
 
     @Test func anApprovalCannotUseAnotherHarnessGateToStartDisabledCodex() async throws {
