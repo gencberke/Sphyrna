@@ -16,13 +16,18 @@ struct SubagentTreeContent: Equatable {
     static let maximumRunningRows = 3
 
     struct Row: Equatable, Identifiable {
+        enum Identity: Hashable { case native(String), task(UUID), finished, more, moreTasks, loadMore }
         enum Kind: Equatable {
             case running
             case finished
+            /// A task with no active round is not necessarily finished.
+            case inactive
             /// The "N finished" row; `expanded` while the finished rows below it are shown.
             case finishedFold(expanded: Bool)
             /// The "+N more" row for running subagents beyond the cap; "Show fewer" while expanded.
             case more(expanded: Bool)
+            case moreTasks(expanded: Bool)
+            case loadMore
         }
 
         let id: String
@@ -38,21 +43,38 @@ struct SubagentTreeContent: Equatable {
         let trailing: String
         let accessibilityLabel: String
         let accessibilityValue: String?
+        var harness: HarnessID? = nil
+        var taskID: UUID? = nil
+        var isEnabled = true
+
+        var identity: Identity {
+            switch kind {
+            case .finishedFold: .finished
+            case .more: .more
+            case .moreTasks: .moreTasks
+            case .loadMore: .loadMore
+            case .running, .finished, .inactive:
+                taskID.map(Identity.task) ?? .native(id)
+            }
+        }
 
         /// What a click on the row does. A subagent has no terminal of its own, so its row opens its
         /// transcript in its session's detail pane (FB4-5), selecting the session first; a fold row only
         /// opens or closes.
-        enum Tap: Equatable { case openSubagent, toggleFinished, toggleRunning }
+        enum Tap: Equatable { case openSubagent, openTask(UUID), toggleFinished, toggleRunning, toggleTasks, loadMore }
 
         var tap: Tap {
             switch kind {
-            case .running, .finished: .openSubagent
+            case .running, .finished, .inactive: taskID.map(Tap.openTask) ?? .openSubagent
             case .finishedFold: .toggleFinished
             case .more: .toggleRunning
+            case .moreTasks: .toggleTasks
+            case .loadMore: .loadMore
             }
         }
 
         var opensSubagent: Bool { tap == .openSubagent }
+        var opensChild: Bool { opensSubagent || taskID != nil }
     }
 
     let rows: [Row]
@@ -60,7 +82,9 @@ struct SubagentTreeContent: Equatable {
 
     var isEmpty: Bool { rows.isEmpty }
 
-    init(records: [SubagentRecord], now: Date, finishedExpanded: Bool, runningExpanded: Bool, waiting: Set<String> = []) {
+    init(records: [SubagentRecord], now: Date, finishedExpanded: Bool, runningExpanded: Bool, waiting: Set<String> = [],
+         tasks: [SessionTaskProjection] = [], nativeHarness: HarnessID? = nil, tasksExpanded: Bool = false,
+         hasMoreTasks: Bool = false, loadingTasks: Bool = false, tasksLimited: Bool = false) {
         let running = records.filter { $0.isRunning }
         let finished = records.filter { !$0.isRunning }
         finishedCount = finished.count
@@ -72,7 +96,7 @@ struct SubagentTreeContent: Equatable {
             for record in running where keep.count < Self.maximumRunningRows { keep.insert(record.id) }
             shown = running.filter { keep.contains($0.id) }
         }
-        rows += shown.map { Self.row($0, now: now, isWaiting: waiting.contains($0.id)) }
+        rows += shown.map { Self.row($0, now: now, isWaiting: waiting.contains($0.id), harness: nativeHarness) }
         let hidden = running.count - Self.maximumRunningRows
         if hidden > 0 {
             rows.append(Row(
@@ -88,21 +112,45 @@ struct SubagentTreeContent: Equatable {
                 title: "\(finished.count) finished", detail: nil, trailing: "",
                 accessibilityLabel: "\(finished.count) \(noun) finished",
                 accessibilityValue: finishedExpanded ? "expanded" : "collapsed"))
-            if finishedExpanded { rows += finished.map { Self.row($0, now: now, isWaiting: false) } }
+            if finishedExpanded { rows += finished.map { Self.row($0, now: now, isWaiting: false, harness: nativeHarness) } }
+        }
+        let shownTasks = tasksExpanded ? tasks : Array(tasks.prefix(Self.maximumRunningRows))
+        rows += shownTasks.map(Self.taskRow)
+        if tasks.count > Self.maximumRunningRows {
+            let hidden = tasks.count - Self.maximumRunningRows
+            rows.append(Row(id: "more-tasks", kind: .moreTasks(expanded: tasksExpanded), depth: 1,
+                title: tasksExpanded ? "Show fewer tasks" : "+\(hidden) more tasks", detail: nil, trailing: "",
+                accessibilityLabel: tasksExpanded ? "Show fewer child tasks" : "\(hidden) more child tasks",
+                accessibilityValue: tasksExpanded ? "expanded" : "collapsed"))
+        }
+        if (hasMoreTasks && (tasksExpanded || tasks.count <= Self.maximumRunningRows)) || (tasksLimited && tasks.isEmpty) {
+            let text = loadingTasks ? "Loading tasks…" : tasksLimited ? "More tasks unavailable" : "Load more tasks"
+            rows.append(Row(id: "load-tasks", kind: .loadMore, depth: 1, title: text, detail: nil, trailing: "",
+                            accessibilityLabel: text, accessibilityValue: nil, isEnabled: !loadingTasks && !tasksLimited))
         }
         self.rows = rows
     }
 
-    private static func row(_ record: SubagentRecord, now: Date, isWaiting: Bool) -> Row {
+    private static func row(_ record: SubagentRecord, now: Date, isWaiting: Bool, harness: HarnessID?) -> Row {
         let state = isWaiting ? "running, waiting for you" : record.isRunning ? "running" : "finished"
         let end = record.endedAt
+        let name = SessionTaskPresentation.nativeName(record)
+        let harnessName = harness.map(SessionTaskPresentation.harnessName)
         return Row(
             id: record.id, kind: record.isRunning ? .running : .finished, isWaiting: isWaiting, depth: max(1, record.depth),
-            title: record.agentType, detail: record.description,
+            title: name, detail: nil,
             trailing: end.map { duration(from: record.startedAt, to: $0) } ?? RelativeTime.string(from: record.startedAt, to: now),
-            accessibilityLabel: "Subagent \(record.agentType)"
-                + (record.description.map { ", \($0)" } ?? "") + ", \(state)",
-            accessibilityValue: nil)
+            accessibilityLabel: (["Subagent \(name)", harnessName, state].compactMap { $0 }).joined(separator: ", "),
+            accessibilityValue: nil, harness: harness)
+    }
+
+    private static func taskRow(_ task: SessionTaskProjection) -> Row {
+        let active = task.lifecycle == .active && (task.activeRoundID != nil || SessionTaskPresentation.needsParentInput(task))
+        return Row(id: task.id.uuidString, kind: active ? .running : .inactive,
+                   isWaiting: SessionTaskPresentation.needsParentInput(task), depth: 1,
+                   title: task.childName, detail: SessionTaskPresentation.model(task).text, trailing: "",
+                   accessibilityLabel: SessionTaskPresentation.label(task), accessibilityValue: nil,
+                   harness: task.harness, taskID: task.id)
     }
 
     /// A finished subagent's run time: static, so seconds are fine ("18s", "2m", "1h").
@@ -215,17 +263,23 @@ struct SubagentTreeView: View {
     let model: CatalogModel
     /// The subagents whose request waits for the user (`SubagentWaiting.ids`).
     var waiting: Set<String> = []
+    var tasks: [SessionTaskProjection] = []
+    var nativeHarness: HarnessID? = nil
+    var taskParent: SessionTaskParentUI? = nil
     @State private var finishedExpanded = false
     @State private var runningExpanded = false
+    @State private var tasksExpanded = false
 
     var body: some View {
         let content = SubagentTreeContent(
             records: records, now: model.now, finishedExpanded: finishedExpanded, runningExpanded: runningExpanded,
-            waiting: waiting)
+            waiting: waiting, tasks: tasks, nativeHarness: nativeHarness, tasksExpanded: tasksExpanded,
+            hasMoreTasks: taskParent?.next != nil, loadingTasks: taskParent?.isLoading == true,
+            tasksLimited: taskParent?.limited == true)
         if !content.isEmpty {
             let branches = SubagentBranches(depths: content.rows.map(\.depth))
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(content.rows) { row in
+                ForEach(content.rows, id: \.identity) { row in
                     SubagentRowView(row: row, action: { perform(row) })
                 }
             }
@@ -244,8 +298,11 @@ struct SubagentTreeView: View {
     private func perform(_ row: SubagentTreeContent.Row) {
         switch row.tap {
         case .openSubagent: model.openSubagent(row.id, in: sessionID)
+        case let .openTask(id): model.openSessionTaskChild(id, parentID: sessionID)
         case .toggleFinished: finishedExpanded.toggle()
         case .toggleRunning: runningExpanded.toggle()
+        case .toggleTasks: tasksExpanded.toggle()
+        case .loadMore: if let taskParent { model.sessionTasks.loadMore(taskParent) }
         }
     }
 }
@@ -259,11 +316,14 @@ struct SubagentRowView: View {
         Button(action: action) {
             HStack(spacing: Metrics.rowGap) {
                 leading.frame(width: LoomTheme.Layout.indicatorSlot.width)
+                if let harness = row.harness {
+                    ProviderIcon(harness: harness, size: Metrics.harnessMark)
+                }
                 HStack(spacing: Metrics.rowGap) {
                     Text(row.title).font(titleStyle.font).tracking(titleStyle.trackingPoints)
                         .foregroundStyle(titleColor).lineLimit(1).layoutPriority(1)
                     if let detail = row.detail {
-                        Text(detail).font(Metrics.text.font).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                        Text(detail).font(Metrics.childModel.font).foregroundStyle(LoomTheme.Text.secondaryStyle)
                             .lineLimit(1).truncationMode(.tail)
                     }
                 }
@@ -276,6 +336,7 @@ struct SubagentRowView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(RowButtonStyle(radius: Metrics.pillRadius))
+        .disabled(!row.isEnabled)
         .help(helpText)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.accessibilityLabel)
@@ -285,10 +346,10 @@ struct SubagentRowView: View {
     }
 
     /// Running: the type in 12 medium, primary. Finished and fold rows: regular, secondary.
-    private var titleStyle: LoomTheme.InkStyle { row.kind == .running ? Metrics.runningType : Metrics.text }
+    private var titleStyle: LoomTheme.InkStyle { row.opensChild ? Metrics.childName : Metrics.text }
 
     private var titleColor: AnyShapeStyle {
-        row.kind == .running ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle)
+        row.opensChild ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle)
     }
 
     @ViewBuilder private var leading: some View {
@@ -300,25 +361,23 @@ struct SubagentRowView: View {
             BrailleSpinner(animating: false, style: .subagent)
         case .finished, .finishedFold:
             Image(systemName: "checkmark").font(Metrics.check).foregroundStyle(LoomTheme.Text.faint)
-        case .more:
+        case .inactive, .more, .moreTasks, .loadMore:
             Color.clear
         }
     }
 
     @ViewBuilder private var trailing: some View {
         switch row.kind {
-        case let .finishedFold(expanded), let .more(expanded):
+        case let .finishedFold(expanded), let .more(expanded), let .moreTasks(expanded):
             Image(systemName: expanded ? "chevron.down" : "chevron.right")
                 .font(LoomTheme.Typography.chevron).foregroundStyle(LoomTheme.Text.secondaryStyle)
-        case .running, .finished:
+        case .running, .finished, .inactive, .loadMore:
             Text(row.trailing).font(Metrics.time.font).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 .lineLimit(1)
         }
     }
 
     private var helpText: String {
-        guard row.opensSubagent else { return "" }
-        let name = [row.title, row.detail].compactMap { $0 }.joined(separator: ": ")
-        return row.isWaiting ? name + " (waiting for you)" : name
+        row.opensChild ? row.accessibilityLabel : ""
     }
 }

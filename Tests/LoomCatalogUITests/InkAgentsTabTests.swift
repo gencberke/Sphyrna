@@ -29,21 +29,21 @@ import Testing
         #expect(InspectorAgentsContent.runningTitle == "Running" && InspectorAgentsContent.finishedTitle == "Finished")
     }
 
-    @Test func aRowCarriesTheTreesStatusColumnTheTypeTheTimeAndTheDescription() {
+    @Test func aRowCarriesTheStatusRoleAndTimeWithoutTheBrief() {
         let records = [record("run", started: 0), record("wait", started: 5), record("done", started: 0, ended: 94),
                        record("cut", started: 0, ended: 41, interrupted: true)]
         let content = InspectorAgentsContent(records: records, now: t0.addingTimeInterval(130), waiting: ["wait"])
         let rows = Dictionary(uniqueKeysWithValues: (content.running + content.finished).map { ($0.id, $0) })
         let running = rows["run"]
         #expect(running?.status == .working && running?.underLine == nil)
-        #expect(running?.title == "explorer" && running?.detail == "Map the module" && running?.time == "2m")
-        // A request that waits: the attention dot and "Waiting for you" under the description, in the attention text.
+        #expect(running?.title == "explorer" && running?.detail == nil && running?.time == "2m")
+        // A request that waits: the attention dot and "Waiting for you" under the identity, in the attention text.
         #expect(rows["wait"]?.status == .waiting)
         #expect(rows["wait"]?.underLine == InspectorAgentsContent.Row.Note(text: "Waiting for you", isAttention: true))
         // Finished: nothing in the status column, and the time to the second.
         #expect(rows["done"]?.status == InspectorAgentsContent.Row.Status.none && rows["done"]?.underLine == nil)
         #expect(rows["done"]?.time == "1m 34s")
-        // Interrupted: "Interrupted" under the description, in secondary.
+        // Interrupted: "Interrupted" under the identity, in secondary.
         #expect(rows["cut"]?.status == InspectorAgentsContent.Row.Status.none)
         #expect(rows["cut"]?.underLine == InspectorAgentsContent.Row.Note(text: "Interrupted", isAttention: false))
     }

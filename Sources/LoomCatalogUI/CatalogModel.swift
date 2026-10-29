@@ -477,6 +477,8 @@ public final class CatalogModel {
     let changes = ChangesState()
     /// The Agents tab's list for a session with no live run (V23; `StoppedAgents`).
     let stoppedAgents = StoppedAgentsState()
+    /// Bounded metadata for the visible parents and one selected task detail.
+    let sessionTasks = SessionTaskUIState()
     /// Rewind files (V21): the open sheet and the Undo prompt (`CatalogModel+Rewind`).
     let rewinds = RewindState()
     /// The quick question's panels, one per session (V22; `CatalogModel+QuickQuestion`).

@@ -13,6 +13,7 @@ struct InspectorOverview: View {
     /// The base branch read for one folder and branch (a file read, off the main actor); used only while it is still the
     /// selected session's.
     @State private var baseRead: BaseRead?
+    @State private var taskParent: SessionTaskParentUI?
 
     private struct BaseKey: Equatable {
         let directory: String
@@ -60,7 +61,7 @@ struct InspectorOverview: View {
             reportedEffort: words.reportedEffort, launchedEffort: words.launchedEffort,
             project: model.projectName(for: record), branch: chip?.branch, base: base, directory: directory,
             edits: edits, readsEdits: readsEdits, subagents: model.agentRecords(for: row),
-            waiting: SubagentWaiting.ids(in: row.live), editsState: editsState)
+            waiting: SubagentWaiting.ids(in: row.live), editsState: editsState, tasks: taskParent?.items ?? [])
     }
 
     var body: some View {
@@ -102,6 +103,8 @@ struct InspectorOverview: View {
         .onChange(of: row.indicator, initial: true) { _, indicator in
             model.noteChangesIndicator(indicator, for: row.id)
         }
+        .modifier(SessionTaskInterest(state: model.sessionTasks, parentID: row.id, active: model.windowIsVisible,
+                                      parent: $taskParent))
         .accessibilityIdentifier("inspector-overview")
     }
 
@@ -262,7 +265,7 @@ struct InspectorOverview: View {
     private func agentsSection(_ agents: InspectorOverviewContent.Agents) -> some View {
         OverviewSection(title: agents.title, headline: agents.headline, link: ("Open agents", { model.selectInspectorTab(.agents) })) {
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(agents.rows) { agent in OverviewAgentRow(agent: agent) }
+                ForEach(agents.rows, id: \.identity) { agent in OverviewAgentRow(agent: agent) }
                 if agents.more > 0 {
                     Text("\(agents.more) more").inspectorType(LoomTheme.Overview.caption)
                         .foregroundStyle(LoomTheme.Inspector.quiet(overlays: overlays))
@@ -561,6 +564,9 @@ private struct OverviewAgentRow: View {
     var body: some View {
         HStack(spacing: LoomTheme.Overview.agentGap) {
             mark.frame(width: LoomTheme.Layout.indicatorSlot.width)
+            if let harness = agent.harness {
+                ProviderIcon(harness: harness, size: LoomTheme.Branches.harnessMark)
+            }
             Text(verbatim: agent.title).inspectorType(LoomTheme.Overview.agentType).foregroundStyle(LoomTheme.Text.primary)
                 .lineLimit(1).fixedSize()
             Text(verbatim: agent.detail ?? agent.note ?? "").inspectorType(LoomTheme.Inspector.factValue)
@@ -576,6 +582,8 @@ private struct OverviewAgentRow: View {
     @ViewBuilder private var mark: some View {
         if agent.isWaiting {
             IndicatorView(indicator: .waitingForApproval)
+        } else if agent.taskID != nil {
+            Color.clear
         } else if agent.isRunning && agent.note == nil {
             IndicatorView(indicator: .working, animates: false)
         } else if agent.note == nil {

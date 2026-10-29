@@ -599,18 +599,29 @@ struct EmptyListHint: View {
 struct SessionListEntry: View {
     let row: SessionRowModel
     let model: CatalogModel
+    @State private var isVisible = false
+    @State private var taskParent: SessionTaskParentUI?
+
     var body: some View {
         let subagents = row.live?.subagents ?? []
+        let tasks = taskParent?.items ?? []
+        let hasChildren = !subagents.isEmpty || !tasks.isEmpty || taskParent?.next != nil || taskParent?.limited == true
+        let selected = row.isSelected || (!tasks.isEmpty && tasks.contains { $0.childSessionID == model.selectedSessionID })
         VStack(alignment: .leading, spacing: 0) {
-            SessionCardView(row: row, model: model, inListEntry: true, hasChildren: !subagents.isEmpty)
-            if !subagents.isEmpty {
-                SubagentTreeView(sessionID: row.id, records: subagents, model: model, waiting: SubagentWaiting.ids(in: row.live))
+            SessionCardView(row: row, model: model, inListEntry: true, hasChildren: hasChildren)
+            if hasChildren {
+                SubagentTreeView(sessionID: row.id, records: subagents, model: model, waiting: SubagentWaiting.ids(in: row.live),
+                                 tasks: tasks, nativeHarness: row.record.session.provider.harnessID, taskParent: taskParent)
                     .padding(.top, LoomTheme.Sidebar.cardChildrenGap)
                     .padding(.bottom, LoomTheme.Sidebar.cardBottom)
             }
         }
-        .sidebarCardSurface(selected: row.isSelected, key: "sidebar-card:\(row.id)")
+        .sidebarCardSurface(selected: selected, key: "sidebar-card:\(row.id)")
         .padding(.bottom, LoomTheme.Sidebar.cardGap)
+        .onScrollVisibilityChange(threshold: 0.01) { isVisible = $0 }
+        .modifier(SessionTaskInterest(state: model.sessionTasks, parentID: row.id,
+                                      active: isVisible && model.windowIsVisible && !model.sidebarCollapsed,
+                                      parent: $taskParent))
     }
 }
 

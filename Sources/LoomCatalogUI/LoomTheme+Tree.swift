@@ -29,6 +29,9 @@ extension LoomTheme {
         static let runningType = InkStyle(size: 12, weight: .medium)
         static let text = InkType.small
         static let time = InkType.meta
+        static let childName = InkStyle(size: 11.5, weight: .medium)
+        static let childModel = InkStyle(size: 10.5, mono: true)
+        static let harnessMark: CGFloat = 12
         /// The check on a finished row.
         static let check = Font.system(size: 11)
     }

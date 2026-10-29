@@ -50,10 +50,11 @@ struct InspectorOverviewContent: Equatable {
         let rows: [InspectorAgentsContent.Row]
         /// Subagents past `LoomTheme.Overview.maxAgents`.
         let more: Int
+        var hasUnknownRunningCount = false
 
         var title: String { "Agents" }
-        /// "2 running", also "0 running" once they finished.
-        var headline: String { "\(running) running" }
+        /// A task projection alone does not say whether its process is running.
+        var headline: String? { hasUnknownRunningCount ? nil : "\(running) running" }
     }
 
     /// The state's word: the pill's label; "Not running" for a session with no run, "—" for an ended one.
@@ -87,7 +88,7 @@ struct InspectorOverviewContent: Equatable {
          reportedMode: String?, launchedMode: String?, reportedEffort: String?, launchedEffort: String?,
          project: String?, branch: String?, base: String?, directory: String,
          edits: [ChangesFile]?, readsEdits: Bool, subagents: [SubagentRecord]?, waiting: Set<String> = [],
-         editsState: ChangesScopeState? = nil,
+         editsState: ChangesScopeState? = nil, tasks: [SessionTaskProjection] = [],
          home: String = NSHomeDirectory(), calendar: Calendar = .current, locale: Locale = .current) {
         let reportsRun = HarnessCapabilities.intrinsic(of: provider).reportsRunSettings
         self.status = status
@@ -128,7 +129,7 @@ struct InspectorOverviewContent: Equatable {
         } else {
             lastTurn = nil
         }
-        agents = Self.agents(subagents, now: now, waiting: waiting)
+        agents = Self.agents(subagents, now: now, waiting: waiting, tasks: tasks, nativeHarness: provider.harnessID)
     }
 
     /// The run on one line: "Claude Code 2.1.300 · Opus 5.5 · high"; nil when none of the three is known.
@@ -153,14 +154,16 @@ struct InspectorOverviewContent: Equatable {
 
     /// The section is there once the session has had a subagent, with the running ones counted ("Agents · 0 running" after
     /// they finished). Running ones come first, then the interrupted and the finished, each oldest first.
-    static func agents(_ records: [SubagentRecord]?, now: Date, waiting: Set<String> = []) -> Agents? {
-        guard let records, !records.isEmpty else { return nil }
-        let content = InspectorAgentsContent(records: records, now: now, waiting: waiting)
+    static func agents(_ records: [SubagentRecord]?, now: Date, waiting: Set<String> = [],
+                       tasks: [SessionTaskProjection] = [], nativeHarness: HarnessID? = nil) -> Agents? {
+        guard !(records ?? []).isEmpty || !tasks.isEmpty else { return nil }
+        let content = InspectorAgentsContent(records: records ?? [], now: now, waiting: waiting,
+                                             tasks: tasks, nativeHarness: nativeHarness)
         let live = content.running.filter { $0.note == nil }
         let rest = content.running.filter { $0.note != nil } + content.finished
-        let rows = live + rest
+        let rows = live + rest + content.tasks
         return Agents(running: live.count, rows: Array(rows.prefix(LoomTheme.Overview.maxAgents)),
-                      more: max(0, rows.count - LoomTheme.Overview.maxAgents))
+                      more: max(0, rows.count - LoomTheme.Overview.maxAgents), hasUnknownRunningCount: !tasks.isEmpty)
     }
 }
 

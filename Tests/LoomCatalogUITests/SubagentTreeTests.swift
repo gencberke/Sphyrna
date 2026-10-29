@@ -35,10 +35,10 @@ struct SubagentTreeTests {
         #expect(content([]).isEmpty)
     }
 
-    @Test func runningRowsShowTypeDescriptionAndElapsedTimeOnTheMinuteTick() {
+    @Test func runningRowsShowRoleAndElapsedTimeOnTheMinuteTick() {
         let rows = content([running("a"), running("b", "implementer", "Fix token refresh race", started: -130)]).rows
         #expect(rows.map(\.title) == ["Explore", "implementer"])
-        #expect(rows.map(\.detail) == ["Find login flow handlers", "Fix token refresh race"])
+        #expect(rows.allSatisfy { $0.detail == nil })
         #expect(rows.map(\.trailing) == ["now", "2m"])
         #expect(rows.allSatisfy { $0.kind == .running && $0.opensSubagent })
         // Elapsed time follows `now`, nothing else.
@@ -51,10 +51,10 @@ struct SubagentTreeTests {
         #expect(row.detail == nil && row.accessibilityLabel == "Subagent Explore, running")
     }
 
-    @Test func accessibilityReadsTypeDescriptionAndState() {
-        #expect(content([running("a")]).rows[0].accessibilityLabel == "Subagent Explore, Find login flow handlers, running")
+    @Test func accessibilityReadsRoleAndStateWithoutTheBrief() {
+        #expect(content([running("a")]).rows[0].accessibilityLabel == "Subagent Explore, running")
         let done = content([finished("f")], finished: true).rows
-        #expect(done[1].accessibilityLabel == "Subagent Explore, List migration files, finished")
+        #expect(done[1].accessibilityLabel == "Subagent Explore, finished")
     }
 
     @Test func atMostThreeRunningRowsThenAMoreRowThatExpandsAndCollapses() {
@@ -244,9 +244,9 @@ struct SubagentTreeTests {
         try await settle(window)
 
         let labels = accessibilityElements(in: hosting.view).compactMap { $0.accessibilityLabel?() }
-        #expect(labels.filter { $0.hasPrefix("Subagent") } == ["Subagent Explore, Find login flow handlers, running"])
+        #expect(labels.filter { $0.hasPrefix("Subagent") } == ["Subagent Explore, Claude, running"])
         #expect(labels.contains("1 subagent finished"))
-        #expect(!labels.contains("Subagent Explore, List migration files, finished"), "finished ones start folded")
+        #expect(!labels.contains("Subagent Explore, Claude, finished"), "finished ones start folded")
         // Both cards are there, and the one without subagents has no tree.
         #expect(labels.filter { $0.hasPrefix("Claude") }.count == 2)
 

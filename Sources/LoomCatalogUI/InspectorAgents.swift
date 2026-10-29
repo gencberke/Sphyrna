@@ -1,3 +1,4 @@
+import Foundation
 import LoomCore
 import SwiftUI
 
@@ -7,6 +8,7 @@ import SwiftUI
 /// request waits for the user says so (V23).
 struct InspectorAgentsContent: Equatable {
     struct Row: Equatable, Identifiable {
+        enum Identity: Hashable { case native(String), task(UUID) }
         /// The tree's status column: the working spinner, the attention dot, or nothing once finished (DESIGN §4).
         enum Status: Equatable {
             case working
@@ -32,10 +34,17 @@ struct InspectorAgentsContent: Equatable {
         /// "now" or "4m" for a running subagent, "41s" for a finished one.
         let time: String
         let accessibilityLabel: String
+        var harness: HarnessID? = nil
+        var taskID: UUID? = nil
+        var taskStatus: String? = nil
 
-        var status: Status { isWaiting ? .waiting : isRunning ? .working : .none }
+        var identity: Identity { taskID.map(Identity.task) ?? .native(id) }
+        var identifierPrefix: String { taskID == nil ? "agent" : "task" }
+
+        var status: Status { isWaiting ? .waiting : (taskID == nil && isRunning) ? .working : .none }
 
         var underLine: Note? {
+            if let taskStatus { return Note(text: taskStatus, isAttention: isWaiting) }
             if isWaiting { return Note(text: InspectorAgentsContent.waitingText, isAttention: true) }
             return note.map { Note(text: $0, isAttention: false) }
         }
@@ -43,30 +52,40 @@ struct InspectorAgentsContent: Equatable {
 
     let running: [Row]
     let finished: [Row]
+    let tasks: [Row]
 
-    var isEmpty: Bool { running.isEmpty && finished.isEmpty }
-    var count: Int { running.count + finished.count }
+    var isEmpty: Bool { running.isEmpty && finished.isEmpty && tasks.isEmpty }
+    var count: Int { running.count + finished.count + tasks.count }
 
     static let waitingText = "Waiting for you"
     static let runningTitle = "Running"
     static let finishedTitle = "Finished"
 
-    init(records: [SubagentRecord], now: Date, waiting: Set<String> = []) {
+    init(records: [SubagentRecord], now: Date, waiting: Set<String> = [], tasks: [SessionTaskProjection] = [],
+         nativeHarness: HarnessID? = nil) {
         func row(_ record: SubagentRecord) -> Row {
-            let type = record.agentType.isEmpty ? "Subagent" : record.agentType
+            let type = SessionTaskPresentation.nativeName(record)
             let time = record.endedAt.map { SubagentPillContent.duration(from: record.startedAt, to: $0) }
                 ?? RelativeTime.string(from: record.startedAt, to: now)
             let state = SubagentPillContent(record: record, now: now).label
             let isWaiting = record.isRunning && waiting.contains(record.id)
             let note = record.wasInterrupted ? SubagentPillContent.interruptedLabel : nil
-            return Row(id: record.id, title: type, detail: record.description, isRunning: record.isRunning,
+            return Row(id: record.id, title: type, detail: nil, isRunning: record.isRunning,
                        isWaiting: isWaiting, note: note, depth: record.depth, time: time,
-                       accessibilityLabel: [type, record.description, state, isWaiting ? Self.waitingText.lowercased() : nil]
-                           .compactMap { $0 }.joined(separator: ", "))
+                       accessibilityLabel: [type, nativeHarness.map(SessionTaskPresentation.harnessName), state,
+                                            isWaiting ? Self.waitingText.lowercased() : nil]
+                           .compactMap { $0 }.joined(separator: ", "), harness: nativeHarness)
         }
         let ordered = records.sorted { $0.startedAt < $1.startedAt }
         running = ordered.filter(\.isRunning).map(row)
         finished = ordered.filter { !$0.isRunning }.map(row)
+        self.tasks = tasks.map { task in
+            let waiting = SessionTaskPresentation.needsParentInput(task)
+            return Row(id: task.id.uuidString, title: task.childName, detail: SessionTaskPresentation.model(task).text,
+                       isRunning: false, isWaiting: waiting, note: nil, depth: 1, time: "",
+                       accessibilityLabel: SessionTaskPresentation.label(task), harness: task.harness,
+                       taskID: task.id, taskStatus: SessionTaskPresentation.status(task))
+        }
     }
 }
 
@@ -107,6 +126,8 @@ extension CatalogModel {
 struct InspectorAgents: View {
     let model: CatalogModel
     let row: SessionRowModel
+    @State private var taskParent: SessionTaskParentUI?
+    @State private var selectedTaskID: UUID?
 
     /// What the empty list says: a live run lists the subagents it runs; a stopped Claude session lists those in its
     /// folder (V23), so an empty list there means it ran none; anything else cannot list a past run's.
@@ -119,21 +140,27 @@ struct InspectorAgents: View {
         Group {
             if let viewed = model.viewedSubagent, viewed.sessionID == row.id, let panel = model.subagentPanel {
                 detail(viewed: viewed, panel: panel)
+            } else if let selectedTaskID, let task = taskParent?.items.first(where: { $0.id == selectedTaskID }) {
+                SessionTaskDetailView(model: model, task: task) { self.selectedTaskID = nil }
             } else {
                 list
             }
         }
+        .modifier(SessionTaskInterest(state: model.sessionTasks, parentID: row.id, active: model.windowIsVisible,
+                                      parent: $taskParent))
+        .onChange(of: row.id) { _, _ in selectedTaskID = nil }
         .accessibilityIdentifier("inspector-agents")
     }
 
     private var list: some View {
         // A stopped Claude session lists its folder, once read (nil before that: no empty text for a list not read yet).
         let records = model.agentRecords(for: row)
-        let content = InspectorAgentsContent(records: records ?? [], now: model.now, waiting: SubagentWaiting.ids(in: row.live))
+        let content = InspectorAgentsContent(records: records ?? [], now: model.now, waiting: SubagentWaiting.ids(in: row.live),
+                                             tasks: taskParent?.items ?? [], nativeHarness: row.record.session.provider.harnessID)
         let readsFolder = model.agentsFolderIsReadable(row)
         return ScrollView {
             VStack(alignment: .leading, spacing: LoomTheme.Agents.sectionGap) {
-                if content.isEmpty, records != nil {
+                if content.isEmpty, records != nil, taskParent?.didLoad == true {
                     InspectorEmptyState(text: Self.emptyText(isRunning: model.isRunning(row), readsFolder: readsFolder))
                 }
                 if !content.running.isEmpty {
@@ -148,6 +175,15 @@ struct InspectorAgents: View {
                         rows(content.finished)
                     }
                 }
+                if !content.tasks.isEmpty {
+                    InspectorSection(title: "Tasks", note: "\(content.tasks.count)",
+                                     noteFollowsTitle: true, titleGap: LoomTheme.Agents.headGap) {
+                        rows(content.tasks)
+                    }
+                }
+                if let taskParent {
+                    taskPageStatus(taskParent)
+                }
             }
             .padding(LoomTheme.Inspector.bodyInset)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -156,11 +192,32 @@ struct InspectorAgents: View {
 
     private func rows(_ rows: [InspectorAgentsContent.Row]) -> some View {
         VStack(spacing: LoomTheme.Agents.cardGap) {
-            ForEach(rows) { agent in
-                InspectorAgentRow(agent: agent) { model.openSubagent(agent.id, in: row.id) }
+            ForEach(rows, id: \.identity) { agent in
+                InspectorAgentRow(agent: agent) {
+                    if let id = agent.taskID { model.closeSubagent(); selectedTaskID = id }
+                    else { model.openSubagent(agent.id, in: row.id) }
+                }
                     .padding(.leading, CGFloat(min(agent.depth - 1, LoomTheme.Inspector.agentMaxIndent))
                              * LoomTheme.Inspector.agentIndent)
             }
+        }
+    }
+
+    @ViewBuilder private func taskPageStatus(_ parent: SessionTaskParentUI) -> some View {
+        if parent.unavailable {
+            Text("Child tasks are unavailable.").projectType(LoomTheme.Agents.detail).foregroundStyle(LoomTheme.Text.secondaryStyle)
+        } else if parent.isLoading && parent.items.isEmpty {
+            Text("Reading child tasks…").projectType(LoomTheme.Agents.detail).foregroundStyle(LoomTheme.Text.secondaryStyle)
+        }
+        if parent.incomplete {
+            Text("Some child tasks could not be read.").projectType(LoomTheme.Agents.detail).foregroundStyle(LoomTheme.Text.secondaryStyle)
+        }
+        if parent.limited {
+            Text("More tasks are unavailable while other rows are open.").projectType(LoomTheme.Agents.detail)
+                .foregroundStyle(LoomTheme.Text.secondaryStyle)
+        } else if parent.next != nil {
+            Button(parent.isLoading ? "Loading tasks…" : "Load more tasks") { model.sessionTasks.loadMore(parent) }
+                .buttonStyle(ControlButtonStyle(kind: .ghost, size: .small)).disabled(parent.isLoading)
         }
     }
 
@@ -235,6 +292,9 @@ struct InspectorAgentRow: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: Metrics.lineGap) {
                     HStack(alignment: .firstTextBaseline, spacing: Metrics.columnGap) {
+                        if let harness = agent.harness {
+                            ProviderIcon(harness: harness, size: LoomTheme.Branches.harnessMark)
+                        }
                         Text(agent.title).projectType(Metrics.type).foregroundStyle(LoomTheme.Text.primary)
                             .lineLimit(1).truncationMode(.tail)
                         Spacer(minLength: 0)
@@ -251,7 +311,7 @@ struct InspectorAgentRow: View {
                         Text(note.text).projectType(Metrics.note)
                             .foregroundStyle(note.isAttention ? AnyShapeStyle(LoomTheme.Status.attentionLight)
                                                               : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
-                            .accessibilityIdentifier(note.isAttention ? "agent-waiting:\(agent.id)" : "agent-note:\(agent.id)")
+                            .accessibilityIdentifier("\(agent.identifierPrefix)-\(note.isAttention ? "waiting" : "note"):\(agent.id)")
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -265,9 +325,9 @@ struct InspectorAgentRow: View {
             .contentShape(RoundedRectangle(cornerRadius: Metrics.cardRadius))
         }
         // The card keeps its own fill; the shared pill's hover and press tones lie over it.
-        .buttonStyle(RowButtonStyle(radius: Metrics.cardRadius, key: "agent-row:\(agent.id)")).focusEffectDisabled()
+        .buttonStyle(RowButtonStyle(radius: Metrics.cardRadius, key: "\(agent.identifierPrefix)-row:\(agent.id)")).focusEffectDisabled()
         .accessibilityLabel(agent.accessibilityLabel)
-        .accessibilityHint("Shows the transcript")
+        .accessibilityHint(agent.taskID == nil ? "Shows the transcript" : "Shows task reports")
     }
 
     @ViewBuilder private var status: some View {
