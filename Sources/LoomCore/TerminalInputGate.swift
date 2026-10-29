@@ -18,11 +18,21 @@ public final class TerminalInputGate: @unchecked Sendable {
 
     private let lock = NSLock()
     private var queues: [UUID: TerminalInputQueue] = [:]
+    private var registrationObserver: (@Sendable (UUID) -> Void)?
 
     public init() {}
 
     public func register(runID: UUID, queue: TerminalInputQueue) {
-        lock.withLock { queues[runID] = queue }
+        let observer = lock.withLock {
+            queues[runID] = queue
+            return registrationObserver
+        }
+        observer?(runID)
+    }
+
+    /// Lets the runtime retry deferred work when its actual terminal attaches.
+    func observeRegistrations(_ observer: (@Sendable (UUID) -> Void)?) {
+        lock.withLock { registrationObserver = observer }
     }
 
     public func unregister(runID: UUID) {

@@ -1,11 +1,18 @@
 import Darwin
 import Foundation
-import LoomCore
+@testable import LoomCore
 import SwiftTerm
 import Testing
 @testable import LoomTerminal
 
 private final class TerminalTestBundleAnchor: NSObject {}
+
+private final class RegistrationAdmissionProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Bool?
+    func record(_ accepted: Bool) { lock.withLock { value = accepted } }
+    var accepted: Bool? { lock.withLock { value } }
+}
 
 /// Test-only tee: the exact PTY bytes also go to a headless engine so cell
 /// attributes (not exposed by the view) can be checked.
@@ -71,6 +78,31 @@ struct TerminalSurfaceTests {
             }
             try await Task.sleep(for: .milliseconds(5))
         }
+    }
+
+    @Test func earlyInputIsQueuedBeforeRegistration() async throws {
+        let supervisor = try ProcessSupervisor()
+        let surface = TerminalSurface()
+        surface.view.send(data: Array("unsent draft".utf8)[...])
+        let sessionID = UUID()
+        try await supervisor.createSession(ManagedSession(id: sessionID, provider: .synthetic,
+            workingDirectory: FileManager.default.temporaryDirectory.path))
+        let environment = LaunchEnvironment.make(path: "/usr/bin:/bin", runID: supervisor.ownershipRunID, sessionID: sessionID)
+        let launched = try await supervisor.launch(sessionID: sessionID, executable: childPath, arguments: ["interactive"],
+            environment: environment, rows: 24, columns: 80, outputSink: surface.outputSink)
+        let runID = try #require(launched.session.currentRun?.id)
+        let gate = TerminalInputGate(), probe = RegistrationAdmissionProbe()
+        gate.observeRegistrations { id in
+            let fresh = gate.establishFreshCleanInput(runID: id)
+            let accepted = fresh && gate.enqueueAutomatic(runID: id, bytes: Data("unexpected pointer\r".utf8)) != nil
+            probe.record(accepted)
+        }
+        surface.attach(runID: runID, endpoint: launched.terminal, inputGate: gate)
+        #expect(probe.accepted == false)
+        surface.view.send(data: [0x0d][...])
+        try await waitFor(surface, contains: "echo: unsent draft")
+        #expect(!surface.screenText().contains("unexpected pointer"))
+        #expect((await supervisor.shutdown()).succeeded)
     }
 
     @Test func splitSequencesRepliesAndOrderedInputReachTheRun() async throws {

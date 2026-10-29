@@ -212,8 +212,10 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
         }
         input = .attached(queue, endpoint)
         self.inputGate = inputGate
-        inputGate?.register(runID: runID, queue: queue)
+        // Registration can wake a deferred automatic sender. Put earlier
+        // user/terminal bytes into this queue before it becomes visible.
         queue.enqueue(early)
+        inputGate?.register(runID: runID, queue: queue)
         // The grid may have changed between launch and attach.
         let size = gridSize
         requestResize(rows: size.rows, columns: size.columns, source: "attach")
