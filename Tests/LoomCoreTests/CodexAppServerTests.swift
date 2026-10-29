@@ -5,6 +5,31 @@ import Testing
 @testable import LoomCore
 
 struct CodexAppServerTests {
+    @Test func taskTurnRequestsPreserveNativeSettingsAndExactIdentity() async throws {
+        let (client, peer) = try await CodexSocketPeer.make()
+        defer { peer.close() }
+        let start = Task { try await client.startTaskTurn(threadID: "owned-thread", text: "task pointer", timeout: 2) }
+        let startFrame = try await peer.nextFrame()
+        let startCall = try JSONDecoder().decode(JSONValue.self, from: Data(startFrame.bytes))
+        #expect(startCall["method"] == .string("turn/start"))
+        #expect(startCall["params"] == .object([
+            "threadId": .string("owned-thread"),
+            "input": .array([.object(["type": .string("text"), "text": .string("task pointer"), "text_elements": .array([])])]),
+        ]))
+        let startID = try #require(startCall["id"])
+        try peer.frame(.object(["id": startID, "result": .object(["turn": .object(["id": .string("native-turn")])])]))
+        #expect(try await start.value == "native-turn")
+        let interrupt = Task { try await client.interruptTaskTurn(threadID: "owned-thread", turnID: "native-turn", timeout: 2) }
+        let stopFrame = try await peer.nextFrame()
+        let stopCall = try JSONDecoder().decode(JSONValue.self, from: Data(stopFrame.bytes))
+        #expect(stopCall["method"] == .string("turn/interrupt"))
+        #expect(stopCall["params"] == .object(["threadId": .string("owned-thread"), "turnId": .string("native-turn")]))
+        let stopID = try #require(stopCall["id"])
+        try peer.frame(.object(["id": stopID, "result": .object([:])]))
+        try await interrupt.value
+        await client.close()
+    }
+
     @Test func codexIngressFencesUntilItsOrderedConsumerFinishes() async throws {
         let (client, peer) = try await CodexSocketPeer.make()
         defer { peer.close() }

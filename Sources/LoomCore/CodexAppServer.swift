@@ -419,6 +419,37 @@ public actor CodexAppServerClient {
         try await Task.detached { try transport.send(data) }.value
     }
 
+    /// Submit one task pointer to this owned thread, retaining its native
+    /// settings. A response is a submission receipt, not proof of consumption.
+    func startTaskTurn(threadID: String, text: String, timeout: TimeInterval = 20) async throws -> String {
+        guard Self.validTaskIdentifier(threadID), (try? SessionTaskLimits.text(text)) != nil else {
+            throw CodexAppServerError.protocolViolation("invalid task turn input")
+        }
+        let result = try await request(method: "turn/start", params: .object([
+            "threadId": .string(threadID),
+            "input": .array([.object(["type": .string("text"), "text": .string(text), "text_elements": .array([])])]),
+        ]), timeout: timeout)
+        guard let turnID = result["turn"]?["id"]?.string, Self.validTaskIdentifier(turnID) else {
+            throw CodexAppServerError.protocolViolation("task turn response has no valid turn id")
+        }
+        return turnID
+    }
+
+    /// Interrupt only the named native turn. Callers must first prove its
+    /// relationship to the still-current owned task round.
+    func interruptTaskTurn(threadID: String, turnID: String, timeout: TimeInterval = 20) async throws {
+        guard Self.validTaskIdentifier(threadID), Self.validTaskIdentifier(turnID) else {
+            throw CodexAppServerError.protocolViolation("invalid task turn identity")
+        }
+        _ = try await request(method: "turn/interrupt", params: .object([
+            "threadId": .string(threadID), "turnId": .string(turnID),
+        ]), timeout: timeout)
+    }
+
+    private static func validTaskIdentifier(_ value: String) -> Bool {
+        !value.isEmpty && value.utf8.count <= 256 && !value.utf8.contains(0)
+    }
+
     /// Status comes from a history-free `thread/read`; the last turn (id, start,
     /// outcome, last assistant message) from the newest page of `thread/turns/list`,
     /// so a long conversation is never transferred or decoded in full. A thread
