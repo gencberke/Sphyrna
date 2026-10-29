@@ -78,7 +78,7 @@ struct ComposerQueueStrip: View {
         HStack(spacing: LoomTheme.Composer.chipPartGap + 2) {
             if let pause {
                 // A paused queue says why where the head would be, with Resume and Clear.
-                Image(systemName: "pause").font(LoomTheme.Composer.queueWaitIcon).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                InkIcon(.pause, size: LoomTheme.Icon.compact).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 Text(pause).font(LoomTheme.Composer.queueFont).foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
                     .accessibilityIdentifier("composer-queue-pause")
                 Spacer(minLength: 0)
@@ -92,7 +92,7 @@ struct ComposerQueueStrip: View {
                         Text(ComposerQueueText.title(count: queue.items.count)).font(LoomTheme.InkType.label.font).tracking(LoomTheme.InkType.label.trackingPoints)
                             .textCase(.uppercase).foregroundStyle(LoomTheme.Text.secondaryStyle)
                         Spacer(minLength: 0)
-                        Image(systemName: "chevron.down").font(LoomTheme.Typography.chevron)
+                        InkIcon(.chevronDown, size: LoomTheme.Icon.tiny)
                             .rotationEffect(.degrees(collapsed ? -90 : 0)).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                     }
                     .contentShape(Rectangle())
@@ -149,7 +149,7 @@ private struct QueueRow: View {
         let shape = RoundedRectangle(cornerRadius: LoomTheme.Composer.queueRowRadius)
         let showsActions = (hovering || focusedRow == item.id || LookEvidence.forcesHover("queue:\(item.id)")) && !isEditing
         HStack(spacing: LoomTheme.Composer.chipGap) {
-            Image(systemName: "clock").font(LoomTheme.Composer.queueWaitIcon).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            InkIcon(.clock, size: LoomTheme.Icon.compact).foregroundStyle(LoomTheme.Text.tertiaryStyle)
             Text(ComposerQueueStrip.oneLine(item.text)).font(LoomTheme.Composer.queueFont).foregroundStyle(LoomTheme.Text.primary)
                 .lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: LoomTheme.Composer.queueRowSpacing) {
@@ -158,7 +158,7 @@ private struct QueueRow: View {
                 Button("Send Now") { model.sendQueuedNow(item.id) }
                     .buttonStyle(ControlButtonStyle(kind: .ghost, size: .small)).accessibilityIdentifier("composer-queue-send-now")
                 Button { model.removeQueued(item.id) } label: {
-                    Image(systemName: "xmark").font(LoomTheme.Typography.small).frame(width: LoomTheme.Chat.iconSlot + 2, height: LoomTheme.Chat.iconSlot + 2)
+                    InkIcon(.close, size: LoomTheme.Icon.compact).frame(width: LoomTheme.Chat.iconSlot + 2, height: LoomTheme.Chat.iconSlot + 2)
                 }
                 .buttonStyle(ControlButtonStyle(kind: .ghost, size: .small)).help("Remove").accessibilityLabel("Remove")
                 .accessibilityIdentifier("composer-queue-remove")

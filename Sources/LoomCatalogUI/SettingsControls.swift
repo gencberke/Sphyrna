@@ -24,7 +24,7 @@ struct InkCheckboxStyle: ToggleStyle {
                     .overlay { if !configuration.isOn { shape.strokeBorder(LoomTheme.Surface.strongerHairline, lineWidth: LoomTheme.Line.hairline) } }
                     .overlay {
                         if configuration.isOn {
-                            Image(systemName: "checkmark").font(S.checkboxGlyph).foregroundStyle(LoomTheme.Accent.onAccent)
+                            InkIcon(.check, size: LoomTheme.Icon.tiny).foregroundStyle(LoomTheme.Accent.onAccent)
                         }
                     }
                     .frame(width: S.checkboxSide, height: S.checkboxSide)
@@ -102,7 +102,7 @@ struct InkStepper: View {
 
     private func stepButton(_ direction: Int, glyph: String, help: String) -> some View {
         Button { onChange(StepperRule.stepped(value, by: direction, in: range)) } label: {
-            Image(systemName: glyph).font(S.stepperGlyph).frame(width: S.stepperButton, height: S.stepperHeight)
+            InkIcon(systemName: glyph, size: LoomTheme.Icon.chrome).frame(width: S.stepperButton, height: S.stepperHeight)
         }
         .buttonStyle(ChromeButtonStyle(size: CGSize(width: S.stepperButton, height: S.stepperHeight)))
         .focusEffectDisabled()
@@ -131,9 +131,9 @@ struct SettingsPopup<Value: Hashable, Items: View>: View {
                 .pickerStyle(.inline).labelsHidden()
         } label: {
             HStack(spacing: S.popupGap) {
-                if let icon { Image(systemName: icon.symbol).font(S.popupIcon).foregroundStyle(icon.color) }
+                if let icon { InkIcon(systemName: icon.symbol, size: LoomTheme.Icon.body).foregroundStyle(icon.color) }
                 Text(valueText).projectType(S.popupFont).foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
-                Image(systemName: "chevron.up.chevron.down").font(S.popupChevron).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                InkIcon(.upDown, size: LoomTheme.Icon.compact).foregroundStyle(LoomTheme.Text.tertiaryStyle)
             }
         }
         .menuStyle(.button)

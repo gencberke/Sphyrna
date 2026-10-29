@@ -61,7 +61,7 @@ private struct StripSegment: View {
         let on = enabled && segment.isEnabled
         return Button(action: action) {
             HStack(spacing: D.segmentGlyphGap) {
-                if segment.showsGlyph { Image(systemName: "arrow.triangle.branch").font(D.segmentGlyph) }
+                if segment.showsGlyph { InkIcon(.branch, size: LoomTheme.Icon.compact) }
                 Text(segment.title).lineLimit(1).truncationMode(.tail)
                     .frame(maxWidth: segment.showsGlyph ? D.segmentStayMaxWidth : nil)
                 if let name = segment.name {

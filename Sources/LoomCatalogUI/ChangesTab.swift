@@ -227,7 +227,7 @@ private struct ChangesFileList: View {
 
     private func folderRow(_ line: ChangesTree.Line) -> some View {
         HStack(spacing: LoomTheme.Changes.fileRowGap) {
-            Image(systemName: "folder").font(LoomTheme.Changes.fileGlyph).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            InkIcon(.folder, size: LoomTheme.Icon.body).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 .frame(width: LoomTheme.Changes.fileGlyphWidth).accessibilityHidden(true)
             Text(verbatim: line.name).font(LoomTheme.Changes.fileName).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 .lineLimit(1).truncationMode(.middle)
@@ -290,7 +290,7 @@ private struct ChangesFileRow: View {
             .accessibilityAddTraits(selected ? .isSelected : [])
             .modifier(ChangesFileDragSource(model: model, sessionID: sessionID, file: file))
             Button { NSWorkspace.shared.open(URL(fileURLWithPath: file.absolutePath)) } label: {
-                Image(systemName: "arrow.up.forward.square").font(LoomTheme.Changes.fileGlyph)
+                InkIcon(.open, size: LoomTheme.Icon.body)
                     .frame(width: LoomTheme.Changes.openSlot, height: LoomTheme.Changes.fileRowHeight)
                     .contentShape(Rectangle())
             }
@@ -318,7 +318,7 @@ private struct ChangesFooter: View {
             let sending = session.sendStatus == .sending
             VStack(alignment: .leading, spacing: LoomTheme.Changes.noteGap) {
                 HStack(spacing: LoomTheme.Changes.controlGap) {
-                    Image(systemName: "text.bubble").font(LoomTheme.Changes.footerGlyph).foregroundStyle(LoomTheme.Accent.high)
+                    InkIcon(.bubble, size: LoomTheme.Icon.body).foregroundStyle(LoomTheme.Accent.high)
                         .accessibilityHidden(true)
                     Text(verbatim: ChangesFooterText.summary(comments: comments.count, files: files))
                         .font(LoomTheme.Typography.small).foregroundStyle(LoomTheme.Text.primary)

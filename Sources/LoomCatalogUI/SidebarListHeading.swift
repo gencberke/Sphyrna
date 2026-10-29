@@ -24,13 +24,6 @@ struct SidebarListHeading: View {
             case .newSession: "New Session"
             }
         }
-
-        var symbol: String {
-            switch self {
-            case .addProject: "folder.badge.plus"
-            case .newSession: "plus"
-            }
-        }
     }
 
     static func action(of mode: CatalogViewMode) -> Action {
@@ -57,7 +50,7 @@ struct SidebarListHeading: View {
             ViewPicker(model: model)
             if Self.isOffered(action, on: model) {
                 Button { Self.perform(action, on: model) } label: {
-                    Image(systemName: action.symbol).font(LoomTheme.Sidebar.headingGlyph)
+                    InkIcon(.plus, size: LoomTheme.Icon.heading)
                 }
                 .buttonStyle(ChromeButtonStyle(size: LoomTheme.Sidebar.headingButton, key: "sidebar-heading-action"))
                 .focusEffectDisabled()
@@ -104,7 +97,7 @@ struct ViewPicker: View {
     var body: some View {
         let mode = model.viewMode
         Button { model.setViewMode(mode == .projects ? .activity : .projects) } label: {
-            Image(systemName: mode == .projects ? "list.bullet" : "sidebar.left").font(LoomTheme.Sidebar.headingGlyph)
+            InkIcon(mode == .projects ? .list : .sidebarLeft, size: LoomTheme.Icon.heading)
         }
         .buttonStyle(ChromeButtonStyle(size: LoomTheme.Sidebar.headingButton, key: "sidebar-view-toggle"))
         .focusEffectDisabled()

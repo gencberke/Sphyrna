@@ -143,7 +143,7 @@ struct ChatViewChip: View {
         let shape = RoundedRectangle(cornerRadius: LoomTheme.InkRadius.control)
         Button(action: cycle) {
             HStack(spacing: compact ? 5 : 7) {
-                Image(systemName: "eye").font(LoomTheme.Chat.linkSymbol)
+                InkIcon(.eye, size: LoomTheme.Icon.compact)
                 if !compact { Text(mode.title) }
                 KeyChip(text: "\u{2303}O")
             }
@@ -171,7 +171,7 @@ struct ChatJumpPill: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: "arrow.down").font(LoomTheme.Chat.linkSymbol)
+                InkIcon(.down, size: LoomTheme.Icon.compact)
                 Text("Jump to Latest")
             }
             .font(LoomTheme.Chat.jumpPill)
@@ -206,11 +206,11 @@ struct ChatNotice: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.circle").font(LoomTheme.Chat.rowIcon).foregroundStyle(LoomTheme.Status.attentionLight)
+            InkIcon(.exclamation, size: LoomTheme.Icon.compact).foregroundStyle(LoomTheme.Status.attentionLight)
             Text(message)
                 .font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Text.primary).lineLimit(2)
             Button(action: dismiss) {
-                Image(systemName: "xmark").font(LoomTheme.Chat.chevron).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                InkIcon(.close, size: LoomTheme.Icon.tiny).foregroundStyle(LoomTheme.Text.secondaryStyle)
                     .frame(width: 24, height: 24).contentShape(Rectangle())
             }
             .buttonStyle(.plain).accessibilityLabel("Dismiss")

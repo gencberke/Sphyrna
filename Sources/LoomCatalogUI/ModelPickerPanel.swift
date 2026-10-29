@@ -42,7 +42,7 @@ struct ModelPickerPanel: View {
 
     private var search: some View {
         HStack(spacing: LoomTheme.ModelPicker.searchGap) {
-            Image(systemName: "magnifyingglass").font(LoomTheme.ModelPicker.iconFont)
+            InkIcon(.search, size: LoomTheme.Icon.body)
                 .foregroundStyle(LoomTheme.Text.tertiaryStyle).accessibilityHidden(true)
             TextField("", text: Binding(get: { cursor.query }, set: { text in
                 let next = ModelPickerDraft.projection(model: model, query: text)
@@ -71,7 +71,7 @@ struct ModelPickerPanel: View {
 
     private func rail(_ data: ModelPickerProjection) -> some View {
         VStack(spacing: LoomTheme.ModelPicker.railGap) {
-            Button { jump(.recent) } label: { Image(systemName: "clock.arrow.circlepath") }
+            Button { jump(.recent) } label: { InkIcon(.clock) }
                 .buttonStyle(ChromeButtonStyle(selected: cursor.activeSection == .recent, size: LoomTheme.ModelPicker.railButton))
                 .help("Recent").accessibilityLabel("Recent models").disabled(data.recent.isEmpty)
             railDivider
@@ -233,7 +233,7 @@ struct ModelPickerPanel: View {
                 Spacer(minLength: 0)
                 Group {
                     if selected == choice {
-                        Image(systemName: "checkmark").font(LoomTheme.ModelPicker.iconFont).foregroundStyle(LoomTheme.Accent.base)
+                        InkIcon(.check, size: LoomTheme.Icon.body).foregroundStyle(LoomTheme.Accent.base)
                     }
                 }
                 .frame(width: LoomTheme.ModelPicker.checkWidth).accessibilityHidden(true)

@@ -99,7 +99,7 @@ struct HomeRemoraFieldBlock: View {
         return Button { isOpen.wrappedValue.toggle() } label: {
             HStack(spacing: R.scopeGap) {
                 Text(scopeTitle).lineLimit(1)
-                Image(systemName: "chevron.down").font(R.scopeChevronGlyph.font)
+                InkIcon(.chevronDown, size: LoomTheme.Icon.tiny)
                     .foregroundStyle(LoomTheme.Text.tertiaryStyle).accessibilityHidden(true)
             }
         }
@@ -126,7 +126,7 @@ struct HomeRemoraFieldBlock: View {
     private var sendButton: some View {
         let question = ui.text.trimmingCharacters(in: .whitespacesAndNewlines)
         return Button { HomeRemoraCalls.ask(model, ui: ui, question) } label: {
-            Image(systemName: "arrow.up").font(LoomTheme.Control.iconGlyph).fixedSize()
+            InkIcon(.up).fixedSize()
                 .frame(width: LoomTheme.Home.sendLabelWidth)
         }
         .buttonStyle(ControlButtonStyle(kind: .default, size: .page))
@@ -302,7 +302,7 @@ private struct HomeRemoraAnswerCard: View {
             Text(asked.question).homeType(R.askedQuestion).foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
             Spacer(minLength: 0)
             Button { ui.answerClosed = true } label: {
-                Image(systemName: "xmark")
+                InkIcon(.close, size: LoomTheme.Icon.small)
             }
             .buttonStyle(ChromeButtonStyle(size: LoomTheme.Home.smallIconSize))
             .focusEffectDisabled()
@@ -403,7 +403,7 @@ struct HomeRemoraEarlier: View {
     var body: some View {
         Button { ui.text = earlier.question } label: {
             HStack(spacing: R.earlierGap) {
-                Image(systemName: "chevron.right").font(R.chevronGlyph.font)
+                InkIcon(.chevronRight, size: LoomTheme.Icon.tiny)
                     .foregroundStyle(LoomTheme.Text.tertiaryStyle).frame(width: R.chevron, height: R.chevron).accessibilityHidden(true)
                 Text("Earlier:").homeType(R.earlier).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 Text(earlier.question).homeType(R.earlierQuestion).foregroundStyle(LoomTheme.Text.secondaryStyle).lineLimit(1)

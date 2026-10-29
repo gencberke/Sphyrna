@@ -283,10 +283,14 @@ struct SidebarParityTests {
                 let searchFrame = InkAX.frame(search), homeFrame = InkAX.frame(home)
                 let searchGlyph = try glyphBounds(searchFrame, start: searchFrame.minX + 10, backgroundX: searchFrame.minX + 6)
                 let homeGlyph = try glyphBounds(homeFrame, start: homeFrame.minX + 8, backgroundX: homeFrame.minX + 4)
-                #expect(searchGlyph.width >= 13 && searchGlyph.height >= 14 && abs(searchGlyph.minX - searchFrame.minX - 11) < 1,
-                        "Search's rendered glyph occupies the 15 pt inset: \(searchFrame), \(searchGlyph)")
-                #expect(homeGlyph.width >= 14 && homeGlyph.height >= 14 && abs(homeGlyph.minX - homeFrame.minX - 8) < 1,
-                        "Home's rendered glyph stays aligned in its 16 pt column: \(homeFrame), \(homeGlyph)")
+                // Reference paths are inset within the 15 pt box: the search spans 1.7...14.7 units including stroke,
+                // and the home spans 1.9...14.1. Allow a pixel for antialiasing in each rendered bound.
+                #expect((11...13).contains(searchGlyph.width) && (12...14).contains(searchGlyph.height)
+                        && abs(searchGlyph.minX - searchFrame.minX - 12) <= 1,
+                        "Search's reference path stays inside its 15 pt box: \(searchFrame), \(searchGlyph)")
+                #expect((11...13).contains(homeGlyph.width) && (11...13).contains(homeGlyph.height)
+                        && abs(homeGlyph.minX - homeFrame.minX - 10) <= 1,
+                        "Home's reference path stays aligned in its 16 pt column: \(homeFrame), \(homeGlyph)")
                 let fill = try pixel(at: NSPoint(x: cardFrame.minX + 8, y: cardFrame.midY))
                 let childFill = try pixel(at: NSPoint(x: cardFrame.minX + 8, y: firstFrame.midY))
                 let lastFill = try pixel(at: NSPoint(x: cardFrame.minX + 8, y: secondFrame.midY))

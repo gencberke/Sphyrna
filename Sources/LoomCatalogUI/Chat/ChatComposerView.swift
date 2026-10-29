@@ -204,7 +204,7 @@ struct ComposerAttachmentsRow: View {
             .overlay(shape.strokeBorder(LoomTheme.Surface.strongHairline, lineWidth: LoomTheme.Line.hairline))
             .overlay(alignment: .topTrailing) {
                 Button { model.removeAttachment(attachment.id) } label: {
-                    Image(systemName: "xmark").font(LoomTheme.Composer.badgeGlyph).foregroundStyle(LoomTheme.Composer.badgeGlyphColor)
+                    InkIcon(.close, size: LoomTheme.Icon.tiny).foregroundStyle(LoomTheme.Composer.badgeGlyphColor)
                         .frame(width: LoomTheme.Composer.badgeSide, height: LoomTheme.Composer.badgeSide)
                         .background(Circle().fill(LoomTheme.Composer.badgeFill))
                         .contentShape(Circle())
@@ -227,7 +227,7 @@ struct ComposerAttachmentsRow: View {
                 Text(detail).font(LoomTheme.Composer.attachmentSizeFont).foregroundStyle(LoomTheme.Text.tertiaryStyle)
             }
             Button { model.removeAttachment(attachment.id) } label: {
-                Image(systemName: "xmark").font(LoomTheme.Typography.chevron).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                InkIcon(.close, size: LoomTheme.Icon.tiny).foregroundStyle(LoomTheme.Text.secondaryStyle)
                     .frame(width: LoomTheme.Composer.queueIcon, height: LoomTheme.Composer.queueIcon).contentShape(Rectangle())
             }
             .buttonStyle(.plain).accessibilityLabel("Remove \(attachment.label)")

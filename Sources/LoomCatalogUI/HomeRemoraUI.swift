@@ -152,7 +152,7 @@ struct HomeRemoraMenuView: View {
                 Text(item.title).font(H.rowFont).lineLimit(1).foregroundStyle(LoomTheme.Text.primary)
                 Spacer(minLength: 0)
                 if item.checked {
-                    Image(systemName: "checkmark").font(LoomTheme.Remora.checkGlyph.font).foregroundStyle(LoomTheme.Text.primary)
+                    InkIcon(.check, size: LoomTheme.Icon.compact).foregroundStyle(LoomTheme.Text.primary)
                         .accessibilityHidden(true)
                 }
             }
@@ -172,7 +172,7 @@ struct HomeRemoraMenuView: View {
         switch mark {
         case .none: Color.clear
         case .project(let name, let tone): ProjectMarkView(name: name, tone: tone, size: .chip)
-        case .symbol(let name): Image(systemName: name).font(H.iconFont).foregroundStyle(LoomTheme.OnPopover.secondary(lit: false))
+        case .symbol(let name): InkIcon(systemName: name, size: LoomTheme.Icon.navigation).foregroundStyle(LoomTheme.OnPopover.secondary(lit: false))
         }
     }
 }

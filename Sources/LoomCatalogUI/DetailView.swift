@@ -145,7 +145,7 @@ struct ShowSidebarButton: View {
 
     var body: some View {
         Button { model.onToggleSidebar?() } label: {
-            Image(systemName: "sidebar.left")
+            InkIcon(.sidebarLeft)
         }
         .buttonStyle(ChromeButtonStyle()).focusEffectDisabled()
         .help("Show Sidebar (⌃⌘S)")

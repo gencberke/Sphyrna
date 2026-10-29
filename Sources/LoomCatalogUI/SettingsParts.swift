@@ -232,7 +232,7 @@ struct SettingsRefreshButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) { Image(systemName: "arrow.clockwise").font(S.footerGlyph) }
+        Button(action: action) { InkIcon(.refresh, size: LoomTheme.Icon.body) }
             .buttonStyle(ChromeButtonStyle(size: S.footerButton))
             .disabled(disabled)
             .help(label)

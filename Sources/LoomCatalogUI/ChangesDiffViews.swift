@@ -80,7 +80,7 @@ struct ChangesDiffCard: View {
 
     private var header: some View {
         HStack(spacing: LoomTheme.Changes.fileRowGap) {
-            Image(systemName: "doc.text").font(LoomTheme.Changes.fileGlyph).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            InkIcon(.document, size: LoomTheme.Icon.body).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 .accessibilityHidden(true)
             Text(verbatim: file.displayPath).font(LoomTheme.Changes.fileName).foregroundStyle(LoomTheme.Text.primary)
                 .lineLimit(1).truncationMode(.middle)
@@ -181,7 +181,7 @@ private struct ChangesDiffRowView: View {
         .background(band)
         .overlay(alignment: .leading) {
             if hovering, anchor != nil {
-                Image(systemName: "plus").font(LoomTheme.Changes.addGlyph).foregroundStyle(LoomTheme.Accent.onAccent)
+                InkIcon(.plus, size: LoomTheme.Icon.compact).foregroundStyle(LoomTheme.Accent.onAccent)
                     .frame(width: LoomTheme.Changes.addButtonSize, height: LoomTheme.Changes.addButtonSize)
                     .background(RoundedRectangle(cornerRadius: LoomTheme.Changes.addButtonRadius).fill(LoomTheme.Accent.base))
                     .padding(.leading, LoomTheme.Changes.textInset)
@@ -250,7 +250,7 @@ struct ChangesCommentBox: View {
         let editing = session.composing == anchor
         VStack(alignment: .leading, spacing: LoomTheme.Changes.commentGap) {
             HStack(spacing: LoomTheme.Changes.commentGap) {
-                Image(systemName: "text.bubble").font(LoomTheme.Changes.commentGlyph).accessibilityHidden(true)
+                InkIcon(.bubble, size: LoomTheme.Icon.compact).accessibilityHidden(true)
                 Text(verbatim: title).font(LoomTheme.Typography.caption)
                 Spacer(minLength: 0)
                 if !editing, let saved {

@@ -90,6 +90,8 @@ extension LoomTheme {
         static let cardGap: CGFloat = 1
         static let cardChildrenGap: CGFloat = 3
         static let cardHarnessMark: CGFloat = 11
+        /// The activity footer keeps room for its reason/branch beside the main model.
+        static let activityModelMaxWidth: CGFloat = 120
         static let cardMarkSide: CGFloat = ProjectMarkStyle.Size.chip.side
         static let cardMarkGap: CGFloat = 5
         static let cardStatusSpacing: CGFloat = 4

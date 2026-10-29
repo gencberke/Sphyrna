@@ -20,8 +20,7 @@ struct PaletteRemoraRow: View {
         let lit = selected || hovering
         Button(action: activate) {
             HStack(spacing: P.rowGap) {
-                Image(systemName: PaletteState.askRemoraItem.symbol ?? "questionmark.bubble")
-                    .font(LoomTheme.Typography.small)
+                InkIcon(systemName: PaletteState.askRemoraItem.symbol ?? "questionmark.bubble", size: LoomTheme.Icon.compact)
                     .foregroundStyle(LoomTheme.OnPopover.secondary(lit: lit))
                     .frame(width: LoomTheme.Layout.indicatorSlot.width + P.leadingExtra, height: LoomTheme.Layout.indicatorSlot.height)
                     .accessibilityHidden(true)
@@ -80,7 +79,7 @@ struct PaletteRemoraAnswerView: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: P.rowGap) {
-                Image(systemName: PaletteState.askRemoraItem.symbol ?? "questionmark.bubble").font(LoomTheme.Typography.small)
+                InkIcon(systemName: PaletteState.askRemoraItem.symbol ?? "questionmark.bubble", size: LoomTheme.Icon.compact)
                     .foregroundStyle(LoomTheme.Text.secondaryStyle).accessibilityHidden(true)
                 Text(PaletteRemoraText.header).homeType(P.head).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 Spacer(minLength: P.rowGap)

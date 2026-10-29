@@ -233,7 +233,7 @@ struct InspectorAgents: View {
                 HStack(spacing: LoomTheme.Space.detailSpacing) {
                     Button { model.closeSubagent() } label: {
                         HStack(spacing: LoomTheme.Agents.backGap) {
-                            Image(systemName: "chevron.left").font(LoomTheme.Agents.backGlyph)
+                            InkIcon(.chevronLeft, size: LoomTheme.Icon.small)
                                 .accessibilityHidden(true)
                             Text("Agents").projectType(LoomTheme.Agents.back).foregroundStyle(LoomTheme.Text.primary)
                         }

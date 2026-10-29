@@ -2,33 +2,46 @@ import Foundation
 import LoomCore
 import SwiftUI
 
-/// The main model each listed session runs on, for the sidebar's cards (RESCUE C3). Two sources, both read off the main actor:
+/// The known main model for each listed session, for the sidebar's cards. Two sources, both read off the main actor:
 /// the catalog's stored model (`sessions.model`: the launch choice or the last live change, an alias or a release id) and the
-/// usage index's latest main-thread message. Only the cards' model labels read this, so a change redraws those labels and no
-/// card body.
+/// usage index's latest main-thread message. The model and accessibility leaves read this, so a change redraws those leaves
+/// and no card body.
 @MainActor @Observable
 final class SidebarCardModels {
+    enum Provenance: String {
+        case stored = "stored model"
+        case reported = "reported model"
+    }
+
+    struct Presentation: Equatable {
+        let name: String
+        let provenance: Provenance
+    }
+
     private(set) var stored: [UUID: String] = [:]
     private(set) var reported: [UUID: String] = [:]
 
     /// The model a card names: the stored model when it is a release id, else what the latest main-thread message ran on, else
     /// the launch alias. `default` says nothing about the model, so it names none.
-    static func source(stored: String?, reported: String?) -> String? {
+    static func selection(stored: String?, reported: String?) -> (value: String, provenance: Provenance)? {
         let stored = stored.flatMap { $0.isEmpty || $0 == "default" ? nil : $0 }
-        if let stored, stored.hasPrefix("claude-") { return stored }
-        if let reported, !reported.isEmpty { return reported }
-        return stored
+        let reported = reported.flatMap { $0.isEmpty || $0 == "default" ? nil : $0 }
+        if let stored, stored.hasPrefix("claude-") { return (stored, .stored) }
+        if let reported { return (reported, .reported) }
+        return stored.map { ($0, .stored) }
     }
 
-    /// The full name a card shows ("Opus 5.5"): a Claude release id spelled out, a Claude alias by what the probe said it
-    /// resolves to (the model's catalogue). Any other harness's name is neither, so it shows as it is (as in the header's
-    /// `launchTitle`).
-    static func fullName(of source: String, catalog: ModelCatalog) -> String {
-        ModelCatalog.prettyClaudeID(source) ?? catalog.claudeTitle(of: source)
+    /// Only a Claude release ID names a version. An alias remains an alias: the current catalogue's resolved release is
+    /// not proof of what an earlier session ran. Other harnesses' IDs are kept as recorded.
+    static func fullName(of source: String, provider: ManagedSession.Provider) -> String {
+        guard let kind = HarnessTranscriptKind(provider: provider), case .claude = kind else { return source }
+        return ModelCatalog.prettyClaudeID(source) ?? ModelCatalog.claudeTitle(of: source)
     }
 
-    func name(of id: UUID, catalog: ModelCatalog) -> String? {
-        Self.source(stored: stored[id], reported: reported[id]).map { Self.fullName(of: $0, catalog: catalog) }
+    func presentation(of id: UUID, provider: ManagedSession.Provider) -> Presentation? {
+        Self.selection(stored: stored[id], reported: reported[id]).map {
+            Presentation(name: Self.fullName(of: $0.value, provider: provider), provenance: $0.provenance)
+        }
     }
 
     /// Replaces both maps, each only when it changed, so a read that finds the same models redraws nothing.
@@ -45,7 +58,9 @@ extension CatalogModel {
         let catalog = catalog
         let usage = usage
         let conversations: [(UUID, String)] = records.compactMap { record in
-            guard capabilities(of: record.session.provider).readsContext,
+            // latestMainModels is the Claude index, not a cross-harness index.
+            // Native IDs from other formats can coincide with Claude's IDs.
+            guard let kind = HarnessTranscriptKind(provider: record.session.provider), case .claude = kind,
                   let conversation = record.session.providerConversationID else { return nil }
             return (record.session.id, conversation)
         }
@@ -65,19 +80,21 @@ extension CatalogModel {
     }
 }
 
-/// A card's model, after the harness's mark: its own view, the only part of a card that reads the models, so a new reading
-/// redraws this label and not the card.
+/// A card's model, after the harness's mark: a leaf view, so a new reading redraws the label and not the card body.
 struct CardModelLabel: View {
     let row: SessionRowModel
     let model: CatalogModel
+    var markSize: CGFloat = LoomTheme.Sidebar.cardMarkSide
     var body: some View {
         let provider = row.record.session.provider
+        let presentation = model.cardModels.presentation(of: row.id, provider: provider)
         HStack(spacing: LoomTheme.Sidebar.cardMarkGap) {
-            HarnessMark(provider: provider, size: LoomTheme.Sidebar.cardMarkSide)
-            if let name = model.cardModels.name(of: row.id, catalog: model.modelCatalog) {
-                Text(name).font(LoomTheme.Sidebar.metaFont).lineLimit(1)
+            HarnessMark(provider: provider, size: markSize)
+            if let presentation {
+                Text(presentation.name).font(LoomTheme.Sidebar.metaFont).lineLimit(1).truncationMode(.tail)
             }
         }
-        .help(ProviderName.title(provider))
+        .help(presentation.map { "\(ProviderName.title(provider)) · \($0.name) · \($0.provenance.rawValue)" }
+              ?? ProviderName.title(provider))
     }
 }

@@ -76,7 +76,7 @@ private struct ProjectBranchRow: View {
 
     var body: some View {
         HStack(spacing: LoomTheme.ProjectPage.branchGap) {
-            Image(systemName: "arrow.triangle.branch").font(LoomTheme.ProjectPage.branchGlyph)
+            InkIcon(.branch, size: LoomTheme.Icon.body)
                 .foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 .frame(width: LoomTheme.ProjectPage.branchGlyphBox)
             Text(branch.name).projectType(LoomTheme.ProjectPage.branchName)
@@ -144,7 +144,7 @@ struct ProjectInstructionsTab: View {
         VStack(alignment: .leading, spacing: 0) {
             if let instructions = page.instructions {
                 HStack(spacing: LoomTheme.ProjectPage.instructionsGap) {
-                    Image(systemName: "book").font(LoomTheme.ProjectPage.instructionsGlyph)
+                    InkIcon(.book, size: LoomTheme.Icon.body)
                         .foregroundStyle(LoomTheme.Text.tertiaryStyle)
                     Text(instructions.name).projectType(LoomTheme.ProjectPage.instructionsName).foregroundStyle(LoomTheme.Text.primary)
                     Text(ProjectInstructionsText.meta(instructions, now: now))

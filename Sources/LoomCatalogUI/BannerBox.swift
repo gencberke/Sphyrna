@@ -103,7 +103,7 @@ struct BannerBox: View {
     @ViewBuilder private var symbol: some View {
         switch leading {
         case .tone:
-            Image(systemName: tone.symbol).font(LoomTheme.ChatBanner.symbol).foregroundStyle(tone.symbolStyle)
+            InkIcon(systemName: tone.symbol, size: LoomTheme.Icon.heading).foregroundStyle(tone.symbolStyle)
                 .frame(width: LoomTheme.ChatBanner.symbolSlot).accessibilityHidden(true)
         case .spinner:
             BrailleSpinner(animating: indicatorsAnimate).frame(width: LoomTheme.ChatBanner.symbolSlot).accessibilityHidden(true)

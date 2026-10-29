@@ -65,7 +65,7 @@ struct ModelPickerChip: View {
             HStack(spacing: LoomTheme.ModelPicker.chipGap) {
                 ProviderIcon(harness: selected.harness, size: LoomTheme.ModelPicker.chipMark)
                 Text(title).font(LoomTheme.ModelPicker.chipFont).lineLimit(1)
-                Image(systemName: "chevron.down").font(LoomTheme.Composer.chevron).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                InkIcon(.chevronDown, size: LoomTheme.Icon.tiny).foregroundStyle(LoomTheme.Text.tertiaryStyle)
             }
         }
         .buttonStyle(ControlButtonStyle(kind: .ghost, size: .regular))
@@ -117,9 +117,9 @@ struct EffortPickerChip: View {
     var body: some View {
         Button { isOpen.toggle() } label: {
             HStack(spacing: LoomTheme.ModelPicker.chipGap) {
-                Image(systemName: "slider.horizontal.3").font(LoomTheme.ModelPicker.iconFont)
+                InkIcon(.effort, size: LoomTheme.Icon.body)
                 Text(options.title).font(LoomTheme.ModelPicker.chipFont).lineLimit(1)
-                Image(systemName: "chevron.down").font(LoomTheme.Composer.chevron).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                InkIcon(.chevronDown, size: LoomTheme.Icon.tiny).foregroundStyle(LoomTheme.Text.tertiaryStyle)
             }
         }
         .buttonStyle(ControlButtonStyle(kind: .ghost, size: .regular))

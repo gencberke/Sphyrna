@@ -161,7 +161,7 @@ private struct SendButton: View {
     var body: some View {
         let enabled = model.canSendDraft(projectID: projectID)
         Button { model.sendDraft(projectID: projectID) } label: {
-            Image(systemName: "arrow.up").font(LoomTheme.Control.iconGlyph).fixedSize()
+            InkIcon(.up).fixedSize()
                 .frame(width: LoomTheme.Draft.sendLabelWidth)
         }
         .buttonStyle(ControlButtonStyle(kind: .default, size: .page))

@@ -110,7 +110,7 @@ private struct ProjectPageHeader: View {
                 ProjectMenuButton(model: model, project: project, origin: .page)
                 Button { model.beginNewSession(projectID: project.id) } label: {
                     HStack(spacing: LoomTheme.ProjectPage.newSessionGlyphGap) {
-                        Image(systemName: "square.and.pencil").font(LoomTheme.ProjectPage.newSessionGlyph)
+                        InkIcon(.compose, size: LoomTheme.Icon.body)
                         Text("New session").lineLimit(1)
                     }
                 }
@@ -193,7 +193,7 @@ private struct ProjectStatsLine: View {
         case .tokens(let figure, _): self.figure(figure, "tokens, past 7 days")
         case .branch(let label):
             HStack(spacing: LoomTheme.ProjectPage.statsBranchGap) {
-                Image(systemName: "arrow.triangle.branch").font(LoomTheme.ProjectPage.statsBranchGlyph)
+                InkIcon(.branch, size: LoomTheme.Icon.compact)
                 Text(label).projectType(LoomTheme.ProjectPage.statsBranch)
             }
         }

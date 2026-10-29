@@ -76,7 +76,7 @@ struct SideHeader: View {
                     .accessibilityIdentifier("side-header-note")
             }
             Spacer(minLength: LoomTheme.Side.headerButtonGap)
-            Button { model.startNewSideChat(in: parent) } label: { Image(systemName: "plus") }
+            Button { model.startNewSideChat(in: parent) } label: { InkIcon(.plus) }
                 .buttonStyle(ChromeButtonStyle())
                 .help(SideText.newSideChat)
                 .accessibilityLabel(SideText.newSideChat)
@@ -101,9 +101,9 @@ struct SideEarlierMenu: View {
                 }
             } label: {
                 HStack(spacing: LoomTheme.Side.earlierGap) {
-                    Image(systemName: "clock").font(LoomTheme.Side.earlierGlyph)
+                    InkIcon(.clock, size: LoomTheme.Icon.body)
                     Text("\(SideText.earlier) \u{00B7} \(items.count)").font(LoomTheme.Side.earlierFont)
-                    Image(systemName: "chevron.down").font(LoomTheme.Side.earlierChevron)
+                    InkIcon(.chevronDown, size: LoomTheme.Icon.tiny)
                 }
                 .foregroundStyle(LoomTheme.Text.secondaryStyle)
             }
@@ -207,7 +207,7 @@ struct SideAnswerActions: View {
             switch status {
             case .sent:
                 HStack(spacing: LoomTheme.Side.actionGlyphGap) {
-                    Image(systemName: "checkmark").font(LoomTheme.Side.sentGlyph)
+                    InkIcon(.check, size: LoomTheme.Icon.compact)
                     Text(SideText.noteSent)
                 }
                 .font(LoomTheme.Chat.meta).foregroundStyle(LoomTheme.Text.secondaryStyle)
@@ -246,7 +246,7 @@ struct AsideCopyButton: View {
             }
         } label: {
             HStack(spacing: LoomTheme.Side.actionGlyphGap) {
-                Image(systemName: copied ? "checkmark" : "doc.on.doc").font(LoomTheme.Side.actionGlyph)
+                InkIcon(copied ? .check : .copy, size: LoomTheme.Icon.body)
                 Text(copied ? "Copied" : "Copy")
             }
         }

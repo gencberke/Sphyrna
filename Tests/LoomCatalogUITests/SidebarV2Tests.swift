@@ -73,17 +73,17 @@ struct SidebarV2Tests {
             title: "Webhook", provider: .claude, status: "Working", origin: nil, pinned: false) == "Webhook, Claude, Working")
     }
 
-    /// RESCUE C3: the model a card names is the stored release id, else the latest main-thread message's model, else the
-    /// launch alias, and it is spelled out in full.
+    /// The model a card names is the stored release ID, else the latest main-thread message's model, else the launch alias.
+    /// A release is spelled out; an alias stays an alias until this session reports a release.
     @Test func theCardNamesTheMainModelInFull() {
         typealias Models = SidebarCardModels
-        #expect(Models.source(stored: "claude-opus-5-5", reported: "claude-sonnet-4-6") == "claude-opus-5-5")
-        #expect(Models.source(stored: "opus", reported: "claude-sonnet-4-6") == "claude-sonnet-4-6")
-        #expect(Models.source(stored: "opus", reported: nil) == "opus")
-        #expect(Models.source(stored: "default", reported: nil) == nil && Models.source(stored: nil, reported: nil) == nil)
-        #expect(Models.fullName(of: "claude-opus-5-5", catalog: ModelCatalog()) == "Opus 5.5")
-        #expect(Models.fullName(of: "claude-opus-5-5[1m]", catalog: ModelCatalog()) == "Opus 5.5 1M")
-        #expect(Models.fullName(of: "gpt-6-luna", catalog: ModelCatalog()) == "gpt-6-luna")
+        #expect(Models.selection(stored: "claude-opus-5-5", reported: "claude-sonnet-4-6")?.value == "claude-opus-5-5")
+        #expect(Models.selection(stored: "opus", reported: "claude-sonnet-4-6")?.value == "claude-sonnet-4-6")
+        #expect(Models.selection(stored: "opus", reported: nil)?.value == "opus")
+        #expect(Models.selection(stored: "default", reported: nil)?.value == nil && Models.selection(stored: nil, reported: nil)?.value == nil)
+        #expect(Models.fullName(of: "claude-opus-5-5", provider: .claude) == "Opus 5.5")
+        #expect(Models.fullName(of: "claude-opus-5-5[1m]", provider: .claude) == "Opus 5.5 1M")
+        #expect(Models.fullName(of: "gpt-6-luna", provider: .codex) == "gpt-6-luna")
     }
 
     // MARK: The row's own reason

@@ -7,7 +7,7 @@ struct StatusBarUtilities: View {
 
     var body: some View {
         HStack(spacing: LoomTheme.StatusBar.utilityGap) {
-            Button { model.showSettings() } label: { Image(systemName: "gearshape") }
+            Button { model.showSettings() } label: { InkIcon(.gear, size: LoomTheme.Icon.navigation) }
                 .buttonStyle(ChromeButtonStyle(size: LoomTheme.StatusBar.utilitySize))
                 .help("Settings").accessibilityLabel("Settings")
             StatusBarHelpButton()
@@ -21,7 +21,7 @@ private struct StatusBarHelpButton: View {
     @State private var anchor = StatusBarHelpAnchor()
 
     var body: some View {
-        Button { anchor.open() } label: { Image(systemName: "questionmark.circle") }
+        Button { anchor.open() } label: { InkIcon(.question, size: LoomTheme.Icon.navigation) }
             .buttonStyle(ChromeButtonStyle(size: LoomTheme.StatusBar.utilitySize))
             .background(StatusBarHelpAnchorView(anchor: anchor))
             .help("Help").accessibilityLabel("Help").accessibilityHint("Opens the Help menu")

@@ -160,7 +160,7 @@ struct ChatNoticeView: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "info.circle").font(LoomTheme.Chat.rowIcon).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            InkIcon(.info, size: LoomTheme.Icon.compact).foregroundStyle(LoomTheme.Text.secondaryStyle)
             Text(text).font(LoomTheme.Chat.toolLabel).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 .lineLimit(8).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
         }
@@ -338,9 +338,9 @@ struct ChatLinkButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: LoomTheme.Space.detailSpacing) {
-                if let symbol { Image(systemName: symbol).font(LoomTheme.Chat.linkSymbol) }
+                if let symbol { InkIcon(systemName: symbol, size: LoomTheme.Icon.compact) }
                 Text(title)
-                if chevron { Image(systemName: "chevron.right").font(LoomTheme.Chat.chevron).accessibilityHidden(true) }
+                if chevron { InkIcon(.chevronRight, size: LoomTheme.Icon.tiny) }
             }
             .lineLimit(1)
         }
@@ -367,9 +367,9 @@ struct ChatLinkLabel: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            if let symbol { Image(systemName: symbol).font(LoomTheme.Chat.linkSymbol) }
+            if let symbol { InkIcon(systemName: symbol, size: LoomTheme.Icon.compact) }
             Text(title)
-            if chevron { Image(systemName: "chevron.right").font(LoomTheme.Chat.chevron).accessibilityHidden(true) }
+            if chevron { InkIcon(.chevronRight, size: LoomTheme.Icon.tiny) }
         }
         .font(LoomTheme.Chat.linkLabel)
         .foregroundStyle(prominent ? AnyShapeStyle(LoomTheme.Accent.high)
@@ -391,7 +391,7 @@ struct ChatIconButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: symbol).font(LoomTheme.Chat.linkSymbol)
+            InkIcon(systemName: symbol, size: LoomTheme.Icon.body)
                 .foregroundStyle(hovering ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
                 .frame(width: LoomTheme.Chat.linkHeight, height: LoomTheme.Chat.linkHeight)
                 .background(RowHighlight(state: hovering ? .hover : .none, radius: LoomTheme.InkRadius.control))
@@ -424,7 +424,7 @@ struct ChatCopyButton: View {
             }
         } label: {
             if iconOnly {
-                Image(systemName: copied ? "checkmark" : "doc.on.doc").font(LoomTheme.Chat.linkSymbol)
+                InkIcon(copied ? .check : .copy, size: LoomTheme.Icon.body)
                     .foregroundStyle(hovering ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
                     .frame(width: LoomTheme.Chat.linkHeight, height: LoomTheme.Chat.linkHeight)
                     .background(RowHighlight(state: hovering ? .hover : .none, radius: LoomTheme.InkRadius.control))
@@ -492,7 +492,7 @@ struct ChatRequestLineView: View {
     var body: some View {
         if case let .request(record) = entry.body {
             HStack(spacing: 8) {
-                Image(systemName: icon(record.kind)).font(LoomTheme.Chat.rowIcon).frame(width: LoomTheme.Chat.iconSlot)
+                InkIcon(systemName: icon(record.kind), size: LoomTheme.Icon.compact).frame(width: LoomTheme.Chat.iconSlot)
                 Text(verbatim: record.summary).font(LoomTheme.Chat.toolLabel).lineLimit(2)
             }
             .foregroundStyle(LoomTheme.Text.secondaryStyle)
@@ -610,7 +610,7 @@ struct ChatChevron: View {
     let open: Bool
 
     var body: some View {
-        Image(systemName: "chevron.right").font(LoomTheme.Chat.chevron)
+        InkIcon(.chevronRight, size: LoomTheme.Icon.tiny)
             .rotationEffect(.degrees(open ? 90 : 0))
             .foregroundStyle(LoomTheme.Text.tertiaryStyle)
             .frame(width: 14)

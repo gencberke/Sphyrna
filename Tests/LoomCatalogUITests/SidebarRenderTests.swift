@@ -110,6 +110,16 @@ struct SidebarRenderTests {
         return false
     }
 
+    @Test func changingOneCachedModelDoesNotRebuildCardBodies() async throws {
+        let hosted = try await host(cards: 30)
+        defer { finish(hosted) }
+        SidebarRenderProbe.reset()
+        hosted.model.cardModels.publish(stored: [hosted.ids[3]: "claude-opus-5-5"], reported: [:])
+        try await settle(hosted)
+        #expect(SidebarRenderProbe.cardTotal == 0,
+                "the model and accessibility leaves update without rebuilding the card bodies")
+    }
+
     /// Before: every card read the selected id, so a selection change evaluated all 30 cards.
     @Test func aSelectionChangeEvaluatesOnlyTheOldAndTheNewCard() async throws {
         let hosted = try await host(cards: 30)
@@ -369,9 +379,9 @@ struct SidebarRenderTests {
 
         // The Active card names the reason after its state; a card in a day section does not.
         let active = try #require(label(hosted, hasPrefix: "Card 12, "))
-        #expect(active.label == "Card 12, Claude, Needs you, Needs approval, Asks to run: git push origin fix/webhook-sig")
+        #expect(active.label == "Card 12, Claude, No project, Needs you, Needs approval, Asks to run: git push origin fix/webhook-sig")
         let day = try #require(label(hosted, hasPrefix: "Card 11, "))
-        #expect(day.label == "Card 11, Claude, Idle")
+        #expect(day.label == "Card 11, Claude, No project, Idle")
 
         // The activity reason takes the branch's place on the bottom line; one-line cards keep the same height.
         let activeHeight = try #require(active.element.accessibilityFrame?()).height

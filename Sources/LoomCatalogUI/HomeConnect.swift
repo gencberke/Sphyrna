@@ -159,7 +159,7 @@ struct HomeConnectNotice: View {
         HomeCard(identifier: "home-connect-notice") {
             HStack(alignment: .center, spacing: LoomTheme.Home.noticeGap) {
                 HStack(alignment: .top, spacing: LoomTheme.Home.noticeGap) {
-                    Image(systemName: "exclamationmark.triangle").homeType(LoomTheme.Home.noticeSymbol)
+                    InkIcon(.warning)
                         .foregroundStyle(LoomTheme.Status.attention)
                         .frame(width: LoomTheme.Home.noticeColumn, alignment: .leading).accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: LoomTheme.Home.noticeTextGap) {

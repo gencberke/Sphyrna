@@ -107,7 +107,7 @@ struct ComposerPickList: View {
         return Button { if row.isEnabled { onPick(row.id) } } label: {
             HStack(alignment: row.subtitle == nil ? .center : .top, spacing: LoomTheme.Composer.modelColumnGap) {
                 if let symbol = row.symbol {
-                    Image(systemName: symbol).font(LoomTheme.Composer.pickIcon)
+                    InkIcon(systemName: symbol, size: LoomTheme.Icon.navigation)
                         .foregroundStyle(row.isEnabled ? row.tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(LoomTheme.OnPopover.secondary(lit: lit))
                                          : AnyShapeStyle(LoomTheme.OnPopover.placeholder))
                         .frame(width: LoomTheme.Composer.pickIconSide, height: LoomTheme.Composer.pickIconSide)
@@ -123,7 +123,7 @@ struct ComposerPickList: View {
                 }
                 Spacer(minLength: LoomTheme.Space.requestPadding)
                 if row.checked {
-                    Image(systemName: "checkmark").font(LoomTheme.Composer.pickCheck).foregroundStyle(LoomTheme.Text.primary)
+                    InkIcon(.check, size: LoomTheme.Icon.compact).foregroundStyle(LoomTheme.Text.primary)
                         .accessibilityHidden(true)
                 }
             }

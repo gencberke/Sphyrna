@@ -58,7 +58,7 @@ struct CleanupReviewView: View {
     private func dueCleanupNotice(_ snapshot: CleanupReview) -> some View {
         let shape = RoundedRectangle(cornerRadius: S.dueRadius)
         return HStack(spacing: S.dueGap) {
-            Image(systemName: "info.circle").font(S.dueGlyph).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            InkIcon(.info, size: LoomTheme.Icon.body).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 .accessibilityHidden(true)
             Text(dueText(snapshot.mode)).projectType(S.dueText).foregroundStyle(LoomTheme.Text.secondaryStyle)
             Spacer(minLength: 0)

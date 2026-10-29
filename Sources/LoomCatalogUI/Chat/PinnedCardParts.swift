@@ -154,7 +154,7 @@ struct PinnedButtonRow: View {
                             Button(action: item.action.perform) {
                                 HStack(spacing: LoomTheme.Pinned.segmentGap) {
                                     if let symbol = item.action.symbol {
-                                        Image(systemName: symbol).font(LoomTheme.Pinned.segmentIcon).accessibilityHidden(true)
+                                        InkIcon(systemName: symbol, size: LoomTheme.Icon.small).accessibilityHidden(true)
                                     }
                                     Text(verbatim: item.action.title).lineLimit(1).fixedSize()
                                 }
@@ -186,7 +186,7 @@ struct PinnedMoreMenu<Items: View>: View {
         Menu {
             items
         } label: {
-            Image(systemName: "ellipsis").font(LoomTheme.Pinned.ellipsis)
+            InkIcon(.more, size: LoomTheme.Icon.body)
                 .foregroundStyle(hovering ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
                 .frame(width: side, height: side)
                 .background(RowHighlight(state: hovering ? .hover : .none, radius: LoomTheme.Control.iconRadius))
@@ -371,10 +371,10 @@ struct PinnedCardChrome<Content: View>: View {
             Circle().fill(LoomTheme.Status.attention).frame(width: LoomTheme.Pinned.headerDot, height: LoomTheme.Pinned.headerDot)
                 .accessibilityHidden(true)
         case let .glyph(symbol):
-            Image(systemName: symbol).font(LoomTheme.Pinned.headerGlyph).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            InkIcon(systemName: symbol, size: LoomTheme.Icon.navigation).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 .accessibilityHidden(true)
         case .cutOff:
-            Image(systemName: "exclamationmark.triangle").font(LoomTheme.Pinned.headerGlyph)
+            InkIcon(.warning, size: LoomTheme.Icon.navigation)
                 .foregroundStyle(LoomTheme.Text.tertiaryStyle).accessibilityHidden(true)
         }
     }
@@ -387,12 +387,12 @@ struct PinnedStepper: View {
 
     var body: some View {
         HStack(spacing: LoomTheme.Pinned.stepGap) {
-            Button { cards.step(-1) } label: { Image(systemName: "chevron.left").font(LoomTheme.Pinned.stepChevron) }
+            Button { cards.step(-1) } label: { InkIcon(.chevronLeft, size: LoomTheme.Icon.small) }
                 .buttonStyle(ChromeButtonStyle(size: LoomTheme.Pinned.stepButton))
                 .accessibilityLabel("Previous request")
             Text(verbatim: counter).font(LoomTheme.Pinned.counter).foregroundStyle(LoomTheme.Text.tertiaryStyle).monospacedDigit()
                 .accessibilityIdentifier("pinned-counter")
-            Button { cards.step(1) } label: { Image(systemName: "chevron.right").font(LoomTheme.Pinned.stepChevron) }
+            Button { cards.step(1) } label: { InkIcon(.chevronRight, size: LoomTheme.Icon.small) }
                 .buttonStyle(ChromeButtonStyle(size: LoomTheme.Pinned.stepButton))
                 .accessibilityLabel("Next request")
         }

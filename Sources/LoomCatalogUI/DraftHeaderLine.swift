@@ -49,7 +49,7 @@ struct DraftHeaderLine: View {
             if let project, let sessions = words.sessions {
                 Button { model.showProjectPage(project.id) } label: {
                     HStack(spacing: LoomTheme.DraftHeader.glyphGap) {
-                        Image(systemName: "clock").font(LoomTheme.DraftHeader.glyph)
+                        InkIcon(.clock, size: LoomTheme.Icon.body)
                         Text(sessions).lineLimit(1)
                     }
                 }

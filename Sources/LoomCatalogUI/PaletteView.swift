@@ -79,8 +79,7 @@ struct PalettePanel: View {
 
     private var input: some View {
         HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .font(LoomTheme.Typography.body)
+            InkIcon(.search, size: LoomTheme.Icon.body)
                 .foregroundStyle(LoomTheme.OnPopover.placeholder)
                 .accessibilityHidden(true)
             TextField("", text: Binding(get: { palette.query }, set: { palette.setQuery($0) }),
@@ -335,8 +334,7 @@ struct PaletteRow: View {
             if let indicator = item.indicator {
                 IndicatorView(indicator: indicator)
             } else if let symbol = item.symbol {
-                Image(systemName: symbol)
-                    .font(LoomTheme.Typography.small)
+                InkIcon(systemName: symbol, size: LoomTheme.Icon.compact)
                     .foregroundStyle(LoomTheme.OnPopover.secondary(lit: lit))
             } else {
                 Color.clear

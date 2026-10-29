@@ -154,7 +154,7 @@ struct ProjectMenuButton: View {
         let isOpen = InkOpenState.shared.menuBinding(projectID: project.id, origin: origin)
         let spot = InkOpeners.placement(.projectMenu, onDraft: false) ?? InkOpeners.Spot(side: .below, alignment: .trailing)
         Button { isOpen.wrappedValue.toggle() } label: {
-            Image(systemName: "ellipsis")
+            InkIcon(.more, size: LoomTheme.Icon.compact)
         }
         .buttonStyle(style)
         .fixedSize()
@@ -240,7 +240,7 @@ struct ProjectMenuView: View {
     }
 
     private func glyph(_ name: String, enabled: Bool) -> some View {
-        Image(systemName: name).font(H.iconFont)
+        InkIcon(systemName: name, size: LoomTheme.Icon.navigation)
             .foregroundStyle(enabled ? AnyShapeStyle(LoomTheme.OnPopover.secondary(lit: false)) : AnyShapeStyle(LoomTheme.Text.faint))
     }
 

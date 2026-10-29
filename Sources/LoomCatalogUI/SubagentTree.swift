@@ -360,7 +360,7 @@ struct SubagentRowView: View {
             // A still mark: only the session's own spinner animates, so a window moves at most one per working session (FB6-11).
             BrailleSpinner(animating: false, style: .subagent)
         case .finished, .finishedFold:
-            Image(systemName: "checkmark").font(Metrics.check).foregroundStyle(LoomTheme.Text.faint)
+            InkIcon(.check, size: LoomTheme.Icon.tiny).foregroundStyle(LoomTheme.Text.faint)
         case .inactive, .more, .moreTasks, .loadMore:
             Color.clear
         }
@@ -369,8 +369,8 @@ struct SubagentRowView: View {
     @ViewBuilder private var trailing: some View {
         switch row.kind {
         case let .finishedFold(expanded), let .more(expanded), let .moreTasks(expanded):
-            Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                .font(LoomTheme.Typography.chevron).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            InkIcon(expanded ? .chevronDown : .chevronRight, size: LoomTheme.Icon.tiny)
+                .foregroundStyle(LoomTheme.Text.secondaryStyle)
         case .running, .finished, .inactive, .loadMore:
             Text(row.trailing).font(Metrics.time.font).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 .lineLimit(1)

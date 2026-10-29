@@ -129,7 +129,7 @@ struct ComposerMenuPanel: View {
 
     /// The row's icon: `/` for a command, sparkles for a skill, a page, a folder, a bubble for a session.
     private func icon(for item: ComposerMenuItem, lit: Bool, dimmed: Bool) -> some View {
-        Image(systemName: Self.symbol(for: item.kind)).font(LoomTheme.Composer.menuIconFont)
+        InkIcon(systemName: Self.symbol(for: item.kind), size: LoomTheme.Icon.body)
             .foregroundStyle(dimmed ? AnyShapeStyle(LoomTheme.Text.faint) : AnyShapeStyle(LoomTheme.OnPopover.secondary(lit: lit)))
             .frame(width: LoomTheme.Composer.menuIconSlot)
             .accessibilityHidden(true)

@@ -208,7 +208,7 @@ struct HomeRemoraFurtherLine: View {
         let session = line.session
         Button { model.select(session.id) } label: {
             HStack(spacing: R.quietGap) {
-                Image(systemName: "chevron.right").font(R.chevronGlyph.font)
+                InkIcon(.chevronRight, size: LoomTheme.Icon.tiny)
                     .foregroundStyle(LoomTheme.Text.tertiaryStyle).frame(width: R.chevron, height: R.chevron).accessibilityHidden(true)
                 if let name = session.projectName { ProjectMarkView(name: name, tone: session.tone, size: .chip) }
                 Text(session.projectName ?? "").homeType(R.quiet).foregroundStyle(LoomTheme.Text.secondaryStyle)
@@ -230,7 +230,7 @@ struct HomeRemoraQuietLine: View {
 
     var body: some View {
         HStack(spacing: R.quietGap) {
-            Image(systemName: "chevron.right").font(R.chevronGlyph.font)
+            InkIcon(.chevronRight, size: LoomTheme.Icon.tiny)
                 .foregroundStyle(LoomTheme.Text.tertiaryStyle).frame(width: R.chevron, height: R.chevron).accessibilityHidden(true)
             ProjectMarkView(name: quiet.project.name, tone: quiet.project.tone, size: .chip)
             Text(quiet.project.name).homeType(R.quiet).foregroundStyle(LoomTheme.Text.secondaryStyle)
@@ -370,7 +370,7 @@ struct HomeRemoraSourcesView: View {
                 heading("Memory")
                 ForEach(Array(notes.enumerated()), id: \.offset) { _, note in
                     HStack(spacing: R.sourcesRowGap) {
-                        Image(systemName: "doc.text").font(R.docGlyph.font).foregroundStyle(LoomTheme.OnPopover.placeholder)
+                        InkIcon(.document, size: LoomTheme.Icon.compact).foregroundStyle(LoomTheme.OnPopover.placeholder)
                             .frame(width: R.sourcesMarkColumn).accessibilityHidden(true)
                         Text("\(note.name ?? "Project")\u{2019}s note").homeType(R.sourcesText).foregroundStyle(LoomTheme.Text.primary)
                             .lineLimit(1)
@@ -488,7 +488,7 @@ private struct HomeRemoraFoldLine: View {
     @ViewBuilder
     private var tick: some View {
         if pickedUp {
-            Image(systemName: "checkmark").font(R.tickGlyph.font).foregroundStyle(LoomTheme.Text.secondaryStyle)
+            InkIcon(.check, size: LoomTheme.Icon.tiny).foregroundStyle(LoomTheme.Text.secondaryStyle)
         } else {
             Circle().strokeBorder(LoomTheme.Text.tertiaryStyle, lineWidth: R.foldRingWidth).frame(width: R.foldRing, height: R.foldRing)
         }

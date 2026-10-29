@@ -140,11 +140,11 @@ struct ChatToolIcon: View {
             case .failed, .denied:
                 IndicatorView(indicator: .failed(nil))
             case .refusedInAsk:
-                Image(systemName: "bubble.left").font(LoomTheme.Chat.workIcon).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                InkIcon(.bubble, size: LoomTheme.Icon.heading).foregroundStyle(LoomTheme.Text.tertiaryStyle)
             case .interrupted:
                 Image(systemName: "stop.circle").font(LoomTheme.Chat.workIcon).foregroundStyle(LoomTheme.Text.tertiaryStyle)
             case .succeeded:
-                Image(systemName: symbol).font(LoomTheme.Chat.workIcon).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                InkIcon(systemName: symbol, size: LoomTheme.Icon.heading).foregroundStyle(LoomTheme.Text.tertiaryStyle)
             }
         }
         .frame(width: LoomTheme.Chat.iconSlot, height: LoomTheme.Chat.iconSlot)
@@ -773,7 +773,7 @@ struct ChatSubagentMark: View {
             case .running:
                 BrailleSpinner(animating: context.animates, style: .subagent)
             case .succeeded:
-                Image(systemName: "checkmark").font(LoomTheme.Chat.chevron).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                InkIcon(.check, size: LoomTheme.Icon.tiny).foregroundStyle(LoomTheme.Text.tertiaryStyle)
             case .failed:
                 IndicatorView(indicator: .failed(nil))
             case .interrupted:
@@ -837,7 +837,7 @@ struct ChatPlanCardView: View {
             let shape = RoundedRectangle(cornerRadius: LoomTheme.Chat.cardRadius)
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    Image(systemName: "list.bullet.rectangle").font(LoomTheme.Chat.cardIcon)
+                    InkIcon(.list, size: LoomTheme.Icon.body)
                         .foregroundStyle(LoomTheme.Composer.ModeTone.planPair.color)
                     Text(verbatim: plan.title ?? "Plan").font(LoomTheme.InkType.header.font).foregroundStyle(LoomTheme.Text.primary).lineLimit(1)
                     Spacer(minLength: 8)
@@ -906,7 +906,7 @@ struct ChatChangedFilesCard: View {
                 Rectangle().fill(LoomTheme.Surface.hairlineStyle).frame(height: LoomTheme.Line.hairline)
                 if line.isFolder {
                     HStack(spacing: 6) {
-                        Image(systemName: "chevron.down").font(LoomTheme.Chat.chevron).frame(width: 12)
+                        InkIcon(.chevronDown, size: LoomTheme.Icon.tiny).frame(width: 12)
                         Text(verbatim: line.name).lineLimit(1).truncationMode(.middle)
                         Spacer(minLength: 0)
                     }

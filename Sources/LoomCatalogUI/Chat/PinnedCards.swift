@@ -83,7 +83,7 @@ struct EndedUndeliveredLine: View {
 
     var body: some View {
         HStack(spacing: LoomTheme.Pinned.lineGap) {
-            Image(systemName: "exclamationmark.circle").font(LoomTheme.Pinned.headerGlyph).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            InkIcon(.exclamation, size: LoomTheme.Icon.navigation).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 .accessibilityHidden(true)
             Text(verbatim: texts.count == 1 ? "Not delivered: 1 message" : "Not delivered: \(texts.count) messages")
                 .font(LoomTheme.Pinned.bodyStrong).foregroundStyle(LoomTheme.Text.primary)
@@ -481,7 +481,7 @@ struct PinnedFoldedLine: View {
 
     var body: some View {
         HStack(spacing: LoomTheme.Pinned.lineGap) {
-            Image(systemName: symbol).font(LoomTheme.Pinned.lineGlyph)
+            InkIcon(systemName: symbol, size: LoomTheme.Icon.body)
                 .foregroundStyle(folded.outcome == .cancelled ? AnyShapeStyle(LoomTheme.Text.tertiaryStyle) : AnyShapeStyle(LoomTheme.Success.light))
                 .frame(width: LoomTheme.Pinned.lineIcon).accessibilityHidden(true)
             summary

@@ -293,8 +293,8 @@ private struct TranscriptLineView: View {
         VStack(alignment: .leading, spacing: 0) {
             Button { expanded.toggle() } label: {
                 HStack(spacing: Metrics.toolFoldGap) {
-                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                        .font(Metrics.toolFoldGlyph).accessibilityHidden(true)
+                    InkIcon(expanded ? .chevronDown : .chevronRight, size: LoomTheme.Icon.small)
+                        .accessibilityHidden(true)
                     Text(line.text)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

@@ -105,7 +105,7 @@ struct ComposerMentionPill: View {
             Text(mention.title).font(LoomTheme.Composer.attachmentFont).lineLimit(1).truncationMode(.tail)
                 .frame(maxWidth: LoomTheme.Composer.attachmentMaxLabelWidth, alignment: .leading).fixedSize(horizontal: true, vertical: false)
             Button(action: remove) {
-                Image(systemName: "xmark").font(LoomTheme.Typography.chevron).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                InkIcon(.close, size: LoomTheme.Icon.tiny).foregroundStyle(LoomTheme.Text.secondaryStyle)
                     .frame(width: LoomTheme.Composer.queueIcon, height: LoomTheme.Composer.queueIcon).contentShape(Rectangle())
             }
             .buttonStyle(.plain).accessibilityLabel("Remove mention of \(mention.title)")

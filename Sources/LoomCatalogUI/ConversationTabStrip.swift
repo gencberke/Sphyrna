@@ -214,7 +214,7 @@ private struct NewTabButton: View {
     let model: CatalogModel
 
     var body: some View {
-        Button { ShellCommand.newSession.run(on: model) } label: { Image(systemName: "plus") }
+        Button { ShellCommand.newSession.run(on: model) } label: { InkIcon(.plus) }
             .buttonStyle(ChromeButtonStyle(size: CGSize(width: LoomTheme.TabStrip.plus, height: LoomTheme.TabStrip.plus),
                                            key: "tab-plus"))
             .disabled(!ShellCommand.newSession.isEnabled(on: model))
@@ -379,7 +379,7 @@ private struct TabCloseButton: View {
 
     var body: some View {
         Button { model.closeTab(id) } label: {
-            Image(systemName: "xmark").font(LoomTheme.TabStrip.closeGlyph)
+            InkIcon(.close, size: LoomTheme.Icon.tiny)
                 .foregroundStyle(hovering ? LoomTheme.Text.primary : LoomTheme.Text.secondary)
                 .frame(width: LoomTheme.TabStrip.close, height: LoomTheme.TabStrip.close)
                 .background(RoundedRectangle(cornerRadius: LoomTheme.TabStrip.closeRadius)
@@ -415,7 +415,7 @@ private struct TabOverflowButton: View {
                 }
             }
         } label: {
-            Image(systemName: "chevron.down").font(LoomTheme.Typography.chevron)
+            InkIcon(.chevronDown, size: LoomTheme.Icon.tiny)
         }
         .menuStyle(.button).buttonStyle(ChromeButtonStyle(size: CGSize(
             width: LoomTheme.TabStrip.overflowWidth, height: LoomTheme.TabStrip.sessionTabHeight)))

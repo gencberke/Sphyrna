@@ -169,7 +169,7 @@ struct ProjectBranchChip: View {
 
     private func branchLabel(_ branch: String) -> some View {
         HStack(spacing: LoomTheme.Header.chipBranchGap) {
-            Image(systemName: "arrow.triangle.branch").font(LoomTheme.Header.chipGlyph)
+            InkIcon(.branch, size: LoomTheme.Icon.small)
             Text(branch).font(LoomTheme.Header.chipBranchFont).lineLimit(1).truncationMode(.tail)
         }
         .foregroundStyle(LoomTheme.Text.secondaryOnTintStyle)
@@ -255,7 +255,7 @@ struct HeaderInspectorToggle: View {
     var body: some View {
         let open = model.inspector.isOpen(for: sessionID)
         Button { model.setInspector(open: !open, for: sessionID) } label: {
-            Image(systemName: "sidebar.right")
+            InkIcon(.sidebarRight)
         }
         .buttonStyle(ChromeButtonStyle(selected: open, key: "inspector-toggle")).focusEffectDisabled()
         .help(open ? "Hide Inspector (⌥⌘B)" : "Show Inspector (⌥⌘B)")
@@ -291,7 +291,7 @@ struct HeaderControlGroup<MenuItems: View>: View {
             Menu {
                 menuItems()
             } label: {
-                Image(systemName: "ellipsis").frame(width: LoomTheme.Header.menuSegmentWidth)
+                InkIcon(.more).frame(width: LoomTheme.Header.menuSegmentWidth)
             }
             .menuStyle(.button).buttonStyle(HeaderSegmentStyle(secondaryUntilHovered: true))
             .menuIndicator(.hidden).fixedSize().focusEffectDisabled()

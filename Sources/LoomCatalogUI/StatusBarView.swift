@@ -134,7 +134,7 @@ private struct StatusBarUsagePopover: View {
                     Text("Read \(UsageText.time(reading.readAt, usage.timeZone))")
                         .font(LoomTheme.StatusBar.figures).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 }
-                Button { showing = false } label: { Image(systemName: "xmark") }
+                Button { showing = false } label: { InkIcon(.close, size: LoomTheme.Icon.small) }
                     .buttonStyle(ChromeButtonStyle(size: LoomTheme.StatusBar.utilitySize))
                     .help("Close").accessibilityLabel("Close")
             }
@@ -300,8 +300,11 @@ struct StatusBarUpdates: View {
     var body: some View {
         ForEach(Self.recommendations(health.healths), id: \.provider) { item in
             Button { model.showConnections() } label: {
-                Label("\(ProviderName.title(item.provider)) update", systemImage: "arrow.down.circle")
-                    .font(LoomTheme.StatusBar.caption).foregroundStyle(LoomTheme.Status.attentionLight)
+                HStack(spacing: LoomTheme.StatusBar.utilityGap) {
+                    InkIcon(.down, size: LoomTheme.Icon.compact)
+                    Text("\(ProviderName.title(item.provider)) update")
+                }
+                .font(LoomTheme.StatusBar.caption).foregroundStyle(LoomTheme.Status.attentionLight)
             }
             .buttonStyle(ControlButtonStyle(kind: .ghost, size: .small))
             .help(item.versionStatus == .belowMinimum ? "Update needed in Connections" : "Update recommended in Connections")

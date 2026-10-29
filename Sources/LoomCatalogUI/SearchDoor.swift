@@ -17,7 +17,7 @@ struct SearchDoor: View {
     var body: some View {
         Button { model.openPalette() } label: {
             HStack(spacing: LoomTheme.Sidebar.doorSpacing) {
-                Image(systemName: "magnifyingglass").font(LoomTheme.Sidebar.doorGlyph)
+                InkIcon(.search, size: LoomTheme.Sidebar.navGlyphBox)
                     .frame(width: LoomTheme.Sidebar.navGlyphBox, height: LoomTheme.Sidebar.navGlyphBox)
                     .accessibilityHidden(true)
                 Text(Self.title).font(LoomTheme.Sidebar.doorLabel)

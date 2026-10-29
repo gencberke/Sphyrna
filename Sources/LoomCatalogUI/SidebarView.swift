@@ -45,7 +45,7 @@ struct SidebarHeader: View {
             if !model.isFullScreen { Color.clear.frame(width: LoomTheme.Layout.sidebarButtonsGap) }
             Spacer(minLength: LoomTheme.Space.headerSpacing)
             Button { model.onToggleSidebar?() } label: {
-                Image(systemName: "sidebar.left")
+                InkIcon(.sidebarLeft)
             }
             .buttonStyle(ChromeButtonStyle())
             .help("Hide Sidebar (⌃⌘S)")
@@ -79,7 +79,7 @@ struct HomeRow: View {
         let count = model.attentionCount
         Button { model.showHome() } label: {
             HStack(spacing: LoomTheme.Sidebar.homeRowSpacing) {
-                Image(systemName: "house").font(LoomTheme.Sidebar.homeGlyph)
+                InkIcon(.home, size: LoomTheme.Sidebar.navGlyphBox)
                     .foregroundStyle(LoomTheme.Text.secondaryStyle).accessibilityHidden(true)
                     .frame(width: LoomTheme.Sidebar.navGlyphBox, height: LoomTheme.Sidebar.navGlyphBox)
                     .frame(width: LoomTheme.Sidebar.homeGlyphColumn)
@@ -132,7 +132,7 @@ struct NewSessionRow: View {
         let primary = Self.titleIsPrimary(hovering: hovering || LookEvidence.forcesHover(Self.key))
         Button { model.beginNewSessionInRecentProject() } label: {
             HStack(spacing: LoomTheme.Sidebar.homeRowSpacing) {
-                Image(systemName: "plus").font(LoomTheme.Sidebar.newSessionGlyph)
+                InkIcon(.plus, size: LoomTheme.Sidebar.navGlyphBox)
                     .foregroundStyle(LoomTheme.Text.secondaryStyle).accessibilityHidden(true)
                     .frame(width: LoomTheme.Sidebar.homeGlyphColumn)
                 Text(Self.title).font(LoomTheme.Sidebar.lineTitle)
@@ -491,7 +491,7 @@ struct ProjectHeader: View {
             .accessibilityAction(named: "Move Up") { Task { await model.moveProject(project.id, by: -1) } }
             .accessibilityAction(named: "Move Down") { Task { await model.moveProject(project.id, by: 1) } }
             Button { Task { await model.toggleCollapsed(project.id) } } label: {
-                Image(systemName: expanded ? "chevron.down" : "chevron.right").font(LoomTheme.Typography.chevron)
+                InkIcon(expanded ? .chevronDown : .chevronRight, size: LoomTheme.Icon.compact)
             }
             .buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.projectMenuButton))
             .focused($focused, equals: .chevron)
@@ -776,8 +776,12 @@ struct SessionCardView: View {
 
     /// "<title>, Claude, Needs approval, <reason>, opened by <requester>, pinned".
     static func accessibilityLabel(title: String, provider: ManagedSession.Provider, status: String?,
-                                   reason: String? = nil, origin: SessionOrigin?, pinned: Bool, branch: String? = nil) -> String {
+                                   reason: String? = nil, origin: SessionOrigin?, pinned: Bool, branch: String? = nil,
+                                   modelName: String? = nil, modelProvenance: String? = nil, projectName: String? = nil) -> String {
         var parts = [title, ProviderName.title(provider)]
+        if let modelName { parts.append(modelName) }
+        if let modelProvenance { parts.append(modelProvenance) }
+        if let projectName { parts.append(projectName) }
         if let status { parts.append(status) }
         if let reason { parts.append(reason) }
         if let origin { parts.append(origin.accessibilityPhrase) }
@@ -822,7 +826,8 @@ struct SessionCardView: View {
             DeletionMenuItems(model: model, row: row)
         }
         .modifier(SessionCardAccessibility(row: row, model: model, title: title, indicator: indicator,
-                                           reason: reasonLine, origin: origin, selected: selected))
+                                           reason: reasonLine, origin: origin, selected: selected,
+                                           projectName: mode == .activity ? projectName ?? "No project" : nil))
     }
 
     // MARK: The card (Ink v4)
@@ -848,7 +853,7 @@ struct SessionCardView: View {
             .frame(height: LoomTheme.Sidebar.cardTopHeight)
             titleText(title, indicator: indicator)
                 .frame(maxWidth: .infinity, minHeight: LoomTheme.Sidebar.cardTitleHeight, alignment: .leading)
-            SessionCardMeta(row: row, model: model, origin: origin, reason: reasonLine)
+            SessionCardMeta(row: row, model: model, origin: origin, reason: reasonLine, showModel: mode == .activity)
         }
         .padding(.horizontal, LoomTheme.Sidebar.cardInset)
         .padding(.top, LoomTheme.Sidebar.cardTop).padding(.bottom, hasChildren ? 0 : LoomTheme.Sidebar.cardBottom)
@@ -884,6 +889,7 @@ private struct SessionCardMeta: View {
     let model: CatalogModel
     let origin: SessionOrigin?
     let reason: SessionReasonLine?
+    let showModel: Bool
 
     var body: some View {
         let branch = model.branches[row.record.session.workingDirectory] ?? .unavailable
@@ -901,7 +907,14 @@ private struct SessionCardMeta: View {
                     .help(SessionCardView.pinnedGlyphHelp(cleanupReviewOffered: model.cleanupReview != nil))
             }
             Spacer(minLength: LoomTheme.Space.headerSpacing)
-            HarnessMark(provider: row.record.session.provider, size: LoomTheme.Sidebar.cardHarnessMark)
+            if showModel {
+                CardModelLabel(row: row, model: model, markSize: LoomTheme.Sidebar.cardHarnessMark)
+                    .frame(maxWidth: LoomTheme.Sidebar.activityModelMaxWidth, alignment: .trailing)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(1)
+            } else {
+                HarnessMark(provider: row.record.session.provider, size: LoomTheme.Sidebar.cardHarnessMark)
+            }
         }
         .foregroundStyle(LoomTheme.Text.tertiaryStyle)
         .frame(height: LoomTheme.Sidebar.cardMetaHeight)
@@ -950,14 +963,17 @@ private struct SessionCardAccessibility: ViewModifier {
     let reason: SessionReasonLine?
     let origin: SessionOrigin?
     let selected: Bool
+    let projectName: String?
 
     func body(content: Content) -> some View {
         let branch = reason == nil ? nil : model.branches[row.record.session.workingDirectory]
+        let mainModel = model.cardModels.presentation(of: row.id, provider: row.record.session.provider)
         return content.accessibilityElement(children: .combine)
             .accessibilityLabel(SessionCardView.accessibilityLabel(
                 title: title, provider: row.record.session.provider, status: CardStatus.accessibilityStatus(indicator),
                 reason: reason?.text, origin: origin, pinned: row.record.pinned,
-                branch: branch != .unavailable ? branch?.label : nil))
+                branch: branch != .unavailable ? branch?.label : nil, modelName: mainModel?.name,
+                modelProvenance: mainModel?.provenance.rawValue, projectName: projectName))
             .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 }
@@ -1018,7 +1034,7 @@ struct ProjectStartButton: View {
     var body: some View {
         if let entry = ClaudeStartEntry.inProject(project, on: model) {
             Button { entry.perform(on: model) } label: {
-                Image(systemName: "plus")
+                InkIcon(.plus, size: LoomTheme.Icon.compact)
             }
             .buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.projectMenuButton))
             .disabled(!entry.isEnabled(on: model))

@@ -135,7 +135,7 @@ private struct JournalLine: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button(action: remove) {
-                Image(systemName: "xmark").font(M.removeGlyph).frame(width: M.removeSide, height: M.removeSide)
+                InkIcon(.close, size: LoomTheme.Icon.small).frame(width: M.removeSide, height: M.removeSide)
             }
             .buttonStyle(ChromeButtonStyle(size: CGSize(width: M.removeSide, height: M.removeSide)))
             .focusEffectDisabled()

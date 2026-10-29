@@ -55,7 +55,7 @@ struct EffortPickerMenu: View {
                         .background(Capsule().fill(LoomTheme.Surface.muted))
                 }
                 Group {
-                    if checked { Image(systemName: "checkmark").font(LoomTheme.ModelPicker.iconFont).foregroundStyle(LoomTheme.Accent.base) }
+                    if checked { InkIcon(.check, size: LoomTheme.Icon.body).foregroundStyle(LoomTheme.Accent.base) }
                 }
                 .frame(width: LoomTheme.ModelPicker.checkWidth).accessibilityHidden(true)
             }

@@ -163,7 +163,7 @@ struct ComposerModelChip: View {
                 if let word = picker.chipEffortWord {
                     Text(word).font(LoomTheme.Composer.effortWordFont).foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
                 }
-                Image(systemName: "chevron.down").font(LoomTheme.Composer.chevron).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+                InkIcon(.chevronDown, size: LoomTheme.Icon.tiny).foregroundStyle(LoomTheme.Text.tertiaryStyle)
             }
             .padding(.leading, LoomTheme.Composer.modelChipPaddingLeading).padding(.trailing, LoomTheme.Composer.modelChipPaddingTrailing)
             .frame(minHeight: LoomTheme.Composer.controlSide)
@@ -304,7 +304,7 @@ struct ComposerModelPopover: View {
             Spacer(minLength: 0)
             ZStack {
                 if row.checked {
-                    Image(systemName: "checkmark").font(LoomTheme.Composer.modelCheck).foregroundStyle(LoomTheme.Text.primary)
+                    InkIcon(.check, size: LoomTheme.Icon.compact).foregroundStyle(LoomTheme.Text.primary)
                         .accessibilityHidden(true)
                 }
             }

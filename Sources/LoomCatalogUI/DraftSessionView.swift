@@ -151,7 +151,7 @@ struct Headline: View {
             HStack(spacing: D.chevronGap) {
                 Text(project?.name ?? "no project").draftType(D.question).lineLimit(1).truncationMode(.tail)
                     .frame(maxWidth: D.pickMaxWidth)
-                Image(systemName: "chevron.down").font(D.chevronFont)
+                InkIcon(.chevronDown, size: LoomTheme.Icon.tiny)
                     .foregroundStyle(hoversPick ? AnyShapeStyle(LoomTheme.Text.primary) : AnyShapeStyle(LoomTheme.Text.tertiaryStyle))
                     .frame(width: D.chevronBox, height: D.chevronBox)
                     .offset(y: D.chevronDrop)

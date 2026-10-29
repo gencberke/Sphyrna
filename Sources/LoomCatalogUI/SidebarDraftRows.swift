@@ -48,7 +48,7 @@ struct DraftRow: View {
             .accessibilityAction(named: "Discard") { model.discardDraft(id: draft.id) }
             if hovering {
                 Button { model.discardDraft(id: draft.id) } label: {
-                    Image(systemName: "xmark").font(LoomTheme.Typography.chevron)
+                    InkIcon(.close, size: LoomTheme.Icon.tiny)
                 }
                 .buttonStyle(ChromeButtonStyle(size: LoomTheme.Layout.projectMenuButton))
                 .help("Discard draft")

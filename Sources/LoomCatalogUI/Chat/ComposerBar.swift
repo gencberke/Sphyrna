@@ -90,7 +90,7 @@ struct ComposerChipLabel: View {
 
     var body: some View {
         HStack(spacing: LoomTheme.Composer.chipPartGap) {
-            if let symbol { Image(systemName: symbol).font(LoomTheme.Composer.barIcon) }
+            if let symbol { InkIcon(systemName: symbol, size: LoomTheme.Icon.heading) }
             Text(title).font(LoomTheme.Composer.barFont).lineLimit(1).truncationMode(.tail)
         }
         .padding(.horizontal, LoomTheme.Composer.chipPaddingH)
@@ -206,7 +206,7 @@ struct ComposerSendButton: View {
     @ViewBuilder private var content: some View {
         if let word = look.word {
             HStack(spacing: LoomTheme.Composer.sendWordGap) {
-                if let symbol = look.symbol { Image(systemName: symbol).font(LoomTheme.Composer.sendWordIcon) }
+                if let symbol = look.symbol { InkIcon(systemName: symbol, size: LoomTheme.Icon.compact) }
                 Text(word).font(LoomTheme.Composer.sendWordFont).lineLimit(1)
             }
             .foregroundStyle(LoomTheme.Accent.onAccent)
@@ -233,7 +233,7 @@ struct ComposerSendButton: View {
 
     @ViewBuilder private func glyph(color: Color) -> some View {
         if let symbol = look.symbol {
-            Image(systemName: symbol).font(LoomTheme.Composer.sendIcon).foregroundStyle(color)
+            InkIcon(systemName: symbol, size: LoomTheme.Icon.navigation).foregroundStyle(color)
         } else {
             RoundedRectangle(cornerRadius: LoomTheme.Composer.stopRadius).fill(color)
                 .frame(width: LoomTheme.Composer.stopGlyph, height: LoomTheme.Composer.stopGlyph)
@@ -314,7 +314,7 @@ struct ComposerPlusChip: View {
     var body: some View {
         let spot = InkOpeners.placement(.plus, onDraft: false) ?? InkOpeners.Spot(side: .above, alignment: .leading)
         Button { isOpen.toggle() } label: {
-            Image(systemName: "plus").font(LoomTheme.Composer.plusIcon)
+            InkIcon(.plus, size: LoomTheme.Icon.navigation)
                 .frame(width: LoomTheme.Composer.controlSide, height: LoomTheme.Composer.controlSide).contentShape(Rectangle())
         }
         .buttonStyle(ComposerChipStyle(key: "composer-plus"))
@@ -346,7 +346,7 @@ struct ComposerPlusChip: View {
     private func row(_ item: ComposerPlusItem, lit: Bool, index: Int) -> some View {
         Button { choose(item) } label: {
             HStack(spacing: LoomTheme.Composer.modelColumnGap) {
-                Image(systemName: item.symbol).font(LoomTheme.Composer.menuIconFont)
+                InkIcon(systemName: item.symbol, size: LoomTheme.Icon.body)
                     .foregroundStyle(LoomTheme.OnPopover.secondary(lit: lit))
                     .frame(width: LoomTheme.Composer.menuIconSlot)
                 Text(item.title).font(LoomTheme.Composer.modelNameFont).foregroundStyle(LoomTheme.Text.primary)

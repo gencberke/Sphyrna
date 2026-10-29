@@ -206,7 +206,7 @@ struct Notice: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: LoomTheme.Edges.noticeRadius)
         HStack(alignment: .top, spacing: LoomTheme.Edges.noticeGap) {
-            Image(systemName: content.symbol).font(LoomTheme.Edges.noticeSymbol).foregroundStyle(symbolColor)
+            InkIcon(systemName: content.symbol, size: LoomTheme.Icon.navigation).foregroundStyle(symbolColor)
                 .frame(width: LoomTheme.Edges.noticeSymbolSlot).padding(.top, 1).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: LoomTheme.Edges.noticeRowGap) {
                 Text(content.title).font(LoomTheme.Edges.noticeTitle).foregroundStyle(LoomTheme.Text.primary)

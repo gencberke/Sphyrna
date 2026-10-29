@@ -155,7 +155,7 @@ private struct ProjectSessionRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 if showsBranch, let branch {
                     HStack(spacing: LoomTheme.ProjectPage.rowBranchGap) {
-                        Image(systemName: "arrow.triangle.branch").font(LoomTheme.ProjectPage.rowBranchGlyph)
+                        InkIcon(.branch, size: LoomTheme.Icon.compact)
                         Text(branch.label).lineLimit(1).truncationMode(.middle)
                     }
                     .projectType(LoomTheme.ProjectPage.rowBranch).foregroundStyle(LoomTheme.Text.secondaryStyle)
@@ -310,8 +310,7 @@ private struct ProjectPresetRow: View {
     var body: some View {
         Button { model.usePreset(preset, projectID: projectID) } label: {
             HStack(spacing: LoomTheme.ProjectPage.presetGap) {
-                Image(systemName: ComposerModeLook.symbol(forRaw: preset.permissionMode))
-                    .font(LoomTheme.ProjectPage.presetModeGlyph)
+                InkIcon(systemName: ComposerModeLook.symbol(forRaw: preset.permissionMode), size: LoomTheme.Icon.body)
                     .foregroundStyle(ComposerModeLook.color(forRaw: preset.permissionMode))
                     .frame(width: LoomTheme.ProjectPage.presetModeBox)
                     .accessibilityHidden(true)

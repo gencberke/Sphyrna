@@ -135,7 +135,7 @@ private struct HomeRemoraHeading: View {
 
     private var moreButton: some View {
         let isOpen = ui.binding(.more)
-        return Button { isOpen.wrappedValue.toggle() } label: { Image(systemName: "ellipsis") }
+        return Button { isOpen.wrappedValue.toggle() } label: { InkIcon(.more) }
             .buttonStyle(ChromeButtonStyle(selected: isOpen.wrappedValue))
             .fixedSize()
             .help("Remora actions")

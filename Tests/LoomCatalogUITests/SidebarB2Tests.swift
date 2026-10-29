@@ -124,7 +124,7 @@ struct SidebarB2Tests {
         window.displayIfNeeded()
         try await Task.sleep(for: .milliseconds(300))
         let labels = accessibilityElements(in: hosting.view).compactMap { $0.accessibilityLabel?() }
-        #expect(labels.contains("Review, Claude, Needs you, Needs approval"), "card labels: \(labels)")
+        #expect(labels.contains("Review, Claude, No project, Needs you, Needs approval"), "card labels: \(labels)")
     }
 
     @Test func statusWordsKeepExceptionalStatesPrecise() {

@@ -136,7 +136,7 @@ struct InspectorOverview: View {
                 if let mode = content.mode {
                     OverviewFact("Mode") {
                         HStack(spacing: LoomTheme.Overview.valueGap) {
-                            Image(systemName: ComposerModeLook.symbol(forRaw: mode.key)).font(LoomTheme.Overview.glyph)
+                            InkIcon(systemName: ComposerModeLook.symbol(forRaw: mode.key), size: LoomTheme.Icon.body)
                                 .accessibilityHidden(true)
                             Text(verbatim: mode.title).inspectorType(LoomTheme.Overview.value)
                         }
@@ -363,7 +363,7 @@ private struct OverviewLink: View {
         Button(action: action) {
             HStack(spacing: LoomTheme.Overview.linkGap) {
                 Text("Open")
-                Image(systemName: "chevron.right").font(LoomTheme.Overview.linkGlyph).accessibilityHidden(true)
+                InkIcon(.chevronRight, size: LoomTheme.Icon.tiny).accessibilityHidden(true)
             }
         }
         .buttonStyle(ControlButtonStyle(kind: .link, size: .small))
@@ -425,7 +425,7 @@ private struct OverviewCopyButton: View {
                 copied = false
             }
         } label: {
-            Image(systemName: copied ? "checkmark" : "doc.on.doc").font(LoomTheme.Overview.copyGlyph)
+            InkIcon(copied ? .check : .copy, size: LoomTheme.Icon.body)
         }
         .buttonStyle(ChromeButtonStyle(size: CGSize(width: LoomTheme.Overview.copySide, height: LoomTheme.Overview.copySide),
                                        key: "overview-copy-folder"))
@@ -587,7 +587,7 @@ private struct OverviewAgentRow: View {
         } else if agent.isRunning && agent.note == nil {
             IndicatorView(indicator: .working, animates: false)
         } else if agent.note == nil {
-            Image(systemName: "checkmark").font(LoomTheme.Overview.agentCheck).foregroundStyle(LoomTheme.Text.faint)
+            InkIcon(.check, size: LoomTheme.Icon.tiny).foregroundStyle(LoomTheme.Text.faint)
                 .accessibilityHidden(true)
         } else {
             Color.clear
