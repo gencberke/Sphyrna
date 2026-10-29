@@ -208,8 +208,6 @@ sleep	Tests/LoomIntegrationTests/CatalogUI/SessionServiceCharacterizationTests.s
 sleep	Tests/LoomIntegrationTests/CatalogUI/UsageModelTests.swift	2
 sleep	Tests/LoomIntegrationTests/Chat/ManagedClaudeTaskTests.swift	5
 sleep	Tests/LoomIntegrationTests/Core/AgyHookPeerTests.swift	1
-sleep	Tests/LoomIntegrationTests/Core/AgyRuntimeTests.swift	2
-sleep	Tests/LoomIntegrationTests/Core/AgyServiceTests.swift	1
 sleep	Tests/LoomIntegrationTests/Core/AppShutdownCoordinatorTests.swift	3
 sleep	Tests/LoomIntegrationTests/Core/CatalogScaleTests.swift	2
 sleep	Tests/LoomIntegrationTests/Core/ClaudeLimitResetRuntimeTests.swift	2
@@ -609,10 +607,7 @@ serialized	Tests/LoomIntegrationTests/CatalogUI/UsageModelTests.swift	1
 serialized	Tests/LoomIntegrationTests/Chat/ChatReleaseBFixTests.swift	1
 serialized	Tests/LoomIntegrationTests/Chat/ManagedClaudeRuntimeIntegrationTests.swift	1
 serialized	Tests/LoomIntegrationTests/Chat/ManagedClaudeTaskTests.swift	1
-serialized	Tests/LoomIntegrationTests/Core/AgyDiscoverySafetyTests.swift	1
 serialized	Tests/LoomIntegrationTests/Core/AgyHookPeerTests.swift	1
-serialized	Tests/LoomIntegrationTests/Core/AgyRuntimeTests.swift	1
-serialized	Tests/LoomIntegrationTests/Core/AgyServiceTests.swift	1
 serialized	Tests/LoomIntegrationTests/Core/AgyTaskAdmissionTests.swift	1
 serialized	Tests/LoomIntegrationTests/Core/AppShutdownCoordinatorTests.swift	1
 serialized	Tests/LoomIntegrationTests/Core/CatalogScaleTests.swift	1

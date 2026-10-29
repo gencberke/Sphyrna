@@ -6,7 +6,8 @@ import Foundation
 ///
 /// opencode, agy and pi are described here from their own `--help` (27 Oct); P1's `SPIKE.md` is not written yet, so their
 /// install lines, profile variables and version tables are marked "to confirm" and each becomes startable through its own
-/// slice (E1–E3). A harness that is not on the PATH reads Not found and its switch is disabled; Claude and Codex are on
+/// slice (E1–E3). opencode and agy are frozen for 1.8.0 (D-120): `comingLater` marks them, and taking that line out of a
+/// row lets the harness start again. A harness that is not on the PATH reads Not found and its switch is disabled; Claude and Codex are on
 /// when found, the others off until switched on (FB6-13, FEEDBACK-7 Q8).
 public enum HarnessCatalogue {
     /// The catalogue, in Connections' order.
@@ -92,6 +93,7 @@ public enum HarnessCatalogue {
         capabilities: HarnessCapabilities.intrinsic(ofHarness: HarnessID.opencode),
         onWhenFound: false,
         startable: false,
+        comingLater: true,
         markRendering: .luminanceMask)
 
     /// agy (Antigravity CLI) 1.4.5. Its `--help` lists no install or sign-in subcommand and no doctor. The default profile
@@ -106,6 +108,7 @@ public enum HarnessCatalogue {
         capabilities: HarnessCapabilities.intrinsic(ofHarness: HarnessID.agy),
         onWhenFound: false,
         startable: true,
+        comingLater: true,
         provider: .agy,
         markRendering: .template,
         modes: [.acceptEdits, .auto, .plan], agentModes: [.acceptEdits, .auto, .plan])

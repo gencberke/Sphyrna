@@ -95,8 +95,8 @@ private struct PickerMeasurementProbeLayout: Layout {
             .model(ModelPickerKey(harness: .claude, id: "same")),
             .model(ModelPickerKey(harness: .codex, id: "same"))
         ])
-        #expect(data.notSearched.contains("agy (off)"))
-        #expect(data.notSearched.contains("opencode (not found)"))
+        #expect(data.notSearched.contains("agy (coming later)"))
+        #expect(data.notSearched.contains("opencode (coming later)"))
         #expect(data.notSearched.contains("pi (no models reported)"))
         #expect(data.groups.first { $0.id == .agy }?.models.isEmpty == true)
     }
@@ -310,7 +310,7 @@ private struct PickerMeasurementProbeLayout: Layout {
 
         try await open()
         let before = model.resolvedStart(for: nil).choices
-        try await rail("agy · Off")
+        try await rail("agy · Coming later")
         _ = host.state.handle(.down)
         #expect(host.state.handle(.return))
         try await settle()
@@ -414,12 +414,13 @@ private struct PickerMeasurementProbeLayout: Layout {
         #expect(host.state.handle(.escape) && model.resolvedStart(for: nil).choices == current)
         #expect(modelAgain.accessibilityPerformPress?() == true)
         try await settle()
-        let off = try #require(accessibilityElements(in: host.view).first { InkAX.label($0) == "agy · Off" })
+        // agy is coming later (D-120), so pi is the group that is not available and sends the person to Connections.
+        let off = try #require(accessibilityElements(in: host.view).first { InkAX.label($0) == "pi · Not found" })
         #expect(off.accessibilityPerformPress?() == true)
         try await settle()
         var openedConnections = false
         model.onShowSettings = { openedConnections = $0 == .connections }
-        let turnOn = try #require(accessibilityElements(in: host.view).first { InkAX.label($0) == "Turn On…" })
+        let turnOn = try #require(accessibilityElements(in: host.view).first { InkAX.label($0) == "Install…" })
         #expect(turnOn.accessibilityPerformPress?() == true)
         try await settle()
         #expect(openedConnections && host.state.active == nil)

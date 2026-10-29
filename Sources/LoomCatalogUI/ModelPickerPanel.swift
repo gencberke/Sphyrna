@@ -114,6 +114,7 @@ struct ModelPickerPanel: View {
         case .on: " · On"
         case .off: " · Off"
         case .notFound: " · Not found"
+        case .comingLater: " · " + HarnessDescriptor.comingLaterLabel
         }
     }
 
@@ -254,11 +255,17 @@ struct ModelPickerPanel: View {
         HStack(spacing: LoomTheme.ModelPicker.rowGap) {
             ProviderIcon(harness: group.id, size: LoomTheme.ModelPicker.rowMark).opacity(LoomTheme.Opacity.disabled)
             Text(group.descriptor.displayName).font(LoomTheme.ModelPicker.rowFont).foregroundStyle(LoomTheme.Text.secondaryStyle)
-            Text(group.state == .off ? "Off" : "Not found")
-                .font(LoomTheme.ModelPicker.descriptionFont).foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
-            Spacer(minLength: 0)
-            Button(group.state == .off ? "Turn On…" : "Install…") { close(); model.showConnections() }
-                .buttonStyle(ControlButtonStyle(kind: .ghost, size: .small))
+            if group.state == .comingLater {
+                // D-120: the label alone; nothing in Settings would make it start.
+                InkBadge(text: HarnessDescriptor.comingLaterLabel).fixedSize()
+                Spacer(minLength: 0)
+            } else {
+                Text(group.state == .off ? "Off" : "Not found")
+                    .font(LoomTheme.ModelPicker.descriptionFont).foregroundStyle(LoomTheme.Text.tertiaryStyle).lineLimit(1)
+                Spacer(minLength: 0)
+                Button(group.state == .off ? "Turn On…" : "Install…") { close(); model.showConnections() }
+                    .buttonStyle(ControlButtonStyle(kind: .ghost, size: .small))
+            }
         }
         .padding(.horizontal, LoomTheme.ModelPicker.rowInset).frame(height: LoomTheme.ModelPicker.rowHeight)
         .accessibilityElement(children: .contain)

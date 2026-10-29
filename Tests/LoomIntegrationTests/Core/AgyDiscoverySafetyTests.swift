@@ -4,7 +4,9 @@ import Testing
 import LoomTestSupport
 @testable import LoomCoreTestRigs
 
-@Suite(.serialized, .processHeavy, .timeLimit(.minutes(1)))
+/// agy is coming later in 1.8.0 (D-120): its runtime cannot start a run, so the run-level cases of this suite left with
+/// the freeze (they are in 0e4ff16 for the slice that lifts it); the discovery file's own safety stays tested.
+@Suite(.timeLimit(.minutes(1)))
 struct AgyDiscoverySafetyTests {
     @Test func cleanupPreservesAModifiedDiscoveryFile() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("agy-cleanup-\(UUID())", isDirectory: true)
@@ -21,40 +23,5 @@ struct AgyDiscoverySafetyTests {
         #expect(try Data(contentsOf: hook) == changed)
         try original.write(to: hook)
         #expect(witness.remove())
-    }
-
-    @Test func stopPreservesUnexpectedFilesInTheAddedWorkspaceRoot() async throws {
-        let provider = try #require(ManagedSession.Provider(rawValue: "agy"))
-        let context = try await SessionRuntimeRig.makeContext(scoped: true)
-        defer { context.cleanup() }
-        do {
-            try FileManager.default.createDirectory(at: context.home.appendingPathComponent(".gemini/antigravity-cli"),
-                                                    withIntermediateDirectories: true)
-            let screen = SessionRuntimeRig.Screen()
-            let launch = try await context.runtime.startConversation(provider: provider, projectID: nil, outputSink: screen)
-            screen.attach(launch.terminal)
-            #expect(await screen.contains("FAKE-AGY STARTED"))
-            #expect(try await SessionRuntimeRig.waitUntil {
-                try await context.catalog.session(id: launch.sessionID)?.session.providerConversationID != nil
-            })
-            let state = try #require(await context.runtime.agyRuns[launch.runID])
-            let unexpected = state.discovery.appendingPathComponent("not-owned.txt")
-            try Data("keep this synthetic file".utf8).write(to: unexpected)
-            let report = try await context.runtime.stopConversation(sessionID: launch.sessionID)
-            #expect(!report.succeeded)
-            #expect((try? Data(contentsOf: unexpected)) == Data("keep this synthetic file".utf8))
-            if !report.succeeded {
-                await #expect(throws: SessionRuntimeError.unverifiedStop(launch.sessionID)) {
-                    _ = try await context.runtime.resumeConversation(sessionID: launch.sessionID)
-                }
-            }
-            // Only this test-created file is removed; the runtime retries its own cleanup.
-            if FileManager.default.fileExists(atPath: unexpected.path) { try FileManager.default.removeItem(at: unexpected) }
-            #expect(await context.runtime.finishAgyRun(launch.runID).isEmpty)
-        } catch {
-            _ = await context.runtime.shutdown()
-            throw error
-        }
-        #expect((await context.runtime.shutdown()).succeeded)
     }
 }

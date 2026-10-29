@@ -9,6 +9,9 @@ public enum HarnessAvailabilityState: String, Equatable, Sendable {
     case off
     /// Not on the PATH: the harness is Off and its switch is disabled, with "Not found on this Mac" under its name.
     case notFound
+    /// The harness is coming later in Sphyrna (D-120): whatever the PATH and the switch say, it reads "Coming later", its
+    /// switch is disabled and nothing starts it.
+    case comingLater
 }
 
 /// One harness's availability at one moment. A value: `HarnessAvailability.all(in:isOn:)` judges it from a PATH lookup and
@@ -30,15 +33,17 @@ public struct HarnessAvailability: Equatable, Sendable {
 
     public var isFound: Bool { executable != nil }
     /// Whether the switch can be used: never for a harness that is not found (FB6-13 step 3).
-    public var canSwitch: Bool { state != .notFound }
+    public var canSwitch: Bool { state == .on || state == .off }
     public var isOn: Bool { state == .on }
 
     /// The availability of one harness: found by a PATH lookup on `environment`, and On or Off by `isOn`. A harness that is
-    /// not found is Not found whatever the switch says, so a missing CLI can never read On.
+    /// not found is Not found whatever the switch says, so a missing CLI can never read On. A harness coming later reads
+    /// Coming later, with its PATH result kept (Home lists it only when found).
     public static func of(_ descriptor: HarnessDescriptor, in environment: [String: String], isOn: Bool) -> HarnessAvailability {
         let found = ProviderToolchainProbe.find(descriptor.command, in: environment)
         let searched = found?.searched ?? (environment["PATH"] ?? "").split(separator: ":").count
-        let state: HarnessAvailabilityState = found == nil ? .notFound : (isOn ? .on : .off)
+        let state: HarnessAvailabilityState = descriptor.comingLater ? .comingLater
+            : found == nil ? .notFound : (isOn ? .on : .off)
         return HarnessAvailability(id: descriptor.id, state: state, executable: found?.path, searchedFolders: searched)
     }
 

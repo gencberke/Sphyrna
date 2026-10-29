@@ -65,6 +65,7 @@ public struct OpenSessionInput: Equatable, Sendable {
         }
         let id = HarnessID(harness?.trimmingCharacters(in: .whitespacesAndNewlines) ?? HarnessID.claude.rawValue)
         guard let descriptor = HarnessCatalogue.descriptor(for: id) else { throw OpenSessionRejection("the harness is not known") }
+        if let reason = descriptor.comingLaterReason { throw OpenSessionRejection(reason) }
         let chosenModel = try validatedModel(model)
         let chosenEffort = try validatedEffort(effort)
         let chosenMode = try validatedMode(mode, descriptor: descriptor)

@@ -17,10 +17,11 @@ struct HarnessCatalogueTests {
         #expect(HarnessCatalogue.descriptor(for: HarnessID("future-harness")) == nil)
     }
 
-    @Test func agyHasAStartPathButStaysOffUntilEnabled() {
+    @Test func agyKeepsItsStartPathButIsComingLaterLikeOpencode() {
         #expect(HarnessCatalogue.all.filter(\.onWhenFound).map(\.id) == [.claude, .codex])
         #expect(HarnessCatalogue.all.filter(\.startable).map(\.id) == [.claude, .codex, .agy])
-        #expect(HarnessCapabilities.ofHarness(.agy, startable: [.agy]).startable)
+        #expect(HarnessCatalogue.all.filter(\.comingLater).map(\.id) == [.opencode, .agy], "D-120")
+        #expect(!HarnessCapabilities.ofHarness(.agy, startable: [.agy]).startable)
         for id in [HarnessID.opencode, .pi] {
             #expect(HarnessCatalogue.descriptor(for: id)?.startable == false)
             #expect(HarnessCapabilities.ofHarness(id, startable: [id]).startable == false, "a harness with no start path never starts")

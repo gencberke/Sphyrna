@@ -22,6 +22,7 @@ struct AgyTaskAdmissionTests {
             create.harness = "agy"; create.message = "synthetic request"
             let answer = await context.runtime.submitTaskRequest(create)
             #expect(answer.status == "refused")
+            #expect(answer.detail == "agy is coming later: this version of Sphyrna cannot start its sessions", "D-120")
             #expect(await context.runtime.openRequestSnapshot().isEmpty)
             let target = ManagedSession(provider: try #require(ManagedSession.Provider(rawValue: "agy")),
                 providerConversationID: UUID().uuidString.lowercased(), workingDirectory: context.home.path)
