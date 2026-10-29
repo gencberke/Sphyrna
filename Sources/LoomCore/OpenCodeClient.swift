@@ -57,6 +57,8 @@ public actor OpenCodeClient {
     private let transport: Transport
     private let password: String
     private let lease: OpenCodeHTTPLease
+    private let profile: OpenCodeProfileBinding?
+    private let expectedPID: Int32?
     private var verified = false
     private var closed = false
     private var createAttempted = false
@@ -67,10 +69,14 @@ public actor OpenCodeClient {
     private var receipts: [String: Receipt] = [:]
     private static let receiptLimit = 128
 
-    public init(serverURL: URL, password: String, leader: ProcessIdentity, timeout: TimeInterval = 5) throws {
+    public init(serverURL: URL, password: String, leader: ProcessIdentity, profileProof: OpenCodeProfileProof,
+                executable: String, environment: [String: String], workingDirectory: String,
+                timeout: TimeInterval = 5) throws {
         guard OpenCodeLaunchProfile.validServerURL(serverURL), OpenCodeLaunchProfile.validPassword(password),
               timeout.isFinite, timeout > 0, timeout <= 30 else { throw OpenCodeError.invalidTarget }
-        self.serverURL = serverURL; self.password = password
+        self.serverURL = serverURL; self.password = password; expectedPID = leader.pid
+        profile = OpenCodeProfileBinding(proof: profileProof, executable: executable,
+                                         environment: environment, directory: workingDirectory)
         let lease = OpenCodeHTTPLease()
         self.lease = lease
         transport = { request in try await OpenCodeHTTP.request(request, leader: leader, timeout: timeout, lease: lease) }
@@ -78,14 +84,26 @@ public actor OpenCodeClient {
 
     /// Only a test fixture can replace the real, ownership-checked transport.
     init(base: URL, password: String, transport: @escaping Transport) {
+        serverURL = base; self.password = password; self.transport = transport; lease = OpenCodeHTTPLease(); profile = nil
+        expectedPID = nil
+    }
+
+    /// Test transport with the same profile binding used by the production initializer.
+    init(base: URL, password: String, profileProof: OpenCodeProfileProof, executable: String,
+         environment: [String: String], workingDirectory: String, transport: @escaping Transport) {
         serverURL = base; self.password = password; self.transport = transport; lease = OpenCodeHTTPLease()
+        expectedPID = nil
+        profile = OpenCodeProfileBinding(proof: profileProof, executable: executable,
+                                         environment: environment, directory: workingDirectory)
     }
 
     public func close() { closed = true; verified = false; lease.revoke() }
 
     public func verify(pid: Int32, version: String, temporaryDirectory: String) async throws {
         verified = false
-        guard pid > 0, !version.isEmpty, temporaryDirectory.hasPrefix("/"),
+        try await validateProfile()
+        guard pid > 0, expectedPID == nil || expectedPID == pid, !version.isEmpty, temporaryDirectory.hasPrefix("/"),
+              profile == nil || profile?.proof.roots.tmp == temporaryDirectory,
               OpenCodeLaunchProfile.validServerURL(serverURL), OpenCodeLaunchProfile.validPassword(password) else {
             throw OpenCodeError.invalidTarget
         }
@@ -98,9 +116,10 @@ public actor OpenCodeClient {
 
     public func create(directory: String, model: OpenCodeModel?,
                        permissions: [OpenCodePermissionRule]? = nil) async throws -> OpenCodeSession {
+        try await validateProfile()
         try requireVerified()
         guard selectedID == nil, !createAttempted, !resuming else { throw OpenCodeError.conflict }
-        guard validDirectory(directory), model?.valid != false,
+        guard validDirectory(directory), profile == nil || profile?.directory == directory, model?.valid != false,
               permissions.map({ $0.count <= 128 && $0.allSatisfy(\.valid) }) ?? true else { throw OpenCodeError.invalidTarget }
         // Never retry a create whose response was lost: the server may have made it.
         createAttempted = true
@@ -117,8 +136,10 @@ public actor OpenCodeClient {
     }
 
     public func resume(id: String, directory: String) async throws -> OpenCodeSession {
+        try await validateProfile()
         try requireVerified()
-        guard OpenCodeLaunchProfile.validID(id, prefix: "ses"), validDirectory(directory), !createAttempted,
+        guard OpenCodeLaunchProfile.validID(id, prefix: "ses"), validDirectory(directory),
+              profile == nil || profile?.directory == directory, !createAttempted,
               selectedID == nil || selectedID == id, !resuming else { throw OpenCodeError.invalidTarget }
         resuming = true
         defer { resuming = false }
@@ -135,6 +156,7 @@ public actor OpenCodeClient {
     /// Sends a new draft's one opening input through the API. The TUI is always
     /// launched without `--prompt`; a lost reply remains indeterminate.
     public func firstInput(sessionID: String, messageID: String, text: String) async throws -> String {
+        try await validateProfile()
         let body = try inputBody(sessionID: sessionID, messageID: messageID, text: text)
         if let firstMessageID, firstMessageID != messageID { throw OpenCodeError.conflict }
         firstMessageID = messageID
@@ -145,6 +167,7 @@ public actor OpenCodeClient {
     /// payloads return the recorded receipt without sending. The runtime must
     /// persist its own authorization/receipt fence across process restarts.
     public func submitInput(sessionID: String, messageID: String, text: String) async throws -> String {
+        try await validateProfile()
         let body = try inputBody(sessionID: sessionID, messageID: messageID, text: text)
         return try await admitInput(sessionID: sessionID, messageID: messageID, text: text, body: body)
     }
@@ -198,11 +221,21 @@ public actor OpenCodeClient {
     }
 
     /// A verified create/resume must precede any terminal attachment.
-    public func terminalProfile(directory: String, environment: [String: String]) throws -> ProviderLaunchProfile {
+    public func terminalProfile(directory: String, environment: [String: String]) async throws -> ProviderLaunchProfile {
+        try await validateProfile(environment: environment)
         try requireVerified()
         guard let selectedID, selectedDirectory == directory else { throw OpenCodeError.invalidTarget }
         return try OpenCodeLaunchProfile.terminal(serverURL: serverURL, sessionID: selectedID,
                                                   directory: directory, environment: environment, password: password)
+    }
+
+    private func validateProfile(environment: [String: String]? = nil) async throws {
+        if let profile {
+            try await profile.proof.validate(executable: profile.executable,
+                                             environment: environment ?? profile.environment,
+                                             workingDirectory: profile.directory)
+        }
+        try Task.checkCancellation()
     }
 
     private func requireVerified() throws {
@@ -261,4 +294,11 @@ public actor OpenCodeClient {
         let data: User
     }
     private struct InterruptAnswer: Decodable { let interrupted: Bool }
+}
+
+private struct OpenCodeProfileBinding: Sendable {
+    let proof: OpenCodeProfileProof
+    let executable: String
+    let environment: [String: String]
+    let directory: String
 }

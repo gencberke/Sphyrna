@@ -8,18 +8,17 @@ public struct OpenCodeServerConfiguration: Sendable {
     /// for native LOCAL tools. No value is logged or written to an app catalog.
     public let environment: [String: String]
     public let expectedVersion: String
-    /// The server reports only its own temporary directory. The runtime must
-    /// independently prove the other profile roots using the same resolved
-    /// executable/environment before it attaches the TUI.
-    public let expectedTemporaryDirectory: String
+    /// The server reports only tmp; this independently binds all roots to the
+    /// resolved executable, environment and working directory.
+    public let profileProof: OpenCodeProfileProof
     public let startupTimeout: TimeInterval
     public let scope: RunScope
 
     public init(executable: String, workingDirectory: String, environment: [String: String],
-                expectedVersion: String, expectedTemporaryDirectory: String,
+                expectedVersion: String, profileProof: OpenCodeProfileProof,
                 startupTimeout: TimeInterval = 5, scope: RunScope) {
         self.executable = executable; self.workingDirectory = workingDirectory; self.environment = environment
-        self.expectedVersion = expectedVersion; self.expectedTemporaryDirectory = expectedTemporaryDirectory
+        self.expectedVersion = expectedVersion; self.profileProof = profileProof
         self.startupTimeout = startupTimeout; self.scope = scope
     }
 }
@@ -32,6 +31,7 @@ public actor OpenCodeServerManager {
     private let configuration: OpenCodeServerConfiguration
     private var running: Running?
     private var startTask: Task<Running, any Error>?
+    private var startGeneration: UUID?
     private var stopTask: Task<(report: SessionStopReport?, errors: [String]), Never>?
     private var failedSessionID: UUID?
 
@@ -39,26 +39,37 @@ public actor OpenCodeServerManager {
         self.supervisor = supervisor; self.configuration = configuration
     }
 
+    /// Startup has one owner. A second caller during startup is refused;
+    /// after readiness callers may reuse the same live client. Canceling the
+    /// owner stops and verifies its server before returning cancellation.
     public func start() async throws -> OpenCodeClient {
-        if let stopTask { _ = await stopTask.value }
+        try Task.checkCancellation()
+        if let stopTask { _ = await stopTask.value; try Task.checkCancellation() }
         guard failedSessionID == nil else { throw OpenCodeError.unavailable }
         if let running { return running.client }
-        let task: Task<Running, any Error>
-        if let startTask { task = startTask }
-        else {
-            let new = Task { try await self.startServer() }
-            startTask = new
-            task = new
-        }
-        do {
-            let result = try await task.value
-            if running == nil { running = result }
-            startTask = nil
-            return result.client
-        } catch {
-            startTask = nil
-            throw error
-        }
+        guard startTask == nil else { throw OpenCodeError.conflict }
+        let generation = UUID()
+        let task = Task { try await self.startServer() }
+        startGeneration = generation
+        startTask = task
+        return try await withTaskCancellationHandler {
+            do {
+                let result = try await task.value
+                try Task.checkCancellation()
+                guard startGeneration == generation, stopTask == nil else { throw CancellationError() }
+                running = result
+                startTask = nil
+                startGeneration = nil
+                return result.client
+            } catch {
+                // Stop is coalesced and awaits any in-flight start. A failed
+                // ownership proof remains registered for a later retry.
+                let cleanup = await stop()
+                guard cleanup.errors.isEmpty else { throw OpenCodeError.unavailable }
+                if Task.isCancelled { throw CancellationError() }
+                throw error
+            }
+        } onCancel: { task.cancel() }
     }
 
     public func stop() async -> (report: SessionStopReport?, errors: [String]) {
@@ -72,6 +83,7 @@ public actor OpenCodeServerManager {
 
     private func performStop() async -> (report: SessionStopReport?, errors: [String]) {
         if let startTask {
+            startGeneration = nil
             startTask.cancel()
             running = try? await startTask.value
             self.startTask = nil
@@ -107,18 +119,22 @@ public actor OpenCodeServerManager {
     private func startServer() async throws -> Running {
         guard configuration.startupTimeout.isFinite, configuration.startupTimeout > 0,
               configuration.startupTimeout <= 30, configuration.workingDirectory.hasPrefix("/"),
-              configuration.expectedTemporaryDirectory.hasPrefix("/"), !configuration.expectedVersion.isEmpty else {
-            throw OpenCodeError.invalidTarget
-        }
+              !configuration.expectedVersion.isEmpty else { throw OpenCodeError.invalidTarget }
+        try await configuration.profileProof.validate(executable: configuration.executable,
+                                                      environment: configuration.environment,
+                                                      workingDirectory: configuration.workingDirectory)
+        try Task.checkCancellation()
         let session = ManagedSession(provider: .synthetic, workingDirectory: configuration.workingDirectory)
         try await supervisor.createInternalSession(session)
         do {
+            try Task.checkCancellation()
             var random = [UInt8](repeating: 0, count: 32)
             random.withUnsafeMutableBytes { arc4random_buf($0.baseAddress, $0.count) }
             let password = random.map { String(format: "%02x", $0) }.joined()
             let environment = LaunchEnvironment.make(base: configuration.environment,
                                                      runID: supervisor.ownershipRunID, sessionID: session.id)
             let profile = try OpenCodeLaunchProfile.server(environment: environment, password: password)
+            try Task.checkCancellation()
             let output = OpenCodeStartupOutput()
             let launch = try await supervisor.launch(sessionID: session.id, executable: configuration.executable,
                                                      arguments: profile.arguments, environment: profile.environment,
@@ -133,10 +149,17 @@ public actor OpenCodeServerManager {
                     let remaining = deadline - ProcessInfo.processInfo.systemUptime
                     guard remaining > 0 else { break }
                     let client = try OpenCodeClient(serverURL: url, password: password, leader: leader,
+                                                    profileProof: configuration.profileProof,
+                                                    executable: configuration.executable,
+                                                    environment: configuration.environment,
+                                                    workingDirectory: configuration.workingDirectory,
                                                     timeout: min(2, max(0.05, remaining)))
                     do {
                         try await client.verify(pid: leader.pid, version: configuration.expectedVersion,
-                                                temporaryDirectory: configuration.expectedTemporaryDirectory)
+                                                temporaryDirectory: configuration.profileProof.roots.tmp)
+                        try await configuration.profileProof.validate(executable: configuration.executable,
+                                                                      environment: configuration.environment,
+                                                                      workingDirectory: configuration.workingDirectory)
                         output.stopCapturing()
                         return Running(sessionID: session.id, client: client)
                     } catch OpenCodeError.httpStatus(503) {

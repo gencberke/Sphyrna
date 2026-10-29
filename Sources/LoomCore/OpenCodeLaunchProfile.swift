@@ -12,7 +12,7 @@ public enum OpenCodeLaunchProfile {
                                      environment: environment)
     }
 
-    public static func terminal(serverURL: URL, sessionID: String, directory: String,
+    static func terminal(serverURL: URL, sessionID: String, directory: String,
                                 environment: [String: String], password: String) throws -> ProviderLaunchProfile {
         guard validPassword(password) else { throw OpenCodeError.invalidCapability }
         guard validServerURL(serverURL), validID(sessionID, prefix: "ses"), directory.hasPrefix("/"),
