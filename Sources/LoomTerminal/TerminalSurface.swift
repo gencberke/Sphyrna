@@ -140,12 +140,38 @@ final class AlternateScreenKeeper: Sendable {
     var snapshot: TerminalScreenSnapshot? { latest.withLock { $0 } }
 }
 
+/// Tracks unclassified input before it hops to the main actor, including the
+/// interval before a surface attaches to its run's input queue.
+private final class TerminalInputArrivalFence: @unchecked Sendable {
+    private let lock = NSLock()
+    private weak var queue: TerminalInputQueue?
+    private var priorInput = false
+    private var ended = false
+
+    func arrived() {
+        lock.withLock {
+            guard !ended else { return }
+            if let queue { queue.noteUnclassifiedInput() }
+            else { priorInput = true }
+        }
+    }
+    func attach(_ queue: TerminalInputQueue) {
+        lock.withLock {
+            guard !ended else { return }
+            self.queue = queue
+            if priorInput { queue.noteUnclassifiedInput(); priorInput = false }
+        }
+    }
+    func finish() { lock.withLock { ended = true; queue = nil } }
+}
+
 /// One terminal view bound to exactly one managed run. Keyboard, paste and
 /// terminal replies share one ordered queue; a later run needs a new surface.
 @MainActor
 public final class TerminalSurface: NSObject, TerminalViewDelegate {
     public let view: LoomTerminalView
     private let output: TerminalOutputBridge
+    private let inputArrivalFence = TerminalInputArrivalFence()
     private struct InputFragment {
         var bytes: [UInt8]
         let origin: TerminalInputOrigin
@@ -182,6 +208,8 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
         )
         output = TerminalOutputBridge(feed: view.feedSender)
         super.init()
+        let inputArrivalFence = self.inputArrivalFence
+        view.inputSender.observeUnclassifiedIngress { inputArrivalFence.arrived() }
         view.terminalDelegate = self
         view.registerForDraggedTypes([.fileURL])
         view.setAccessibilityLabel("Terminal")
@@ -220,6 +248,7 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
         }
         input = .attached(queue, endpoint)
         self.inputGate = inputGate
+        inputArrivalFence.attach(queue)
         // Registration can wake a deferred automatic sender. Put earlier
         // user/terminal bytes into this queue before it becomes visible.
         for fragment in early.fragments {
@@ -236,6 +265,7 @@ public final class TerminalSurface: NSObject, TerminalViewDelegate {
 
     /// The run ended; input is refused and no work continues for this view.
     public func runEnded() {
+        inputArrivalFence.finish()
         if let runID { inputGate?.unregister(runID: runID) }
         inputGate = nil
         input = .ended

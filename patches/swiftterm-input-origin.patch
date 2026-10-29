@@ -1,5 +1,5 @@
 diff --git a/Sources/SwiftTerm/Apple/AppleTerminalView.swift b/Sources/SwiftTerm/Apple/AppleTerminalView.swift
-index 054b194..6194c8f 100644
+index 054b194..bd09973 100644
 --- a/Sources/SwiftTerm/Apple/AppleTerminalView.swift
 +++ b/Sources/SwiftTerm/Apple/AppleTerminalView.swift
 @@ -1071,0 +1072,4 @@ private final class TerminalInputMainActorDelivery: Sendable {
@@ -36,34 +36,48 @@ index 054b194..6194c8f 100644
 -                sink(bytes)
 +            for payload in batch {
 +                sink(payload.bytes, payload.origin)
-@@ -1130,0 +1135 @@ public final class TerminalInputSender: Sendable {
+@@ -1130,0 +1135,2 @@ public final class TerminalInputSender: Sendable {
 +        var deliverResponse: (@Sendable ([UInt8], TerminalInputOrigin) -> Void)?
-@@ -1140 +1145,2 @@ public final class TerminalInputSender: Sendable {
++        var unclassifiedIngress: (@Sendable () -> Void)?
+@@ -1140 +1146,2 @@ public final class TerminalInputSender: Sendable {
 -        deliverOnMain: @escaping @MainActor @Sendable ([UInt8]) -> Void
 +        deliverOnMain: @escaping @MainActor @Sendable ([UInt8]) -> Void,
 +        deliverResponse: @escaping @Sendable ([UInt8], TerminalInputOrigin) -> Void
-@@ -1146,0 +1153 @@ public final class TerminalInputSender: Sendable {
+@@ -1146,0 +1154 @@ public final class TerminalInputSender: Sendable {
 +            state.deliverResponse = deliverResponse
-@@ -1159,0 +1167,6 @@ public final class TerminalInputSender: Sendable {
+@@ -1159,0 +1168,14 @@ public final class TerminalInputSender: Sendable {
++    /// Notifies the host synchronously before unclassified input is queued for
++    /// main-actor delivery. The observer must be short and must not enter the terminal.
++    public func observeUnclassifiedIngress(_ observer: (@Sendable () -> Void)?) {
++        state.withLock { $0.unclassifiedIngress = observer }
++    }
++
 +    // Parser callbacks use the same ordered path as user input. This does not
 +    // register a user edit and never invokes a UI delegate under the parser lock.
 +    nonisolated func deliverTerminalResponse(_ bytes: [UInt8], origin: TerminalInputOrigin) {
-+        state.withLock { $0.deliverResponse }?(bytes, origin)
++        let handlers = state.withLock { ($0.deliverResponse, $0.unclassifiedIngress) }
++        if !bytes.isEmpty && origin == .unclassified { handlers.1?() }
++        handlers.0?(bytes, origin)
 +    }
 +
-@@ -1401 +1414 @@ extension TerminalView {
+@@ -1167 +1189 @@ public final class TerminalInputSender: Sendable {
+-             deliver: $0.deliver, deliverOnMain: $0.deliverOnMain)
++             deliver: $0.deliver, deliverOnMain: $0.deliverOnMain, ingress: $0.unclassifiedIngress)
+@@ -1168,0 +1191 @@ public final class TerminalInputSender: Sendable {
++        if !bytes.isEmpty { handlers.ingress?() }
+@@ -1401 +1424 @@ extension TerminalView {
 -        let deliverOnMain: @MainActor @Sendable ([UInt8]) -> Void = { [weak self] bytes in
 +        let deliverOnMain: @MainActor @Sendable ([UInt8], TerminalInputOrigin) -> Void = { [weak self] bytes, origin in
-@@ -1403 +1416 @@ extension TerminalView {
+@@ -1403 +1426 @@ extension TerminalView {
 -            self.terminalDelegate?.send(source: self, data: bytes[...])
 +            self.terminalDelegate?.send(source: self, data: bytes[...], origin: origin)
-@@ -1409,2 +1422,3 @@ extension TerminalView {
+@@ -1409,2 +1432,3 @@ extension TerminalView {
 -            deliver: { bytes in mainDelivery.enqueue(bytes) },
 -            deliverOnMain: { bytes in mainDelivery.enqueue(bytes) })
 +            deliver: { bytes in mainDelivery.enqueue(bytes, origin: .unclassified) },
 +            deliverOnMain: { bytes in mainDelivery.enqueue(bytes, origin: .unclassified) },
 +            deliverResponse: { bytes, origin in mainDelivery.enqueue(bytes, origin: origin, deferOnMain: true) })
-@@ -5063,0 +5078,4 @@ extension TerminalViewDelegate {
+@@ -5063,0 +5088,4 @@ extension TerminalViewDelegate {
 +    public func send(source: TerminalView, data: ArraySlice<UInt8>, origin: TerminalInputOrigin) {
 +        send(source: source, data: data)
 +    }

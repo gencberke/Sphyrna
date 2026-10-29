@@ -24,6 +24,7 @@ public enum TerminalInputError: Error, CustomStringConvertible, Equatable, Senda
 /// A short synchronous fence around one actual nonblocking write. A nil
 /// result means no write was attempted.
 typealias TerminalWriteTransaction = @Sendable (@Sendable () throws -> Int) throws -> Int?
+private struct AutomaticInputWithdrawn: Error {}
 
 /// One ordered write path per run for keystrokes, paste and terminal replies.
 /// `enqueue` appends synchronously, so caller order is byte order; one drain
@@ -102,6 +103,15 @@ public final class TerminalInputQueue: @unchecked Sendable {
     @discardableResult
     public func enqueue<Bytes: Collection>(_ bytes: Bytes) -> Bool where Bytes.Element == UInt8 {
         enqueue(bytes, unclassified: true)
+    }
+
+    /// Fence a user or otherwise unclassified input as soon as it enters the
+    /// terminal's delivery path, before a later main-actor callback queues it.
+    public func noteUnclassifiedInput() {
+        lock.withLock {
+            unclassifiedGeneration &+= 1
+            automaticClean = false
+        }
     }
 
     /// Only for a trusted protocol response identified by the terminal.
@@ -199,6 +209,19 @@ public final class TerminalInputQueue: @unchecked Sendable {
         }
     }
 
+    /// Called only inside the caller's run/read lease, directly around the
+    /// nonblocking write. A queued user edit wins before this lock is acquired.
+    private func writeAutomaticIfStillClean(_ ticket: AutomaticInputTicket,
+                                             _ write: () throws -> Int) throws -> Int {
+        try lock.withLock {
+            guard let outstanding = automaticOutstanding, outstanding.ticket == ticket,
+                  outstanding.generation == unclassifiedGeneration, failure == nil, closedReason == nil else {
+                throw AutomaticInputWithdrawn()
+            }
+            return try write()
+        }
+    }
+
     public enum CloseOutcome: Equatable, Sendable {
         case closed
         /// Bytes are queued or being written.
@@ -266,8 +289,15 @@ public final class TerminalInputQueue: @unchecked Sendable {
                     written = try await writer(bytes)
                 case let .automatic(bytes, segment):
                     chunk = bytes
+                    let guarded: TerminalWriteTransaction = { [self] write in
+                        do {
+                            return try segment.transaction {
+                                try self.writeAutomaticIfStillClean(segment.ticket, write)
+                            }
+                        } catch is AutomaticInputWithdrawn { return nil }
+                    }
                     guard let automaticWriter,
-                          let count = try await automaticWriter(bytes, segment.transaction) else {
+                          let count = try await automaticWriter(bytes, guarded) else {
                         let outcome: AutomaticWriteOutcome? = lock.withLock {
                             guard automaticSegment?.ticket == segment.ticket else { return nil }
                             let started = sent > 0

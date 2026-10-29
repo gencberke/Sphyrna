@@ -138,6 +138,25 @@ struct TerminalInputQueueTests {
         #expect(writer.received == Data("user draft".utf8))
     }
 
+    @Test func userInputBeforeTheActualWriteCancelsTheQueuedPointer() async throws {
+        let writer = ScriptedWriter(script: []), pause = PausedTaskWrite()
+        let queue = TerminalInputQueue(capacity: 1024, writer: { try writer.write($0) },
+            automaticWriter: { bytes, transaction in
+                _ = pause.permit()
+                return try transaction { try writer.write(bytes) }
+            }, onError: { _ in })
+        #expect(queue.establishFreshCleanInput())
+        let proposed = queue.enqueueAutomatic(Data("task pointer\r".utf8), transaction: { try $0() })
+        let ticket = try #require(proposed)
+        #expect(try await SessionRuntimeTests.waitUntil(2) { pause.isEntered })
+        queue.noteUnclassifiedInput()
+        #expect(queue.enqueue(Data("user draft".utf8)))
+        pause.release()
+        #expect(await ticket.writeOutcome() == .notWritten)
+        try await waitUntilIdle(queue)
+        #expect(writer.received == Data("user draft".utf8))
+    }
+
     @Test func realPTYTransactionRefusesBeforeSyscallAndOrdinaryInputStillFlows() async throws {
         let process = try PTYProcess(executable: "/bin/cat", arguments: [], environment: ["PATH": "/usr/bin:/bin"],
                                      directory: "/tmp", rows: 24, columns: 80)

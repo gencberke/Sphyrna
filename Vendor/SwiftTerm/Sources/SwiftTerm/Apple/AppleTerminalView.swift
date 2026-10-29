@@ -1133,6 +1133,7 @@ public final class TerminalInputSender: Sendable {
         var deliver: (@Sendable ([UInt8]) -> Void)?
         var deliverOnMain: (@MainActor @Sendable ([UInt8]) -> Void)?
         var deliverResponse: (@Sendable ([UInt8], TerminalInputOrigin) -> Void)?
+        var unclassifiedIngress: (@Sendable () -> Void)?
     }
 
     private let state = Locked(State())
@@ -1164,10 +1165,18 @@ public final class TerminalInputSender: Sendable {
         }
     }
 
+    /// Notifies the host synchronously before unclassified input is queued for
+    /// main-actor delivery. The observer must be short and must not enter the terminal.
+    public func observeUnclassifiedIngress(_ observer: (@Sendable () -> Void)?) {
+        state.withLock { $0.unclassifiedIngress = observer }
+    }
+
     // Parser callbacks use the same ordered path as user input. This does not
     // register a user edit and never invokes a UI delegate under the parser lock.
     nonisolated func deliverTerminalResponse(_ bytes: [UInt8], origin: TerminalInputOrigin) {
-        state.withLock { $0.deliverResponse }?(bytes, origin)
+        let handlers = state.withLock { ($0.deliverResponse, $0.unclassifiedIngress) }
+        if !bytes.isEmpty && origin == .unclassified { handlers.1?() }
+        handlers.0?(bytes, origin)
     }
 
     /// Sends one input payload. Serial calls preserve their delivery order.
@@ -1177,8 +1186,9 @@ public final class TerminalInputSender: Sendable {
         let bytes = Array(data)
         let handlers = state.withLock {
             (register: $0.registerInput, notify: $0.notifyUI,
-             deliver: $0.deliver, deliverOnMain: $0.deliverOnMain)
+             deliver: $0.deliver, deliverOnMain: $0.deliverOnMain, ingress: $0.unclassifiedIngress)
         }
+        if !bytes.isEmpty { handlers.ingress?() }
         handlers.register?(bytes)
         if Thread.isMainThread {
             MainActor.assumeIsolated {
