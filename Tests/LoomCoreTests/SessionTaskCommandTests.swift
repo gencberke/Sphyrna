@@ -181,7 +181,8 @@ struct SessionTaskCommandTests {
         resumedScreen.attach(resumed.terminal)
         let current = try #require(await context.runtime.taskRunPlans[launch.sessionID]?.claim)
         #expect(current.managedRunID == resumed.runID && current.managedRunID != original.managedRunID)
-        #expect(current.generation != original.generation && current.credential != original.credential)
+        let differentSecret = current.credential != original.credential
+        #expect(current.generation != original.generation && differentSecret)
         #expect(try await SessionRuntimeTests.waitUntil(3) {
             await context.supervisor.runContext(runID: resumed.runID)?.session.providerConversationID == native
         })

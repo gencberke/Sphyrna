@@ -213,6 +213,7 @@ public actor CodexAppServerClient {
     private let wireDiagnostics: CodexWireDiagnostics?
     private let inboundObserver: CodexInboundObserver?
     private var taskInputObserver: (@Sendable (CodexTaskInputObservation) -> Void)?
+    private var taskEventLease: SessionTaskRunLease?
     private var nextRequestID = 1
     private var sequence: UInt64 = 0
     private var terminalError: (any Error)?
@@ -364,6 +365,8 @@ public actor CodexAppServerClient {
     func observeTaskInputs(_ observer: (@Sendable (CodexTaskInputObservation) -> Void)?) {
         taskInputObserver = observer
     }
+
+    func fenceTaskEvents(with lease: SessionTaskRunLease?) { taskEventLease = lease }
 
     nonisolated func readWaitCounts() -> (waiting: Bool, wakeups: Int) {
         transport.readWaitCounts()
@@ -615,6 +618,11 @@ public actor CodexAppServerClient {
     }
 
     private func receive(_ data: Data) async {
+        // Cover decoding and diagnostics too, until the sequence is handed to
+        // the ordered consumer (or to the task-input observer).
+        let ingressLease = taskEventLease
+        ingressLease?.beginHook()
+        defer { ingressLease?.finishHook() }
         let diagnosticToken = wireDiagnostics?.observe(data)
         if let inboundObserver {
             let head = try? JSONDecoder().decode(JSONValue.self, from: data)
@@ -650,7 +658,10 @@ public actor CodexAppServerClient {
             sequence &+= 1
             let params = object["params"] ?? .object([:])
             if object["id"] == nil, method == "item/started", let observer = taskInputObserver {
-                if let observation = Self.taskInput(params: params, sequence: sequence) { observer(observation) }
+                if let observation = Self.taskInput(params: params, sequence: sequence) {
+                    taskEventLease?.beginCodexEvent(sequence)
+                    observer(observation)
+                }
                 // Non-user items are dropped here; their tool content never
                 // enters the bounded task observation or product event stream.
                 decoded("task-input")
@@ -667,12 +678,14 @@ public actor CodexAppServerClient {
                     )
                 )
                 if let diagnosticToken { await wireDiagnostics?.route(inbound, token: diagnosticToken) }
+                taskEventLease?.beginCodexEvent(sequence)
                 yieldInbound(inbound)
             } else {
                 let event = Self.decodeEvent(method: method, params: params)
                 if case .unknown = event { decoded("unknown-event") } else { decoded("event") }
                 let inbound = CodexAppServerInbound.event(sequence: sequence, event)
                 if let diagnosticToken { await wireDiagnostics?.route(inbound, token: diagnosticToken) }
+                taskEventLease?.beginCodexEvent(sequence)
                 yieldInbound(inbound)
             }
         } catch {
@@ -695,16 +708,25 @@ public actor CodexAppServerClient {
     }
 
     private func yieldInbound(_ inbound: CodexAppServerInbound) {
-        if case .dropped = eventContinuation.yield(inbound) {
+        switch eventContinuation.yield(inbound) {
+        case .enqueued:
+            break
+        case .dropped:
+            taskEventLease?.invalidate()
             wireDiagnostics?.invalidate("stream-drop")
             readerStopped(CodexAppServerError.protocolViolation(
                 "event consumer fell more than 4096 messages behind"
             ))
+        case .terminated:
+            taskEventLease?.invalidate()
+        @unknown default:
+            taskEventLease?.invalidate()
         }
     }
 
     private func readerStopped(_ error: any Error) {
         guard terminalError == nil else { return }
+        taskEventLease?.invalidate()
         wireDiagnostics?.invalidate(error is CodexAppServerError && (error as? CodexAppServerError) == .closed ? "disconnect" : "protocol")
         terminalError = error
         transport.close()

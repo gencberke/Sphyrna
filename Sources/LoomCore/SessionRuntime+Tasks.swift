@@ -24,13 +24,20 @@ extension SessionRuntime {
 
     func beginTaskRun(sessionID: UUID, runID: UUID) {
         guard taskSocketPath != nil, !shuttingDown else { return }
-        taskRunPlans[sessionID]?.lease.revoke()
-        taskRunPlans[sessionID] = SessionTaskRunPlan(sessionID: sessionID, runID: runID)
+        if let old = taskRunPlans[sessionID] {
+            old.lease.revoke()
+            taskIngress.remove(runID: old.claim.managedRunID)
+        }
+        let plan = SessionTaskRunPlan(sessionID: sessionID, runID: runID)
+        taskRunPlans[sessionID] = plan
+        taskIngress.register(runID: runID, lease: plan.lease)
     }
 
     func revokeTaskRun(sessionID: UUID, runID: UUID? = nil) {
         guard let plan = taskRunPlans[sessionID], runID == nil || plan.claim.managedRunID == runID else { return }
         plan.lease.revoke()
+        taskIngress.remove(runID: plan.claim.managedRunID)
+        taskExpectedInputs[plan.claim.managedRunID] = nil
         taskRunPlans[sessionID] = nil
     }
 
@@ -47,6 +54,28 @@ extension SessionRuntime {
               !shuttingDown, let current = taskRunPlans[claim.sessionID], current.lease === plan.lease,
               current.lease.isEnabled else { return nil }
         return binding
+    }
+
+    func observeCodexTaskInput(serverID: UUID, observation: CodexTaskInputObservation) async {
+        guard let server = codexServers.first(where: { $0.id == serverID }),
+              let plan = taskRunPlans[server.ownerCard], plan.lease.isEnabled,
+              let expected = taskExpectedInputs[plan.claim.managedRunID],
+              observation.sequence > expected.lastSequence else { return }
+        let binding = await supervisor.taskBinding(for: plan.claim)
+        guard let currentPlan = taskRunPlans[server.ownerCard], currentPlan.lease === plan.lease,
+              currentPlan.lease.isEnabled, var current = taskExpectedInputs[plan.claim.managedRunID],
+              current.purpose == expected.purpose, current.digest == expected.digest,
+              observation.sequence > current.lastSequence else { return }
+        current.lastSequence = observation.sequence
+        guard let binding, binding == current.binding,
+              observation.threadID == binding.nativeSessionID, let turn = observation.turnID,
+              observation.digest == current.digest else {
+            taskExpectedInputs[plan.claim.managedRunID] = nil
+            return
+        }
+        current.observed = .nativeTurn(turn)
+        taskExpectedInputs[plan.claim.managedRunID] = current
+        if let ticket = current.ticket { _ = inputGate.confirmAutomaticInput(runID: binding.managedRunID, ticket: ticket) }
     }
 
     /// App-only task metadata. Subscribe to updates before loading pages; a

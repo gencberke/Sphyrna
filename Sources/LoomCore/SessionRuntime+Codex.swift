@@ -342,7 +342,10 @@ extension SessionRuntime {
                 workingDirectory: configuration.homeDirectory, socketPath: socket,
                 clientVersion: configuration.clientVersion, launchChoices: choices,
                 startupTimeout: configuration.codexServerStartupTimeout,
-                scope: scope
+                scope: scope,
+                optOutNotificationMethods: taskRunPlans[card] == nil
+                    ? CodexAppServerClient.productOptOutNotificationMethods
+                    : CodexAppServerClient.productOptOutNotificationMethods.filter { $0 != "item/started" }
             )
         )
         return CodexServer(ownerCard: card, manager: manager, socket: socket, scope: scope)
@@ -375,6 +378,18 @@ extension SessionRuntime {
             } catch is CancellationError { throw CancellationError() }
             catch { server.taskSkillRoot = nil }
             try requireCodexSetup(server, setupID)
+            if let lease = taskRunPlans[server.ownerCard]?.lease {
+                await coordinator.fenceTaskEvents(with: lease)
+                await client.fenceTaskEvents(with: lease)
+                let serverID = server.id
+                await client.observeTaskInputs { [weak self, lease] observation in
+                    let runtime = self
+                    Task {
+                        defer { lease.finishCodexEvent(observation.sequence) }
+                        await runtime?.observeCodexTaskInput(serverID: serverID, observation: observation)
+                    }
+                }
+            }
             await coordinator.setConnectionLostHandler { [weak self, weak coordinator] detail in
                 guard let coordinator else { return }
                 Task { await self?.codexConnectionLost(detail, from: coordinator) }

@@ -18,7 +18,8 @@ extension SessionRuntime {
         let token = UUID().uuidString + UUID().uuidString
         // One ordered path from the socket to the reducers: hook events of a
         // run are applied in arrival order, never in racing tasks.
-        let ingress = ClaudeHookIngress(adapter: harnesses.claude.adapter, limitObserver: limitResetObserver())
+        let ingress = ClaudeHookIngress(adapter: harnesses.claude.adapter, taskIngress: taskIngress,
+                                        limitObserver: limitResetObserver())
         let events = ingress.stream
         let server = try ClaudeHookServer(socketPath: socket, authenticationToken: token) { envelope in
             ingress.receive(envelope)
@@ -59,6 +60,7 @@ extension SessionRuntime {
     }
 
     private func deliver(hook envelope: ClaudeHookEnvelope, limitRevision: UInt64?) async {
+        defer { taskIngress.finish(runID: envelope.managedRunID) }
         do {
             let disposition = try await harnesses.claude.adapter.receive(envelope)
             let event = try? ClaudeHookEvent(payload: envelope.payload)

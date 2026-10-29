@@ -19,6 +19,9 @@ public struct CodexRequestSnapshot: Sendable {
 /// routes approvals, applies `/new`, and hydrates the last turn after a remote
 /// TUI reports idle (remote-originated turns are not broadcast in full).
 public actor CodexSessionCoordinator {
+    private var taskEventLease: SessionTaskRunLease?
+
+    func fenceTaskEvents(with lease: SessionTaskRunLease?) { taskEventLease = lease }
     public nonisolated let requests: AsyncStream<CodexRequestSnapshot>
 
     private let client: CodexAppServerClient
@@ -262,6 +265,12 @@ public actor CodexSessionCoordinator {
     }
 
     func consume(_ inbound: CodexAppServerInbound) async {
+        let sequence: UInt64
+        switch inbound {
+        case let .event(value, _), let .request(value, _): sequence = value
+        }
+        let lease = taskEventLease
+        defer { lease?.finishCodexEvent(sequence) }
         let decision = await router.route(inbound)
         do {
             switch decision {

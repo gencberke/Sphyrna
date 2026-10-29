@@ -6,9 +6,41 @@ import Foundation
 final class SessionTaskRunLease: @unchecked Sendable {
     private let lock = NSLock()
     private var enabled = true
+    private var reliable = true
+    private var hooksInFlight = 0
+    private var codexEvents: Set<UInt64> = []
     func revoke() { lock.withLock { enabled = false } }
-    func permits<T>(_ body: () -> T?) -> T? { lock.withLock { enabled ? body() : nil } }
+    func beginHook() { lock.withLock { if enabled { hooksInFlight += 1 } } }
+    func finishHook() { lock.withLock { hooksInFlight = max(0, hooksInFlight - 1) } }
+    func beginCodexEvent(_ sequence: UInt64) {
+        lock.withLock {
+            guard enabled, reliable else { return }
+            if codexEvents.count >= 4_096 { reliable = false; codexEvents.removeAll(); return }
+            codexEvents.insert(sequence)
+        }
+    }
+    func finishCodexEvent(_ sequence: UInt64) { lock.withLock { codexEvents.remove(sequence) } }
+    func invalidate() { lock.withLock { reliable = false } }
+    func permits<T>(_ body: () -> T?) -> T? {
+        lock.withLock { enabled && reliable && hooksInFlight == 0 && codexEvents.isEmpty ? body() : nil }
+    }
     var isEnabled: Bool { lock.withLock { enabled } }
+}
+
+/// Hook arrival occurs off the runtime actor; this registry closes the gap
+/// before a buffered event reaches the ordered consumer.
+final class SessionTaskIngressRegistry: @unchecked Sendable {
+    private let lock = NSLock()
+    private var leases: [UUID: SessionTaskRunLease] = [:]
+    func register(runID: UUID, lease: SessionTaskRunLease) { lock.withLock { leases[runID] = lease } }
+    func remove(runID: UUID) { lock.withLock { leases.removeValue(forKey: runID) } }
+    func begin(runID: UUID) { lock.withLock { leases[runID] }?.beginHook() }
+    func finish(runID: UUID) { lock.withLock { leases[runID] }?.finishHook() }
+    func dropped(runID: UUID) {
+        guard let lease = lock.withLock({ leases[runID] }) else { return }
+        lease.invalidate()
+        lease.finishHook()
+    }
 }
 
 struct SessionTaskRunPlan: Sendable {
@@ -29,6 +61,19 @@ struct SessionTaskRunPlan: Sendable {
          "SPHYRNA_TASK_RUN_ID": claim.managedRunID.uuidString,
          "SPHYRNA_TASK_GENERATION": claim.generation.uuidString, "SPHYRNA_CLI": helper]
     }
+}
+
+struct SessionTaskExpectedInput: Sendable {
+    enum Purpose: Sendable, Equatable {
+        case child(taskID: UUID, roundID: UUID, operationID: UUID)
+        case wake(taskID: UUID, operationID: UUID)
+    }
+    let purpose: Purpose
+    let binding: SessionTaskBinding
+    let digest: Data
+    let ticket: TerminalInputQueue.AutomaticInputTicket?
+    var observed: SessionTaskExecutionReference?
+    var lastSequence: UInt64 = 0
 }
 
 /// This is a bridge to the existing runtime, never another process owner.

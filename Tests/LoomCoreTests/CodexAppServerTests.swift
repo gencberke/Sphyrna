@@ -5,6 +5,25 @@ import Testing
 @testable import LoomCore
 
 struct CodexAppServerTests {
+    @Test func codexIngressFencesUntilItsOrderedConsumerFinishes() async throws {
+        let (client, peer) = try await CodexSocketPeer.make()
+        defer { peer.close() }
+        let supervisor = try ProcessSupervisor()
+        let coordinator = CodexSessionCoordinator(client: client, supervisor: supervisor,
+                                                   adapter: CodexSessionAdapter(supervisor: supervisor))
+        let lease = SessionTaskRunLease()
+        await coordinator.fenceTaskEvents(with: lease)
+        await client.fenceTaskEvents(with: lease)
+        var iterator = client.events.makeAsyncIterator()
+        try peer.frame(.object(["method": .string("thread/closed"),
+                                "params": .object(["threadId": .string("unmatched")])]))
+        let inbound = try #require(await iterator.next())
+        #expect(lease.permits { true } == nil)
+        await coordinator.consume(inbound)
+        #expect(lease.permits { true } == true)
+        await client.close()
+    }
+
     @Test func taskInputObservationKeepsOnlyBoundedUserTextDigests() async throws {
         let (client, peer) = try await CodexSocketPeer.make()
         defer { peer.close() }

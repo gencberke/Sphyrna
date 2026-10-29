@@ -227,10 +227,13 @@ final class ClaudeHookIngress: Sendable {
     let stream: AsyncStream<Record>
     private let continuation: AsyncStream<Record>.Continuation
     private let adapter: ClaudeSessionAdapter
+    private let taskIngress: SessionTaskIngressRegistry?
     private let limitObserver: ClaudeLimitResetObserver?
 
-    init(adapter: ClaudeSessionAdapter, capacity: Int = 1_024, limitObserver: ClaudeLimitResetObserver? = nil) {
+    init(adapter: ClaudeSessionAdapter, capacity: Int = 1_024,
+         taskIngress: SessionTaskIngressRegistry? = nil, limitObserver: ClaudeLimitResetObserver? = nil) {
         self.adapter = adapter
+        self.taskIngress = taskIngress
         self.limitObserver = limitObserver
         let pair = AsyncStream<Record>.makeStream(bufferingPolicy: .bufferingNewest(capacity))
         stream = pair.stream
@@ -238,11 +241,22 @@ final class ClaudeHookIngress: Sendable {
     }
 
     func receive(_ envelope: ClaudeHookEnvelope) {
+        taskIngress?.begin(runID: envelope.managedRunID)
         adapter.noteHookArrival(runID: envelope.managedRunID)
         let revision = limitObserver?.arrived(runID: envelope.managedRunID)
-        if case let .dropped(dropped) = continuation.yield(Record(envelope: envelope, limitRevision: revision)) {
+        switch continuation.yield(Record(envelope: envelope, limitRevision: revision)) {
+        case let .dropped(dropped):
+            taskIngress?.dropped(runID: dropped.envelope.managedRunID)
             limitObserver?.discard(runID: dropped.envelope.managedRunID, revision: dropped.limitRevision)
             adapter.noteHookLoss(runID: dropped.envelope.managedRunID)
+        case .terminated:
+            taskIngress?.dropped(runID: envelope.managedRunID)
+            limitObserver?.discard(runID: envelope.managedRunID, revision: revision)
+        case .enqueued:
+            break
+        @unknown default:
+            taskIngress?.dropped(runID: envelope.managedRunID)
+            limitObserver?.discard(runID: envelope.managedRunID, revision: revision)
         }
     }
 }
@@ -315,6 +329,8 @@ public actor SessionRuntime {
     var taskReadFence: SessionTaskReadFence?
     var taskSocketPath: String?
     var taskRunPlans: [UUID: SessionTaskRunPlan] = [:]
+    var taskExpectedInputs: [UUID: SessionTaskExpectedInput] = [:]
+    let taskIngress = SessionTaskIngressRegistry()
 
     private var toolchains: [ManagedSession.Provider: ProviderToolchain] = [:]
     /// The executable file each cached toolchain was read from; a changed file means a new CLI.
@@ -746,8 +762,12 @@ public actor SessionRuntime {
     /// first; a failed shutdown stays failed so the caller can offer a retry.
     public func shutdown() async -> ShutdownReport {
         shuttingDown = true
-        for plan in taskRunPlans.values { plan.lease.revoke() }
+        for plan in taskRunPlans.values {
+            plan.lease.revoke()
+            taskIngress.remove(runID: plan.claim.managedRunID)
+        }
         taskRunPlans.removeAll()
+        taskExpectedInputs.removeAll()
         taskReadFence?.stop()
         taskReadFence = nil
         await claudeLimitObserver?.cancelAll()
