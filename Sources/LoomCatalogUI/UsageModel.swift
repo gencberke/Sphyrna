@@ -198,7 +198,7 @@ public final class UsageModel {
     /// The harness whose plan limits `limits` holds: the one the plan-limits fetcher asks.
     private static let planLimitsHarness: ManagedSession.Provider = .claude
     /// The harnesses the Usage page reads, in the catalogue's order: those whose capabilities read usage and limits, and that
-    /// this build has a provider for. Claude is asked on its own cadence; the others (Codex) on activation and the minute tick.
+    /// this build has a provider for. Claude is asked on its own cadence; the others (Codex) on activation and explicit page requests.
     public nonisolated static var usageHarnesses: [ManagedSession.Provider] {
         HarnessCatalogue.ids.compactMap { id in
             guard let provider = id.provider, HarnessCapabilities.intrinsic(ofHarness: id).usageLimits else { return nil }
@@ -469,11 +469,6 @@ public final class UsageModel {
     public func minuteTick() {
         // Pure: a plan window that has ended drops out whenever the window ticks (visible, key or not).
         rebuildChip()
-        // The harnesses other than Claude are asked on the minute tick while the window is active; the probe's five-minute
-        // floor makes most of them free.
-        if windowIsActive, Self.usageHarnesses.contains(where: { $0 != Self.planLimitsHarness && isConnected($0) }) {
-            refreshHarnesses(askCodex: true, force: false)
-        }
         guard windowIsActive, dayChanged else { return }
         refresh(reason: .dayChanged)
     }

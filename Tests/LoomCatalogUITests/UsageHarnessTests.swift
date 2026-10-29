@@ -283,11 +283,11 @@ struct UsageHarnessTests {
         rig.clock.advance(60)
         rig.usage.minuteTick()
         await rig.usage.settle()
-        #expect(rig.codex.asks == 3, "the minute tick asks too, and the floor holds")
+        #expect(rig.codex.asks == 3, "the minute tick does not ask inside the floor either")
         rig.clock.advance(300)
         rig.usage.minuteTick()
         await rig.usage.settle()
-        #expect(rig.codex.asks == 4, "past the floor the minute tick reads Codex again")
+        #expect(rig.codex.asks == 3, "a minute tick only ages cached data; it never starts a provider probe")
     }
 
     @Test func updateForcesCodexAndNothingAsksOnATimer() async {
