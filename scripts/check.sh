@@ -7,9 +7,10 @@
 #             sources, then swift build (debug) in the build slot.
 #   --suite   adds swift test --filter <Name> per name (target, suite or test name, a regex).
 #   --tests   adds every test target. Tests that open a real window are skipped unless --windows.
-#   --windows includes the window tests; needs --idle (unlocked screen, Mac idle by the user's word).
+#   --windows includes the window tests; needs --idle (unlocked screen, Mac idle by the user's word). With --tests
+#             or --full they run in a swift test of their own, after the other tests.
 #   --full    needs --idle: release build, the staged release-tree build (--release-tree) and the full
-#             release suite, window tests included.
+#             release suite, window tests included (alone, after the rest).
 #   --release-tree  exports the promote allowlist from the checked-out tree (uncommitted work included, so it
 #             equals HEAD when clean) into <scratch>-release-stage with Package.release.swift as
 #             Package.swift, runs swift build -c release there (scratch <path>-release-tree), and fails when the
@@ -140,8 +141,10 @@ swift_test() { # <extra args...>
   print -r -- "swift test exited 0, but a test run has no passing summary (the test process ended early)"
   return 1
 }
+window_skips=() window_filters=()
+for t in $window_tests; do window_skips+=(--skip $t); window_filters+=(--filter $t); done
 skip_args=()
-(( windows )) || for t in $window_tests; do skip_args+=(--skip $t); done
+(( windows )) || skip_args=($window_skips)
 # The release flavor (what promote.sh would export: no LOOM_EVIDENCE, no Sources/loom-app/Evidence) must build and
 # must not carry the app-side evidence code. Library-side inert seams (TerminalPresentationLog, IndicatorEvidence)
 # stay in the binary on purpose.
@@ -180,8 +183,13 @@ if (( full || release_tree )); then step "staged release tree (build, no evidenc
 test_cfg=()
 (( full )) && test_cfg=(-c release)
 if (( full || run_tests )); then
-  window_label=; (( windows )) && window_label=", windows included"
-  step "swift test${test_cfg:+ -c release} (all targets$window_label)" swift_test $test_cfg $skip_args
+  # The window tests never share a run with the offscreen suites: those host windows that take key and first responder at
+  # the same time, and in the e58c2c9 gate the window tests' clicks, keys and focus did not land among them (each passed
+  # alone). They run in a swift test of their own, after the rest.
+  step "swift test${test_cfg:+ -c release} (all targets but the window tests)" swift_test $test_cfg $window_skips
+  if (( windows )); then
+    step "swift test${test_cfg:+ -c release} (the window tests alone)" swift_test $test_cfg $window_filters
+  fi
 elif (( ${#suites} )); then
   filters=(); for s in $suites; do filters+=(--filter $s); done
   step "swift test --filter ${(j:, :)suites}" swift_test $filters $skip_args
