@@ -81,4 +81,40 @@ struct SessionTaskCommandTests {
         server.stop()
         #expect(try await SessionRuntimeTests.waitUntil(2) { !FileManager.default.fileExists(atPath: socket) })
     }
+
+    @Test(arguments: [ManagedSession.Provider.claude, .codex])
+    func liveProviderDescendantCanIdentifyItsOwnTerminalRun(provider: ManagedSession.Provider) async throws {
+        let context = try await SessionRuntimeTests.makeContext()
+        defer { context.cleanup() }
+        let screen = SessionRuntimeTests.Screen()
+        let launch = try await context.runtime.startConversation(provider: provider, projectID: nil, outputSink: screen)
+        screen.attach(launch.terminal)
+        #expect(try await SessionRuntimeTests.waitUntil(3) {
+            await context.supervisor.runContext(runID: launch.runID)?.session.providerConversationID != nil
+        })
+        try await screen.send("/fake-sphyrna-task-probe")
+        #expect(await screen.contains("TASK-HELPER-OK", timeout: 3))
+        let socket = try #require(await context.runtime.taskSocketPath)
+        let original = try #require(await context.runtime.taskRunPlans[launch.sessionID]?.claim)
+        #expect(try helper(["identity"], claim: original, socket: socket).0 == 0)
+        let forged = SessionTaskClaim(sessionID: original.sessionID, managedRunID: original.managedRunID,
+                                      generation: original.generation, credential: "wrong-run-secret")
+        #expect(try helper(["identity"], claim: forged, socket: socket).0 == 1)
+        let native = try #require(await context.supervisor.runContext(runID: launch.runID)?.session.providerConversationID)
+        #expect(try await context.runtime.stopConversation(sessionID: launch.sessionID).succeeded)
+        #expect(try helper(["identity"], claim: original, socket: socket).0 == 1)
+        let resumedScreen = SessionRuntimeTests.Screen()
+        let resumed = try await context.runtime.resumeConversation(sessionID: launch.sessionID, outputSink: resumedScreen)
+        resumedScreen.attach(resumed.terminal)
+        let current = try #require(await context.runtime.taskRunPlans[launch.sessionID]?.claim)
+        #expect(current.managedRunID == resumed.runID && current.managedRunID != original.managedRunID)
+        #expect(current.generation != original.generation && current.credential != original.credential)
+        #expect(try await SessionRuntimeTests.waitUntil(3) {
+            await context.supervisor.runContext(runID: resumed.runID)?.session.providerConversationID == native
+        })
+        #expect(try helper(["identity"], claim: current, socket: socket).0 == 0)
+        #expect(try helper(["identity"], claim: original, socket: socket).0 == 1)
+        #expect(try await context.runtime.stopConversation(sessionID: resumed.sessionID).succeeded)
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
 }

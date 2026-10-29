@@ -39,12 +39,13 @@ struct SessionTaskWireReply: Codable, Sendable {
     var nativeStatus: SessionTaskNativeStatus?
     var missingReport: Bool?
     var message: String?
+    var binding: SessionTaskBinding?
 
     init(status: String, detail: String? = nil, receipt: SessionTaskReceipt? = nil,
          task: SessionTaskProjection? = nil, nativeStatus: SessionTaskNativeStatus? = nil,
-         missingReport: Bool? = nil, message: String? = nil) {
+         missingReport: Bool? = nil, message: String? = nil, binding: SessionTaskBinding? = nil) {
         self.version = 5; self.status = status; self.detail = detail; self.receipt = receipt; self.task = task
-        self.nativeStatus = nativeStatus; self.missingReport = missingReport; self.message = message
+        self.nativeStatus = nativeStatus; self.missingReport = missingReport; self.message = message; self.binding = binding
     }
 }
 
@@ -63,8 +64,12 @@ struct SessionTaskWireRouter: Sendable {
 
     func handle(_ data: Data) async -> Data {
         guard let call = try? JSONDecoder().decode(SessionTaskWireRequest.self, from: data),
-              call.version == 5, let taskID = call.taskID else { return reply(.init(status: "invalid")) }
+              call.version == 5 else { return reply(.init(status: "invalid")) }
         do {
+            if call.command == "identity" {
+                return reply(.init(status: "ok", binding: try await coordinator.identity(for: call.claim)))
+            }
+            guard let taskID = call.taskID else { throw SessionTaskError.invalidPayload }
             switch call.command {
             case "status":
                 let status = try await coordinator.status(taskID: taskID, parent: call.claim)

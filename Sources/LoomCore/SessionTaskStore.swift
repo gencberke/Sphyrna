@@ -125,6 +125,15 @@ final class SessionTaskStore {
         try exists("SELECT 1 FROM tasks WHERE child=? LIMIT 1", [id.uuidString])
     }
 
+    func projections(parentSessionID: UUID?, after: UUID?, limit: Int) throws -> [SessionTaskProjection] {
+        if let parentSessionID {
+            return try list("SELECT body FROM tasks WHERE parent=? AND id>? ORDER BY id LIMIT ?",
+                            [parentSessionID.uuidString, after?.uuidString ?? "", String(limit)], as: SessionTaskProjection.self)
+        }
+        return try list("SELECT body FROM tasks WHERE id>? ORDER BY id LIMIT ?",
+                        [after?.uuidString ?? "", String(limit)], as: SessionTaskProjection.self)
+    }
+
     func round(_ id: UUID) throws -> SessionTaskRound? {
         try get("SELECT body FROM rounds WHERE id=?", [id.uuidString], as: SessionTaskRound.self)
     }

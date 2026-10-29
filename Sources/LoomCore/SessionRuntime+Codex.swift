@@ -132,13 +132,14 @@ extension SessionRuntime {
         toolchain: ProviderToolchain, sessionID: UUID, directory: String, server: CodexServer,
         choices: HarnessLaunchChoices? = nil, firstMessage: String? = nil
     ) throws -> ProviderLaunchProfile {
-        try ProviderLaunchProfile.codex(
+        var environment = LaunchEnvironment.make(
+            base: toolchain.environment, runID: supervisor.ownershipRunID, sessionID: sessionID
+        )
+        environment.merge(taskEnvironment(sessionID: sessionID)) { _, task in task }
+        return try ProviderLaunchProfile.codex(
             route: .remote(socket: server.socket, threadID: nil, workingDirectory: directory),
             capabilities: toolchain.capabilities, home: codexHome(toolchain),
-            environment: LaunchEnvironment.make(
-                base: toolchain.environment, runID: supervisor.ownershipRunID,
-                sessionID: sessionID
-            ), choices: choices, firstMessage: firstMessage
+            environment: environment, choices: choices, firstMessage: firstMessage
         )
     }
 
@@ -207,15 +208,16 @@ extension SessionRuntime {
         rows: UInt16, columns: UInt16, tee: DiagnosticOutputTee
     ) async throws -> RuntimeLaunch {
         let socket = server.socket
-        let runID = UUID()
+        let runID = taskRunPlans[session.id]?.claim.managedRunID ?? UUID()
         let launch: ManagedSessionLaunch
         do {
             guard let client = server.client else { throw CodexAppServerError.closed }
             server.resumeSettings = try await client.resumeThread(conversationID, workingDirectory: session.workingDirectory)
             await refreshTaskDiscovery(server: server, directory: session.workingDirectory)
-            let environment = LaunchEnvironment.make(
+            var environment = LaunchEnvironment.make(
                 base: toolchain.environment, runID: supervisor.ownershipRunID, sessionID: session.id
             )
+            environment.merge(taskEnvironment(sessionID: session.id)) { _, task in task }
             let profile = try ProviderResumePlanner.codex(
                 session: session, socketPath: socket, capabilities: toolchain.capabilities,
                 home: codexHome(toolchain), environment: environment
@@ -329,12 +331,14 @@ extension SessionRuntime {
                 throw SessionRuntimeError.shuttingDown
             }
         }
+        var serverEnvironment = toolchain.environment
+        serverEnvironment.merge(taskEnvironment(sessionID: card)) { _, task in task }
         let manager = CodexAppServerManager(
             supervisor: supervisor,
             configuration: CodexAppServerConfiguration(
                 executable: toolchain.executable, capabilities: toolchain.capabilities,
                 home: codexHome(toolchain),
-                baseEnvironment: toolchain.environment,
+                baseEnvironment: serverEnvironment,
                 workingDirectory: configuration.homeDirectory, socketPath: socket,
                 clientVersion: configuration.clientVersion, launchChoices: choices,
                 startupTimeout: configuration.codexServerStartupTimeout,

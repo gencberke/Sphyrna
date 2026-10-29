@@ -13,6 +13,7 @@ final class SessionTaskSocket: @unchecked Sendable {
     private var source: DispatchSourceRead?
     private var stopped = false
     private var connections: [Int32: Task<Void, Never>?] = [:]
+    private let closed = SocketClosure()
     private static let maximumConnections = 32
     private static let requestBytes = 128 * 1024
 
@@ -29,12 +30,14 @@ final class SessionTaskSocket: @unchecked Sendable {
         let device = info.st_dev, inode = info.st_ino
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: acceptQueue)
         source.setEventHandler { [weak self] in self?.acceptAvailable(fd) }
+        let closed = self.closed
         source.setCancelHandler {
             Darwin.close(fd)
             var current = stat()
             if lstat(path, &current) == 0, current.st_uid == geteuid(),
                current.st_mode & mode_t(S_IFMT) == mode_t(S_IFSOCK),
                current.st_dev == device, current.st_ino == inode { unlink(path) }
+            closed.finish()
         }
         self.source = source
         source.resume()
@@ -55,6 +58,11 @@ final class SessionTaskSocket: @unchecked Sendable {
         }
         value.0?.cancel()
         for task in value.1 { task.cancel() }
+    }
+
+    func stopAndWait() async {
+        stop()
+        await closed.wait()
     }
 
     private func acceptAvailable(_ fd: Int32) {
@@ -104,5 +112,30 @@ final class SessionTaskSocket: @unchecked Sendable {
             try? LocalSocket.writeAll(data, to: fd, deadline: ProcessInfo.processInfo.systemUptime + 2)
         }
         Darwin.close(fd)
+    }
+}
+
+private final class SocketClosure: @unchecked Sendable {
+    private let lock = NSLock()
+    private var finished = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    func finish() {
+        let pending: [CheckedContinuation<Void, Never>] = lock.withLock {
+            finished = true
+            let result = waiters
+            waiters.removeAll()
+            return result
+        }
+        for waiter in pending { waiter.resume() }
+    }
+    func wait() async {
+        await withCheckedContinuation { continuation in
+            let immediate = lock.withLock {
+                if finished { return true }
+                waiters.append(continuation)
+                return false
+            }
+            if immediate { continuation.resume() }
+        }
     }
 }

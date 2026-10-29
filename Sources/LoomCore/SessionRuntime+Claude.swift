@@ -159,6 +159,7 @@ extension SessionRuntime {
             askRules: askRules
         )
         var profileEnvironment = built.environment
+        if face == .terminal { profileEnvironment.merge(taskEnvironment(sessionID: sessionID)) { _, task in task } }
         // The provider's own default profile: do not pin a config directory.
         if toolchain.profileDirectory == nil { profileEnvironment["CLAUDE_CONFIG_DIR"] = toolchain.environment["CLAUDE_CONFIG_DIR"] }
         return ProviderLaunchProfile(
@@ -174,7 +175,7 @@ extension SessionRuntime {
     ) async throws -> RuntimeLaunch {
         // The run id is chosen here so a run that ends before `launch` returns
         // (an instant provider failure) is still known and diagnosed.
-        let runID = runID ?? UUID()
+        let runID = runID ?? taskRunPlans[sessionID]?.claim.managedRunID ?? UUID()
         // Ask was replaced in this spawn's profile (`terminalAskRule`): the catalog records what runs before it does.
         let askReplaced = profile.replacedAsk
         if askReplaced {

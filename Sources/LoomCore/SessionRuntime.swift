@@ -308,6 +308,12 @@ public actor SessionRuntime {
     let harnesses: HarnessRegistry
     /// Requests of agents to open a session (D-40); the UI answers them (`SessionRuntime+OpenRequests`).
     let openRequests: OpenSessionCoordinator
+    /// The durable task authority is created by the runtime; the UI only reads
+    /// its bounded, message-free projections.
+    var taskCoordinator: SessionTaskCoordinator?
+    var taskSocket: SessionTaskSocket?
+    var taskSocketPath: String?
+    var taskRunPlans: [UUID: SessionTaskRunPlan] = [:]
 
     private var toolchains: [ManagedSession.Provider: ProviderToolchain] = [:]
     /// The executable file each cached toolchain was read from; a changed file means a new CLI.
@@ -404,6 +410,7 @@ public actor SessionRuntime {
         // a deletion that was stopping finds no phantom run.
         sweepStaleSockets()
         await closeAbandonedRuns()
+        await startTaskAuthority()
         scheduleCatalogBackup()
         let stream = await supervisor.events.subscribe()
         observer = Task { [weak self] in
@@ -464,13 +471,19 @@ public actor SessionRuntime {
             throw SessionRuntimeError.unsupportedProvider(provider)
         }
         let sessionID = UUID(), runID = UUID()
-        return try await withNewStart(provider: provider, projectID: projectID, opening: opening, draft: draft) {
-            directory, toolchain in
-            try await harness.startTerminal(in: self, HarnessTerminalStart(
-                sessionID: sessionID, runID: runID, projectID: projectID, directory: directory, toolchain: toolchain,
-                rows: rows, columns: columns, outputSink: outputSink, opening: opening, draft: draft,
-                onTerminalReady: onTerminalReady
-            ))
+        beginTaskRun(sessionID: sessionID, runID: runID)
+        do {
+            return try await withNewStart(provider: provider, projectID: projectID, opening: opening, draft: draft) {
+                directory, toolchain in
+                try await harness.startTerminal(in: self, HarnessTerminalStart(
+                    sessionID: sessionID, runID: runID, projectID: projectID, directory: directory, toolchain: toolchain,
+                    rows: rows, columns: columns, outputSink: outputSink, opening: opening, draft: draft,
+                    onTerminalReady: onTerminalReady
+                ))
+            }
+        } catch {
+            revokeTaskRun(sessionID: sessionID, runID: runID)
+            throw error
         }
     }
 
@@ -489,11 +502,18 @@ public actor SessionRuntime {
             guard let harness = self.harnesses[session.provider] else {
                 throw SessionRuntimeError.unsupportedProvider(session.provider)
             }
-            return try await harness.resumeTerminal(in: self, HarnessTerminalResume(
-                session: session, conversationID: conversationID, toolchain: toolchain,
-                rows: rows, columns: columns, outputSink: outputSink,
-                tee: DiagnosticOutputTee(downstream: outputSink), choices: choices
-            ))
+            let runID = UUID()
+            self.beginTaskRun(sessionID: sessionID, runID: runID)
+            do {
+                return try await harness.resumeTerminal(in: self, HarnessTerminalResume(
+                    session: session, conversationID: conversationID, toolchain: toolchain,
+                    rows: rows, columns: columns, outputSink: outputSink,
+                    tee: DiagnosticOutputTee(downstream: outputSink), choices: choices
+                ))
+            } catch {
+                self.revokeTaskRun(sessionID: sessionID, runID: runID)
+                throw error
+            }
         }
     }
 
@@ -682,6 +702,7 @@ public actor SessionRuntime {
     /// outcome; an unverified stop is also carried to the card as a failure.
     @discardableResult
     public func stopConversation(sessionID: UUID) async throws -> SessionStopReport {
+        revokeTaskRun(sessionID: sessionID)
         guard let session = await supervisor.session(id: sessionID) else {
             throw SessionRuntimeError.sessionNotFound(sessionID)
         }
@@ -724,7 +745,13 @@ public actor SessionRuntime {
     /// first; a failed shutdown stays failed so the caller can offer a retry.
     public func shutdown() async -> ShutdownReport {
         shuttingDown = true
+        for plan in taskRunPlans.values { plan.lease.revoke() }
+        taskRunPlans.removeAll()
         await claudeLimitObserver?.cancelAll()
+        if let socket = taskSocket { await socket.stopAndWait() }
+        taskSocket = nil
+        taskSocketPath = nil
+        await taskCoordinator?.finishProjectionUpdates()
         let liveRuns = runs.count
         LoomLog.notice(.quit, "Shutdown started (\(liveRuns) live run(s))")
         let servers = codexServers
@@ -1004,6 +1031,7 @@ public actor SessionRuntime {
             // Reentrant callers (the observer, Stop, a launch) race on the same
             // ended run: only the one that removes the record handles it.
             guard let record = runs.removeValue(forKey: snapshot.runID) else { continue }
+            revokeTaskRun(sessionID: record.launchSessionID, runID: record.runID)
             await claudeLimitObserver?.forget(runID: snapshot.runID)
             if let harness = harnesses[record.provider] { await harness.runEnded(runID: record.runID, in: self) }
             // A start still waiting for this run's identity can stop waiting now.

@@ -14,6 +14,27 @@ func fail(_ message: String, code: Int32 = 2) -> Never {
     exit(code)
 }
 
+/// Fixture-only descendant probe. It records no environment or credential
+/// and the helper itself only requests this run's authenticated identity.
+func fakeSphyrnaTaskProbe() -> Bool {
+    guard let helper = ProcessInfo.processInfo.environment["SPHYRNA_CLI"] else { return false }
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: helper)
+    process.arguments = ["task", "identity"]
+    process.standardInput = FileHandle.nullDevice
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
+    let ended = DispatchSemaphore(value: 0)
+    process.terminationHandler = { _ in ended.signal() }
+    guard (try? process.run()) != nil else { return false }
+    guard ended.wait(timeout: .now() + 4) == .success else {
+        process.terminate()
+        _ = ended.wait(timeout: .now() + 1)
+        return false
+    }
+    return process.terminationStatus == 0
+}
+
 nonisolated(unsafe) var arguments = Array(CommandLine.arguments.dropFirst())
 func take(_ flag: String) -> String? {
     guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
@@ -347,6 +368,10 @@ struct FakeClaude {
         currentPrompt = line
         defer { currentPrompt = nil }
         switch line.split(separator: " ").first.map(String.init) ?? "" {
+            case "/fake-sphyrna-task-probe":
+                hook("UserPromptSubmit", ["prompt_id": "p\(promptCount)"])
+                out(fakeSphyrnaTaskProbe() ? "TASK-HELPER-OK\r\n" : "TASK-HELPER-REFUSED\r\n")
+                hook("Stop", ["last_assistant_message": "fixture probe finished"])
             case "/exit":
                 hook("SessionEnd", ["reason": "prompt_input_exit"])
                 if altScreen { leaveAltScreen() } else { out("bye\r\n") }

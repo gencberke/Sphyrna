@@ -6,6 +6,7 @@ public enum SessionTaskCommand {
     public static let usage = """
         usage: "$SPHYRNA_CLI" task <command> --task <id> [options]
 
+          identity                       identify this live terminal run
           status                         read task and native status
           read [--after <cursor>]        read task events; printed events are acknowledged
           wait --revision <n> [--seconds <n>] [--after <cursor>]
@@ -33,7 +34,7 @@ public enum SessionTaskCommand {
             return 0
         }
         let command = args[0]
-        let allowed = Set(["status", "read", "wait", "input", "report", "reply", "interrupt", "stop"])
+        let allowed = Set(["identity", "status", "read", "wait", "input", "report", "reply", "interrupt", "stop"])
         guard allowed.contains(command) else { output.standardError("error: unknown task command\n\(usage)"); return 2 }
         var values: [String: String] = [:]
         var index = 1
@@ -46,7 +47,8 @@ public enum SessionTaskCommand {
             values[flag] = args[index + 1]
             index += 2
         }
-        guard let taskID = values["--task"].flatMap(UUID.init(uuidString:)) else {
+        let taskID = values["--task"].flatMap(UUID.init(uuidString:))
+        guard command == "identity" || taskID != nil else {
             output.standardError("error: --task needs a task id"); return 2
         }
         guard let socket = environment["SPHYRNA_TASK_SOCKET"], !socket.isEmpty,

@@ -15,6 +15,8 @@ public actor SessionTaskCoordinator {
     private let now: @Sendable () -> Date
     private var waiters: [UUID: Waiter] = [:]
     private var wakeLeases: [UUID: SessionTaskWakeLease] = [:]
+    private var projectionRevision: UInt64 = 0
+    private var projectionSubscribers: [UUID: AsyncStream<UInt64>.Continuation] = [:]
 
     private init(url: URL, host: any SessionTaskHost, now: @escaping @Sendable () -> Date) throws {
         store = try SessionTaskStore(url: url)
@@ -51,7 +53,7 @@ public actor SessionTaskCoordinator {
         }
         guard await host.ownsNewChild(taskID: taskID, parent: parentBinding, childID: childID),
               try await authenticated(parent) == parentBinding else { throw SessionTaskError.unauthorized }
-        return try store.transaction {
+        let created: SessionTaskProjection = try store.transaction {
             if let existing = try store.task(taskID) {
                 guard existing.parentBinding == parentBinding, existing.childSessionID == childID,
                       existing.harness == harness, existing.childName == childName,
@@ -72,6 +74,8 @@ public actor SessionTaskCoordinator {
             try store.create(task)
             return task
         }
+        changed(taskID)
+        return created
     }
 
     /// A parent can queue at most one follow-up, including while the child is
@@ -688,6 +692,36 @@ public actor SessionTaskCoordinator {
     /// A future UI bridge must not turn this into an unauthenticated wire read.
     func projectionForUser(taskID: UUID) throws -> SessionTaskProjection? { try store.task(taskID) }
 
+    func identity(for claim: SessionTaskClaim) async throws -> SessionTaskBinding { try await authenticated(claim) }
+
+    func projectionsForUser(parentSessionID: UUID? = nil, after: UUID?, limit: Int) throws -> SessionTaskProjectionPage {
+        guard (1...SessionTaskLimits.pageSize).contains(limit) else { throw SessionTaskError.invalidPage }
+        let values = try store.projections(parentSessionID: parentSessionID, after: after, limit: limit)
+        return SessionTaskProjectionPage(items: values, next: values.count == limit ? values.last?.id : nil)
+    }
+
+    /// Subscribe before loading pages. Frames coalesce; each revision means
+    /// reread durable projections rather than trusting a complete event list.
+    func projectionUpdatesForUser() -> AsyncStream<UInt64> {
+        let (stream, continuation) = AsyncStream<UInt64>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        guard projectionSubscribers.count < SessionTaskLimits.maxWaiters else {
+            continuation.finish()
+            return stream
+        }
+        let id = UUID()
+        projectionSubscribers[id] = continuation
+        continuation.onTermination = { [weak self] _ in Task { await self?.removeProjectionSubscriber(id) } }
+        continuation.yield(projectionRevision)
+        return stream
+    }
+
+    func finishProjectionUpdates() {
+        for continuation in projectionSubscribers.values { continuation.finish() }
+        projectionSubscribers.removeAll()
+    }
+
+    private func removeProjectionSubscriber(_ id: UUID) { projectionSubscribers[id] = nil }
+
     public func rounds(taskID: UUID, parent: SessionTaskClaim, after: Int64 = 0, limit: Int = 50) async throws -> SessionTaskPage<SessionTaskRound> {
         try validatePage(after: after, limit: limit)
         let principal = try await authenticated(parent)
@@ -792,6 +826,7 @@ public actor SessionTaskCoordinator {
         guard await host.mayForget(sessionID: sessionID) else { throw SessionTaskError.unverified }
         try store.forget(sessionID: sessionID)
         for id in Array(waiters.keys) { finishWaiter(id) }
+        projectionChanged()
     }
 
     private func authenticated(_ claim: SessionTaskClaim) async throws -> SessionTaskBinding {
@@ -857,6 +892,12 @@ public actor SessionTaskCoordinator {
     private func changed(_ taskID: UUID) {
         let ids = waiters.compactMap { $0.value.taskID == taskID ? $0.key : nil }
         for id in ids { finishWaiter(id) }
+        projectionChanged()
+    }
+
+    private func projectionChanged() {
+        projectionRevision &+= 1
+        for continuation in projectionSubscribers.values { continuation.yield(projectionRevision) }
     }
 
     private func finishWaiter(_ id: UUID) {

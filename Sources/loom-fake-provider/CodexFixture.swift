@@ -668,6 +668,11 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
             reply(["turn": ["id": turn.id, "status": "inProgress"]])
             broadcast("turn/started", ["threadId": threadID, "turn": ["id": turn.id, "status": "inProgress"]])
             announceStatus(thread)
+            if text == "/fake-sphyrna-task-probe" {
+                complete(threadID, turnID: turn.id, status: "completed",
+                         message: fakeSphyrnaTaskProbe() ? "TASK-HELPER-OK" : "TASK-HELPER-REFUSED")
+                return
+            }
             if text.hasPrefix("stream") {
                 // High-frequency streaming a connection may opt out of.
                 let count = Int(text.dropFirst("stream".count).trimmingCharacters(in: .whitespaces)) ?? 5

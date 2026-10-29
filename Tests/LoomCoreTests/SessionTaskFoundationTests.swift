@@ -198,6 +198,12 @@ private actor TaskEarlyReportObservation {
     func markAccepted() { accepted = true }
 }
 
+private actor TaskProjectionFrames {
+    private var frames: [UInt64] = []
+    func append(_ frame: UInt64) { frames.append(frame) }
+    var count: Int { frames.count }
+}
+
 final class TaskFakeClock: @unchecked Sendable {
     private let lock = NSLock()
     private var date = Date(timeIntervalSince1970: 1_000_000)
@@ -253,6 +259,35 @@ struct TaskFixture {
 
 @Suite(.serialized)
 struct SessionTaskFoundationTests {
+    @Test func userProjectionPagesAndCoalescedUpdatesContainOnlyTaskMetadata() async throws {
+        let f = try await TaskFixture.make()
+        defer { f.clean() }
+        let frames = TaskProjectionFrames()
+        let stream = await f.coordinator.projectionUpdatesForUser()
+        let observer = Task { for await frame in stream { await frames.append(frame) } }
+        defer { observer.cancel() }
+        #expect(try await SessionRuntimeTests.waitUntil(1) { await frames.count == 1 })
+        let nextChild = SessionTaskBinding(sessionID: UUID(), nativeSessionID: "other-native",
+            managedRunID: UUID(), generation: UUID())
+        await f.host.replaceChild(nextChild)
+        _ = try await f.coordinator.createApproved(taskID: UUID(), parent: f.parent, childID: nextChild.sessionID,
+            harness: .claude, childName: "review", choices: HarnessLaunchChoices(harness: .claude))
+        #expect(try await SessionRuntimeTests.waitUntil(1) { await frames.count >= 2 })
+        let first = try await f.coordinator.projectionsForUser(after: nil, limit: 1)
+        let cursor = try #require(first.next)
+        let second = try await f.coordinator.projectionsForUser(after: cursor, limit: 1)
+        #expect(first.items.count == 1 && second.items.count == 1 && first.items[0].id != second.items[0].id)
+        #expect(Set((first.items + second.items).map(\.childName)) == ["implementation", "review"])
+        #expect(try await f.coordinator.projectionsForUser(parentSessionID: UUID(), after: nil, limit: 50).items.isEmpty)
+        #expect(try await f.coordinator.projectionsForUser(parentSessionID: f.parent.sessionID, after: nil, limit: 50).items.count == 2)
+        await #expect(throws: SessionTaskError.invalidPage) {
+            try await f.coordinator.projectionsForUser(after: nil, limit: 51)
+        }
+        let encoded = String(decoding: try JSONEncoder().encode(first.items + second.items), as: UTF8.self)
+        #expect(!encoded.contains("scoped child message") && !encoded.contains("payload"))
+        await f.coordinator.finishProjectionUpdates()
+    }
+
     @Test func aPartialWirePageAcknowledgesOnlyEventsActuallyReturned() async throws {
         let f = try await TaskFixture.make()
         defer { f.clean() }

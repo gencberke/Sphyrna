@@ -148,6 +148,13 @@ public struct SessionTaskPage<Element: Sendable>: Sendable {
     public let next: Int64?
 }
 
+/// App-only metadata for a bounded view of task relationships. It contains no
+/// round messages or result payloads.
+public struct SessionTaskProjectionPage: Sendable {
+    public let items: [SessionTaskProjection]
+    public let next: UUID?
+}
+
 /// A durable event cursor allows a bounded transport to return and acknowledge
 /// only the events that actually fit in one reply.
 public struct SessionTaskEventEntry: Codable, Equatable, Sendable {
