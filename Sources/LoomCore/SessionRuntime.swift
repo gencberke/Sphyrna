@@ -640,7 +640,9 @@ public actor SessionRuntime {
         let profile = try claudeProfile(
             route: .new(sessionID), toolchain: toolchain, sessionID: sessionID, hooks: hooks, choices: choices,
             opening: opening.map {
-                ProviderLaunchProfile.ClaudeOpening(title: $0.title, firstMessage: $0.firstMessage)
+                $0.approvedTask == nil
+                    ? ProviderLaunchProfile.ClaudeOpening(title: $0.title, firstMessage: $0.firstMessage)
+                    : ProviderLaunchProfile.ClaudeOpening(taskTitle: $0.title)
             } ?? draft.map {
                 ProviderLaunchProfile.ClaudeOpening(title: "", firstMessage: $0.firstMessage)
             },

@@ -152,15 +152,20 @@ public struct ProviderLaunchProfile: Sendable {
         "--allow-dangerously-skip-permissions",
     ]
 
-    /// A new session an agent asked Loom to open (D-40): Claude gets the title as its session name
-    /// and the message as its first prompt.
+    /// A new session's name and, for ordinary openings, its positional first prompt.
+    /// An approved task starts empty and admits its input only after the owned run is ready.
     public struct ClaudeOpening: Equatable, Sendable {
         public let title: String
-        public let firstMessage: String
+        public let firstMessage: String?
 
         public init(title: String, firstMessage: String) {
             self.title = title
             self.firstMessage = firstMessage
+        }
+
+        init(taskTitle: String) {
+            self.title = taskTitle
+            self.firstMessage = nil
         }
     }
 
@@ -289,7 +294,7 @@ public struct ProviderLaunchProfile: Sendable {
             // An empty title leaves the naming to Claude.
             if !opening.title.isEmpty { openingArguments = ["-n", opening.title] }
             // After `--` a message that starts with a dash is still the prompt, not an option.
-            trailing = ["--", opening.firstMessage]
+            if let firstMessage = opening.firstMessage { trailing = ["--", firstMessage] }
         }
         var env = environment
         env["CLAUDE_CONFIG_DIR"] = config.path

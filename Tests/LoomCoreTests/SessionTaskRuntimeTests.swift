@@ -4,6 +4,40 @@ import Testing
 
 @Suite(.serialized, .processHeavy, .timeLimit(.minutes(2)))
 struct SessionTaskRuntimeTests {
+    @Test func approvedClaudeChildStartsEmptyBeforeAnyTaskInput() async throws {
+        let context = try await SessionRuntimeTests.makeContext(claudeVersion: "2.0.0")
+        defer { context.cleanup() }
+        let folder = context.root.appendingPathComponent("owned-claude-task", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let project = try await context.catalog.addProject(path: folder.path).project
+        let parentScreen = SessionRuntimeTests.Screen()
+        let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id, outputSink: parentScreen)
+        parentScreen.attach(parent.terminal)
+        #expect(try await SessionRuntimeTests.waitUntil(3) {
+            await context.supervisor.runContext(runID: parent.runID)?.session.providerConversationID != nil
+        })
+        let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+        let coordinator = try #require(await context.runtime.taskCoordinator)
+        let taskID = UUID(), childID = UUID()
+        let choices = HarnessLaunchChoices(harness: .claude, effort: "high", mode: .askBeforeEdits)
+        try await context.runtime.reserveTaskChild(taskID: taskID, childID: childID, parent: claim)
+        let task = try await coordinator.createApproved(taskID: taskID, parent: claim, childID: childID,
+            harness: .claude, childName: "Owned Claude task", choices: choices)
+        let childScreen = SessionRuntimeTests.Screen()
+        let child = try await context.runtime.startConversation(provider: .claude, projectID: project.id,
+            outputSink: childScreen, opening: SessionOpening(approvedTask: task, firstMessage: "UNEXPECTED FIRST INPUT"))
+        childScreen.attach(child.terminal)
+        #expect(child.sessionID == childID)
+        #expect(await childScreen.contains("FAKE-CLAUDE READY"))
+        // The fake handles any positional first message before it reads this explicit input.
+        try await childScreen.send("manual probe")
+        #expect(await childScreen.contains("echo: manual probe"))
+        #expect(!childScreen.snapshot.contains("echo: UNEXPECTED FIRST INPUT"))
+        #expect(try await context.runtime.stopConversation(sessionID: childID).succeeded)
+        #expect(try await context.runtime.stopConversation(sessionID: parent.sessionID).succeeded)
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
     @Test func approvedCodexChildStartsEmptyWithItsOwnedIdentityAndChoices() async throws {
         let model = ModelCatalogEntry(harness: .codex, id: "fake-codex-alpha", title: "Fake Codex",
                                       efforts: ["low", "high"], defaultEffort: "low", isDefault: true)

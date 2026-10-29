@@ -3,6 +3,24 @@ import Testing
 @testable import LoomCore
 
 struct ProviderProfileTests {
+    @Test func approvedTaskClaudeOpeningKeepsNameAndChoicesButHasNoPositionalPrompt() throws {
+        let capabilities = ProviderCapabilities(version: "2.0.0", help: "--settings <s> --session-id <i> --name <n> --effort <e>")
+        let profile = try ProviderLaunchProfile.claude(route: .new(UUID()), capabilities: capabilities,
+            config: URL(fileURLWithPath: "/isolated"), environment: [:],
+            choices: ClaudeLaunchChoices(permissionMode: "acceptEdits", model: "opus", effort: "high"),
+            opening: .init(taskTitle: "Owned task"))
+        let arguments = profile.launchArguments()
+        #expect(arguments.contains("Owned task"))
+        #expect(arguments.contains("--model") && arguments.contains("opus"))
+        #expect(arguments.contains("--effort") && arguments.contains("high"))
+        #expect(arguments.contains("--permission-mode") && arguments.contains("acceptEdits"))
+        #expect(!arguments.contains("--"))
+
+        let ordinary = try ProviderLaunchProfile.claude(route: .new(UUID()), capabilities: capabilities,
+            config: URL(fileURLWithPath: "/isolated"), environment: [:],
+            opening: .init(title: "Ordinary", firstMessage: "first message"))
+        #expect(ordinary.launchArguments().suffix(2) == ["--", "first message"])
+    }
     @Test(arguments: [HarnessMode.askBeforeEdits, .acceptEdits])
     func newCodexSafetyFlagsComeAfterExtrasAndBeforeTheFirstMessage(mode: HarnessMode) throws {
         let capabilities = ProviderCapabilities(version: "test", help: "--remote <ADDR>", serverHelp: "--listen <URL>")
