@@ -59,14 +59,28 @@ public enum SessionTaskNativeStatus: String, Codable, Sendable {
     case notStarted, ready, working, waitingForUser, stopped, unknown
 }
 
+/// A host-verified observation of the submitted input. A provider prompt or an
+/// app-side observation is not a provider-native turn ID. App observations
+/// must be correlated with an actual provider input event, not merely a write.
+public enum SessionTaskExecutionReference: Codable, Equatable, Sendable {
+    case nativeTurn(String)
+    case providerPrompt(String)
+    case appInputObservation(UUID)
+}
+
 public struct SessionTaskReceipt: Codable, Equatable, Sendable {
     public let operationID: UUID
     public let taskID: UUID
     public let roundID: UUID?
     public var delivery: SessionTaskDelivery
-    /// Only a verified provider turn records consumption; a successful write
-    /// or an app notification is not evidence of it.
+    /// Only an actual native turn is recorded here. A successful write or an
+    /// app notification is not evidence of input consumption.
     public var consumedTurnID: String? = nil
+    public var consumedExecution: SessionTaskExecutionReference? = nil
+    /// Version-one receipts can contain a native turn without the newer proof field.
+    public var observedConsumption: SessionTaskExecutionReference? {
+        consumedExecution ?? consumedTurnID.map(SessionTaskExecutionReference.nativeTurn)
+    }
 }
 
 public struct SessionTaskRound: Codable, Equatable, Sendable {
@@ -79,16 +93,22 @@ public struct SessionTaskRound: Codable, Equatable, Sendable {
     public var phase: SessionTaskRoundPhase
     public var binding: SessionTaskBinding?
     public var nativeTurnID: String?
+    public var execution: SessionTaskExecutionReference? = nil
 }
 
 public struct SessionTaskEvent: Codable, Equatable, Sendable {
     public let id: UUID
     public let taskID: UUID
     public let roundID: UUID
-    public let nativeTurnID: String
+    public let nativeTurnID: String?
+    public let execution: SessionTaskExecutionReference?
     public let kind: SessionTaskReportKind
     public let payload: String
     public let occurredAt: Date
+    /// Events written by the earlier store already identify a native turn.
+    public var observedExecution: SessionTaskExecutionReference? {
+        execution ?? nativeTurnID.map(SessionTaskExecutionReference.nativeTurn)
+    }
 }
 
 /// Stored choices are the user's requested choices; effective fields are only
@@ -154,8 +174,10 @@ public struct SessionTaskWakeIntent: Sendable {
 public struct SessionTaskRoundTarget: Sendable {
     public let taskID: UUID
     public let roundID: UUID
+    public let inputOperationID: UUID
     public let binding: SessionTaskBinding
     public let nativeTurnID: String?
+    public let execution: SessionTaskExecutionReference?
 }
 
 public enum SessionTaskInputEffect: Sendable {
@@ -184,10 +206,14 @@ public enum SessionTaskEffect: Sendable {
 public protocol SessionTaskHost: Sendable {
     func authenticate(_ claim: SessionTaskClaim) async -> SessionTaskBinding?
     func ownsNewChild(taskID: UUID, parent: SessionTaskBinding, childID: UUID) async -> Bool
-    /// Verify the exact task, round, owned run and provider turn, including an
-    /// outstanding initial launch whose submit call has not returned yet.
-    func ownsTurn(_ target: SessionTaskRoundTarget) async -> Bool
-    func ownsWakeTurn(taskID: UUID, operationID: UUID, binding: SessionTaskBinding, nativeTurnID: String) async -> Bool
+    /// Resolve an actual input observation for the exact task, round, input
+    /// operation and live binding, including an initial submit still in flight.
+    /// The host must correlate the observation with that submission, not trust
+    /// a caller-supplied identifier or infer it from an app round ID.
+    func observedChildExecution(_ target: SessionTaskRoundTarget) async -> SessionTaskExecutionReference?
+    /// Consumption is a provider/input observation tied to the exact wake
+    /// operation and live parent binding; a successful write alone is not it.
+    func observedWakeExecution(taskID: UUID, operationID: UUID, binding: SessionTaskBinding) async -> SessionTaskExecutionReference?
     /// An on-demand observation, not a model call or a cached second owner.
     func nativeStatus(binding: SessionTaskBinding) async -> SessionTaskNativeStatus
     func submitIfReady(_ intent: SessionTaskInputIntent) async -> SessionTaskInputEffect

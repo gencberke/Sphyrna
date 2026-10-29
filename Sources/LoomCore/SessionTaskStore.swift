@@ -82,6 +82,9 @@ final class SessionTaskStore {
                     try exec("PRAGMA user_version = 1")
                 }
             }
+            // Version-one stores created before this index need it as well:
+            // deleting a task cascades to operations by task, not by id.
+            try exec("CREATE INDEX IF NOT EXISTS operations_task ON operations(task)")
             guard try scalarText("PRAGMA quick_check") == "ok",
                   try scalarText("PRAGMA journal_mode = WAL").lowercased() == "wal" else { throw SessionTaskError.storage }
             try exec("PRAGMA synchronous = FULL")

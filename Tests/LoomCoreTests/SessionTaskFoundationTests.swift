@@ -1,9 +1,26 @@
+import CryptoKit
 import Foundation
+import SQLite3
 import Testing
 @testable import LoomCore
 
 private actor TaskFakeHost: SessionTaskHost {
-    let parent: SessionTaskBinding
+    private enum ProofKind: Equatable { case nativeTurn, providerPrompt, appInput }
+    private struct ChildObservation {
+        let taskID: UUID
+        let roundID: UUID
+        var operationID: UUID
+        let binding: SessionTaskBinding
+        let execution: SessionTaskExecutionReference
+        let nativeTurnID: String?
+    }
+    private struct WakeObservation {
+        var taskID: UUID
+        let operationID: UUID
+        let binding: SessionTaskBinding
+        let execution: SessionTaskExecutionReference
+    }
+    var parent: SessionTaskBinding
     var child: SessionTaskBinding
     private let parentCredential = "parent-local"
     private let childCredential = "child-local"
@@ -14,6 +31,9 @@ private actor TaskFakeHost: SessionTaskHost {
     var interruptVerified = true
     var forgetting = false
     var wakeUnknown = false
+    private var proofKind = ProofKind.nativeTurn
+    private var childObservations: [UUID: ChildObservation] = [:]
+    private var wakeObservations: [UUID: WakeObservation] = [:]
     var wakeStopped = false
     var pauseInterrupt = false
     var interruptEntered = false
@@ -42,11 +62,18 @@ private actor TaskFakeHost: SessionTaskHost {
     func ownsNewChild(taskID: UUID, parent: SessionTaskBinding, childID: UUID) -> Bool {
         parent == self.parent && childID == child.sessionID && taskID != childID
     }
-    func ownsTurn(_ target: SessionTaskRoundTarget) -> Bool {
-        target.binding == child && target.nativeTurnID == "turn-\(target.roundID.uuidString)"
+    func observedChildExecution(_ target: SessionTaskRoundTarget) -> SessionTaskExecutionReference? {
+        guard let observed = childObservations[target.roundID], target.binding == child,
+              observed.binding == target.binding, observed.taskID == target.taskID,
+              observed.roundID == target.roundID, observed.operationID == target.inputOperationID,
+              target.nativeTurnID == nil || target.nativeTurnID == observed.nativeTurnID,
+              target.execution == nil || target.execution == observed.execution else { return nil }
+        return observed.execution
     }
-    func ownsWakeTurn(taskID: UUID, operationID: UUID, binding: SessionTaskBinding, nativeTurnID: String) -> Bool {
-        binding == parent && nativeTurnID == "wake-\(operationID.uuidString)" && wakes.contains { $0.operationID == operationID }
+    func observedWakeExecution(taskID: UUID, operationID: UUID, binding: SessionTaskBinding) -> SessionTaskExecutionReference? {
+        guard let observed = wakeObservations[operationID], binding == parent, observed.binding == binding,
+              observed.taskID == taskID, observed.operationID == operationID else { return nil }
+        return observed.execution
     }
     func nativeStatus(binding: SessionTaskBinding) -> SessionTaskNativeStatus { binding == child ? native : .unknown }
     func submitIfReady(_ intent: SessionTaskInputIntent) async -> SessionTaskInputEffect {
@@ -55,17 +82,34 @@ private actor TaskFakeHost: SessionTaskHost {
         submissions.append(intent)
         if submitOutcomeUnknown { return .unknown }
         native = .working
+        let nativeTurn = proofKind == .nativeTurn ? "provider-turn-\(UUID().uuidString)" : nil
+        let execution: SessionTaskExecutionReference
+        switch proofKind {
+        case .nativeTurn: execution = .nativeTurn(nativeTurn!)
+        case .providerPrompt: execution = .providerPrompt("provider-prompt-\(UUID().uuidString)")
+        case .appInput: execution = .appInputObservation(UUID())
+        }
+        childObservations[intent.round.id] = ChildObservation(taskID: intent.task.id, roundID: intent.round.id,
+            operationID: intent.round.operationID, binding: child, execution: execution, nativeTurnID: nativeTurn)
         if pauseSubmit {
             submitEntered = true
             await withCheckedContinuation { submitContinuation = $0 }
         }
         if let duringSubmit { await duringSubmit(intent) }
-        return .submitted(binding: returnedBinding ?? child, nativeTurnID: "turn-\(intent.round.id.uuidString)",
+        return .submitted(binding: returnedBinding ?? child, nativeTurnID: nativeTurn,
                           actualModel: "actual-model", actualEffort: "low", actualMode: .askBeforeEdits)
     }
     func wakeIfReady(_ intent: SessionTaskWakeIntent) async -> SessionTaskEffect {
         guard parentReady, intent.parentBinding == parent else { return .deferred }
         wakes.append(intent)
+        let execution: SessionTaskExecutionReference
+        switch proofKind {
+        case .nativeTurn: execution = .nativeTurn("provider-wake-\(UUID().uuidString)")
+        case .providerPrompt: execution = .providerPrompt("provider-wake-prompt-\(UUID().uuidString)")
+        case .appInput: execution = .appInputObservation(UUID())
+        }
+        wakeObservations[intent.operationID] = WakeObservation(taskID: intent.taskID, operationID: intent.operationID,
+                                                                binding: parent, execution: execution)
         if pauseWake {
             wakeEntered = true
             await withCheckedContinuation { wakeContinuation = $0 }
@@ -101,6 +145,16 @@ private actor TaskFakeHost: SessionTaskHost {
     func setUnknown(_ value: Bool) { submitOutcomeUnknown = value }
     func setStopVerified(_ value: Bool) { stopVerified = value }
     func setWakeUnknown(_ value: Bool) { wakeUnknown = value }
+    func usePromptProofOnly() { proofKind = .providerPrompt }
+    func useAppInputProofOnly() { proofKind = .appInput }
+    func childReference(_ roundID: UUID) -> SessionTaskExecutionReference? { childObservations[roundID]?.execution }
+    func wakeReference(_ operationID: UUID) -> SessionTaskExecutionReference? { wakeObservations[operationID]?.execution }
+    func replaceObservedInputOperation(_ roundID: UUID, operationID: UUID) {
+        childObservations[roundID]?.operationID = operationID
+    }
+    func replaceObservedWakeTask(_ operationID: UUID, taskID: UUID) {
+        wakeObservations[operationID]?.taskID = taskID
+    }
     func confirmWakeStopped() { wakeStopped = true }
     func holdInterrupt() { pauseInterrupt = true }
     func onSubmit(_ callback: @escaping @Sendable (SessionTaskInputIntent) async -> Void) { duringSubmit = callback }
@@ -114,6 +168,7 @@ private actor TaskFakeHost: SessionTaskHost {
     func hasEnteredInterrupt() -> Bool { interruptEntered }
     func releaseInterrupt() { pauseInterrupt = false; interruptContinuation?.resume(); interruptContinuation = nil }
     func allowForget() { forgetting = true }
+    func replaceParent(_ value: SessionTaskBinding) { parent = value }
     func replaceChild(_ value: SessionTaskBinding) { child = value }
     func counts() -> (Int, Int, Int, Int) { (submissions.count, wakes.count, interrupts.count, stops) }
     func lastWakeCount() -> Int? { wakes.last?.eventCount }
@@ -173,12 +228,135 @@ private struct TaskFixture {
     func report(_ roundID: UUID, kind: SessionTaskReportKind = .completed, payload: String = "done",
                 operationID: UUID = UUID()) async throws -> SessionTaskReceipt {
         try await coordinator.report(taskID: taskID, child: child, roundID: roundID,
-            nativeTurnID: "turn-\(roundID.uuidString)", operationID: operationID, kind: kind, payload: payload)
+            operationID: operationID, kind: kind, payload: payload)
     }
 }
 
 @Suite(.serialized)
 struct SessionTaskFoundationTests {
+    @Test(arguments: [false, true])
+    func providerPromptProofDoesNotInventNativeTurnIDs(appInputOnly: Bool) async throws {
+        let f = try await TaskFixture.make(parentHarness: .claude, childHarness: .claude)
+        defer { f.clean() }
+        if appInputOnly { await f.host.useAppInputProofOnly() } else { await f.host.usePromptProofOnly() }
+        let input = try await f.input("claude work")
+        let round = try #require(input.roundID)
+        _ = try await f.coordinator.deliverPending(taskID: f.taskID)
+        let before = try await f.coordinator.status(taskID: f.taskID, parent: f.parent)
+        #expect(before.activeRound?.nativeTurnID == nil)
+        let proof = try #require(await f.host.childReference(round))
+        await f.host.replaceObservedInputOperation(round, operationID: UUID())
+        await #expect(throws: SessionTaskError.unauthorized) { _ = try await f.report(round, payload: "reported") }
+        #expect(try await f.coordinator.events(taskID: f.taskID, parent: f.parent).items.isEmpty)
+        await f.host.replaceObservedInputOperation(round, operationID: input.operationID)
+        let reportID = UUID()
+        let report = try await f.report(round, payload: "reported", operationID: reportID)
+        #expect(try await f.report(round, payload: "reported", operationID: reportID) == report)
+        let events = try await f.coordinator.events(taskID: f.taskID, parent: f.parent)
+        #expect(events.items.first?.nativeTurnID == nil && events.items.first?.execution == proof)
+        let wakeID = UUID()
+        _ = try await f.coordinator.wakePending(taskID: f.taskID, operationID: wakeID)
+        let parent = await f.host.parent
+        let wakeProof = try #require(await f.host.wakeReference(wakeID))
+        await f.host.replaceObservedWakeTask(wakeID, taskID: UUID())
+        await #expect(throws: SessionTaskError.unauthorized) {
+            _ = try await f.coordinator.observeWakeConsumption(taskID: f.taskID, operationID: wakeID, binding: parent)
+        }
+        await f.host.replaceObservedWakeTask(wakeID, taskID: f.taskID)
+        let consumed = try await f.coordinator.observeWakeConsumption(taskID: f.taskID, operationID: wakeID, binding: parent)
+        #expect(consumed.consumedTurnID == nil && consumed.observedConsumption == wakeProof)
+        #expect(try await f.coordinator.observeWakeConsumption(taskID: f.taskID, operationID: wakeID, binding: parent) == consumed)
+        let reopened = try await SessionTaskCoordinator.open(url: f.url, host: f.host, now: { f.clock.now() })
+        let restoredEvent = try #require(try await reopened.events(taskID: f.taskID, parent: f.parent).items.first)
+        #expect(restoredEvent.id == reportID && restoredEvent.observedExecution == proof && restoredEvent.nativeTurnID == nil)
+        #expect(try await reopened.report(taskID: f.taskID, child: f.child, roundID: round,
+            operationID: reportID, kind: .completed, payload: "reported") == report)
+        #expect(try await reopened.observeWakeConsumption(taskID: f.taskID, operationID: wakeID, binding: parent) == consumed)
+        await f.host.setNative(.ready)
+        let next = try #require(try await f.input("next round").roundID)
+        _ = try await f.coordinator.deliverPending(taskID: f.taskID)
+        await #expect(throws: SessionTaskError.staleBinding) { _ = try await f.report(round, payload: "stale") }
+        let after = try await f.coordinator.status(taskID: f.taskID, parent: f.parent)
+        #expect(after.activeRound?.id == next && after.activeRound?.nativeTurnID == nil)
+    }
+
+    @Test func reopeningAVersionOneStoreIndexesOperationCascade() async throws {
+        let f = try await TaskFixture.make()
+        defer { f.clean() }
+        let input = try await f.input("preserve")
+        let round = try #require(input.roundID)
+        let delivered = try await f.coordinator.deliverPending(taskID: f.taskID)
+        let active = try await f.coordinator.status(taskID: f.taskID, parent: f.parent).activeRound
+        let turn = try #require(active?.nativeTurnID)
+        let reportID = UUID()
+        let report = try await f.report(round, payload: "preserve result", operationID: reportID)
+        let wakeID = UUID()
+        _ = try await f.coordinator.wakePending(taskID: f.taskID, operationID: wakeID)
+        let parent = await f.host.parent
+        let consumed = try await f.coordinator.observeWakeConsumption(taskID: f.taskID, operationID: wakeID, binding: parent)
+        let wakeTurn = try #require(consumed.consumedTurnID)
+        let legacyParts = ["report", f.taskID.uuidString, round.uuidString, turn, reportID.uuidString,
+                           SessionTaskReportKind.completed.rawValue, "preserve result"]
+        let legacyText = legacyParts.map { "\($0.utf8.count):\($0)" }.joined()
+        let legacyFingerprint = SHA256.hash(data: Data(legacyText.utf8)).map { String(format: "%02x", $0) }.joined()
+        var db: OpaquePointer?
+        try #require(sqlite3_open_v2(f.url.path, &db, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK)
+        let legacy = """
+            DROP INDEX IF EXISTS operations_task;
+            UPDATE rounds SET body=json_remove(body, '$.execution');
+            UPDATE events SET body=json_remove(body, '$.execution');
+            UPDATE operations SET body=json_remove(body, '$.receipt.consumedExecution');
+            UPDATE operations SET body=json_set(body, '$.fingerprint', '\(legacyFingerprint)') WHERE id='\(reportID.uuidString)';
+            """
+        try #require(sqlite3_exec(db, legacy, nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(db)
+        let reopened = try await SessionTaskCoordinator.open(url: f.url, host: f.host, now: { f.clock.now() })
+        #expect(try await reopened.requestRound(taskID: f.taskID, parent: f.parent,
+                                               operationID: input.operationID, message: "preserve") == delivered)
+        #expect(try await reopened.report(taskID: f.taskID, child: f.child, roundID: round,
+            operationID: reportID, kind: .completed, payload: "preserve result") == report)
+        let oldEvent = try #require(try await reopened.events(taskID: f.taskID, parent: f.parent).items.first)
+        #expect(oldEvent.id == reportID && oldEvent.nativeTurnID == turn && oldEvent.observedExecution == .nativeTurn(turn))
+        let oldWake = try await reopened.observeWakeConsumption(taskID: f.taskID, operationID: wakeID, binding: parent)
+        #expect(oldWake.consumedTurnID == wakeTurn && oldWake.observedConsumption == .nativeTurn(wakeTurn))
+        db = nil
+        try #require(sqlite3_open_v2(f.url.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK)
+        defer { sqlite3_close(db) }
+        try #require(sqlite3_exec(db, "PRAGMA foreign_keys=ON", nil, nil, nil) == SQLITE_OK)
+        var statement: OpaquePointer?
+        try #require(sqlite3_prepare_v2(db, "EXPLAIN QUERY PLAN DELETE FROM tasks WHERE id='owned'", -1, &statement, nil) == SQLITE_OK)
+        defer { sqlite3_finalize(statement) }
+        var usesIndex = false
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if let text = sqlite3_column_text(statement, 3), String(cString: text).contains("operations_task") { usesIndex = true }
+        }
+        #expect(usesIndex)
+    }
+
+    @Test func oldWakeObservationCannotConsumeAReboundParentRun() async throws {
+        let f = try await TaskFixture.make(parentHarness: .claude, childHarness: .claude)
+        defer { f.clean() }
+        await f.host.usePromptProofOnly()
+        let round = try #require(try await f.input("work").roundID)
+        _ = try await f.coordinator.deliverPending(taskID: f.taskID)
+        _ = try await f.report(round)
+        let wakeID = UUID()
+        _ = try await f.coordinator.wakePending(taskID: f.taskID, operationID: wakeID)
+        let oldParent = await f.host.parent
+        try await f.coordinator.fence(taskID: f.taskID, binding: oldParent)
+        let newParent = SessionTaskBinding(sessionID: oldParent.sessionID, nativeSessionID: oldParent.nativeSessionID,
+                                           managedRunID: UUID(), generation: UUID())
+        await f.host.replaceParent(newParent)
+        let claim = SessionTaskClaim(sessionID: newParent.sessionID, managedRunID: newParent.managedRunID,
+                                     generation: newParent.generation, credential: "parent-local")
+        _ = try await f.coordinator.rebindAndApprove(taskID: f.taskID, parent: claim, child: f.child)
+        await #expect(throws: SessionTaskError.staleBinding) {
+            _ = try await f.coordinator.observeWakeConsumption(taskID: f.taskID, operationID: wakeID, binding: oldParent)
+        }
+        let status = try await f.coordinator.status(taskID: f.taskID, parent: claim)
+        #expect(status.task.parentWakesUsed == 0 && status.task.parentWakesConsumed == 0)
+    }
+
     @Test(arguments: [(HarnessID.claude, HarnessID.codex), (HarnessID.codex, HarnessID.claude),
                       (HarnessID.claude, HarnessID("gemini")), (HarnessID.codex, HarnessID.opencode)])
     func threeRoundsKeepChildAndWakeEachTime(_ direction: (HarnessID, HarnessID)) async throws {
@@ -201,16 +379,21 @@ struct SessionTaskFoundationTests {
             #expect(wake.delivery == .submitted)
             #expect(wake.consumedTurnID == nil)
             let parentBinding = await f.host.parent
-            let turn = "wake-\(wakeID.uuidString)"
+            let proof = try #require(await f.host.wakeReference(wakeID))
+            guard case let .nativeTurn(turn) = proof else { throw SessionTaskError.unverified }
             let consumed = try await f.coordinator.observeWakeConsumption(taskID: f.taskID, operationID: wakeID,
-                                                                            binding: parentBinding, nativeTurnID: turn)
-            #expect(consumed.consumedTurnID == turn)
+                                                                            binding: parentBinding)
+            #expect(consumed.consumedTurnID == turn && consumed.observedConsumption == proof)
             #expect(try await f.coordinator.observeWakeConsumption(taskID: f.taskID, operationID: wakeID,
-                binding: parentBinding, nativeTurnID: turn) == consumed)
+                binding: parentBinding) == consumed)
         }
         let events = try await f.coordinator.events(taskID: f.taskID, parent: f.parent)
         #expect(events.items.map(\.payload) == ["result 1", "result 2", "result 3"])
         #expect(Set(events.items.map(\.roundID)) == ids)
+        #expect(events.items.allSatisfy { event in
+            guard let turn = event.nativeTurnID else { return false }
+            return event.observedExecution == .nativeTurn(turn) && !turn.contains(event.roundID.uuidString)
+        })
         let status = try await f.coordinator.status(taskID: f.taskID, parent: f.parent)
         #expect(status.task.childInputsUsed == 3 && status.task.parentWakesUsed == 3 && status.task.parentWakesConsumed == 3)
         #expect(status.task.lifecycle == .active && status.nativeStatus == .ready)
@@ -271,7 +454,7 @@ struct SessionTaskFoundationTests {
         let afterLate = await f.host.counts()
         #expect(late.delivery == .alreadySettled && afterLate.2 == 0)
         let sameEvent = try await f.coordinator.report(taskID: f.taskID, child: f.child, roundID: first,
-            nativeTurnID: "turn-\(first.uuidString)", operationID: UUID(), eventID: reportID,
+            operationID: UUID(), eventID: reportID,
             kind: .completed, payload: "done")
         #expect(sameEvent.delivery == .verified)
         #expect(try await f.coordinator.events(taskID: f.taskID, parent: f.parent).items.count == 1)
@@ -448,15 +631,15 @@ struct SessionTaskFoundationTests {
         _ = try await f.coordinator.deliverPending(taskID: f.taskID)
         let eventID = UUID()
         _ = try await f.coordinator.report(taskID: f.taskID, child: f.child, roundID: round,
-            nativeTurnID: "turn-\(round.uuidString)", operationID: UUID(), eventID: eventID,
+            operationID: UUID(), eventID: eventID,
             kind: .needsParentInput, payload: "pick one")
         let duplicate = try await f.coordinator.report(taskID: f.taskID, child: f.child, roundID: round,
-            nativeTurnID: "turn-\(round.uuidString)", operationID: UUID(), eventID: eventID,
+            operationID: UUID(), eventID: eventID,
             kind: .needsParentInput, payload: "pick one")
         #expect(duplicate.delivery == .verified)
         await #expect(throws: SessionTaskError.conflictingOperation) {
             _ = try await f.coordinator.report(taskID: f.taskID, child: f.child, roundID: round,
-                nativeTurnID: "turn-\(round.uuidString)", operationID: UUID(), eventID: eventID,
+                operationID: UUID(), eventID: eventID,
                 kind: .needsParentInput, payload: "changed")
         }
         let events = try await f.coordinator.events(taskID: f.taskID, parent: f.parent)
@@ -474,7 +657,7 @@ struct SessionTaskFoundationTests {
         await f.host.onSubmit { intent in
             do {
                 _ = try await coordinator.report(taskID: taskID, child: child, roundID: intent.round.id,
-                    nativeTurnID: "turn-\(intent.round.id.uuidString)", operationID: UUID(),
+                    operationID: UUID(),
                     kind: .completed, payload: "early result")
                 await observation.markAccepted()
             } catch { }
@@ -523,9 +706,11 @@ struct SessionTaskFoundationTests {
         let wakeID = UUID()
         #expect(try await f.coordinator.wakePending(taskID: f.taskID, operationID: wakeID).delivery == .unknown)
         let binding = await f.host.parent
+        let proof = try #require(await f.host.wakeReference(wakeID))
+        guard case let .nativeTurn(turn) = proof else { throw SessionTaskError.unverified }
         let receipt = try await f.coordinator.observeWakeConsumption(taskID: f.taskID, operationID: wakeID,
-            binding: binding, nativeTurnID: "wake-\(wakeID.uuidString)")
-        #expect(receipt.delivery == .submitted && receipt.consumedTurnID == "wake-\(wakeID.uuidString)")
+            binding: binding)
+        #expect(receipt.delivery == .submitted && receipt.consumedTurnID == turn && receipt.observedConsumption == proof)
         let status = try await f.coordinator.status(taskID: f.taskID, parent: f.parent)
         #expect(status.task.parentWakesUsed == 1 && status.task.parentWakesConsumed == 1 && status.task.uncertainWakeEffects == 0)
         #expect((await f.host.counts()).1 == 1)
@@ -538,7 +723,7 @@ struct SessionTaskFoundationTests {
         let coordinator = f.coordinator, child = f.child, taskID = f.taskID
         await f.host.onSubmit { intent in
             _ = try? await coordinator.report(taskID: taskID, child: child, roundID: intent.round.id,
-                nativeTurnID: "turn-\(intent.round.id.uuidString)", operationID: UUID(),
+                operationID: UUID(),
                 kind: .completed, payload: "bound result")
         }
         let actual = await f.host.child
@@ -571,7 +756,7 @@ struct SessionTaskFoundationTests {
         #expect(await f.host.hasEnteredWake())
         let binding = await f.host.parent
         let consumed = try await f.coordinator.observeWakeConsumption(taskID: f.taskID, operationID: operation,
-            binding: binding, nativeTurnID: "wake-\(operation.uuidString)")
+            binding: binding)
         await f.host.releaseWake()
         #expect(try await waking.value == consumed)
         let status = try await f.coordinator.status(taskID: f.taskID, parent: f.parent)

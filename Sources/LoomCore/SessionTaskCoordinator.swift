@@ -173,13 +173,18 @@ public actor SessionTaskCoordinator {
                 if task.authorityEpoch == initialTask.authorityEpoch {
                     switch outcome {
                     case let .submitted(binding, turn, actualModel, actualEffort, actualMode):
-                        if binding != bound || (turn != nil && turn != round.nativeTurnID) {
+                        if binding != bound || !Self.validMetadata(turn) ||
+                            (turn != nil && round.nativeTurnID != nil && turn != round.nativeTurnID) {
                             try retireRounds(&task)
                             task.lifecycle = .identityChanged; task.authorityEpoch += 1; task.revision += 1
                             try store.save(task)
                         } else if task.childBinding == bound,
                                   task.activeRoundID == round.id || (task.activeRoundID == nil && task.pendingRoundID == nil),
                                   Self.validMetadata(actualModel), Self.validMetadata(actualEffort) {
+                            if round.nativeTurnID == nil, let turn {
+                                round.nativeTurnID = turn
+                                try store.save(round)
+                            }
                             task.effectiveModel = actualModel; task.effectiveEffort = actualEffort; task.effectiveMode = actualMode
                             task.revision += 1
                             try store.save(task)
@@ -250,33 +255,43 @@ public actor SessionTaskCoordinator {
         return receipt
     }
 
-    /// Child-originated result or attention request. Its launch-local claim and
-    /// exact current round/native turn must be authenticated by the host.
-    public func report(taskID: UUID, child: SessionTaskClaim, roundID: UUID, nativeTurnID: String,
+    /// Child-originated result or attention request. The host resolves its
+    /// exact submitted input under the live launch-local binding.
+    public func report(taskID: UUID, child: SessionTaskClaim, roundID: UUID,
                        operationID: UUID, eventID: UUID? = nil, kind: SessionTaskReportKind, payload: String) async throws -> SessionTaskReceipt {
         try SessionTaskLimits.text(payload)
-        guard Self.validMetadata(nativeTurnID) else { throw SessionTaskError.invalidPayload }
         let principal = try await authenticated(child)
         let eventID = eventID ?? operationID
         let fingerprint = Self.fingerprint(["report", taskID.uuidString, roundID.uuidString,
-                                            nativeTurnID, eventID.uuidString, kind.rawValue, payload])
-        guard let task = try store.task(taskID), let round = try store.round(roundID), task.lifecycle == .active else {
+                                            eventID.uuidString, kind.rawValue, payload])
+        guard let task = try store.task(taskID), let round = try store.round(roundID), round.taskID == taskID,
+              task.lifecycle == .active else {
             throw SessionTaskError.staleBinding
+        }
+        let legacyFingerprint = round.nativeTurnID.map {
+            Self.fingerprint(["report", taskID.uuidString, roundID.uuidString, $0, eventID.uuidString, kind.rawValue, payload])
         }
         let alreadyBound = task.childBinding == principal && round.binding == principal
         let early = task.pendingRoundID == roundID && round.phase == .deliveringUnknown &&
             principal.sessionID == task.childSessionID && (task.childBinding == nil || task.childBinding == principal)
         guard alreadyBound || early else { throw SessionTaskError.staleBinding }
         if early, let reply = round.replyToEventID, task.currentAttentionID != reply { throw SessionTaskError.staleRound }
-        if let prior = try sameOperation(operationID, fingerprint: fingerprint) { return prior }
+        if let prior = try reportOperation(operationID, fingerprint: fingerprint, legacyFingerprint: legacyFingerprint) { return prior }
+        var observed: SessionTaskExecutionReference?
         if try store.event(eventID) == nil {
             guard task.activeRoundID == roundID || early else { throw SessionTaskError.staleBinding }
-            let target = SessionTaskRoundTarget(taskID: taskID, roundID: roundID, binding: principal, nativeTurnID: nativeTurnID)
-            guard await host.ownsTurn(target) else { throw SessionTaskError.unauthorized }
+            let target = SessionTaskRoundTarget(taskID: taskID, roundID: roundID, inputOperationID: round.operationID,
+                binding: principal, nativeTurnID: round.nativeTurnID, execution: round.execution)
+            guard let execution = await host.observedChildExecution(target), Self.validExecution(execution),
+                  try await authenticated(child) == principal else { throw SessionTaskError.unauthorized }
+            observed = execution
         }
         let receipt = try store.transaction {
             guard var current = try store.task(taskID), var currentRound = try store.round(roundID),
-                  current.lifecycle == .active else { throw SessionTaskError.staleBinding }
+                  currentRound.taskID == taskID, currentRound.operationID == round.operationID,
+                  current.lifecycle == .active, current.authorityEpoch == task.authorityEpoch else {
+                throw SessionTaskError.staleBinding
+            }
             let boundNow = current.childBinding == principal && currentRound.binding == principal
             let earlyNow = current.pendingRoundID == roundID && currentRound.phase == .deliveringUnknown &&
                 principal.sessionID == current.childSessionID && (current.childBinding == nil || current.childBinding == principal)
@@ -284,9 +299,9 @@ public actor SessionTaskCoordinator {
             if earlyNow, let reply = currentRound.replyToEventID, current.currentAttentionID != reply {
                 throw SessionTaskError.staleRound
             }
-            if let prior = try sameOperation(operationID, fingerprint: fingerprint) { return prior }
+            if let prior = try reportOperation(operationID, fingerprint: fingerprint, legacyFingerprint: legacyFingerprint) { return prior }
             if let existing = try store.event(eventID) {
-                guard existing.taskID == taskID, existing.roundID == roundID, existing.nativeTurnID == nativeTurnID,
+                guard existing.taskID == taskID, existing.roundID == roundID,
                       existing.kind == kind, existing.payload == payload else { throw SessionTaskError.conflictingOperation }
                 let receipt = SessionTaskReceipt(operationID: operationID, taskID: taskID, roundID: roundID, delivery: .verified)
                 try store.createOperation(operationID, taskID: taskID, operation: .init(fingerprint: fingerprint, receipt: receipt))
@@ -294,7 +309,7 @@ public actor SessionTaskCoordinator {
             }
             if earlyNow {
                 guard var dispatch = try store.operation(currentRound.operationID), dispatch.receipt.delivery == .unknown,
-                      currentRound.nativeTurnID == nil || currentRound.nativeTurnID == nativeTurnID else {
+                      let observed, Self.matches(observed, round: currentRound) else {
                     throw SessionTaskError.staleRound
                 }
                 if let oldID = current.activeRoundID, var old = try store.round(oldID), old.phase == .awaitingParent {
@@ -308,11 +323,12 @@ public actor SessionTaskCoordinator {
                 try store.saveOperation(currentRound.operationID, operation: dispatch)
             }
             guard current.activeRoundID == roundID else { throw SessionTaskError.staleBinding }
-            guard currentRound.phase == .active || currentRound.phase == .awaitingParent,
-                  currentRound.nativeTurnID == nil || currentRound.nativeTurnID == nativeTurnID else {
+            guard let observed, (currentRound.phase == .active || currentRound.phase == .awaitingParent),
+                  Self.matches(observed, round: currentRound) else {
                 throw SessionTaskError.staleRound
             }
-            currentRound.nativeTurnID = nativeTurnID
+            if case let .nativeTurn(nativeTurnID) = observed { currentRound.nativeTurnID = nativeTurnID }
+            currentRound.execution = observed
             switch kind {
             case .completed:
                 currentRound.phase = .completed; current.activeRoundID = nil; current.currentAttentionID = nil
@@ -325,7 +341,7 @@ public actor SessionTaskCoordinator {
                 try retireStaleReply(&current, keeping: eventID)
             }
             let event = SessionTaskEvent(id: eventID, taskID: taskID, roundID: roundID,
-                nativeTurnID: nativeTurnID, kind: kind, payload: payload, occurredAt: now())
+                nativeTurnID: currentRound.nativeTurnID, execution: observed, kind: kind, payload: payload, occurredAt: now())
             let receipt = SessionTaskReceipt(operationID: operationID, taskID: taskID, roundID: roundID, delivery: .verified)
             current.revision += 1
             try store.create(event); try store.save(currentRound); try store.save(current)
@@ -366,7 +382,7 @@ public actor SessionTaskCoordinator {
             }
             // An exact provider-turn observation can arrive before this host
             // call returns; it is stronger evidence than a late unknown reply.
-            if operation.receipt.consumedTurnID != nil { return operation.receipt }
+            if operation.receipt.observedConsumption != nil { return operation.receipt }
             switch outcome {
             case .verified:
                 operation.receipt.delivery = .submitted
@@ -387,28 +403,26 @@ public actor SessionTaskCoordinator {
         return receipt
     }
 
-    /// A provider-owned turn observation is separate from a successful wake
-    /// write. The runtime host verifies the exact operation and old binding.
-    func observeWakeConsumption(taskID: UUID, operationID: UUID, binding: SessionTaskBinding,
-                                       nativeTurnID: String) async throws -> SessionTaskReceipt {
-        guard Self.validMetadata(nativeTurnID), let prior = try store.operation(operationID),
+    /// A host-verified input observation is separate from a successful wake write.
+    func observeWakeConsumption(taskID: UUID, operationID: UUID, binding: SessionTaskBinding) async throws -> SessionTaskReceipt {
+        guard let prior = try store.operation(operationID),
               prior.receipt.taskID == taskID,
               (prior.receipt.delivery == .submitted || prior.receipt.delivery == .unknown), prior.binding == binding else {
             throw SessionTaskError.staleBinding
         }
-        if let old = prior.receipt.consumedTurnID {
-            guard old == nativeTurnID else { throw SessionTaskError.conflictingOperation }
-            return prior.receipt
-        }
-        guard await host.ownsWakeTurn(taskID: taskID, operationID: operationID,
-                                     binding: binding, nativeTurnID: nativeTurnID) else { throw SessionTaskError.unauthorized }
+        if prior.receipt.observedConsumption != nil { return prior.receipt }
+        guard let before = try store.task(taskID), before.lifecycle == .active, before.parentBinding == binding,
+              prior.epoch == before.authorityEpoch else { throw SessionTaskError.staleBinding }
+        guard let observed = await host.observedWakeExecution(taskID: taskID, operationID: operationID, binding: binding),
+              Self.validExecution(observed) else { throw SessionTaskError.unauthorized }
         let receipt = try store.transaction {
             guard var task = try store.task(taskID), var operation = try store.operation(operationID),
                   operation.receipt.taskID == taskID,
                   (operation.receipt.delivery == .submitted || operation.receipt.delivery == .unknown),
-                  operation.binding == binding else { throw SessionTaskError.staleBinding }
-            if let old = operation.receipt.consumedTurnID {
-                guard old == nativeTurnID else { throw SessionTaskError.conflictingOperation }
+                  operation.binding == binding, task.lifecycle == .active, task.parentBinding == binding,
+                  operation.epoch == task.authorityEpoch else { throw SessionTaskError.staleBinding }
+            if let old = operation.receipt.observedConsumption {
+                guard old == observed else { throw SessionTaskError.conflictingOperation }
                 return operation.receipt
             }
             if operation.receipt.delivery == .unknown {
@@ -416,7 +430,8 @@ public actor SessionTaskCoordinator {
                 task.uncertainWakeEffects = max(0, task.uncertainWakeEffects - 1)
                 try store.settleEvents(operationID: operationID, delivered: true)
             }
-            operation.receipt.consumedTurnID = nativeTurnID
+            operation.receipt.consumedExecution = observed
+            if case let .nativeTurn(nativeTurnID) = observed { operation.receipt.consumedTurnID = nativeTurnID }
             if operation.epoch == task.authorityEpoch { task.parentWakesConsumed += 1 }
             task.revision += 1
             try store.save(task); try store.saveOperation(operationID, operation: operation)
@@ -439,7 +454,7 @@ public actor SessionTaskCoordinator {
         let receipt = try store.transaction {
             guard var task = try store.task(taskID), var current = try store.operation(operationID),
                   current.binding == binding else { throw SessionTaskError.staleBinding }
-            if current.receipt.delivery == .submitted && current.receipt.consumedTurnID != nil { return current.receipt }
+            if current.receipt.delivery == .submitted && current.receipt.observedConsumption != nil { return current.receipt }
             guard current.receipt.delivery == .unknown else { throw SessionTaskError.staleBinding }
             current.receipt.delivery = .unverified
             task.uncertainWakeEffects = max(0, task.uncertainWakeEffects - 1)
@@ -501,7 +516,8 @@ public actor SessionTaskCoordinator {
             try store.createOperation(operationID, taskID: taskID, operation: .init(fingerprint: fingerprint, receipt: receipt))
             try store.createOperation(nextOperationID, taskID: taskID,
                 operation: .init(fingerprint: Self.fingerprint(["input", taskID.uuidString, message, ""]), receipt: nextReceipt))
-            return (receipt, SessionTaskRoundTarget(taskID: taskID, roundID: roundID, binding: binding, nativeTurnID: old.nativeTurnID),
+            return (receipt, SessionTaskRoundTarget(taskID: taskID, roundID: roundID, inputOperationID: old.operationID,
+                                                    binding: binding, nativeTurnID: old.nativeTurnID, execution: old.execution),
                     task.authorityEpoch)
         }
         guard let target = prepared.1 else { return prepared.0 }
@@ -714,6 +730,16 @@ public actor SessionTaskCoordinator {
         return operation.receipt
     }
 
+    /// Version-one report fingerprints included the native turn supplied by
+    /// the caller. Preserve their receipts while new reports use host evidence.
+    private func reportOperation(_ id: UUID, fingerprint: String, legacyFingerprint: String?) throws -> SessionTaskReceipt? {
+        guard let operation = try store.operation(id) else { return nil }
+        guard operation.fingerprint == fingerprint || operation.fingerprint == legacyFingerprint else {
+            throw SessionTaskError.conflictingOperation
+        }
+        return operation.receipt
+    }
+
     private func retireRounds(_ task: inout SessionTaskProjection) throws {
         for id in [task.activeRoundID, task.pendingRoundID].compactMap({ $0 }) {
             guard var round = try store.round(id) else { continue }
@@ -758,5 +784,18 @@ public actor SessionTaskCoordinator {
     private static func validMetadata(_ value: String?) -> Bool {
         guard let value else { return true }
         return !value.isEmpty && value.utf8.count <= 256 && !value.utf8.contains(0)
+    }
+
+    private static func validExecution(_ execution: SessionTaskExecutionReference) -> Bool {
+        switch execution {
+        case let .nativeTurn(value), let .providerPrompt(value): validMetadata(value)
+        case .appInputObservation: true
+        }
+    }
+
+    private static func matches(_ execution: SessionTaskExecutionReference, round: SessionTaskRound) -> Bool {
+        guard round.execution == nil || round.execution == execution else { return false }
+        if case let .nativeTurn(turn) = execution, let existing = round.nativeTurnID { return turn == existing }
+        return true
     }
 }
