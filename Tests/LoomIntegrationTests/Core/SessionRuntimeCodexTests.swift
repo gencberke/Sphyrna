@@ -399,8 +399,11 @@ struct SessionRuntimeCodexTests {
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
+    /// The join's deadline (2 s here, `codexJoinTimeout`; 20 s in the app) passes before the fake answers it (4 s): the
+    /// same order as the app's, at a tenth of the time.
     @Test func timedOutJoinNeverClaimsCleanupAndKeepsSiblingConnectionAlive() async throws {
-        let context = try await SessionRuntimeRig.makeContext(extraEnvironment: ["LOOM_FAKE_CODEX_JOIN": "delay25"])
+        let context = try await SessionRuntimeRig.makeContext(extraEnvironment: ["LOOM_FAKE_CODEX_JOIN": "delay4"],
+                                                              codexJoinTimeout: 2)
         defer { context.cleanup() }
         let (launch, _) = try await Self.launchCodex(context)
         #expect(try await SessionRuntimeRig.waitUntil { try await threadID(context, launch.sessionID) != nil })

@@ -696,7 +696,7 @@ public actor CodexAppServerClient {
     }
 
     /// Joining is deliberately limited to identity: native TUI settings remain authoritative.
-    public func joinThread(_ threadID: String, timeout: TimeInterval = 20) async throws {
+    public func joinThread(_ threadID: String, timeout: TimeInterval = CodexSessionCoordinator.defaultJoinTimeout) async throws {
         let result = try await request(method: "thread/resume",
             params: .object(["threadId": .string(threadID), "excludeTurns": .bool(true)]), timeout: timeout)
         guard result.object?["thread"]?.object?["id"]?.string == threadID else {
