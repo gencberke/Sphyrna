@@ -52,9 +52,9 @@ public final class HarnessConnections: @unchecked Sendable {
     }
 
     /// Whether Sphyrna offers `id`: its models in the pickers, its probe and its usage. False for an id this build does
-    /// not describe.
+    /// not describe and for a harness that is coming later (D-120), whose stored choice is kept for when it comes.
     public func isOn(_ id: HarnessID) -> Bool {
-        guard let descriptor = HarnessCatalogue.descriptor(for: id) else { return false }
+        guard let descriptor = HarnessCatalogue.descriptor(for: id), !descriptor.comingLater else { return false }
         return lock.withLock { choices[id] ?? descriptor.onWhenFound }
     }
 

@@ -617,6 +617,10 @@ public actor SessionRuntime {
         _ body: (_ directory: String, _ toolchain: ProviderToolchain) async throws -> T
     ) async throws -> T {
         guard !shuttingDown else { throw SessionRuntimeError.shuttingDown }
+        // A harness coming later (D-120) is refused first, whoever asks: a stored draft, an opening or a plain start.
+        for id in [HarnessID(provider), (draft?.choices ?? opening?.choices)?.harness].compactMap({ $0 }) {
+            if let reason = HarnessCatalogue.comingLaterReason(for: id) { throw LoomError.message(reason) }
+        }
         if let choices = draft?.choices ?? opening?.choices {
             guard choices.harness.provider == provider else {
                 let name = HarnessCatalogue.descriptor(for: choices.harness)?.displayName ?? choices.harness.rawValue
@@ -727,6 +731,7 @@ public actor SessionRuntime {
             throw SessionRuntimeError.sessionNotFound(sessionID)
         }
         let session = record.session
+        if let reason = HarnessCatalogue.comingLaterReason(for: HarnessID(session.provider)) { throw LoomError.message(reason) }
         guard await supervisor.session(id: sessionID)?.currentRun == nil else {
             throw SessionRuntimeError.alreadyRunning(sessionID)
         }

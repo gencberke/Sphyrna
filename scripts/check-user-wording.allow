@@ -1,7 +1,7 @@
 # Lines that may keep "conversation" (Sources/LoomCatalogUI, Sources/loom-app) or the word "Loom" (those two and
-# LoomCore, LoomChat, LoomLaunchOptions, LoomRemora) inside a string literal. One extended regex per line, matched
-# against the "path:line:code" text of the hit. Keep this short: evidence keys, identifiers and folder names only,
-# never text the user reads.
+# LoomCore, LoomChat, LoomLaunchOptions, LoomRemora, LoomTerminal, loom-hook) inside a string literal. One extended
+# regex per line, matched against the "path:line:code" text of the hit. Keep this short: evidence keys, identifiers
+# and folder names only, never text the user reads.
 # Development-evidence JSON keys (scripts parse them).
 "conversationID"
 "conversationTerminals"

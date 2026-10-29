@@ -1938,6 +1938,7 @@ public final class CatalogModel {
     /// Shared words for a start blocked by the PATH or connect switch.
     func blockedHarnessReason(_ provider: ManagedSession.Provider) -> String? {
         guard capabilities(of: provider).hasHarness else { return nil }
+        if let reason = HarnessCatalogue.comingLaterReason(for: HarnessID(provider)) { return reason }
         if !isFound(provider) { return Self.notFoundReason }
         if !isSwitchedOn(provider) { return "\(ProviderName.title(provider)) is off" }
         return nil

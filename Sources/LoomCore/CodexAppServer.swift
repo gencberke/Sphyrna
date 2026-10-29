@@ -305,9 +305,10 @@ public actor CodexAppServerClient {
         optOutNotificationMethods: [String] = [],
         inboundObserver: CodexInboundObserver? = nil
     ) async throws -> CodexAppServerClient {
-        let transport = try await Task.detached {
+        // The connect and the upgrade poll the socket until their deadline: never on the cooperative pool (`onOwnThread`).
+        let transport = try await onOwnThread("loom.codex-connect") {
             try CodexWebSocketTransport(socketPath: socketPath, timeout: timeout)
-        }.value
+        }
         let client = CodexAppServerClient(
             transport: transport, wireDiagnostics: wireDiagnostics, inboundObserver: inboundObserver)
         await client.startReader()

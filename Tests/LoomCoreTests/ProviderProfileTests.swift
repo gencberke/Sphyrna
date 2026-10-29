@@ -43,6 +43,28 @@ struct ProviderProfileTests {
             opening: .init(title: "Ordinary", firstMessage: "first message"))
         #expect(ordinary.launchArguments().suffix(2) == ["--", "first message"])
     }
+
+    /// FB6-16 part 1: a session that starts with a title gives it to Claude as the session's name (`-n`, Claude's
+    /// `--name`), in every face, so Claude's own list says what Sphyrna's does. Without a title Claude names it.
+    @Test(arguments: [ProviderLaunchProfile.ClaudeFace.terminal, .chat, .managedTask])
+    func aTitledClaudeStartPassesItsTitleAsTheSessionName(face: ProviderLaunchProfile.ClaudeFace) throws {
+        let capabilities = ProviderCapabilities(version: "2.1.311", help: "--settings <s> --session-id <i> --name <name>")
+        func arguments(_ opening: ProviderLaunchProfile.ClaudeOpening?,
+                       route: ProviderLaunchProfile.ClaudeRoute = .new(UUID())) throws -> [String] {
+            try ProviderLaunchProfile.claude(route: route, capabilities: capabilities, config: URL(fileURLWithPath: "/isolated"),
+                                             environment: [:], opening: opening, face: face).launchArguments()
+        }
+        let titled = face == .managedTask
+            ? ProviderLaunchProfile.ClaudeOpening(taskTitle: "PAY-418 the note")
+            : ProviderLaunchProfile.ClaudeOpening(title: "PAY-418 the note", firstMessage: "look at the flaky test")
+        let named = try arguments(titled)
+        let at = try #require(named.firstIndex(of: "-n"))
+        #expect(named[at + 1] == "PAY-418 the note")
+        #expect(!(try arguments(ProviderLaunchProfile.ClaudeOpening(title: "", firstMessage: "fix it"))).contains("-n"))
+        #expect(!(try arguments(nil)).contains("-n"))
+        #expect(!(try arguments(nil, route: .resume("provider-id"))).contains("-n"), "a resume keeps the name Claude has")
+    }
+
     @Test(arguments: [HarnessMode.askBeforeEdits, .acceptEdits])
     func newCodexSafetyFlagsComeAfterExtrasAndBeforeTheFirstMessage(mode: HarnessMode) throws {
         let capabilities = ProviderCapabilities(version: "test", help: "--remote <ADDR>", serverHelp: "--listen <URL>")

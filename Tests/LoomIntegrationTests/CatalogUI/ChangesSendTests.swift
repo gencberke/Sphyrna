@@ -22,14 +22,15 @@ struct ChangesSendTests: ChangesSendFixtures {
         #expect(await waitUntil { model.rowModels[chat].map { !model.isRunning($0) } == true })
         #expect(model.changesSendAvailability(for: chat) == .ready, "the send resumes the session, as the stopped composer does")
 
-        // A session the terminal face runs: the tab shows its diffs, and Send is off.
+        // A session the terminal face runs: Chat does not take its comments (they go to its mailbox once the runtime says
+        // its run takes messages, ChangesTerminalSendTests), and they stay after a send either way.
         model.setNewSessionFace(.terminal)
         let terminal = try await startFromDraft(model, text: "hello from the terminal")
         #expect(await waitUntil { (try? await fixture.rig.runtime.catalog.session(id: terminal)?.runEndpoint) == .terminal })
-        #expect(model.changesSendAvailability(for: terminal) == .notChat)
+        #expect(model.changesSendAvailability(for: terminal) == .unavailable, "not before the runtime said the run takes them")
         comment(model, terminal, line: 1, "a note")
         await model.sendChangeComments(for: terminal)
-        #expect(model.changes.session(for: terminal).comments(in: .lastTurn).count == 1, "nothing was sent, nothing was lost")
+        #expect(model.changes.session(for: terminal).comments(in: .lastTurn).count == 1, "nothing was lost")
         #expect(model.chatSessions?.existingDriver(for: terminal) == nil)
         await fixture.cleanup()
     }

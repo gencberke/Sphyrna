@@ -18,6 +18,10 @@ extension SessionRuntime {
                   let name = call.name, let message = call.message, let harness = call.harness,
                   let coordinator = taskCoordinator else { throw SessionTaskError.invalidPayload }
             try SessionTaskLimits.text(message)
+            // A harness coming later (D-120) is refused with its reason, not as a malformed request.
+            if let reason = HarnessCatalogue.comingLaterReason(for: HarnessID(harness.trimmingCharacters(in: .whitespacesAndNewlines))) {
+                return .init(status: "refused", detail: reason)
+            }
             let input = try OpenSessionInput.validated(title: name, project: call.project, message: message,
                 harness: harness, model: call.model, effort: call.effort, mode: call.mode)
             guard let parent = await authenticateTaskRun(call.claim) else { throw SessionTaskError.unauthorized }

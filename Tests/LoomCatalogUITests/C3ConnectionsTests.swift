@@ -43,32 +43,27 @@ struct C3ConnectionsTests {
         #expect(model.connectionRows.map(\.id) == HarnessCatalogue.ids)
         let claude = try row(.claude), codex = try row(.codex), agy = try row(.agy)
         #expect(claude.availability == .on && codex.availability == .on)
-        #expect(agy.availability == .off && agy.canSwitch)
-        for id in [HarnessID.opencode, .pi] {
+        // D-120: agy and opencode are coming later, found or not, and their switch cannot be used.
+        #expect(agy.availability == .comingLater && !agy.canSwitch && agy.headline == "Coming later")
+        #expect(try row(.opencode).availability == .comingLater && !(try row(.opencode).canSwitch))
+        for id in [HarnessID.pi] {
             let missing = try row(id)
             #expect(missing.availability == .notFound && !missing.isOn && !missing.canSwitch)
             #expect(missing.headline == "Not found on this Mac")
             #expect(missing.missingExplanation.contains("`\(missing.descriptor.command)`"))
         }
         model.setHarnessConnected(.opencode, false)
-        #expect(connections.isOn(.opencode), "the disabled switch cannot erase the saved choice")
+        #expect(connections.explicitChoices["opencode"] == true, "the disabled switch cannot erase the saved choice")
         let cards = model.homeConnect.cards
         #expect(cards.map(\.id) == [.claude, .codex, .agy])
         #expect(cards.first { $0.id == .claude }?.action?.title == "Copy Sign-In Command")
-        #expect(cards.first { $0.id == .agy }?.action == .turnOn)
+        #expect(cards.first { $0.id == .agy }?.action == nil && cards.first { $0.id == .agy }?.word == "Coming later")
         #expect(cards.first { $0.id == .codex }?.action == nil)
 
+        // A found harness that is coming later is never switched on, checked or stored as on.
         model.setHarnessConnected(.agy, true)
-        let enabledAgy = try row(.agy)
-        // AGY has a provider since its owned sessions (f31d53d): switched on, it is checked like the others.
-        #expect(enabledAgy.availability == .on && enabledAgy.headline == "Checking…" && rig.model.isChecking(.agy))
-        #expect(model.homeConnect.cards.first { $0.id == .agy }?.action == nil)
-        #expect(UIPreferencesStore(url: storeURL).current.isHarnessConnected(HarnessID.agy))
-        #expect(!model.homeConnect.cards.first { $0.id == .agy }!.row.buildSupportsSessions)
-        model.setHarnessConnected(.agy, false)
+        #expect(try row(.agy).availability == .comingLater && !rig.model.isChecking(.agy))
         #expect(!UIPreferencesStore(url: storeURL).current.isHarnessConnected(HarnessID.agy))
-        #expect(model.homeConnect.cards.first { $0.id == .agy }?.action == .turnOn)
-        model.setHarnessConnected(.agy, true)
 
         let stale = HarnessHealth(provider: .claude, state: .ready, headline: "Ready", executable: "/old/claude", version: [2, 1, 300])
         let missingAgain = ConnectionsContent.harnessRow(descriptor: HarnessCatalogue.descriptor(for: .claude)!,

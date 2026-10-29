@@ -101,7 +101,7 @@ import LoomTestSupport
         #expect(labels.contains("Some edits could not be read."))
         #expect(ChangesBodyWords.note(scope: .wholeSession, state: state, harnessName: "Codex")
                 == "Codex's file edits. Shell commands and subagents show under Branch. Some edits could not be read.")
-        #expect(model.changesSendAvailability(for: session.id) == .notChat)
+        #expect(model.changesSendAvailability(for: session.id) == .unavailable)
         let held = model.changes.session(for: session.id)
         let anchor = ChangeAnchor(fileID: try #require(data.files.first?.id), line: 1, removed: false, text: "hello")
         held.saveComment("draft", at: anchor, displayPath: "subfolder/added.swift", in: .wholeSession)

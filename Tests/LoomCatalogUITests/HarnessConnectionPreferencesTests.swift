@@ -22,7 +22,8 @@ struct HarnessConnectionPreferencesTests {
         }
         #expect(store.current.isHarnessConnected(id) == choice, "The app's switch saves every catalogue id")
         let reloaded = UIPreferencesStore(url: url).makeHarnessConnections()
-        #expect(reloaded.isOn(id) == choice, "A new app connection reads the persisted choice")
+        // A harness coming later (D-120) keeps its stored choice but is never offered.
+        #expect(reloaded.isOn(id) == (choice && !HarnessCatalogue.isComingLater(id)), "A new app connection reads the persisted choice")
         let writes = store.writeCount
         connections.setOn(id, choice)
         await Task.yield()

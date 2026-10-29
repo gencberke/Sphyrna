@@ -269,6 +269,31 @@ struct CodexAppServerTests {
         }
     }
 
+    /// The connect and the WebSocket upgrade wait for the server (`poll` against their deadline) on a thread of their own,
+    /// not on the cooperative pool. On the pool, more slow upgrades than it has threads queued in waves: the last connects
+    /// began only when the first had their answer.
+    @Test func slowUpgradesRunTogetherOffTheCooperativePool() async throws {
+        let servers = try (0..<(ProcessInfo.processInfo.activeProcessorCount + 2)).map { _ in try CodexUpgradeServer() }
+        defer { servers.forEach { $0.close() } }
+        let peers = servers.map { $0.refuseUpgrade(after: 2.5) }
+        let paths = servers.map(\.path)
+        var refused = 0
+        let elapsed = await ContinuousClock().measure {
+            refused = await withTaskGroup(of: Bool.self) { group in
+                for path in paths {
+                    group.addTask {
+                        do { _ = try await CodexAppServerClient.connect(socketPath: path, clientVersion: "test", timeout: 10); return false }
+                        catch { return error is CodexAppServerError }
+                    }
+                }
+                return await group.reduce(0) { $0 + ($1 ? 1 : 0) }
+            }
+        }
+        for peer in peers { _ = try await peer.value }
+        #expect(refused == servers.count)
+        #expect(elapsed < .seconds(3.75), "\(servers.count) upgrades answered after 2.5 s each took \(elapsed): they queued for pool threads")
+    }
+
     @Test func completedRequestsCancelTheirDeadlineTasks() async throws {
         let (client, peer) = try await CodexSocketPeer.make()
         defer { peer.close() }
@@ -842,6 +867,58 @@ struct CodexAppServerTests {
 
     private func value(_ json: String) throws -> JSONValue {
         try JSONDecoder().decode(JSONValue.self, from: Data(json.utf8))
+    }
+}
+
+/// A Unix socket in the test process standing in for `codex app-server`: its peer runs on a thread of its own.
+private final class CodexUpgradeServer: @unchecked Sendable {
+    let path: String
+    private let listener: Int32
+
+    init() throws {
+        path = "/private/tmp/lcx-\(UUID().uuidString.prefix(8)).sock"
+        listener = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard listener >= 0 else { throw CodexAppServerError.system(operation: "test socket", code: errno) }
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: Array(path.utf8) + [0]) }
+        unlink(path)
+        let bound = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(listener, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        }
+        guard bound == 0, listen(listener, 1) == 0 else {
+            Darwin.close(listener)
+            throw CodexAppServerError.system(operation: "test listen", code: errno)
+        }
+    }
+
+    /// Accepts one connection, reads the upgrade request, holds it for `delay` seconds and refuses it.
+    func refuseUpgrade(after delay: TimeInterval) -> Task<Void, any Error> {
+        let listener = listener
+        return Task {
+            try await onOwnThread("test.codex-peer") {
+                var waiting = pollfd(fd: listener, events: Int16(POLLIN), revents: 0)
+                guard poll(&waiting, 1, 10_000) == 1 else { return }
+                let connection = accept(listener, nil, nil)
+                guard connection >= 0 else { throw CodexAppServerError.system(operation: "test accept", code: errno) }
+                defer { Darwin.close(connection) }
+                var request: [UInt8] = []
+                var bytes = [UInt8](repeating: 0, count: 4096)
+                while !request.suffix(4).elementsEqual([13, 10, 13, 10]) {
+                    let count = recv(connection, &bytes, bytes.count, 0)
+                    guard count > 0 else { return }
+                    request += bytes.prefix(count)
+                }
+                usleep(useconds_t(delay * 1_000_000))
+                let answer = Array("HTTP/1.1 503 Busy\r\nContent-Length: 0\r\n\r\n".utf8)
+                _ = answer.withUnsafeBytes { send(connection, $0.baseAddress, $0.count, 0) }
+            }
+        }
+    }
+
+    func close() {
+        Darwin.close(listener)
+        unlink(path)
     }
 }
 
