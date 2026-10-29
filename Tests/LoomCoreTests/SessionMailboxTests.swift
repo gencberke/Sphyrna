@@ -233,4 +233,27 @@ struct SessionMailboxTests {
         }
     }
 
+    @Test func forgettingRemainsIncompleteWhileAReaderRetainsPayloadInTheWAL() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("peer-mail-wal-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("mail.sqlite3"), target = UUID()
+        let marker = "OWNED_PEER_PAYLOAD_\(UUID().uuidString)"
+        let mailbox = try await SessionMailbox.open(url: url)
+        let offer = makeOffer(sender: UUID(), target: target, message: marker)
+        _ = try await mailbox.offer(offer)
+        _ = try await mailbox.decide(id: offer.id, accept: true)
+        var rawReader: OpaquePointer?
+        #expect(sqlite3_open_v2(url.path, &rawReader, SQLITE_OPEN_READONLY, nil) == SQLITE_OK)
+        let reader = try #require(rawReader)
+        defer { sqlite3_close(reader) }
+        #expect(sqlite3_exec(reader, "BEGIN; SELECT count(*) FROM peer_messages", nil, nil, nil) == SQLITE_OK)
+        let wal = URL(fileURLWithPath: url.path + "-wal")
+        await #expect(throws: SessionTaskError.storage) { try await mailbox.forget(target: target) }
+        #expect(try await mailbox.unread(target: target).isEmpty, "logical deletion does not establish payload erasure")
+        #expect(try Data(contentsOf: wal).range(of: Data(marker.utf8)) != nil)
+        #expect(sqlite3_exec(reader, "ROLLBACK", nil, nil, nil) == SQLITE_OK)
+        try await mailbox.forget(target: target)
+        #expect(try Data(contentsOf: wal).isEmpty)
+        #expect(try Data(contentsOf: url).range(of: Data(marker.utf8)) == nil)
+    }
 }

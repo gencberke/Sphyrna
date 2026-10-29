@@ -1,9 +1,9 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-29,09:44 +03.
+- **Updated:** 2026-10-29,10:41 +03.
 - **State:** `waiting for implementation`. Active overnight goal D-112: a trustworthy daily-use local1.8.0. Planner is the technical authority; Pi deferred D-113. [Acceptance](plans/1.8.0/ACCEPTANCE.md) remains the completion gate.
 - **Power/window:** user asleep, Mac idle/AC verified; thermal nominal. One shared build slot, isolated scratch and90s heavy-cell cooldowns remain.
-- **Current work:** F1 stable source through a2e1f72 integrated1f38cc3 (two equivalent D1 fixes skipped); H1c32e35f callback/ordered-ingress/lifecycle fences preserved in merges. Existing F1 UI is now wired to real runtime reads; combined scoped check093908-75689 passed173Core+29UI. Peer-message/deletion and central transport-dispatch closure remain on warmcore. E1 primitives/profile/livefeed integrated79c6ed4; TUI route/policy observer under implementation, full provider/runtime pending. E2 exact local fake native text PASS with strict permissions/same native conversation/terminal result,0real calls; four-shape native fake discovery differential PASS (progressive skill metadata +startup hook from extra app-owned root).
+- **Current work:** F1 peer/transport integratedc045703; E1 authenticated TUI broker integratedfa70256 (58affected +14final narrow tests). Ordinary AGY provider/runtime is being implemented inr9-e2; actual OpenCode zero-model native TUI fixture is being prepared inr9-e1-native. User D-116 approved managed children +Take Over; unrestricted terminal editing is no longer the child target. Early astra/xhigh optimizer found actual approval/composer, relaunch-deletion, stopped-surface retention and mailbox-WAL defects. Parent WAL regression fails first102731-99243; fix under scoped verification. Full native F1/whole-app/resource gate remains unfinished.
 - **Installed/public:** daily app1.7.2 build10702; public release0.4.4. No new push/tag/PR/public promotion authorization; clean loom tree remains release-script-only.
 
 ## Accepted evidence and open limits
@@ -21,14 +21,16 @@
 
 | Tree | Branch/HEAD | Owner/state |
 | --- | --- | --- |
-| `~/Library/Caches/loom-v2/wt/v2` | `v2`,79c6ed4 plus UI bridge wiring | planner: canonical integration, H1 trigger/native acceptance, deletion and remaining release slices |
+| `~/Library/Caches/loom-v2/wt/v2` | `v2`,fa70256 plus mailbox WAL regression fix | planner: canonical integration, H1 trigger/native acceptance, deletion and remaining release slices |
 | `wt/r9-d1` | removed | accepted D1 source, verified recovery bundle/manifest (36/39write-set files equal;3reviewed D2/H1 integration differences), scratch cleanup queued |
 | `wt/r9-h1` | removed | accepted H1 source byte-equal27/27write-set files, verified recovery bundle/manifest; scratch cleanup queued |
-| `wt/r9-f1` | `slice/r9-f1`,a2e1f72 plus peer/transport edits | warmc4_core: core task RuntimeHost/CLI/status/three rounds, native identity/ingress/syscall proofs; shared Runtime/adapter/Codex/Vendor ownership |
-| `wt/r9-e1` | `slice/r9-e1`,c11d510 | warmb3_ink: new OpenCode Core/test primitives/profile/livefeed complete; runtime/provider integration Brief next, native TUI selection plugin seam being traced |
+| `wt/r9-f1` | `slice/r9-f1`,8dc5e95; clean staged source integrated | warmc4_core: core task RuntimeHost/CLI/status/three rounds, native identity/ingress/syscall proofs; shared Runtime/adapter/Codex/Vendor ownership |
+| `wt/r9-e1` | `slice/r9-e1`,d09e18a; clean staged source integrated | warmb3_ink: new OpenCode Core/test primitives/profile/livefeed complete; runtime/provider integration Brief next, native TUI selection plugin seam being traced |
 | `r9-f0`, `r9-d2-reader`, `r9-f1-ui`, `r9-b3b`, `r9-x1`, earlier A1b/B4/B5 trees | removed | accepted write-set/patch equivalence, verified recovery bundles/manifests; scratch removed |
 | `~/Documents/github/loom-dev` | `swarm/1` | guarded canonical/reference mirror; never Sources/build/commit |
 | `~/Documents/github/loom` | `main` | clean release repository; no test material |
+
+Additional active trees: `wt/r9-e2` (slice/r9-e2,3ffbee5+AGY changes, warmc4_core); `wt/r9-e1-native` (slice/r9-e1-native,fa70256, warmb3_ink new opt-in fixture only). Parent owns canonical records and the mailbox WAL source/test. `@optimizer` is read-only across all code.
 
 At most2 implementation slices. Every build/test/package/measurement uses the shared slot; parent owns combined checks, ledger/model reservations, canonical/reference files and actual native/OS measurements. Don't re-run or spend a real input without a new recorded reservation.
 
@@ -38,5 +40,5 @@ At most2 implementation slices. Every build/test/package/measurement uses the sh
 - **@implementer-core warmc4_core:** self-contained chat Brief, r9-f1 only. Finish bounded exact-native first-input proof, real fake three rounds, wait/wake/read/report/interrupt/verified-stop/deletion, existing real terminal sink. No real providers/models, shown windows or canonical docs.
 - **@implementer-ink warmb3_ink:** self-contained E1 continuation Brief, r9-e1 only. Primitive/profile/livefeed checkpoints985cb98/914fcb5/c11d510 ready (42test final); full runtime/provider wiring next. New OpenCode Core/test files only, existing shared runtime locks remain core/planner. No native/model/auth/window runs.
 - **@researcher warmorca_cross_agents:** pinned native selection and action-broker contracts complete; final bounded config endpoint lookup for E1. No provider/model/build/auth or subagents.
-- **@optimizer:** mandatory full-code architecture/quality/concurrency/resource review once candidate exists, gpt-6-astra/xhigh or Opus5.5/max. Planner fixes findings then final doc check and existing Claude's unfiltered independent critique. Preserve Claude permissions/effort and account usage; its subagents at least Opus5.5high.
-- **@user:** pending async AGY existing-Keychain exception question remains unanswered; no real AGY account access until an affirmative reply. Other isolated/fake work continues. Genuine isolated login stays user-owned. Cheap short turns as needed D-112; Pi deferred. Local readiness does not authorize public promotion.
+- **@optimizer:** early full-code astra/xhigh review active for the concrete F1 structural blocker; final candidate closure still required after fixes. Planner fixes findings then final doc check and existing Claude's unfiltered independent critique. Preserve Claude permissions/effort and account usage; its subagents at least Opus5.5high.
+- **@user:** D-115 authorizes short parent-run native AGY/Gemini tests with existing Keychain login. D-116 approves managed child view +Take Over; no further routine permission is needed. Genuine new login stays user-owned. Cheap short turns as needed D-112; Pi deferred. Local readiness does not authorize public promotion.

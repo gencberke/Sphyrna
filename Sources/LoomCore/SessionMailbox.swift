@@ -301,7 +301,11 @@ private final class PeerMailboxStore {
             try run("DELETE FROM peer_rates WHERE sender=?", [target.uuidString])
         }
         pending = pending.filter { $0.value.targetID != target }
-        try exec("PRAGMA wal_checkpoint(TRUNCATE)")
+        try statement("PRAGMA wal_checkpoint(TRUNCATE)", []) { statement in
+            guard sqlite3_step(statement) == SQLITE_ROW, sqlite3_column_int(statement, 0) == 0 else {
+                throw SessionTaskError.storage
+            }
+        }
     }
 
     func hasUnread(target: UUID) throws -> Bool {

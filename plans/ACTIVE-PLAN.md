@@ -13,7 +13,7 @@
   checkout (`loom-dev`, on `swarm/1`) mirrors the docs; `~/Documents/github/loom` is the public release tree.
 - **Who:** the planner starts each implementer (Claude Opus 5.5 / `medium` or `gpt-6.1-terra` / `max`, AGENTS §3.1; at most
   two at once), reviews, integrates and keeps the docs (D-107).
-- **Current goal (D-112–D-114):** unattended overnight work toward a reliable daily-use local1.8.0, [acceptance matrix](1.8.0/ACCEPTANCE.md). Match the clean reference, provide reusable native-like cross-harness children and truthful name/mark/model branches, then holistic real-use/performance/usage proof, full-code optimizer, final doc check and the existing Claude session's independent critique. Cheap short turns are authorized as needed; Pi is deferred.
+- **Current goal (D-112–D-116):** unattended overnight work toward a reliable daily-use local1.8.0, [acceptance matrix](1.8.0/ACCEPTANCE.md). Match the clean reference, provide reusable native-like cross-harness children and truthful name/mark/model branches, then holistic real-use/performance/usage proof, full-code optimizer, final doc check and the existing Claude session's independent critique. Cheap short turns are authorized as needed; Pi is deferred.
 - **The record before 1.8.0** (rounds 5 and 6, the rescue, the 1.6.0 slices, the End Batch Runbook):
   [archive/ACTIVE-PLAN-1.6.0-to-1.7.2.md](archive/ACTIVE-PLAN-1.6.0-to-1.7.2.md).
 
@@ -53,6 +53,8 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 5 | Z the gate, the optimizer, the release | planner |
 
 ## Open notes for the planner
+
+- **Managed agents (D-116):** user approved the managed progress/result view with individual app approval cards and Take Over, ending parent automation when the user takes control. The prior interactive-terminal proof cannot safely infer a clean composer after native approval/trust keys; source/fake stages remain provisional until supported managed execution and real native multi-round acceptance. D-115 permits only short parent-run native AGY/Gemini tests through the existing Keychain login; credential copying and permission changes remain forbidden.
 
 - **Latest user feedback (D-110/D-111,29Oct):** move Settings/Help into the one window-wide bottom bar (B3b); remove the sidebar footer. Cross-harness children need later result reads, second/third turns, status checks and completion/attention nudges. F0 settles task authority/result/wake semantics before F1; existing context/call/approval safeguards remain explicit.
 
