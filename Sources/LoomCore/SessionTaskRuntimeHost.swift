@@ -10,6 +10,7 @@ final class SessionTaskRunLease: @unchecked Sendable {
     private var hooksInFlight = 0
     private var codexEvents: Set<UInt64> = []
     private var revision: UInt64 = 0
+    private var unclassifiedInput = false
     func revoke() { lock.withLock { enabled = false } }
     private func advanceRevision() {
         guard revision < .max else { reliable = false; return }
@@ -33,6 +34,8 @@ final class SessionTaskRunLease: @unchecked Sendable {
     }
     func finishCodexEvent(_ sequence: UInt64) { lock.withLock { codexEvents.remove(sequence) } }
     func invalidate() { lock.withLock { reliable = false } }
+    func noteUnclassifiedInput() { lock.withLock { unclassifiedInput = true; advanceRevision() } }
+    var hasUnclassifiedInput: Bool { lock.withLock { unclassifiedInput } }
     func permits<T>(_ body: () -> T?) -> T? {
         lock.withLock { enabled && reliable && hooksInFlight == 0 && codexEvents.isEmpty ? body() : nil }
     }
@@ -114,6 +117,13 @@ struct SessionTaskExpectedInput: Sendable {
     var lastSequence: UInt64 = 0
 }
 
+struct SessionTaskProofWaiter {
+    let purpose: SessionTaskExpectedInput.Purpose
+    let binding: SessionTaskBinding
+    let continuation: CheckedContinuation<SessionTaskExecutionReference?, Never>
+    let timeout: Task<Void, Never>
+}
+
 /// This is a bridge to the existing runtime, never another process owner.
 final class SessionTaskRuntimeHost: SessionTaskHost, @unchecked Sendable {
     private weak var runtime: SessionRuntime?
@@ -123,8 +133,13 @@ final class SessionTaskRuntimeHost: SessionTaskHost, @unchecked Sendable {
     func ownsNewChild(taskID: UUID, parent: SessionTaskBinding, childID: UUID) async -> Bool {
         await runtime?.ownsReservedTaskChild(taskID: taskID, parent: parent, childID: childID) ?? false
     }
-    func observedChildExecution(_ target: SessionTaskRoundTarget) async -> SessionTaskExecutionReference? { nil }
-    func observedWakeExecution(taskID: UUID, operationID: UUID, binding: SessionTaskBinding) async -> SessionTaskExecutionReference? { nil }
+    func observedChildExecution(_ target: SessionTaskRoundTarget) async -> SessionTaskExecutionReference? {
+        await runtime?.taskInputObservation(purpose: .child(taskID: target.taskID, roundID: target.roundID,
+                                                             operationID: target.inputOperationID), binding: target.binding)
+    }
+    func observedWakeExecution(taskID: UUID, operationID: UUID, binding: SessionTaskBinding) async -> SessionTaskExecutionReference? {
+        await runtime?.taskInputObservation(purpose: .wake(taskID: taskID, operationID: operationID), binding: binding)
+    }
     func nativeStatus(binding: SessionTaskBinding) async -> SessionTaskNativeStatus {
         await runtime?.taskNativeStatus(binding) ?? .unknown
     }

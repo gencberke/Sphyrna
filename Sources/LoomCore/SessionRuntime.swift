@@ -348,6 +348,7 @@ public actor SessionRuntime {
     var taskSocketPath: String?
     var taskRunPlans: [UUID: SessionTaskRunPlan] = [:]
     var taskExpectedInputs: [UUID: SessionTaskExpectedInput] = [:]
+    var taskProofWaiters: [UUID: SessionTaskProofWaiter] = [:]
     var taskChildReservations: [UUID: SessionTaskChildReservation] = [:]
     var retiredTaskRuns: [UUID: SessionTaskRetiredRun] = [:]
     var startingTaskChildren: Set<UUID> = []
@@ -806,6 +807,7 @@ public actor SessionRuntime {
             taskIngress.remove(runID: plan.claim.managedRunID)
         }
         taskRunPlans.removeAll()
+        for id in Array(taskProofWaiters.keys) { finishTaskProofWaiter(id, result: nil) }
         taskExpectedInputs.removeAll()
         taskChildReservations.removeAll()
         retiredTaskRuns.removeAll()

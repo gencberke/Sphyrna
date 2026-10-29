@@ -73,7 +73,10 @@ extension SessionRuntime {
                 }
             }
             if case .applied = disposition {
-                if let event { await noteLimitHook(event, envelope: envelope, revision: limitRevision) }
+                if let event {
+                    await observeClaudeTaskHook(envelope, event: event)
+                    await noteLimitHook(event, envelope: envelope, revision: limitRevision)
+                }
                 HookDiagnostics.note(.applied)
                 LoomLog.debug(.claudeHooks, "applied \(name)")
                 return

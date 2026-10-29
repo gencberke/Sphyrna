@@ -70,6 +70,7 @@ extension SessionRuntime {
         retiredTaskRuns[sessionID] = SessionTaskRetiredRun(runID: plan.claim.managedRunID, generation: plan.claim.generation)
         taskIngress.remove(runID: plan.claim.managedRunID)
         taskExpectedInputs[plan.claim.managedRunID] = nil
+        finishTaskProofWaiters(runID: plan.claim.managedRunID, observation: nil)
         taskRunPlans[sessionID] = nil
     }
 
@@ -118,11 +119,107 @@ extension SessionRuntime {
         }
     }
 
+    func prepareTaskInput(purpose: SessionTaskExpectedInput.Purpose, binding: SessionTaskBinding,
+                          digest: Data, ticket: TerminalInputQueue.AutomaticInputTicket? = nil) async -> Bool {
+        guard digest.count == 32, let plan = taskRunPlans[binding.sessionID], plan.lease.isEnabled,
+              plan.claim.managedRunID == binding.managedRunID, plan.claim.generation == binding.generation,
+              taskExpectedInputs[binding.managedRunID] == nil,
+              await supervisor.taskBinding(for: plan.claim) == binding,
+              let current = taskRunPlans[binding.sessionID], current.lease === plan.lease,
+              current.lease.isEnabled, taskExpectedInputs[binding.managedRunID] == nil else { return false }
+        taskExpectedInputs[binding.managedRunID] = SessionTaskExpectedInput(purpose: purpose, binding: binding,
+                                                                           digest: digest, ticket: ticket)
+        return true
+    }
+
+    /// Wait only for the exact admitted input's provider observation. No timer
+    /// or transcript scan runs when no helper is waiting for that proof.
+    func taskInputObservation(purpose: SessionTaskExpectedInput.Purpose,
+                              binding: SessionTaskBinding) async -> SessionTaskExecutionReference? {
+        guard let expected = taskExpectedInputs[binding.managedRunID], expected.purpose == purpose,
+              expected.binding == binding, let plan = taskRunPlans[binding.sessionID], plan.lease.isEnabled,
+              plan.claim.managedRunID == binding.managedRunID, plan.claim.generation == binding.generation else { return nil }
+        var result = expected.observed
+        if result == nil {
+            guard taskProofWaiters.count < 32 else { return nil }
+            let id = UUID()
+            result = await withTaskCancellationHandler {
+                await withCheckedContinuation { continuation in
+                    if Task.isCancelled { continuation.resume(returning: nil); return }
+                    let timeout = Task { [weak self] in
+                        do { try await Task.sleep(for: .seconds(5)) } catch { return }
+                        await self?.finishTaskProofWaiter(id, result: nil)
+                    }
+                    taskProofWaiters[id] = SessionTaskProofWaiter(purpose: purpose, binding: binding,
+                                                                   continuation: continuation, timeout: timeout)
+                }
+            } onCancel: { Task { await self.finishTaskProofWaiter(id, result: nil) } }
+        }
+        guard let result, await authenticateTaskRun(plan.claim) == binding,
+              let current = taskExpectedInputs[binding.managedRunID], current.purpose == purpose,
+              current.binding == binding, current.observed == result else { return nil }
+        return result
+    }
+
+    func finishTaskProofWaiter(_ id: UUID, result: SessionTaskExecutionReference?) {
+        guard let waiter = taskProofWaiters.removeValue(forKey: id) else { return }
+        waiter.timeout.cancel()
+        waiter.continuation.resume(returning: result)
+    }
+
+    func finishTaskProofWaiters(runID: UUID, observation: SessionTaskExpectedInput?) {
+        let ids = taskProofWaiters.compactMap { id, waiter in
+            waiter.binding.managedRunID == runID ? id : nil
+        }
+        for id in ids {
+            guard let waiter = taskProofWaiters[id] else { continue }
+            let proof = observation?.purpose == waiter.purpose && observation?.binding == waiter.binding
+                ? observation?.observed : nil
+            finishTaskProofWaiter(id, result: proof)
+        }
+    }
+
+    private func rejectTaskInput(runID: UUID, plan: SessionTaskRunPlan) {
+        plan.lease.noteUnclassifiedInput()
+        inputGate.noteUnclassifiedInput(runID: runID)
+        taskExpectedInputs[runID] = nil
+        finishTaskProofWaiters(runID: runID, observation: nil)
+    }
+
+    func observeClaudeTaskHook(_ envelope: ClaudeHookEnvelope, event: ClaudeHookEvent) async {
+        guard case .userPromptSubmit = event.kind, !event.promptIsSynthetic, event.agentID == nil,
+              let plan = taskRunPlans[envelope.sessionID], plan.claim.managedRunID == envelope.managedRunID,
+              plan.lease.isEnabled else { return }
+        guard envelope.taskGeneration == plan.claim.generation,
+              let credential = envelope.taskCredential, secureEqual(credential, plan.claim.credential),
+              let context = await supervisor.runContext(runID: envelope.managedRunID),
+              let binding = await supervisor.taskBinding(for: plan.claim),
+              let cwd = event.workingDirectory,
+              URL(fileURLWithPath: cwd).resolvingSymlinksInPath().standardizedFileURL.path ==
+                  URL(fileURLWithPath: context.session.workingDirectory).resolvingSymlinksInPath().standardizedFileURL.path,
+              event.providerSessionID.caseInsensitiveCompare(binding.nativeSessionID) == .orderedSame,
+              let currentPlan = taskRunPlans[envelope.sessionID], currentPlan.lease === plan.lease,
+              currentPlan.lease.isEnabled, var expected = taskExpectedInputs[envelope.managedRunID],
+              expected.binding == binding, let digest = event.taskPromptDigest, digest == expected.digest else {
+            rejectTaskInput(runID: envelope.managedRunID, plan: plan)
+            return
+        }
+        if let promptID = event.promptID, !promptID.isEmpty, promptID.utf8.count <= 256, !promptID.utf8.contains(0) {
+            expected.observed = .providerPrompt(promptID)
+        } else { expected.observed = .appInputObservation(UUID()) }
+        taskExpectedInputs[envelope.managedRunID] = expected
+        if let ticket = expected.ticket { _ = inputGate.confirmAutomaticInput(runID: envelope.managedRunID, ticket: ticket) }
+        finishTaskProofWaiters(runID: envelope.managedRunID, observation: expected)
+    }
+
     func observeCodexTaskInput(serverID: UUID, observation: CodexTaskInputObservation) async {
         guard let server = codexServers.first(where: { $0.id == serverID }),
-              let plan = taskRunPlans[server.ownerCard], plan.lease.isEnabled,
-              let expected = taskExpectedInputs[plan.claim.managedRunID],
-              observation.sequence > expected.lastSequence else { return }
+              let plan = taskRunPlans[server.ownerCard], plan.lease.isEnabled else { return }
+        guard let expected = taskExpectedInputs[plan.claim.managedRunID] else {
+            rejectTaskInput(runID: plan.claim.managedRunID, plan: plan)
+            return
+        }
+        guard observation.sequence > expected.lastSequence else { return }
         let binding = await supervisor.taskBinding(for: plan.claim)
         guard let currentPlan = taskRunPlans[server.ownerCard], currentPlan.lease === plan.lease,
               currentPlan.lease.isEnabled, var current = taskExpectedInputs[plan.claim.managedRunID],
@@ -132,12 +229,13 @@ extension SessionRuntime {
         guard let binding, binding == current.binding,
               observation.threadID == binding.nativeSessionID, let turn = observation.turnID,
               observation.digest == current.digest else {
-            taskExpectedInputs[plan.claim.managedRunID] = nil
+            rejectTaskInput(runID: plan.claim.managedRunID, plan: plan)
             return
         }
         current.observed = .nativeTurn(turn)
         taskExpectedInputs[plan.claim.managedRunID] = current
         if let ticket = current.ticket { _ = inputGate.confirmAutomaticInput(runID: binding.managedRunID, ticket: ticket) }
+        finishTaskProofWaiters(runID: binding.managedRunID, observation: current)
     }
 
     /// App-only task metadata. Subscribe to updates before loading pages; a
