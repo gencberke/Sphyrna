@@ -1,12 +1,10 @@
 # Sphyrna (loom-dev)
 
-Sphyrna is a native macOS 27 app for running real Claude Code sessions side by side in one window: a sidebar of projects and sessions with live status, and the selected session either in its terminal, exactly as Claude Code draws it, or in a native chat over the same CLI. Sphyrna launches and owns each CLI session in its own process scope, tracks its state (working, waiting for you, finished), resumes past sessions, and stops everything it started on Quit.
+Sphyrna is a native macOS 27 session manager. It hosts real CLI sessions in owned process scopes, shows working/attention/completion state, resumes sessions and stops its owned work on Quit. The current development line targets **1.8.0** and Ink v4.
 
-The name Sphyrna arrives with 1.6.0; 0.4.4 is still Loom ([D-77](DECISIONS.md), [D-83](DECISIONS.md)). The code, the bundle id (`local.loom.desktop`), the data folder (`~/Library/Application Support/Loom`), the bundle file (`Loom.app`) and the repositories keep the name Loom, so macOS keeps the app's permissions and the data stays where it is.
+The app is terminal-first. General Native Chat is frozen (D-101); the task-only managed child view is the approved exception (D-116), with bounded progress, individual user permission cards and Take Over. Claude/Codex managed execution is implemented in the candidate, with native acceptance and recovery gaps still open. Other harness work and the release gate remain tracked in [STATUS.md](STATUS.md) and [the active plan](plans/ACTIVE-PLAN.md). This is not a daily-use-ready 1.8.0 release claim.
 
-For one power user on macOS 27. Out of scope for 1.6.0: Codex, other providers, and coordination between sessions beyond a session finding the sessions it needs and asking Sphyrna, with the user's approval, to open a new one ([ACTIVE-PLAN.md](plans/ACTIVE-PLAN.md)).
-
-Status: 0.4.4 is in daily use on the user's Mac and public on GitHub. This tree builds v2, which ships once, as Sphyrna 1.6.0, the first stable release ([D-68](DECISIONS.md), [D-83](DECISIONS.md)). The current position is in [STATUS.md](STATUS.md) and the active plan toward 1.6.0 in [plans/ACTIVE-PLAN.md](plans/ACTIVE-PLAN.md). Codex support exists in development builds but is not part of 1.6.0.
+Sphyrna is the product name. Internal Loom targets, bundle identifiers and existing data paths remain compatibility boundaries; name/migration completion is part of the active plan. Public promotion, installation and publishing require the user's explicit approval.
 
 ## Docs
 
@@ -15,11 +13,11 @@ Status: 0.4.4 is in daily use on the user's Mac and public on GitHub. This tree 
 | [AGENTS.md](AGENTS.md), [CLAUDE.md](CLAUDE.md) | Agent workflow, role matrix, canonical file routing, working principles, and safety rules |
 | [STATUS.md](STATUS.md) | Live relay board: where the work stands now, worktrees, active file locks, and `@role` handoff queue |
 | [SPEC.md](SPEC.md) | Unified product & behavioral specification (replacing `LOOM-PRODUCT-CONTRACT.md` and `plans/v2/CHAT-SPEC.md`) |
-| [DECISIONS.md](DECISIONS.md) | User decisions: Approved & Active (`D-01`–`D-91`), Rejected & Superseded, and Pending / Open (`#open`) |
+| [DECISIONS.md](DECISIONS.md) | Dated user decisions: Approved & Active, Rejected & Superseded, and Pending / Open |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture: targets, runtime flows, process ownership, UI surface-to-code index (§11, replacing `design/UI-MAP.md`), and technical gotchas (§12) |
-| [design/DESIGN.md](design/DESIGN.md), [design/reference.html](design/reference.html) | Visual design system (Ink v3) and interactive reference |
+| [design/DESIGN.md](design/DESIGN.md), [design/reference.html](design/reference.html) | Visual design system (Ink v4) and interactive reference |
 | [DEVELOPMENT.md](DEVELOPMENT.md), [scripts/README.md](scripts/README.md) | Build, test, isolation, evidence mode, packaging, and measurement |
-| [plans/ACTIVE-PLAN.md](plans/ACTIVE-PLAN.md), [plans/README.md](plans/README.md) | Active 1.6.0 execution plan, End Batch Runbook, experiments, and archived checkpoint history (`plans/archive/`) |
+| [plans/ACTIVE-PLAN.md](plans/ACTIVE-PLAN.md), [plans/README.md](plans/README.md) | Active 1.8.0 slice status and acceptance, plan routing, and dated history under `plans/archive/` |
 
 This repository is **loom-dev**, the development tree. The daily-use app is built from a separate clean **loom** tree that receives tested releases from here and is public at [github.com/gencberke/loom](https://github.com/gencberke/loom); its README is [scripts/release/README.release.md](scripts/release/README.release.md), with pictures rendered from [design/readme/](design/readme/build.py) ([DEVELOPMENT.md §10](DEVELOPMENT.md#10-loom-dev-and-the-clean-loom-tree)).
 

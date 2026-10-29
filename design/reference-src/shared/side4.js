@@ -17,26 +17,26 @@ const I4_WORD = { work:'Working', attn:'Needs you', unv:'Finished', fail:'Failed
 
 const I4_PROJECTS = [
   { name:'loom', tone:'var(--orchid)', letter:'L', sessions:[
-    { id:'ink', t:'Port the sidebar to Ink tokens', st:'work', time:'37s', br:'ui/ink-sidebar', h:'claude',
+    { id:'ink', t:'Port the sidebar to Ink tokens', st:'work', time:'37s', br:'ui/ink-sidebar', h:'claude', model:'Opus 5.5',
       why:'Editing <span class="mono">SidebarCard.swift</span> · 61 lines',
       subs:[ { st:'work', name:'Implementer', h:'agy', model:'Gemini', e:'2m' },
              { st:'work', name:'Reviewer', h:'codex', model:'GPT-6 Luna', e:'now' },
-             { st:'done', name:'Docs', h:'opencode', model:'CLI default', e:'' } ] },
-    { id:'gate', t:'Review the gate failure', st:'attn', time:'3m', br:'fix/gate-timeout', h:'claude',
+             { st:'done', name:'Docs', h:'opencode', model:'Haiku 5.5', e:'' } ] },
+    { id:'gate', t:'Review the gate failure', st:'attn', time:'3m', br:'fix/gate-timeout', h:'claude', model:'Opus 5.5',
       why:'Claude asks to run <span class="mono">scripts/check.sh --full</span>.' },
-    { id:'lb', t:'Remora spike S10', st:'', time:'2d', br:'remora/s10', h:'codex',
+    { id:'lb', t:'Remora spike S10', st:'', time:'2d', br:'remora/s10', h:'codex', model:'GPT-6 Luna',
       why:'Last active Monday · no prompt since' }
   ]},
   { name:'edd-backend', tone:'var(--mint)', letter:'B', sessions:[
-    { id:'config', t:'Remove Task Config Status', st:'work', time:'3m', br:'feature/bg/EDDP-20625', h:'claude',
+    { id:'config', t:'Remove Task Config Status', st:'work', time:'3m', br:'feature/bg/EDDP-20625', h:'claude', model:'Opus 5.5',
       why:'Editing <span class="mono">TaskConfig.swift</span>' },
-    { id:'jwt', t:'Migrate auth to JWT', st:'fail', time:'3h', br:'fix/auth-jwt', h:'codex',
+    { id:'jwt', t:'Migrate auth to JWT', st:'fail', time:'3h', br:'fix/auth-jwt', h:'codex', model:'GPT-6 Luna',
       why:'Failed at <span class="mono">tests/auth.spec.ts:214</span>' }
   ]},
   { name:'second-brain', tone:'var(--aqua)', letter:'S', sessions:[
-    { id:'vm', t:'Weekly vault maintenance', st:'work', time:'1m', br:'main', h:'claude',
+    { id:'vm', t:'Weekly vault maintenance', st:'work', time:'1m', br:'main', h:'claude', model:'Opus 5.5',
       why:'Reading <span class="mono">Inbox/2026-10-27.md</span>' },
-    { id:'th', t:'Thesis outline', st:'unv', time:'25m', br:'thesis/outline', h:'codex',
+    { id:'th', t:'Thesis outline', st:'unv', time:'25m', br:'thesis/outline', h:'codex', model:'GPT-6 Luna',
       why:'Finished · <span class="mono">outline.md</span> · 4 notes' }
   ]}
 ];
@@ -55,10 +55,13 @@ function i4subs(list) {
 
 function i4card(s, p, view, o = {}) {
   const idle = o.idle === s.id;
+  const model = s.model || '';
+  const harness = `<span class="hm ${s.h}"></span>`;
+  const trailing = view === 'activity'
+    ? `<span class="i4model">${harness}${model ? `<span>${model}</span>` : ''}</span>` : harness;
   const third = view === 'activity' && !idle && s.why
-    ? `<span class="i4scb"><span class="i4scr">${s.why}</span><span class="hm ${s.h}"></span></span>`
-    : `<span class="i4scb"><span class="i4brn">${s.br}</span><span class="hm ${s.h}"></span></span>`;
-  const model = s.model || ({claude:'Opus 5.5',codex:'GPT-6 Luna',opencode:'CLI default',agy:'Gemini'})[s.h] || '';
+    ? `<span class="i4scb"><span class="i4scr">${s.why}</span>${trailing}</span>`
+    : `<span class="i4scb"><span class="i4brn">${s.br}</span>${trailing}</span>`;
   const identity = view === 'projects'
     ? `<span class="hm ${s.h}"></span><span class="pn">${model}</span>`
     : `<span class="i4pmark">${p.letter}</span><span class="pn">${p.name}</span>`;

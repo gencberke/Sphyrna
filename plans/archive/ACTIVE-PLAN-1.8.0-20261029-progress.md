@@ -1,0 +1,105 @@
+# Archived progress: Sphyrna 1.8.0 through 29 October 2026
+
+Historical snapshot retained during the D-118 documentation cleanup. Use [the current active plan](../ACTIVE-PLAN.md) and `STATUS.md` for present work.
+
+- **Target:** Sphyrna 1.8.0, the first strong stop: an app fit for daily use ([D-105](../../DECISIONS.md)). Every harness
+  first-class, the look moved to Ink v4 after Orca's design system, the known bugs closed, `send` between sessions and Remora on
+  any harness.
+- **The plan:** [plans/1.8.0/README.md](../1.8.0/README.md) (goal, order, slice table, release gate, where each open item went),
+  with [COMMON.md](../1.8.0/COMMON.md) (the rules every brief shares), [DESIGN-V4.md](../1.8.0/DESIGN-V4.md) (the record of the look's proposal;
+  its approved rules are in `design/DESIGN.md` §0, D-106) and one brief per slice in [briefs/](../1.8.0/briefs).
+- **Why:** [FEEDBACK-7](../FEEDBACK-7.md) (round 7: the card, the design language, the project drag, the reading of Orca and T3
+  Code) and the 1.8.0 parts of [FEEDBACK-6](../FEEDBACK-6.md).
+- **Integration branch:** `v2` in `~/Library/Caches/loom-v2/wt/v2`, the one line (local only, never pushed without `@user`).
+  A running slice has `slice/r9-<id>` in `~/Library/Caches/loom-v2/wt/r9-<id>`, removed the day it is integrated (D-107). This
+  checkout (`loom-dev`, on `swarm/1`) mirrors the docs; `~/Documents/github/loom` is the public release tree.
+- **Who:** the planner starts each implementer (Claude Opus 5.5 / `medium` or `gpt-6.1-terra` / `max`, AGENTS §3.1; at most
+  two at once), reviews, integrates and keeps the docs (D-107).
+- **Current goal (D-112–D-117):** unattended overnight work toward a reliable daily-use local1.8.0, [acceptance matrix](../1.8.0/ACCEPTANCE.md). Match the clean reference, provide reusable native-like cross-harness children and truthful name/mark/model branches, then holistic real-use/performance/usage proof, full-code optimizer, final doc check and the existing Claude session's independent critique. Cheap short turns are authorized as needed; Pi is deferred.
+- **The record before 1.8.0** (rounds 5 and 6, the rescue, the 1.6.0 slices, the End Batch Runbook):
+  [archive/ACTIVE-PLAN-1.6.0-to-1.7.2.md](../archive/ACTIVE-PLAN-1.6.0-to-1.7.2.md).
+
+## Slice status
+
+The order and the dependencies are in [the plan §3](../1.8.0/README.md#3-the-slices). Status values: queued, ready,
+running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library/Caches/loom-v2/tools/` (COMMON §4).
+
+| Wave | Slice | Status |
+| --- | --- | --- |
+| 0 | B0 the reference in Ink v4 | integrated `5ba94f1` (approved by `@user`, D-106, with the planner's fixes: Activity marks, the two pickers) |
+| 0 | P0 Codex spike | bounded investigation complete;7 user inputs +1 auxiliary held; D1 works with API-resume/owned-route changes, F1 queue verified, D2 data boundaries noted, G1 strict no-tools blocked; SPIKE.md in evidence/r9/p0 |
+| 0 | P1 opencode/agy spike | D-112 cheap short turns as needed; official-source preparation complete, native isolation proof before execution; user signs in when needed. Pi deferredD-113 |
+| 1 | A1 project reorder | integrated `075cd7d` (after review: rows are direct list children again, `SidebarPagingTests`; the released gap holds until the order lands); a by-hand drag check waits for the gate |
+| 3 | A1b project draft row overlap | integrated `f8adc58`,50 connected tests +actual Ink/Paper row/selection PASS; recovery evidence retained, slice tree/scratch removed |
+| 1 | C1 harness catalogue | integrated `59e300e` (with the planner's fix: opencode has no doctor until P1) |
+| 1 | B1 v4 tokens and controls | integrated `fe6f102` + `a81e2c0` (tokens, six button roles at four sizes, the focus halo, three elevations); its rest is closed by B1b |
+| 1 | B1b shared controls and the last buttons | integrated `d2f3305` + `5c1f073`; five controls, remaining roles, Label, 36 pt main actions and 32 pt stepper; focus/AX regression fixed; planner's 7 affected suites PASS (63). Full attempt interrupted; pooled checks below |
+| 1 | B0b the rest of the reference in v4 | integrated `bdaad69`; consistency pass closed by `fca9e2a` + `2d10f93` (shared complete parts, frame/crop rule, Connections and About) |
+| 2 | C2 catalogue consumers | integrated `608266d` (one probe outcome, limits from the probe, efforts on the entries, no Peek singleton) |
+| 2 | C2b the catalogue reaches every list | integrated `175f653` (no `ModelCatalog.shared`; availability on `CatalogModel`; one startable rule; File, Dock, Home, sidebar and menu bar follow the switch and the CLI); its follow-ups are in C3's brief |
+| 2 | B2 sidebar and card | integrated `497a962` + `6601d5c`; off-screen layout/selection, viewport clock, rest render and accessibility checks pass |
+| 2 | C3 Connections and Home connect cards | integrated `365b2d2` + `175f0e2`, parent seams `425878a`, `c84572b`, `1d4326d`; 9 core + 76 UI scoped tests pass; pooled guard/expectation fixes closed by `8e6fbf7` (112 affected tests PASS) |
+| 2 | B3 status bar | integrated `26acb6c`; full-width 26 pt bar, cached limits/popover, bounded working menu, shared awake setting and sidebar utilities; 185 affected tests PASS; Q7's documented Yes default applied |
+| 3 | B3b one bottom bar | integrated `f3d4f01` +Help AX fixf0d9117;93 slice +29 integrated scoped/window +14 fix tests PASS; actual Ink/Paper, repeated Help open/Escape, collapsed sidebar/fullscreen return PASS; source-equivalence/recovery cleanup complete |
+| 3 | C4 neutral draft | integrated `049a95c`; 329 affected tests PASS on v2 (193 Core + 1 Chat + 135 UI); compatible choices/files and v1/v4, supported effort retained per DESIGN |
+| 3 | B4 model and effort pickers | integrated `d727e87`; 140 offscreen tests PASS. Native fix `0c8a0b2` passes 47 affected tests and actual signed-app/keyboard gate. D-109 header stays read-only |
+| 3 | D1 Codex sessions · D2 Codex reader and deletion | D1 integrated75f717f after actual T14 native first-message/approval/settings/Stop→same-ID zero-input Resume/VT/Quit PASS (5tests); independent owned cleanup verified. D2 reader be3e17a/ecfce1e,19connected+3revision checks PASS. Combined D1/H1:153/155Core and84UI PASS; one stale legacy window expectation caused the combined FAIL, then scoped24PASS072804-11792 closes it. Deletion remains separate |
+| 3 | B5a Home/project/draft · B5b session surfaces | B5a integrated `e618124`, connected 9 Core +108 UI tests PASS (slice 345 UI run FAIL test-state collision, affected serialized 12 PASS); B5b integrated `339929d`, connected156 tests PASS; first-screen RSS/timing limits and native gates remain named |
+| 3 | B5c Settings, sheets, palette, menus and About | integrated `7f77000`; 97 affected tests PASS (one corpus measurement skipped), six controlled theme renders; native/window/energy remain pooled |
+| 3 | X1 reference/sidebar parity | integrated26088a1 (c3adafb +26088a1);65 parent scoped tests PASS, failing-first raster/AX evidence; native parity pooled; clean source-equivalent tree/branch/scratch removed with recovery bundle |
+| 4 | F0 cross-harness child contract/foundation | integratedc7fc0ab/0c9b2a8;24 fake-host tests pass including typed host-resolved native input proof. Durable stable relationship/fresh rounds, explicit results/attention, bounded task grant, wait/check/interrupt and lifecycle fences. F1 wires existing owner/CLI/UI |
+| 4 | F1 runtime/CLI and task agent UI | UI integrated44447c3 with78 parent tests; stable core througha2e1f72 integrated1f38cc3 with H1 merge fences, app UI bridge wired and parent scoped check093908-75689 PASS173Core+29UI. Peer/transport closure and actual native both-direction3round proof pending; fake proofs are not whole-flow acceptance |
+| 4 | H1 usage | source8980957 plus parentc32e35f trigger: authenticated hook/prompt/profile/run binding, event-driven bounded queued-write wait, source/deletion/scheduler fences and default-off no-read preflight;14Core+11UI PASS081625, final7Core PASS082920. Actual OS/native notification/resource acceptance pending |
+| 4 | E1 opencode · E2 agy · F2 Changes → session · G1 supported Remora backends · I1 names | E1 primitives/profile/livefeed integrated79c6ed4,42slice tests; TUI route/policy observer in progress, runtime pending. Native G1 local wire PASS2captures/0real inputs. AGY native headless local fake path PASS with exact terminal result/same conversation/strict permissions,0real calls; default main request declares tools, so no no-tools claim. Four-shape native fake discovery differential PASS; actual E2/full TUI pending |
+| — | E3 pi | deferred from1.8.0 byD-113; no probe/integration in current goal |
+| 5 | Z the gate, the optimizer, the release | planner |
+
+## Open notes for the planner
+
+- **Current integration (29Oct afternoon):** X2 reference glyphs/model provenance integrated `de1ce49`,41offscreen checks; parent stale-picker reconciliation15PASS. Production Claude task controller `93132eb` passes13protocol tests after meaningful race/cancellation/authority/owned-pipe reds. Core managed execution and selected-view wiring remain in progress; whole native acceptance is unfinished. Three actual OpenCode0input attempts reach valid isolated profile thenSIG5serverstartup,cleanup verified; watcher-only avoidance unchanged,FFFnext. These are FAILs, not accepted first-class transport.
+
+- **Latest visual steering (D-117):** the reference outline glyph family is being applied throughout app chrome in X2, with Activity's own main-session model immediately after its harness mark. Native Ink/Paper and narrow-width visual/AX checks remain required.
+
+- **Managed agents (D-116):** user approved the managed progress/result view with individual app approval cards and Take Over, ending parent automation when the user takes control. The prior interactive-terminal proof cannot safely infer a clean composer after native approval/trust keys; source/fake stages remain provisional until supported managed execution and real native multi-round acceptance. D-115 permits only short parent-run native AGY/Gemini tests through the existing Keychain login; credential copying and permission changes remain forbidden.
+
+- **Latest user feedback (D-110/D-111,29Oct):** move Settings/Help into the one window-wide bottom bar (B3b); remove the sidebar footer. Cross-harness children need later result reads, second/third turns, status checks and completion/attention nudges. F0 settles task authority/result/wake semantics before F1; existing context/call/approval safeguards remain explicit.
+
+- **Reference steering (29 Oct):** user highlights T3 Code/Orca harness and cross-provider child-agent messaging, especially Claude→Codex and reverse, and explicitly permits search agents. T3 and Orca are being traced read-only with version/file evidence. This is a comparison for D1/F1/G1; no new orchestration scope/context budget is silently added. Reports under `evidence/r9/reference-harnesses/`.
+
+- **B5b source accepted (29 Oct):** `339929d` passed156 connected UI tests, `check-20261029T003031-71745.log`, on top of B5a/B4 fixes. Slice226 affected tests passed. Repeated8 MiB timings overlap (base median99.12ms, current102.87ms with151.71ms outlier); strict equivalence is unproved. RSS is consistently5.6–6.0MB higher, mostly after host creation in a single diagnostic; denser visible prose supports a rendering contribution but exact cause is unproved. Preserve this named performance limit for the native pool/closing review. Evidence `evidence/r9/b5b/REPORT.md`; clean source-equivalent worktree/branch/scratch removed after bundle verification.
+
+- **Native pool (28–29 Oct):** original window cell `check-20261028T223242-27601.log` remains FAIL (one obsolete sidebar label among33 UI, other32 +2 terminal tests pass). Scoped sidebar correction `0391807` passes11 tests in `check-20261028T233518-51608.log`. B4 intrinsic-only/controller candidates failed natively; explicit dimensions `0c8a0b2` pass actual guarded Ink/Paper panels, search/Return/Escape/focus with process absent/default metadata unchanged after close. See `b4-native-fix/NATIVE-INTEGRATION.md`. The pool REPORT preserves the earlier CUA post-crash unflagged relaunch/default Dev WAL incident; contents invariance cannot be claimed for it. Physical edges, drag/fullscreen, real VoiceOver and energy remain named pending cells.
+
+- **B4 accepted (28 Oct):** `d727e87` combines the original picker slice and planner-found Recent/rail navigation fix. Integrated-tree check `check-20261028T222811-26551.log` passes 140 tests (7 Core + 133 UI) in the 11 intended suites. Native model/effort and actual keyboard gate now pass at `0c8a0b2`; physical edges/VoiceOver/energy remain named pool items; no new whole-pool repeat. Report: `evidence/r9/b4/REPORT.md`.
+
+- **B4 header UX (D-109):** @user delegated the cleanest interaction to the planner; retain the read-only current-model/context header, with model/effort selection in the new-session draft. Shared reference headers are reconciled; do not introduce next-start pending state or terminal command injection.
+
+- **Continuous resume and test budget (D-108, 28 Oct):** Mac idle and AC attached; run the accumulated native/window/visual/energy pool at a worthwhile integrated point. Historical real isolated ceilings were Codex ≤15, opencode/agy/pi ≤5 each; D-112 supersedes them for this goal with short cheap turns as needed, and D-113 defers Pi; record every turn in `evidence/r9/REAL-TURN-BUDGET.md` and provider reports. The user performs any login; no release/install authority was added.
+
+- **C4/B5c accepted (28 Oct):** C4 integrated-tree log `check-20261028T213831-12075.log` passes 329 tests; B5c on top
+  passes 97 in `check-20261028T214402-14160.log`. The old-file fixture and v4 work left at the daytime pause are now verified.
+  Reports/integration records: `evidence/r9/c4/` and `b5c/`. Source-equivalent slice checkpoints and evidence are preserved;
+  clean integrated worktrees/branches/scratch are removed under D-107. B4 is now accepted. The idle pool must cover the native root,
+  Settings tab clicks, inspector/working indicators, palette physical edge clicks, visual pairs and energy; offscreen renders
+  and AX presses do not claim those gates. P0 has submitted six short Codex user inputs and holds one extra conservatively for unmeasured auxiliary activity; the shared ledger is authoritative.
+
+- **B3 closed (28 Oct):** integrated-tree check passes **185 tests** (7 core + 178 UI), including the shared offscreen root/popover, limit freshness, menu bounds/actions and unrelated-hook redraw regression: `check-20261028T125618-89179.log`. Report: `~/Library/Caches/loom-v2/evidence/r9/b3/INTEGRATION.md`. Worktree/patch-equivalent branch and 1.7 GB scratch removed; evidence retained. No new whole-pool run or shown-window/real-CLI check (D-90). Next: C4's per-harness draft/store/open choices, then B4's model/effort controls and B5's surface migrations.
+
+- **Reference consistency is closed** (28 Oct): shared session chrome and harness marks, terminal, Overview, Connections, Settings tabs and
+  About; one complete-app frame rule and labelled crops (DESIGN §1). Source guard, Ink/Paper geometry and browser flows pass;
+  evidence is in `~/Library/Caches/loom-v2/evidence/r9/reference-consistency/REPORT.md`.
+- **Corrected off-screen pool (28 Oct):** completed at `175f0e2` in
+  `~/Library/Caches/loom-check-logs/check-20261028T114138-69249.log`: 3560 tests, three failed tests (raw catalogue comparisons,
+  old Home setup-block expectation, fixed-duration elapsed-test bound). `8e6fbf7` closes them; the affected check passes
+  **112 tests** at `check-20261028T120853-77355.log`. The original full verdict remains FAIL; only scope was rerun (D-90).
+  B1b's earlier interrupted full run is historical, never a pass. Native window/visual/VoiceOver/energy gates remain pending.
+- **C3's later seams:** agy's verified install command waits for P1; starting opencode/agy/pi waits for E1–E3. Connections
+  records availability/preferences now, and deliberately makes no unsupported-engine or sign-in claim.
+- **The by-hand checks waiting for the gate:** A1's drag in the dev app (lift, slide, landing, Escape); the v4 look in
+  evidence-mode screenshots after B1b (Home, a session with the inspector, Settings, a sheet; Ink and Paper).
+
+## Founding goals (unchanged since 1.6.0, D-83)
+
+1. **Light.** RAM, CPU, disk and energy never tire the user, while every function stays.
+2. **Sessions, not harnesses.** Sphyrna is the one place that manages every session, whatever its harness.
+3. **Cost out of sight.** Nothing enters a session's context or spends quota beyond what SPEC §12 allows.

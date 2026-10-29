@@ -85,6 +85,18 @@ Roles: `SessionRuntime` is the one application runtime, and `SessionService` (Lo
 ledger, stop/shutdown and catalog commits. `SessionCatalog` (actor) is the durable store. `SessionEventHub` (actor) publishes
 sequenced frames to subscribers.
 
+### Managed task execution and selected UI (1.8.0 candidate)
+
+`SessionTaskCoordinator`/`SessionTaskStore` own durable task, round, result and operation authority. `SessionRuntime+ManagedTasks.swift` and `+ManagedClaude.swift` use exact run/generation input leases; the Codex creator subscribes before starting its owned thread. The Claude protocol owner is `LoomChat/Driver/ManagedClaudeTaskController.swift`, injected by the app. It owns bounded protocol state, never a terminal view or the process. `SessionService` approves managed tasks without allocating a terminal sink. Take Over revokes automation before verified Stop and same-native-ID terminal Resume. General Native Chat remains frozen.
+
+`ManagedTaskPresentation` bounds progress and permission occurrences. The indexed child query feeds `ManagedAgentUIBridge`/`ManagedAgentPane`; `DetailRoute.managedAgent` precedes the general pipe-to-Chat rule. `ManagedAgentView` and `ManagedAgentQuestions` render read-only progress and explicit per-occurrence user decisions. `SessionRowModel.managedTaskRevision` isolates progress from sidebar card/project invalidation. Runtime identity and syscall admission, not a rendered card, authorize effects.
+
+`OwnershipLedger.managedTaskScopes`, `ManagedTaskScope` and the task store persist exact scope-stop receipts before ledger removal. App startup awaits previous-run recovery before retrying deletion. Never-started attempts have transactional no-effect settlement; an in-memory Stop fence is separate from durable interrupted `.stopping`. The opening-before-first-associated-ledger crash window is still unresolved. Do not infer an empty scope from no current run. See the advisory report named in `STATUS.md` for the continuation design and known interrupt uncertainty.
+
+Resource bounds: `SubagentTranscriptBatches` is a single-consumer acknowledged sequence; growth reads use a bounded newest window, entries are capped at 1,000/1 MiB, and replacement/omitted-history/initial-brief semantics survive coalescing. `ChangesPayloadCache` bounds reloadable results/diffs to 64 records and an estimated 16 MiB, with at most eight physical file reads. Draft/composing text is excluded from eviction. These estimates are not a total RSS ceiling; active read inputs and native rendering must be measured separately.
+
+Remora's current pack reader admits only `HarnessDescriptor.transcriptFormat == .claudeJSONL`. The broad `readsTranscript` capability also covers Codex's separate rollout reader and must not admit a Codex session to the Claude locator/decoder. Codex remains index-only in this pack until a matching adapter is wired; an unknown format fails closed.
+
 ## 3. Runtime flows
 
 **App launch to catalog** (`AppDelegate.applicationDidFinishLaunching`)

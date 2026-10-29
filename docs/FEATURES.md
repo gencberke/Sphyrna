@@ -211,6 +211,7 @@ transcript reads in two voices.
 - **Orca:** Native Claude/Codex subagent trackers preserve provider ancestry; cross-provider work instead uses `orchestration.workerStart`, with separate Task/Dispatch/session identity and explicit `worker_done` reporting (`src/main/runtime/rpc/methods/orchestration/worker/local-worker-start.ts`, `src/main/runtime/orchestration/preamble.ts`).
 - **T3 Code:** Same-provider native agents and app-owned delegates are distinct. `delegate_task` validates caller/target model, creates a separate provider child and links bounded results by parent/child/run; duplicate completion is fenced (`apps/server/src/mcp/OrchestratorMcpService.ts`, `apps/server/src/orchestration-v2/Orchestrator.ts`).
 - **Sphyrna takes:** D-111 requires multi-turn cross-harness children: status, readable results, follow-up turns and completion/attention nudges. F0/F1 define the scoped relationship/transport; tiny context, user approvals and verified ownership remain. B5b's native-provider transcript grouping is a separate implemented surface.
+- **Current acceptance:** managed Claude/Codex source and same-child three-round fake integration are present, with read-only progress, individual user permission cards and Take Over. Real native cross-harness rounds are not accepted; the final signed-app delegation/AX reproduction crashes and blocks acceptance. Opening crash recovery and an intermittent Claude interrupt remain open; ordinary AGY is integrated while managed AGY/OpenCode remain pending. `STATUS.md` links the exact report and final continuation.
 
 ---
 

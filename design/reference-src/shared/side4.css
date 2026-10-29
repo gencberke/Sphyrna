@@ -91,6 +91,9 @@
 .i4scb{display:flex;align-items:center;gap:6px;height:16px;color:var(--fg-3);white-space:nowrap}
 .i4brn{font:10.5px var(--mono);color:var(--fg-3);min-width:0;overflow:hidden;text-overflow:ellipsis}
 .i4scb .hm{margin-left:auto;width:11px;height:11px}
+.i4model{display:flex;align-items:center;gap:5px;max-width:120px;margin-left:auto;flex:none;font:11px var(--ui)}
+.i4model .hm{margin-left:0;flex:none}
+.i4model>span:last-child:not(.hm){min-width:0;overflow:hidden;text-overflow:ellipsis}
 .i4scr{display:block;height:16px;font-size:11.5px;line-height:16px;color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .i4scr .mono{font-size:10.5px;color:var(--fg-1)}
 .i4scb .i4scr{flex:1;min-width:0}
