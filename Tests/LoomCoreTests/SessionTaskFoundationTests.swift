@@ -253,6 +253,27 @@ private struct TaskFixture {
 
 @Suite(.serialized)
 struct SessionTaskFoundationTests {
+    @Test func aPartialWirePageAcknowledgesOnlyEventsActuallyReturned() async throws {
+        let f = try await TaskFixture.make()
+        defer { f.clean() }
+        let round = try #require(try await f.input("work").roundID)
+        _ = try await f.coordinator.deliverPending(taskID: f.taskID)
+        for index in 0..<8 {
+            _ = try await f.report(round, kind: .needsParentInput,
+                payload: "\(index)" + String(repeating: "x", count: SessionTaskLimits.payloadBytes - 1))
+        }
+        let entries = try await f.coordinator.eventEntries(taskID: f.taskID, parent: f.parent)
+        let packed = try SessionTaskWirePacking.page(entries.items, next: entries.next)
+        let page = try JSONDecoder().decode(SessionTaskWirePage.self, from: packed.data)
+        #expect(!page.events.isEmpty && page.events.count < entries.items.count)
+        try await f.coordinator.acknowledgeEvents(taskID: f.taskID, parent: f.parent, eventIDs: packed.returnedIDs)
+        _ = try await f.coordinator.wakePending(taskID: f.taskID, operationID: UUID())
+        #expect(await f.host.lastWakeCount() == entries.items.count - page.events.count)
+        let remaining = try await f.coordinator.eventEntries(taskID: f.taskID, parent: f.parent,
+                                                             after: try #require(page.next))
+        #expect(remaining.items.map(\.event.id) == Array(entries.items.dropFirst(page.events.count)).map(\.event.id))
+    }
+
     @Test func acknowledgedTaskEventDoesNotTriggerAnExtraWake() async throws {
         let f = try await TaskFixture.make()
         defer { f.clean() }
