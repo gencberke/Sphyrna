@@ -169,6 +169,8 @@ public final class SubagentTranscriptFeed: @unchecked Sendable {
     /// Work that arrived while a previously delivered batch awaited the consumer's next request.
     private var dirty = false
     private var awaitingConsumer = false
+    /// The first brief can arrive after an initially empty file was read.
+    private var deliveredBrief = false
     /// The descriptor the vnode source watches (it has its own: the tail reads through another).
     private var watched: Int32 = -1
     /// Completed read attempts, for verifying that a stalled consumer does not cause more work.
@@ -302,7 +304,9 @@ public final class SubagentTranscriptFeed: @unchecked Sendable {
         let outcome = tail.read(oversized: { entries.append(.tooLong) }) {
             for entry in parser.parse($0) { entries.append(entry) }
         }
-        let newest = entries.result(preserveFirstBrief: outcome.restarted)
+        if outcome.restarted { deliveredBrief = false }
+        let newest = entries.result(preserveFirstBrief: !deliveredBrief)
+        if newest.entries.contains(where: { if case .brief = $0 { true } else { false } }) { deliveredBrief = true }
         let omitted = outcome.omittedEarlier || newest.omitted
         guard !newest.entries.isEmpty || outcome.restarted else { return }
         awaitingConsumer = true

@@ -705,6 +705,28 @@ struct SubagentTranscriptTests {
         feed.stopAndWait()
     }
 
+    @Test func aFirstBriefArrivingInALargeAppendIsStillDelivered() async throws {
+        let tree = try Tree()
+        defer { tree.remove() }
+        let url = try tree.transcript("a1", "")
+        let feed = try feed(url, in: tree, coalescing: 0.02)
+        defer { feed.stopAndWait() }
+        feed.start()
+        var iterator = feed.batches.makeAsyncIterator()
+        let initial = try #require(await iterator.next())
+        #expect(initial.replacesEarlier && initial.entries.isEmpty)
+        let count = SubagentTranscriptFeed.maximumEntriesPerBatch + 50
+        let growth = (0..<count).map {
+            #"{"type":"assistant","message":{"content":[{"type":"text","text":"entry \#($0)"}]}}"#
+        }.joined(separator: "\n") + "\n"
+        try append(briefLine + "\n" + growth, to: url)
+        let next = try #require(await iterator.next())
+        #expect(!next.replacesEarlier && next.omitsEarlier)
+        #expect(next.entries.first == .brief("Map the core module and write the result to _next/00-modules.md"))
+        #expect(next.entries.last == .text("entry \(count - 1)"))
+        #expect(next.entries.count <= SubagentTranscriptFeed.maximumEntriesPerBatch)
+    }
+
     @Test func leavingTheConsumerEarlyClosesTheOwnedFeed() async throws {
         let tree = try Tree()
         defer { tree.remove() }
