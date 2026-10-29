@@ -4,6 +4,11 @@ import Foundation
 public struct ManagedTaskChildSnapshot: Sendable {
     public let task: SessionTaskProjection
     public let presentation: ManagedTaskPresentation?
+
+    public init(task: SessionTaskProjection, presentation: ManagedTaskPresentation?) {
+        self.task = task
+        self.presentation = presentation
+    }
 }
 
 extension SessionRuntime {
