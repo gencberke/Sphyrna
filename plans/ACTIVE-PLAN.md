@@ -54,15 +54,16 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 4 | G1 Remora backends | local fake OpenCode no-tools wire proved; actual offered-backend no-tools acceptance pending |
 | 4 | I1 names and migration | pending; package identity/version/name audit is not complete |
 | 4 | Optimizer resource fixes | transcript and Changes cache fixes integrated `4e492d7`; 37 Core + 27 UI scoped tests pass `143930-72609`. Actual process metrics remain separate |
-| 5 | Z holistic gate and continuation | the continuation (`ca1a71e`…`92d6129`) fixed the actual AX crash, the menu AX regression, two real UI regressions, the opening window, a D-94 slip, two product blockers of the cooperative pool (found by an in-process stack probe), test fixtures that held the pool, a process-wide UI state shared by parallel tests, and stale expectations and test oracles. The full gate on `16a9158` had 6 issues in 2 tests (69, then 48, before), both fixed since; the window tests now run apart and are not yet re-run. No daily-use-ready claim |
+| 5 | Z holistic gate and continuation | the continuation (`ca1a71e`…`0f48daf`) fixed the actual AX crash, the menu AX regression, two real UI regressions, the opening window, a D-94 slip, two product blockers of the cooperative pool (found by an in-process stack probe), test fixtures that held the pool, a process-wide UI state shared by parallel tests, and stale expectations and test oracles. The full gate on `ed4d00d` had 1 issue in 4,098 tests (69, 48, then 6 before), fixed in `0f48daf`; the window tests, now run apart, passed alone (`220618-13191`). No daily-use-ready claim |
+| 5 | T test revision (D-119) | running on `slice/r9-tests` from `ed4d00d` (session `test-infra-review`); first stop after the tier targets, frozen lane included, then a gate |
 
 ## Current open work
 
 - D-118 final evidence is `evidence/r9/final-wrap-20261029/` (exact files linked from `STATUS.md`). Read the full69-issue verdict, actual AX crash reproductions, positive scoped/deletion/metric evidence and the rejected Menu differential before continuing in existing Claude with permission/effort unchanged.
 - Next:
-  - The full gate on `92d6129` when the Mac is idle, the first one with the window tests in their own run.
+  - One whole green full gate, with the test revision's first stop: the gate on `ed4d00d` passed all it ran but one test, fixed in `0f48daf`, and the window tests passed alone in debug (`220618-13191`).
   - Move the three remaining bounded `Task.detached` waits off the pool.
-  - The test infrastructure review, read-only in its own session, then the user's decision on it.
+  - The test revision (D-119) on `slice/r9-tests`: review and integrate it at its stops, each with a gate.
   - Then the open slices.
 - The opening-before-associated-ledger gap from `evidence/r9/optimizer/STALLED-FLOWS-ADVICE.md` is settled in `1e88c0a` with the advisory's provider-admission idea in its minimal form: the rule version and owner identity on the `opening` record, a `notAdmitted` disposition at store open and on live failures, and journaled (never claimed) host cleanup. Its optional host-side enrollment receipt and the bounded provisioning journal are not built. The interrupted durable Stop and never-started deletion corrections have scoped proof. The intermittent Claude interrupt has a passing controlled diagnostic and no established root cause.
 - Preserve evidence limits: old whole pool `3560` tests failed three; later scoped fixes do not convert it to PASS. B5b first paint/RSS equivalence, native UI/VoiceOver/energy, native deletion, complete managed harness coverage and actual OS notification acceptance remain distinct gates.
