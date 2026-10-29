@@ -45,6 +45,8 @@ public final class ProjectPageState {
     public internal(set) var usage: ProjectUsage?
     /// The index could not answer: the page says the usage could not be read, not that there is none.
     public internal(set) var usageFailed = false
+    /// The week holds Codex sessions, which the usage index (Claude's) does not count: the card says so.
+    public internal(set) var usageOmitsCodex = false
     public internal(set) var usageLoad = ProjectPageLoad.idle
     var branches: ProjectBranches?
     public internal(set) var branchesLoad = ProjectPageLoad.idle
@@ -84,6 +86,7 @@ public final class ProjectPageState {
         cursor = nil
         usage = nil
         usageFailed = false
+        usageOmitsCodex = false
         usageLoad = .loading
         branches = nil
         branchesLoad = .loading
@@ -108,6 +111,7 @@ public final class ProjectPageState {
         cursor = nil
         usage = nil
         usageFailed = false
+        usageOmitsCodex = false
         usageLoad = .idle
         branches = nil
         branchesLoad = .idle
@@ -263,20 +267,13 @@ extension CatalogModel {
 
         let cutoff = Date().addingTimeInterval(-Self.projectPageWeekSlack)
         let weekRecords = collected.filter { $0.lastActivityAt >= cutoff }
-        // The Claude index alone cannot describe a mixed project's total. Do not start a rollout scan here.
-        let hasCodexRecords = weekRecords.contains { record in
-            guard let kind = HarnessTranscriptKind(provider: record.session.provider) else { return false }
-            if case .codex = kind { return true }
-            return false
-        }
-        if hasCodexRecords {
-            page.usage = nil
-            page.usageFailed = true
-            page.usageLoad = .done
-            return
-        }
+        // The usage index is Claude's: it counts the week's Claude sessions. No Codex rollout is scanned here, so a mixed
+        // week says its Codex sessions are not counted, never that the usage could not be read.
+        let omitsCodex = weekRecords.contains { HarnessTranscriptKind(provider: $0.session.provider) == .codex }
         let identifiers = weekRecords.compactMap { record -> String? in
-            guard capabilities(of: record.session.provider).readsTranscript, let id = record.session.providerConversationID, !id.isEmpty else { return nil }
+            guard capabilities(of: record.session.provider).readsTranscript,
+                  HarnessTranscriptKind(provider: record.session.provider) == .claude,
+                  let id = record.session.providerConversationID, !id.isEmpty else { return nil }
             return id
         }
         page.reads.usageLookups += 1
@@ -288,6 +285,7 @@ extension CatalogModel {
         guard isCurrent(generation) else { return }
         page.usage = usage
         page.usageFailed = usageFailed
+        page.usageOmitsCodex = omitsCodex
         page.usageLoad = .done
     }
 
@@ -407,7 +405,8 @@ extension CatalogModel {
             "project": page.projectID?.uuidString ?? "none", "tab": page.tab.rawValue.lowercased(),
             "loads": ["sessions": load(page.sessionsLoad), "usage": load(page.usageLoad),
                       "branches": load(page.branchesLoad), "instructions": load(page.instructionsLoad)],
-            "sessions": page.records.count, "hasMore": page.hasMore, "sessionsFailed": page.sessionsFailed, "usageFailed": page.usageFailed, "usage": usage,
+            "sessions": page.records.count, "hasMore": page.hasMore, "sessionsFailed": page.sessionsFailed, "usageFailed": page.usageFailed,
+            "usageOmitsCodex": page.usageOmitsCodex, "usage": usage,
             "lastLines": ["read": page.lastLines.count, "found": page.lastLines.values.filter { !$0.isEmpty }.count],
             "branches": page.branches.map { ["count": $0.branches.count, "truncated": $0.truncated] as [String: Any] } ?? [:],
             "instructions": page.instructions.map { ["lines": $0.lineCount ?? -1, "bytes": $0.byteCount, "truncated": $0.truncated] as [String: Any] } ?? [:],
