@@ -1,8 +1,8 @@
 import Foundation
 
 /// The plugin Sphyrna (Loom in the code) gives the Claude sessions it starts (`--plugin-dir`, D-42): one skill that tells the
-/// agent how to ask Sphyrna for another session (`"$LOOM_CLI" open`, D-40) and which other sessions exist (`sessions`, C5a),
-/// and the output style of Ask mode. Claude sees only the skill's description until it is used. The files come from this
+/// agent how to list and open sessions and use the terminal task channel, and the output style of Ask mode. Claude sees
+/// only the skill's description until it is used. The files come from this
 /// source and are written into Sphyrna's data folder, so they follow the app's version and need nothing from the bundle.
 public enum ClaudeLoomPlugin {
     static let manifest = """
@@ -18,38 +18,33 @@ public enum ClaudeLoomPlugin {
     static let skill = """
         ---
         name: open-session
-        description: This session runs inside Sphyrna, the desktop app that hosts it. Sphyrna can list the user's other sessions (read-only, no content) and open a new top-level Claude session with a first message the user approves. Use it to find a session, or when work should go on in its own session.
+        description: This session runs inside Sphyrna. List sessions, ask to open another, or, in a terminal session, delegate tasks to a reusable child with the user's approval.
         ---
 
         # Sessions in Sphyrna
 
-        This session runs inside Sphyrna, the app that hosts it. `"$SPHYRNA_CLI"` is the way between its sessions;
-        Claude's own cross-session messages are refused.
+        `"$SPHYRNA_CLI"` connects Sphyrna sessions; Claude's own cross-session messages are refused.
 
         ## List and identify
 
-        `"$SPHYRNA_CLI" sessions` prints the user's other sessions, tab-separated: id, state, harness, face, last
-        activity (UTC), project, title, opened by; no session content. It lists this session's project;
-        `--project <name|path>`, `--all`, `--limit <n>` and `--json` widen it.
+        `"$SPHYRNA_CLI" sessions` lists session metadata, no session content. It defaults to this project;
+        `--project <name|path>`, `--all`, `--limit <n>` and `--json` adjust the list.
 
-        `"$SPHYRNA_CLI" whoami` prints this session's id, state, project and title, its opener, and the sessions it
-        opened. Do not guess an id.
+        `"$SPHYRNA_CLI" whoami` identifies this session, its opener and sessions it opened. Do not guess an id.
 
         ## Open another session
 
-        `"$SPHYRNA_CLI" open --help` lists the flags, including `--model`, `--effort` and `--mode`. `open` asks
-        Sphyrna to open a new top-level Claude session with a first message; nothing starts until the user approves
-        it. Full access is never yours to pick.
+        `"$SPHYRNA_CLI" open --help` lists choices. `"$SPHYRNA_CLI" open --title "<topic>" --message-file <file>`
+        (`--message -` reads stdin) asks to start a new session; provide its goal and context. It waits up to 85 seconds.
+        Tell the user `started <id>`, `pending: ...`, `denied` or `error: ...`; do not duplicate or retry a denial.
+        Full access is never yours to pick. `open` always starts a new session; to reuse an ordinary session, ask the user first.
 
-        1. Write the first message to a file: the new session sees nothing of this one, so give the goal, context and
-           where to start.
-        2. Run `"$SPHYRNA_CLI" open --title "<topic>" --message-file <file>` (`--message -` reads stdin); it waits up
-           to 85 seconds.
-        3. Act on the result: `started <id> "<title>"` (tell the user; do not duplicate it), `pending: ...` (no answer;
-           tell the user, do not ask again), `denied` (do not retry), `error: ...` (report it; exit 3 means Sphyrna is
-           unreachable).
+        ## Delegate a task (terminal sessions)
 
-        `open` always starts a new session; to reuse one, find it with `sessions` and ask the user first.
+        Run `"$SPHYRNA_CLI" task --help` for approved child tasks, replies, status and event-driven wait. The user approves
+        the child and its bounded follow-ups. Reuse printed task and operation IDs on retry; never guess another run's ID.
+        A child reads its exact input using the supplied pointer and reports completed, failed, or needsParentInput; after
+        needsParentInput, finish the current turn so the parent can reply. Native tool approvals belong to the user.
 
         """
 
