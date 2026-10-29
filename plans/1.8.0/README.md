@@ -9,12 +9,12 @@
 1.8.0 is Sphyrna's first strong stop: an app fit for daily use. It is done when:
 1. **Every harness is first-class.** Claude and Codex are equal: start from the draft with model, effort and mode, honest
    status, stop, resume, read, delete. opencode and agy show in every offered list with their state, and start as plain terminal
-   sessions (FEEDBACK-7 Q9). Pi is deferred by D-113; compatible stored identifiers may remain.
+   sessions (FEEDBACK-7 Q9); in 1.8.0 they show as Coming later and do not start (D-120). Pi is deferred by D-113; compatible stored identifiers may remain.
 2. **The look is Ink v4**, Orca's design system with Sphyrna's identity ([DESIGN-V4.md](DESIGN-V4.md)), on every surface, in
    Ink and Paper.
 3. **Nothing known is broken:** the project drag reorders (FB7-3), Changes' comments reach a terminal session (F11), and the
    1.7.1 items that were never checked on screen are checked.
-4. **Sessions work together:** `send` between sessions with `@user`'s approval, and Remora on any connected harness.
+4. **Sessions work together:** `send` between sessions with `@user`'s approval, and Remora on any connected harness (1.8.0: Claude only, D-122).
 5. **The installed app passes the gate** in [§4](#4-the-release-gate) and the [daily-use acceptance matrix](ACCEPTANCE.md).
 
 **29Oct overnight goal (D-112–D-114):** the planner is the main technical authority and continues unattended toward a reliable local1.8.0. Reference fidelity, genuine reusable cross-harness child work and its truthful name/mark/model UI are required. Short cheap-model turns are authorized as needed, with isolated profiles and usage accounting. The closing optimizer may inspect all code through1.8.0; the final existing Claude session then performs an independent planner-reviewer/optimizer critique with its current permission/effort settings preserved. The acceptance matrix owns the execution order and evidence, without replacing SPEC guarantees.
@@ -107,8 +107,8 @@ Run by the planner on the integrated head, once (D-90). `@user` gives the idle M
 1. **Off screen:** `scripts/check.sh --tests --release-tree`, then `--full --idle --windows`.
 2. **Real CLIs**, each in `/private/tmp/loom-real/…` with its own data root:
    - **Claude:** a draft with Opus and medium; Stop; Resume; Delete.
-   - **Codex:** the same; `send` from Claude to Codex and back, approved; Remora's brief on a Codex model.
-   - **opencode and agy:** start, status, stop and supported child work; Pi is deferred.
+   - **Codex:** the same; `send` from Claude to Codex and back, approved (Remora's brief on a Codex model: cut, D-122).
+   - **opencode and agy:** frozen (D-120): Coming later on every list and refused at every start; Pi is deferred.
 3. **Energy** (`scripts/perf/real_energy.py`, RESCUE-PLAN Phase B), in `@user`'s scenarios:
    - Home idle and a resting terminal stay at 0.0;
    - the status bar adds nothing at rest;
@@ -119,7 +119,7 @@ Run by the planner on the integrated head, once (D-90). `@user` gives the idle M
 5. **Closing `@optimizer`** (D-06, D-112, FEEDBACK-7 Q11) across all code through1.8.0, including older code; Blocking and concrete Should-Fix findings addressed and rechecked. After the final doc check, the existing open Claude session independently reviews the complete app as planner-reviewer/optimizer, with evidence and its settings preserved.
 6. **`@user`'s hand checks** on the installed build: the project drag; a day with Claude and Codex side by side; the panel;
    the status bar; send; Remora.
-7. **Release:** release notes, the version, tag, promote and install on `@user`'s word; the push and the GitHub release on
+7. **Release:** release notes, the version, a local tag, promote and an in-place install once stable (D-120, D-123); the push and the GitHub release on
    their word (D-16, D-83).
 
 ## 5. Where each open item went
