@@ -726,18 +726,23 @@ private enum RealCodexApprovalGuard {
               params.allSatisfy({ allowedKeys.contains($0.key) || $0.value == .null }),
               let command = params["command"]?.string, command.utf8.count <= 4_096,
               params["kind"] == nil || params["kind"]?.string == "command" else { return false }
-        if let environment = params["environmentId"], environment != .null, environment.string == nil { return false }
-        if let actions = params["commandActions"], actions != .null, actions.array == nil { return false }
+        if let environment = params["environmentId"], environment != .null {
+            guard let text = environment.string, text.utf8.count <= 1_024 else { return false }
+        }
+        if let actions = params["commandActions"], actions != .null {
+            guard let values = actions.array, values.count <= 128 else { return false }
+        }
         if let started = params["startedAtMs"], started != .null {
-            guard case let .number(value) = started, value.isFinite, value >= 0, value.rounded(.towardZero) == value else { return false }
+            guard case let .number(value) = started, value >= 0, Int64(exactly: value) != nil else { return false }
         }
         if let amendment = params["proposedExecpolicyAmendment"], amendment != .null {
-            guard let words = amendment.array, words.allSatisfy({ $0.string != nil }) else { return false }
+            guard let words = amendment.array, words.count <= 64,
+                  words.allSatisfy({ $0.string.map { $0.utf8.count <= 4_096 } ?? false }) else { return false }
         }
         // Additional permissions and network approval are deliberately absent
         // from allowedKeys. This client negotiates experimentalApi:true, so
         // Codex does not hide those fields for legacy-client compatibility.
-        return command == script || arguments(command) == ["/bin/zsh", "-lc", script]
+        return arguments(command) == ["/bin/zsh", "-lc", script]
     }
 
     /// A bounded POSIX display-word decoder, not a shell. Reject expansions,
@@ -790,13 +795,14 @@ private enum RealCodexApprovalGuard {
 
 @Suite struct RealCodexApprovalValidationTests {
     private let script = "printf 'LOOM_D1_REAL_FILE_OK\\n' > /private/tmp/loom-real/owned/marker.txt"
+    private var display: String { "/bin/zsh -lc '" + script.replacingOccurrences(of: "'", with: "'\\''") + "'" }
 
     private func params(command: String) -> [String: JSONValue] {
         ["command": .string(command), "availableDecisions": .array([.string("accept"), .string("decline")])]
     }
 
     @Test func nativeDisplayMetadataDoesNotTurnOneOccurrenceIntoARuleApproval() {
-        var value = params(command: script)
+        var value = params(command: display)
         value["kind"] = .string("command")
         value["environmentId"] = .string("local")
         value["commandActions"] = .array([])
@@ -810,17 +816,18 @@ private enum RealCodexApprovalGuard {
         #expect(RealCodexApprovalGuard.matches(params(command: "/bin/zsh -lc " + quoted), script: script))
         #expect(!RealCodexApprovalGuard.matches(params(command: "/bin/zsh -lc " + quoted + "; touch /tmp/extra"), script: script))
         #expect(!RealCodexApprovalGuard.matches(params(command: "/bin/zsh -lc \"$(printf extra)\""), script: script))
+        #expect(!RealCodexApprovalGuard.matches(params(command: script), script: script))
     }
 
     @Test func extraAuthorityOrAnotherActionIsStillRejected() {
         for (key, extra) in ["additionalPermissions": JSONValue.object(["network": .object(["enabled": .bool(true)])]),
                              "networkApprovalContext": .object(["host": .string("example.invalid")]),
                              "kind": .string("writeStdin"), "futureAuthority": .bool(true)] {
-            var value = params(command: script)
+            var value = params(command: display)
             value[key] = extra
             #expect(!RealCodexApprovalGuard.matches(value, script: script))
         }
-        var persistent = params(command: script)
+        var persistent = params(command: display)
         persistent["availableDecisions"] = .array([.string("acceptForSession")])
         #expect(!RealCodexApprovalGuard.matches(persistent, script: script))
     }
