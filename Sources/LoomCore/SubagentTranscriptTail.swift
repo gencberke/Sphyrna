@@ -8,6 +8,7 @@ import Foundation
 /// - A first read starts in the last `coldWindowBytes` of the file, at a line start, and also delivers the
 ///   file's first line when it lies before that window (the brief).
 /// - A file that shrinks, or whose path now names another inode, is read again from its tail.
+/// - A growth burst larger than the tail window skips to its newest window and reports the gap.
 /// - A line over `maximumLineBytes` is skipped up to its newline, and `oversized` is told (the view says "an entry too long
 ///   to show"); no buffer grows past that bound.
 ///
@@ -28,6 +29,7 @@ final class SubagentTranscriptTail {
 
     private let file: SubagentTranscriptFile
     private let coldWindowBytes: Int
+    private let maximumLineBytes: Int
     private var descriptor: Int32
     private var device: dev_t = 0
     private var inode: ino_t = 0
@@ -35,6 +37,8 @@ final class SubagentTranscriptTail {
     private var position: off_t = 0
     private var splitter: TranscriptLineSplitter
     private var started = false
+    /// A jump cut a line: count its visible suffix so a definitely oversized line is still reported.
+    private var cutLineBytes: Int?
     private let chunk = UnsafeMutableRawPointer.allocate(byteCount: SubagentTranscriptTail.chunkBytes, alignment: 16)
     /// Bytes read from the file so far (a test measures a cold open with it).
     private(set) var bytesRead = 0
@@ -43,7 +47,8 @@ final class SubagentTranscriptTail {
           maximumLineBytes: Int = defaultMaximumLineBytes) {
         guard let descriptor = file.openDescriptor() else { return nil }
         self.file = file
-        self.coldWindowBytes = coldWindowBytes
+        self.coldWindowBytes = max(1, coldWindowBytes)
+        self.maximumLineBytes = maximumLineBytes
         splitter = TranscriptLineSplitter(maximumLineBytes: maximumLineBytes)
         self.descriptor = descriptor
         remember(descriptor)
@@ -84,12 +89,26 @@ final class SubagentTranscriptTail {
         if !started {
             outcome.restarted = true
             outcome.omittedEarlier = start(size: size, line)
+        } else if size - position > off_t(coldWindowBytes) {
+            outcome.omittedEarlier = true
+            jump(to: size - off_t(coldWindowBytes))
         }
         while position < size {
             let wanted = Int(min(off_t(Self.chunkBytes), size - position))
             let count = pread(descriptor, chunk, wanted, position)
             guard count > 0 else { break }
             bytesRead += count
+            if let preceding = cutLineBytes {
+                let newline = memchr(chunk, 0x0A, count)
+                let length = newline.map { UnsafeRawPointer(chunk).distance(to: UnsafeRawPointer($0)) } ?? count
+                let total = preceding + length
+                if newline != nil {
+                    if total > maximumLineBytes { oversized() }
+                    cutLineBytes = nil
+                } else {
+                    cutLineBytes = min(total, maximumLineBytes + 1)
+                }
+            }
             splitter.consume(UnsafeRawBufferPointer(start: chunk, count: count), at: UInt64(position),
                              line: { _, bytes in line(bytes) }, oversized: { _, _ in oversized() })
             position += off_t(count)
@@ -110,16 +129,24 @@ final class SubagentTranscriptTail {
     private func start(size: off_t, _ line: (UnsafeRawBufferPointer) -> Void) -> Bool {
         started = true
         splitter.reset(at: 0)
+        cutLineBytes = nil
         guard size > off_t(coldWindowBytes) else { position = 0; return false }
         let window = size - off_t(coldWindowBytes)
+        jump(to: window)
+        deliverFirstLine(before: window, line)
+        return true
+    }
+
+    /// Positions at the newest window and skips a cut line without interpreting a partial record.
+    private func jump(to window: off_t) {
         // The window starts at a line start only when the byte before it ends a line; otherwise the line
         // it cuts is skipped up to its newline.
         var before: UInt8 = 0
         if pread(descriptor, &before, 1, window - 1) == 1 { bytesRead += 1 }
-        splitter.reset(at: UInt64(window), cutMidLine: before != 0x0A)
+        let cut = before != 0x0A
+        splitter.reset(at: UInt64(window), cutMidLine: cut)
+        cutLineBytes = cut ? 0 : nil
         position = window
-        deliverFirstLine(before: window, line)
-        return true
     }
 
     /// The file's first line, when it lies wholly before `limit` (the brief a cold window would skip).

@@ -294,6 +294,25 @@ struct SubagentTranscriptTests {
         #expect(tail.bytesRead - before == 4, "an idle read costs no bytes")
     }
 
+    @Test func aLargeAppendReadsOnlyTheNewestWindowAndKeepsTheNextPartialLine() throws {
+        let tree = try Tree()
+        defer { tree.remove() }
+        let url = try tree.transcript("a1", "brief\nbefore-part")
+        let window = 4_096
+        let tail = try tail(url, in: tree, window: window)
+        #expect(lines(tail).lines == ["brief"])
+        let before = tail.bytesRead
+        let growth = " completed\n" + (0..<2_000).map { "line-\($0) " + String(repeating: "x", count: 24) + "\n" }.joined()
+            + "newest\npartial"
+        try append(growth, to: url)
+        let read = lines(tail)
+        #expect(read.outcome.omittedEarlier, "the skipped portion of a burst is disclosed")
+        #expect(tail.bytesRead - before <= window + 1, "one append reads no more than the bounded tail and its boundary byte")
+        #expect(read.lines.last == "newest" && !read.lines.contains("before-part completed"))
+        try append(" finished\n", to: url)
+        #expect(lines(tail).lines == ["partial finished"], "a partial line retained after the jump completes once")
+    }
+
     @Test func aLineOverTheBoundIsNamedNotDropped() throws {
         let tree = try Tree()
         defer { tree.remove() }
@@ -303,6 +322,20 @@ struct SubagentTranscriptTests {
         var oversized = 0
         _ = tail.read(oversized: { oversized += 1 }) { collected.append(String(decoding: $0, as: UTF8.self)) }
         #expect(collected == ["one", "two"] && oversized == 1, "the long line is told, not read")
+    }
+
+    @Test func aDefinitelyOversizedLineCutByABurstIsNamedOnce() throws {
+        let tree = try Tree()
+        defer { tree.remove() }
+        let url = try tree.transcript("a1", "before\n")
+        let tail = try tail(url, in: tree, window: 1_024, maximumLine: 100)
+        _ = lines(tail)
+        try append(String(repeating: "x", count: 10_000) + "\nafter\n", to: url)
+        var collected: [String] = []
+        var oversized = 0
+        let outcome = tail.read(oversized: { oversized += 1 }) { collected.append(String(decoding: $0, as: UTF8.self)) }
+        #expect(outcome.omittedEarlier && oversized == 1 && collected == ["after"])
+        #expect(lines(tail).lines.isEmpty)
     }
 
     @Test func aShrinkedFileIsReadAgainFromItsTail() throws {
@@ -414,6 +447,8 @@ struct SubagentTranscriptTests {
     }
 
     // MARK: Feed
+
+    private final class Flag: Sendable { let value = Mutex(false) }
 
     private final class Collector: Sendable {
         private final class Box: Sendable {
@@ -594,6 +629,129 @@ struct SubagentTranscriptTests {
         let batch = try #require(collector.batches.first)
         #expect(batch.entries.count == SubagentTranscriptFeed.maximumEntriesPerBatch && batch.omitsEarlier)
         #expect(batch.entries.last == .text("entry \(count - 1)"))
+    }
+
+    @Test func aStalledConsumerStopsReadsUntilItRequestsTheNextBatch() async throws {
+        let tree = try Tree()
+        defer { tree.remove() }
+        let url = try tree.transcript("a1", briefLine + "\n" + textLine + "\n")
+        let feed = try feed(url, in: tree, coalescing: 0.02)
+        feed.start()
+        _ = feed.openDescriptors // Wait for the initial read without consuming its batch.
+        let count = SubagentTranscriptFeed.maximumEntriesPerBatch + 50
+        let growth = (0..<count).map {
+            #"{"type":"assistant","message":{"content":[{"type":"text","text":"entry \#($0)"}]}}"#
+        }.joined(separator: "\n") + "\n"
+        try append(growth, to: url)
+        try await Task.sleep(for: .milliseconds(250))
+        #expect(feed.readCount == 1, "a stalled consumer leaves one batch pending and performs no further reads")
+        var iterator = feed.batches.makeAsyncIterator()
+        let first = try #require(await iterator.next())
+        #expect(first.replacesEarlier && first.entries.first == .brief("Map the core module and write the result to _next/00-modules.md"))
+        let next = try #require(await iterator.next())
+        #expect(!next.replacesEarlier && next.omitsEarlier)
+        #expect(next.entries.count <= SubagentTranscriptFeed.maximumEntriesPerBatch)
+        #expect(next.entries.last == .text("entry \(count - 1)"))
+        let descriptors = feed.openDescriptors
+        let transcript = try #require(FileIdentity(path: url.path))
+        feed.stopAndWait()
+        #expect(descriptors.allSatisfy { FileIdentity(descriptor: $0) != transcript })
+        #expect(await iterator.next() == nil, "a stopped feed closes its stream")
+    }
+
+    @Test func aStalledConsumerSeesTheReplacementAndLaterAppendWithoutOldEntries() async throws {
+        let tree = try Tree()
+        defer { tree.remove() }
+        let url = try tree.transcript("a1", briefLine + "\n" + textLine + "\n")
+        let feed = try feed(url, in: tree, coalescing: 0.02)
+        feed.start()
+        _ = feed.openDescriptors
+        let replacementBrief = #"{"type":"user","message":{"content":"Replacement brief"}}"#
+        let replacementText = #"{"type":"assistant","message":{"content":[{"type":"text","text":"replacement"}]}}"#
+        let laterText = #"{"type":"assistant","message":{"content":[{"type":"text","text":"later"}]}}"#
+        let replacement = try tree.write(replacementBrief + "\n" + replacementText + "\n",
+                                         to: tree.subagents.appendingPathComponent("replacement.tmp"))
+        #expect(rename(replacement.path, url.path) == 0)
+        try await Task.sleep(for: .milliseconds(250))
+        try append(laterText + "\n", to: url)
+        try await Task.sleep(for: .milliseconds(250))
+        #expect(feed.readCount == 1)
+        var iterator = feed.batches.makeAsyncIterator()
+        let initial = try #require(await iterator.next())
+        #expect(initial.entries.first == .brief("Map the core module and write the result to _next/00-modules.md"))
+        let batch = try #require(await iterator.next())
+        #expect(batch.replacesEarlier && !batch.omitsEarlier)
+        #expect(batch.entries == [.brief("Replacement brief"), .text("replacement"), .text("later")])
+        feed.stopAndWait()
+        #expect(await iterator.next() == nil)
+    }
+
+    @Test func aColdBurstKeepsItsInitialBriefWhenOldEntriesAreOmitted() async throws {
+        let tree = try Tree()
+        defer { tree.remove() }
+        let count = SubagentTranscriptFeed.maximumEntriesPerBatch + 50
+        let growth = (0..<count).map {
+            #"{"type":"assistant","message":{"content":[{"type":"text","text":"entry \#($0)"}]}}"#
+        }.joined(separator: "\n") + "\n"
+        let url = try tree.transcript("a1", briefLine + "\n" + growth)
+        let feed = try feed(url, in: tree)
+        feed.start()
+        var iterator = feed.batches.makeAsyncIterator()
+        let first = try #require(await iterator.next())
+        #expect(first.replacesEarlier && first.omitsEarlier)
+        #expect(first.entries.count <= SubagentTranscriptFeed.maximumEntriesPerBatch)
+        #expect(first.entries.first == .brief("Map the core module and write the result to _next/00-modules.md"))
+        #expect(first.entries.last == .text("entry \(count - 1)"))
+        feed.stopAndWait()
+    }
+
+    @Test func leavingTheConsumerEarlyClosesTheOwnedFeed() async throws {
+        let tree = try Tree()
+        defer { tree.remove() }
+        let url = try tree.transcript("a1", briefLine + "\n")
+        let feed = try feed(url, in: tree)
+        let consumed = Flag()
+        feed.start()
+        let descriptors = feed.openDescriptors
+        let transcript = try #require(FileIdentity(path: url.path))
+        #expect(descriptors.count == 2)
+        let consumer = Task {
+            for await _ in feed.batches {
+                consumed.value.withLock { $0 = true }
+                break
+            }
+        }
+        await consumer.value
+        #expect(consumed.value.withLock { $0 })
+        #expect(await wait(1) { descriptors.allSatisfy { FileIdentity(descriptor: $0) != transcript } },
+                "an abandoned iterator closes both owned descriptors without another event")
+        feed.stopAndWait()
+    }
+
+    @Test func cancellingAWaitingConsumerClosesTheOwnedFeed() async throws {
+        let tree = try Tree()
+        defer { tree.remove() }
+        let url = try tree.transcript("a1", briefLine + "\n")
+        let feed = try feed(url, in: tree)
+        let consumed = Flag()
+        feed.start()
+        let descriptors = feed.openDescriptors
+        let transcript = try #require(FileIdentity(path: url.path))
+        #expect(descriptors.count == 2)
+        let consumer = Task {
+            var iterator = feed.batches.makeAsyncIterator()
+            _ = await iterator.next()
+            consumed.value.withLock { $0 = true }
+            _ = await iterator.next()
+        }
+        #expect(await wait { consumed.value.withLock { $0 } })
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(feed.readCount == 1, "an empty request does not poll an idle file")
+        consumer.cancel()
+        await consumer.value
+        #expect(await wait(1) { descriptors.allSatisfy { FileIdentity(descriptor: $0) != transcript } },
+                "cancelled next closes both owned descriptors")
+        feed.stopAndWait()
     }
 }
 

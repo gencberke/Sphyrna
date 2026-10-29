@@ -17,10 +17,127 @@ public struct SubagentTranscriptBatch: Equatable, Sendable {
     }
 }
 
+/// One consumer follows a feed. Asking for the next batch acknowledges the previous one; leaving the iterator stops it.
+public struct SubagentTranscriptBatches: AsyncSequence, Sendable {
+    public typealias Element = SubagentTranscriptBatch
+
+    public struct AsyncIterator: AsyncIteratorProtocol {
+        fileprivate let lease: SubagentTranscriptLease?
+
+        public mutating func next() async -> SubagentTranscriptBatch? {
+            guard let lease else { return nil }
+            return await lease.next()
+        }
+    }
+
+    fileprivate let delivery: SubagentTranscriptDelivery
+
+    public func makeAsyncIterator() -> AsyncIterator { AsyncIterator(lease: delivery.claim()) }
+}
+
+/// A shared lease survives value-iterator copies and ends the feed when its last copy leaves scope.
+fileprivate final class SubagentTranscriptLease: @unchecked Sendable {
+    private let delivery: SubagentTranscriptDelivery
+    init(_ delivery: SubagentTranscriptDelivery) { self.delivery = delivery }
+    deinit { delivery.abandon() }
+    func next() async -> SubagentTranscriptBatch? { await delivery.next() }
+}
+
+/// A one-batch handoff; no callback or continuation is resumed while holding its lock.
+fileprivate final class SubagentTranscriptDelivery: @unchecked Sendable {
+    private let lock = NSLock()
+    private var claimed = false
+    private var closed = false
+    private var pending: SubagentTranscriptBatch?
+    private var waiter: CheckedContinuation<SubagentTranscriptBatch?, Never>?
+    private var acknowledgementDue = false
+    private var onAcknowledgement: (@Sendable () -> Void)?
+    private var onAbandonment: (@Sendable () -> Void)?
+
+    func install(acknowledge: @escaping @Sendable () -> Void, abandon: @escaping @Sendable () -> Void) {
+        lock.withLock { onAcknowledgement = acknowledge; onAbandonment = abandon }
+    }
+
+    func claim() -> SubagentTranscriptLease? {
+        lock.withLock {
+            guard !claimed else { return nil }
+            claimed = true
+            return SubagentTranscriptLease(self)
+        }
+    }
+
+    func next() async -> SubagentTranscriptBatch? {
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                var acknowledge: (@Sendable () -> Void)?
+                var result: SubagentTranscriptBatch??
+                lock.withLock {
+                    if acknowledgementDue {
+                        acknowledgementDue = false
+                        acknowledge = onAcknowledgement
+                    }
+                    if let batch = pending {
+                        pending = nil
+                        acknowledgementDue = true
+                        result = .some(batch)
+                    } else if closed || waiter != nil {
+                        result = .some(nil)
+                    } else {
+                        waiter = continuation
+                    }
+                }
+                acknowledge?()
+                if let result { continuation.resume(returning: result) }
+            }
+        } onCancel: { self.abandon() }
+    }
+
+    func offer(_ batch: SubagentTranscriptBatch) {
+        let waiting: CheckedContinuation<SubagentTranscriptBatch?, Never>? = lock.withLock {
+            guard !closed else { return nil }
+            if let waiting = waiter {
+                waiter = nil
+                acknowledgementDue = true
+                return waiting
+            }
+            precondition(pending == nil, "the producer must wait for acknowledgement")
+            pending = batch
+            return nil
+        }
+        waiting?.resume(returning: batch)
+    }
+
+    /// A normal stop lets a batch already handed off drain before the stream ends.
+    func finish() {
+        let waiting: CheckedContinuation<SubagentTranscriptBatch?, Never>? = lock.withLock {
+            guard !closed else { return nil }
+            closed = true
+            defer { waiter = nil }
+            return waiter
+        }
+        waiting?.resume(returning: nil)
+    }
+
+    func abandon() {
+        var callback: (@Sendable () -> Void)?
+        let waiting: CheckedContinuation<SubagentTranscriptBatch?, Never>? = lock.withLock {
+            guard !closed else { return nil }
+            closed = true
+            pending = nil
+            callback = onAbandonment
+            defer { waiter = nil }
+            return waiter
+        }
+        waiting?.resume(returning: nil)
+        callback?()
+    }
+}
+
 /// Follows one subagent transcript while someone looks at it (FB4-5). A vnode source watches the file;
 /// nothing runs while it is idle. A burst of writes is read once, `coalescing` after the first of them,
 /// so a busy agent costs at most 1 / `coalescing` reads a second. Reading, parsing and entry building happen
-/// on a utility queue; the batches arrive on `batches`.
+/// on a utility queue; the batches arrive on `batches`. One consumer acknowledges a batch by asking for the next;
+/// while it is busy, writes are coalesced without parsing or queuing further batches.
 ///
 /// A feed is used once: `start()` begins it, `stop()` ends it (cancels the source, closes the files and
 /// finishes `batches`), and neither does anything a second time. `stop()` returns at once, so a caller on the
@@ -29,9 +146,11 @@ public final class SubagentTranscriptFeed: @unchecked Sendable {
     public static let defaultCoalescing: TimeInterval = 0.2
     /// The most entries one batch carries; a larger burst keeps its newest.
     static let maximumEntriesPerBatch = 1_000
+    /// An additional retained-byte bound for unusually large parsed entries.
+    static let maximumEntryBytesPerBatch = 1 * 1024 * 1024
 
-    public let batches: AsyncStream<SubagentTranscriptBatch>
-    private let continuation: AsyncStream<SubagentTranscriptBatch>.Continuation
+    public let batches: SubagentTranscriptBatches
+    private let delivery: SubagentTranscriptDelivery
     private let queue = DispatchQueue(label: "loom.subagent.transcript", qos: .utility)
     private let coalescing: TimeInterval
     private let parser: SubagentTranscriptParser
@@ -47,8 +166,13 @@ public final class SubagentTranscriptFeed: @unchecked Sendable {
     private var scheduled: DispatchWorkItem?
     /// The file was moved or removed: watch whatever has its name once the pending read is done.
     private var reattachNeeded = false
+    /// Work that arrived while a previously delivered batch awaited the consumer's next request.
+    private var dirty = false
+    private var awaitingConsumer = false
     /// The descriptor the vnode source watches (it has its own: the tail reads through another).
     private var watched: Int32 = -1
+    /// Completed read attempts, for verifying that a stalled consumer does not cause more work.
+    private var reads = 0
 
     /// Nil when the file cannot be opened.
     public convenience init?(file: SubagentTranscriptFile, coalescing: TimeInterval = defaultCoalescing) {
@@ -63,7 +187,10 @@ public final class SubagentTranscriptFeed: @unchecked Sendable {
         self.coalescing = coalescing
         parser = SubagentTranscriptParser()
         self.tail = tail
-        (batches, continuation) = AsyncStream.makeStream(of: SubagentTranscriptBatch.self)
+        let delivery = SubagentTranscriptDelivery()
+        self.delivery = delivery
+        batches = SubagentTranscriptBatches(delivery: delivery)
+        delivery.install(acknowledge: { [weak self] in self?.acknowledge() }, abandon: { [weak self] in self?.stop() })
     }
 
     deinit { teardown() }
@@ -93,6 +220,8 @@ public final class SubagentTranscriptFeed: @unchecked Sendable {
     /// Descriptors still open, for tests: the read descriptor and the watched one.
     var openDescriptors: [Int32] { queue.sync { [tail?.openDescriptor, watched >= 0 ? watched : nil].compactMap { $0 } } }
 
+    var readCount: Int { queue.sync { reads } }
+
     // MARK: Queue
 
     private func teardown() {
@@ -105,7 +234,7 @@ public final class SubagentTranscriptFeed: @unchecked Sendable {
         tail?.close()
         tail = nil
         watched = -1
-        continuation.finish()
+        delivery.finish()
     }
 
     private func attachSource() {
@@ -140,32 +269,108 @@ public final class SubagentTranscriptFeed: @unchecked Sendable {
 
     private func schedule(reattach: Bool) {
         reattachNeeded = reattachNeeded || reattach
+        dirty = true
+        guard !awaitingConsumer else { return }
         guard scheduled == nil else { return }
         let item = DispatchWorkItem { [weak self] in
             guard let self, phase == .running else { return }
             scheduled = nil
-            deliver()
             if reattachNeeded {
                 reattachNeeded = false
                 attachSource()
             }
+            dirty = false
+            deliver()
         }
         scheduled = item
         queue.asyncAfter(deadline: .now() + coalescing, execute: item)
     }
 
+    private func acknowledge() {
+        queue.async { [weak self] in
+            guard let self, phase == .running, awaitingConsumer else { return }
+            awaitingConsumer = false
+            if dirty { schedule(reattach: false) }
+        }
+    }
+
     /// Reads what is new and yields it: nothing when there is nothing new and nothing restarted.
     private func deliver() {
         guard let tail else { return }
-        var entries: [SubagentTranscriptEntry] = []
-        let outcome = tail.read(oversized: { entries.append(.tooLong) }) { entries.append(contentsOf: parser.parse($0)) }
-        var omitted = outcome.omittedEarlier
-        if entries.count > Self.maximumEntriesPerBatch {
-            entries.removeFirst(entries.count - Self.maximumEntriesPerBatch)
-            omitted = true
+        reads += 1
+        var entries = SubagentRecentEntries()
+        let outcome = tail.read(oversized: { entries.append(.tooLong) }) {
+            for entry in parser.parse($0) { entries.append(entry) }
         }
-        guard !entries.isEmpty || outcome.restarted else { return }
-        continuation.yield(SubagentTranscriptBatch(
-            entries: entries, replacesEarlier: outcome.restarted, omitsEarlier: omitted))
+        let newest = entries.result(preserveFirstBrief: outcome.restarted)
+        let omitted = outcome.omittedEarlier || newest.omitted
+        guard !newest.entries.isEmpty || outcome.restarted else { return }
+        awaitingConsumer = true
+        delivery.offer(SubagentTranscriptBatch(
+            entries: newest.entries, replacesEarlier: outcome.restarted, omitsEarlier: omitted))
+    }
+}
+
+/// Bounded newest-entry ring, with the initial brief retained separately if it falls out of the ring.
+private struct SubagentRecentEntries {
+    private struct Slot {
+        let ordinal: Int
+        let entry: SubagentTranscriptEntry
+        let bytes: Int
+    }
+
+    private let capacity = SubagentTranscriptFeed.maximumEntriesPerBatch
+    private let byteLimit = SubagentTranscriptFeed.maximumEntryBytesPerBatch
+    private var slots = Array<Slot?>(repeating: nil, count: SubagentTranscriptFeed.maximumEntriesPerBatch)
+    private var head = 0
+    private var count = 0
+    private var bytes = 0
+    private var ordinal = 0
+    private var firstBrief: Slot?
+    private var dropped = false
+
+    mutating func append(_ entry: SubagentTranscriptEntry) {
+        let slot = Slot(ordinal: ordinal, entry: entry, bytes: Self.estimate(entry))
+        ordinal += 1
+        if firstBrief == nil, case .brief = entry { firstBrief = slot }
+        guard slot.bytes <= byteLimit else { dropped = true; return }
+        while count == capacity || bytes > byteLimit - slot.bytes {
+            let old = slots[head]!
+            bytes -= old.bytes
+            slots[head] = nil
+            head = (head + 1) % capacity
+            count -= 1
+            dropped = true
+        }
+        slots[(head + count) % capacity] = slot
+        count += 1
+        bytes += slot.bytes
+    }
+
+    func result(preserveFirstBrief: Bool) -> (entries: [SubagentTranscriptEntry], omitted: Bool) {
+        var entries: [SubagentTranscriptEntry] = []
+        var skipped = 0
+        var retainedBytes = bytes
+        if preserveFirstBrief, let brief = firstBrief,
+           count == 0 || brief.ordinal < slots[head]!.ordinal {
+            while count - skipped >= capacity || retainedBytes > byteLimit - brief.bytes {
+                let old = slots[(head + skipped) % capacity]!
+                retainedBytes -= old.bytes
+                skipped += 1
+            }
+            entries.append(brief.entry)
+        }
+        for index in skipped..<count { entries.append(slots[(head + index) % capacity]!.entry) }
+        return (entries, dropped || skipped > 0)
+    }
+
+    private static func estimate(_ entry: SubagentTranscriptEntry) -> Int {
+        let overhead = 64
+        switch entry {
+        case let .brief(text), let .text(text): return overhead + text.utf8.count
+        case let .toolCall(name, argument): return overhead + name.utf8.count + argument.utf8.count
+        case let .toolResult(lines, _, _): return overhead + lines.reduce(0) { $0 + 24 + $1.utf8.count }
+        case .tooLong, .thought: return overhead
+        }
     }
 }
