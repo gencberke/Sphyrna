@@ -69,6 +69,7 @@ public final class TerminalInputQueue: @unchecked Sendable {
     private var automaticClean = false
     private var automaticEverUsed = false
     private var automaticOutstanding: (ticket: AutomaticInputTicket, generation: UInt64)?
+    private var automaticExternalEffect = false
     private var automaticSegment: AutomaticSegment?
     private var idleWaiter: (@Sendable () -> Void)?
 
@@ -174,6 +175,72 @@ public final class TerminalInputQueue: @unchecked Sendable {
         }
     }
 
+    /// Reserve the same clean composer for an external provider request. The
+    /// reservation precedes proof registration, so a fast provider event can
+    /// never arrive before its ticket exists.
+    func reserveAutomaticInput() -> AutomaticInputTicket? {
+        lock.withLock {
+            guard automaticClean, automaticOutstanding == nil, failure == nil, closedReason == nil,
+                  !draining, pending.count == sent else { return nil }
+            let ticket = AutomaticInputTicket()
+            automaticOutstanding = (ticket, unclassifiedGeneration)
+            automaticExternalEffect = false
+            automaticClean = false
+            automaticEverUsed = true
+            return ticket
+        }
+    }
+
+    /// Invoke only around the short external write. A user edit, an in-flight
+    /// terminal response, Stop, or a replaced ticket wins before the syscall.
+    func writeReservedAutomatic(_ ticket: AutomaticInputTicket, _ write: () throws -> Int) rethrows -> Int? {
+        try lock.withLock {
+            guard let outstanding = automaticOutstanding, outstanding.ticket == ticket,
+                  outstanding.generation == unclassifiedGeneration, failure == nil, closedReason == nil,
+                  !draining, pending.count == sent else { return nil }
+            do {
+                let count = try write()
+                if count > 0 { automaticExternalEffect = true }
+                return count
+            } catch {
+                automaticExternalEffect = true
+                throw error
+            }
+        }
+    }
+
+    /// Only a caller that proved no external write occurred may release this.
+    func releaseReservedAutomatic(_ ticket: AutomaticInputTicket) {
+        lock.withLock {
+            guard let outstanding = automaticOutstanding, outstanding.ticket == ticket,
+                  automaticSegment?.ticket != ticket, !automaticExternalEffect else { return }
+            automaticOutstanding = nil
+            if outstanding.generation == unclassifiedGeneration, failure == nil, closedReason == nil {
+                automaticClean = true
+            }
+        }
+    }
+
+    func enqueueReservedAutomatic(_ ticket: AutomaticInputTicket, bytes: Data,
+                                  transaction: @escaping TerminalWriteTransaction) -> Bool {
+        guard bytes.count > 1, bytes.count <= 16 * 1024, bytes.last == 0x0d,
+              bytes.dropLast().allSatisfy({ (0x20...0x7e).contains($0) }) else { return false }
+        let accepted = lock.withLock {
+            guard let outstanding = automaticOutstanding, outstanding.ticket == ticket,
+                  outstanding.generation == unclassifiedGeneration, !automaticExternalEffect, automaticWriter != nil,
+                  failure == nil, closedReason == nil, !draining, pending.count == sent,
+                  bytes.count <= capacity else { return false }
+            pending.append(bytes)
+            automaticSegment = AutomaticSegment(end: pending.count, ticket: ticket, transaction: transaction)
+            lastAcceptedUptime = ProcessInfo.processInfo.systemUptime
+            lastAccepted = Date()
+            draining = true
+            return true
+        }
+        if accepted { Task.detached { [self] in await drain() } }
+        return accepted
+    }
+
     /// Admit a single printable pointer and Return atomically with the clean
     /// check. Anything else, including a multiline payload, is deferred whole.
     func enqueueAutomatic(_ bytes: Data, transaction: @escaping TerminalWriteTransaction) -> AutomaticInputTicket? {
@@ -184,6 +251,7 @@ public final class TerminalInputQueue: @unchecked Sendable {
                   !draining, pending.count == sent, bytes.count <= capacity else { return nil }
             let ticket = AutomaticInputTicket()
             automaticOutstanding = (ticket, unclassifiedGeneration)
+            automaticExternalEffect = false
             automaticClean = false
             automaticEverUsed = true
             pending.append(bytes)
@@ -203,6 +271,7 @@ public final class TerminalInputQueue: @unchecked Sendable {
         lock.withLock {
             guard let outstanding = automaticOutstanding, outstanding.ticket == ticket else { return false }
             automaticOutstanding = nil
+            automaticExternalEffect = false
             guard outstanding.generation == unclassifiedGeneration, failure == nil, closedReason == nil else { return false }
             automaticClean = true
             return true

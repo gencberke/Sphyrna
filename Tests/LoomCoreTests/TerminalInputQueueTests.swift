@@ -76,6 +76,31 @@ private final class PermitOnce: @unchecked Sendable {
 
 @Suite(.timeLimit(.minutes(1)))
 struct TerminalInputQueueTests {
+    @Test func externalTaskInputRequiresAnUnchangedCleanComposerAtTheActualWrite() throws {
+        let queue = TerminalInputQueue(capacity: 1024, writer: { $0.count },
+            automaticWriter: { bytes, transaction in try transaction { bytes.count } }, onError: { _ in })
+        #expect(queue.establishFreshCleanInput())
+        let first = try #require(queue.reserveAutomaticInput())
+        #expect(queue.reserveAutomaticInput() == nil)
+        queue.noteUnclassifiedInput()
+        var writes = 0
+        #expect(queue.writeReservedAutomatic(first) { writes += 1; return 7 } == nil)
+        #expect(writes == 0)
+        queue.releaseReservedAutomatic(first)
+        #expect(queue.reserveAutomaticInput() == nil, "user input remains dirty")
+
+        let clean = TerminalInputQueue(capacity: 1024, writer: { $0.count },
+            automaticWriter: { bytes, transaction in try transaction { bytes.count } }, onError: { _ in })
+        #expect(clean.establishFreshCleanInput())
+        let retryable = try #require(clean.reserveAutomaticInput())
+        clean.releaseReservedAutomatic(retryable)
+        let committed = try #require(clean.reserveAutomaticInput())
+        #expect(clean.writeReservedAutomatic(committed) { 7 } == 7)
+        clean.releaseReservedAutomatic(committed)
+        #expect(clean.reserveAutomaticInput() == nil, "a write is held until provider proof")
+        #expect(clean.confirmAutomaticInput(committed))
+        #expect(clean.reserveAutomaticInput() != nil)
+    }
     @Test func providerEventBeforeWriteCancelsOnlyTheAutomaticChunk() async throws {
         let writer = ScriptedWriter(script: [])
         let queue = TerminalInputQueue(capacity: 1024, writer: { try writer.write($0) },

@@ -223,6 +223,8 @@ public struct SessionTaskRoundTarget: Sendable {
 }
 
 public enum SessionTaskInputEffect: Sendable {
+    /// A newly owned empty child is bound, but no input has been submitted.
+    case started(binding: SessionTaskBinding)
     /// The host accepted one input and returned the actual owned session/run.
     /// A write acknowledgement is not proof of exactly-once model execution.
     case submitted(binding: SessionTaskBinding, nativeTurnID: String?, actualModel: String?, actualEffort: String?, actualMode: HarnessMode?)

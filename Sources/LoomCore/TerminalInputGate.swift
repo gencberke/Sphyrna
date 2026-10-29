@@ -79,6 +79,25 @@ public final class TerminalInputGate: @unchecked Sendable {
         lock.withLock { queues[runID]?.establishFreshCleanInput() ?? false }
     }
 
+    func reserveAutomaticInput(runID: UUID) -> TerminalInputQueue.AutomaticInputTicket? {
+        lock.withLock { queues[runID] }?.reserveAutomaticInput()
+    }
+
+    func writeReservedAutomatic(runID: UUID, ticket: TerminalInputQueue.AutomaticInputTicket,
+                                _ write: () throws -> Int) rethrows -> Int? {
+        guard let queue = lock.withLock({ queues[runID] }) else { return nil }
+        return try queue.writeReservedAutomatic(ticket, write)
+    }
+
+    func releaseReservedAutomatic(runID: UUID, ticket: TerminalInputQueue.AutomaticInputTicket) {
+        lock.withLock { queues[runID] }?.releaseReservedAutomatic(ticket)
+    }
+
+    func enqueueReservedAutomatic(runID: UUID, ticket: TerminalInputQueue.AutomaticInputTicket, bytes: Data,
+                                  transaction: @escaping TerminalWriteTransaction) -> Bool {
+        lock.withLock { queues[runID] }?.enqueueReservedAutomatic(ticket, bytes: bytes, transaction: transaction) ?? false
+    }
+
     func enqueueAutomatic(runID: UUID, bytes: Data,
                           transaction: @escaping TerminalWriteTransaction) -> TerminalInputQueue.AutomaticInputTicket? {
         lock.withLock { queues[runID]?.enqueueAutomatic(bytes, transaction: transaction) }

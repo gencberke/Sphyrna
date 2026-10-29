@@ -200,7 +200,7 @@ public actor SessionTaskCoordinator {
                             task.revision += 1
                             try store.save(task)
                         }
-                    case .deferred:
+                    case .deferred, .started:
                         wakeLeases[taskID]?.cancel()
                         try retireRounds(&task)
                         task.lifecycle = .revoked; task.authorityEpoch += 1; task.revision += 1
@@ -223,6 +223,25 @@ public actor SessionTaskCoordinator {
                 else {
                     round.phase = .retired; operation.receipt.delivery = .cancelled
                     if task.pendingRoundID == round.id { task.pendingRoundID = nil }
+                }
+            case let .started(binding):
+                guard binding.sessionID == initialTask.childSessionID, Self.validMetadata(binding.nativeSessionID),
+                      task.childBinding == nil || task.childBinding == binding else {
+                    operation.receipt.delivery = .unknown
+                    if sameAuthority { task.lifecycle = .identityChanged; task.authorityEpoch += 1 }
+                    break
+                }
+                // Keep the owned identity even if Stop fenced the relationship
+                // while spawn was suspended. A late live child cannot turn an
+                // earlier stop into a verified one.
+                task.childBinding = binding
+                task.uncertainChildEffects = max(0, task.uncertainChildEffects - 1)
+                if sameAuthority { task.childInputsUsed = max(0, task.childInputsUsed - 1) }
+                if active && !staleReply { round.phase = .queued; operation.receipt.delivery = .deferred }
+                else {
+                    round.phase = .retired; operation.receipt.delivery = .cancelled
+                    if task.pendingRoundID == round.id { task.pendingRoundID = nil }
+                    if task.lifecycle == .stopped { task.lifecycle = .stopUnverified }
                 }
             case .unknown:
                 operation.receipt.delivery = .unknown

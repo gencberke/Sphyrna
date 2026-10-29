@@ -27,6 +27,7 @@ actor TaskFakeHost: SessionTaskHost {
     var native: SessionTaskNativeStatus = .ready
     var parentReady = true
     var submitOutcomeUnknown = false
+    var submitStartedOnly = false
     var stopVerified = true
     var interruptVerified = true
     var forgetting = false
@@ -86,6 +87,13 @@ actor TaskFakeHost: SessionTaskHost {
               intent.task.childBinding == nil || intent.task.childBinding == child else { return .deferred }
         submissions.append(intent)
         if submitOutcomeUnknown { return .unknown }
+        if submitStartedOnly {
+            if pauseSubmit {
+                submitEntered = true
+                await withCheckedContinuation { submitContinuation = $0 }
+            }
+            return .started(binding: returnedBinding ?? child)
+        }
         native = .working
         let nativeTurn = proofKind == .nativeTurn ? "provider-turn-\(UUID().uuidString)" : nil
         let execution: SessionTaskExecutionReference
@@ -155,6 +163,7 @@ actor TaskFakeHost: SessionTaskHost {
     }
     func setNative(_ value: SessionTaskNativeStatus) { native = value }
     func setUnknown(_ value: Bool) { submitOutcomeUnknown = value }
+    func setStartedOnly(_ value: Bool) { submitStartedOnly = value }
     func setStopVerified(_ value: Bool) { stopVerified = value }
     func setWakeUnknown(_ value: Bool) { wakeUnknown = value }
     func deferWakeAfterPause() { wakeDeferredAfterPause = true }
@@ -259,6 +268,41 @@ struct TaskFixture {
 
 @Suite(.serialized)
 struct SessionTaskFoundationTests {
+    @Test func emptyStartedChildIsBoundWithoutSpendingAnInputAndStopTargetsIt() async throws {
+        let f = try await TaskFixture.make()
+        defer { f.clean() }
+        await f.host.setStartedOnly(true)
+        _ = try await f.input("first")
+        #expect(try await f.coordinator.deliverPending(taskID: f.taskID).delivery == .deferred)
+        let before = try await f.coordinator.status(taskID: f.taskID, parent: f.parent)
+        let owned = await f.host.child
+        #expect(before.task.childBinding == owned)
+        #expect(before.task.childInputsUsed == 0 && before.pendingRound?.phase == .queued)
+        #expect(try await f.coordinator.stopChild(taskID: f.taskID, parent: f.parent, operationID: UUID()).delivery == .verified)
+        #expect(await f.host.stops == 1)
+    }
+
+    @Test func stopDuringEmptySpawnRetainsLateBindingAndNeverClaimsAnUnverifiedStop() async throws {
+        let f = try await TaskFixture.make()
+        defer { f.clean() }
+        await f.host.setStartedOnly(true)
+        await f.host.setStopVerified(false)
+        await f.host.holdSubmit()
+        _ = try await f.input("first")
+        let delivery = Task { try await f.coordinator.deliverPending(taskID: f.taskID) }
+        #expect(await SessionRuntimeTests.waitUntil(2) { await f.host.hasEnteredSubmit() })
+        let stop = try await f.coordinator.stopChild(taskID: f.taskID, parent: f.parent, operationID: UUID())
+        #expect(stop.delivery == .unverified)
+        await f.host.releaseSubmit()
+        _ = try await delivery.value
+        let fenced = try await f.coordinator.status(taskID: f.taskID, parent: f.parent)
+        let owned = await f.host.child
+        #expect(fenced.task.lifecycle == .stopUnverified && fenced.task.childBinding == owned)
+        #expect(fenced.activeRound == nil && fenced.pendingRound == nil)
+        await f.host.setStopVerified(true)
+        #expect(try await f.coordinator.stopChild(taskID: f.taskID, parent: f.parent, operationID: UUID()).delivery == .verified)
+        #expect(await f.host.stops == 2)
+    }
     @Test func userLatestEventsAreBoundedOrderedAndDoNotAcknowledgeTheParent() async throws {
         let f = try await TaskFixture.make()
         defer { f.clean() }
