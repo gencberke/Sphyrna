@@ -89,13 +89,21 @@ public struct CatalogModelStatistics: Sendable {
     public var startMilliseconds = 0.0
 }
 
+private func rowDisplayState(_ state: SessionViewState?) -> SessionViewState? {
+    var value = state
+    value?.managedTaskRevision = 0
+    return value
+}
+
 /// One card. The record comes from the catalog, `live` from the core's latest
 /// event state; the model only joins them for display.
 @MainActor @Observable
 public final class SessionRowModel: Identifiable {
     public nonisolated let id: UUID
     public private(set) var record: CatalogSession
+    /// The last display-changing state; streamed task revisions have their own leaf below.
     public private(set) var live: SessionViewState?
+    public private(set) var managedTaskRevision: UInt64
     /// Why the session shows its status (`live?.displayReason`), held on its own so that a card reads the reason
     /// through this row alone. Written only when it differs, and the hub changes it only at hook boundaries
     /// (a permission request, a stop, a failure, a prompt), so the reason line never redraws per frame.
@@ -115,6 +123,7 @@ public final class SessionRowModel: Identifiable {
         id = record.session.id
         self.record = record
         self.live = live
+        managedTaskRevision = live?.managedTaskRevision ?? 0
         reason = live?.displayReason
         self.awaitingOpenApproval = awaitingOpenApproval
         self.isSelected = isSelected
@@ -126,7 +135,9 @@ public final class SessionRowModel: Identifiable {
 
     func apply(record: CatalogSession) { if record != self.record { self.record = record } }
     func apply(live: SessionViewState?) {
-        if live != self.live { self.live = live }
+        if rowDisplayState(live) != rowDisplayState(self.live) { self.live = live }
+        let revision = live?.managedTaskRevision ?? 0
+        if revision != managedTaskRevision { managedTaskRevision = revision }
         let reason = live?.displayReason
         if reason != self.reason { self.reason = reason }
     }
@@ -479,6 +490,14 @@ public final class CatalogModel {
     let stoppedAgents = StoppedAgentsState()
     /// Bounded metadata for the visible parents and one selected task detail.
     let sessionTasks = SessionTaskUIState()
+    @ObservationIgnored var managedAgentBridge: ManagedAgentUIBridge?
+    private(set) var managedAgentSourceRevision: UInt64 = 0
+
+    /// Installed once the runtime and its user-action service are ready.
+    public func setManagedAgentUIBridge(_ bridge: ManagedAgentUIBridge?) {
+        managedAgentBridge = bridge
+        managedAgentSourceRevision &+= 1
+    }
     /// Rewind files (V21): the open sheet and the Undo prompt (`CatalogModel+Rewind`).
     let rewinds = RewindState()
     /// The quick question's panels, one per session (V22; `CatalogModel+QuickQuestion`).
@@ -1747,12 +1766,14 @@ public final class CatalogModel {
     }
 
     private func setLive(_ id: UUID, _ state: SessionViewState?) {
+        let progressOnly = liveStates[id] != state && rowDisplayState(liveStates[id]) == rowDisplayState(state)
         if liveStates[id] != state {
             liveStates[id] = state
-            liveRevision &+= 1
+            if !progressOnly { liveRevision &+= 1 }
         }
         if state == nil { liveRecords[id] = nil }
         rowModels[id]?.apply(live: state)
+        if progressOnly { return }
         if viewedSubagent?.sessionID == id { syncViewedSubagent(with: state) }
         updateActive(id)
         updateAttentionCount()

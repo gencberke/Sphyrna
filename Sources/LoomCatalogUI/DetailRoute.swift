@@ -18,6 +18,8 @@ enum DetailRoute: Equatable {
     case record(sessionID: UUID)
     /// The read-only Chat view of a session (V13): its transcript, or the kept last screen when none resolves.
     case chat(sessionID: UUID)
+    /// A task-owned child has one managed progress/permission surface.
+    case managedAgent(sessionID: UUID, taskID: UUID)
     /// The Home screen (V05).
     case home
     /// A project's new-session draft (V07); `nil` is a draft with no project.
@@ -32,7 +34,7 @@ enum DetailRoute: Equatable {
     var surface: Color {
         switch self {
         case .startupError, .devTerminal, .terminal, .endedScreen, .record, .noSelection,
-             .chat, .home, .draft, .projectPage:
+             .chat, .managedAgent, .home, .draft, .projectPage:
             LoomTheme.Surface.panel
         }
     }
@@ -44,14 +46,14 @@ enum DetailRoute: Equatable {
     var drawsDark: Bool {
         switch self {
         case .devTerminal, .terminal, .endedScreen: true
-        case .startupError, .record, .chat, .home, .draft, .projectPage, .noSelection: false
+        case .startupError, .record, .chat, .managedAgent, .home, .draft, .projectPage, .noSelection: false
         }
     }
 
     /// Whether the header shows the selected session. Home, a draft and a project page are not about a session.
     var showsSessionHeader: Bool {
         switch self {
-        case .terminal, .endedScreen, .record, .chat: true
+        case .terminal, .endedScreen, .record, .chat, .managedAgent: true
         case .startupError, .devTerminal, .noSelection, .home, .draft, .projectPage: false
         }
     }
@@ -63,7 +65,7 @@ enum DetailRoute: Equatable {
     var drawsHeaderRow: Bool {
         switch self {
         case .home, .projectPage: false
-        case .startupError, .devTerminal, .terminal, .endedScreen, .record, .chat, .draft, .noSelection: true
+        case .startupError, .devTerminal, .terminal, .endedScreen, .record, .chat, .managedAgent, .draft, .noSelection: true
         }
     }
 
@@ -99,6 +101,12 @@ extension CatalogModel {
     /// the terminal arrives. Codex and synthetic sessions keep the old routes.
     private func sessionRoute(for row: SessionRowModel) -> DetailRoute {
         let id = row.id
+        if let taskID = row.live?.managedTaskID {
+            // Verified Take Over may have adopted its terminal just before the
+            // detached-marker frame reaches this model.
+            if terminalView(for: id) != nil { return .terminal(sessionID: id) }
+            return .managedAgent(sessionID: id, taskID: taskID)
+        }
         // A pipe run has no terminal: it is the live Chat face, whatever the flags say.
         if runEndpoint(of: row) == .pipe { return .chat(sessionID: id) }
         // A stopped session the Chat face owns shows its live chat: the composer resumes it in that face.
@@ -143,7 +151,8 @@ extension CatalogModel {
     /// switched on, that the Chat face does not run. A Chat-face run has no terminal to show, and a stopped session
     /// shows its live chat while the switch in Settings says Chat (D-69).
     public var canChooseFace: Bool {
-        guard readOnlyChatEnabled, let row = selectedRow, capabilities(of: row.record.session.provider).structuredFace else { return false }
+        guard readOnlyChatEnabled, let row = selectedRow, row.live?.managedTaskID == nil,
+              capabilities(of: row.record.session.provider).structuredFace else { return false }
         return runEndpoint(of: row) != .pipe && !showsStoppedLiveChat(row)
     }
 
@@ -190,6 +199,10 @@ struct DetailContent: View {
                 if let row = model.selectedRow { ConversationDetail(model: model, row: row) }
             case .chat:
                 if let row = model.selectedRow { SessionChatView(model: model, row: row).id(row.id) }
+            case let .managedAgent(sessionID, taskID):
+                if let row = model.selectedRow, row.id == sessionID {
+                    ManagedAgentPane(model: model, row: row, taskID: taskID).id(taskID)
+                }
             case .home:
                 HomeView(model: model)
             case .draft(let projectID):

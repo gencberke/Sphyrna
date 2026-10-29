@@ -14,7 +14,8 @@ struct DetailShellTests {
     private var routes: [DetailRoute] {
         let id = UUID()
         return [.startupError("x"), .devTerminal, .terminal(sessionID: id), .endedScreen(sessionID: id), .record(sessionID: id),
-                .chat(sessionID: id), .home, .draft(projectID: project), .draft(projectID: nil), .projectPage(projectID: project),
+                .chat(sessionID: id), .managedAgent(sessionID: id, taskID: UUID()),
+                .home, .draft(projectID: project), .draft(projectID: nil), .projectPage(projectID: project),
                 .noSelection]
     }
 
@@ -35,7 +36,7 @@ struct DetailShellTests {
         for route in routes {
             let hairline = DetailHeader.drawsHairline(showsSessionHeader: route.showsSessionHeader, showsDevTerminal: route == .devTerminal)
             switch route {
-            case .terminal, .endedScreen, .record, .chat, .devTerminal: #expect(hairline, "\(route)")
+            case .terminal, .endedScreen, .record, .chat, .managedAgent, .devTerminal: #expect(hairline, "\(route)")
             case .startupError, .home, .draft, .projectPage, .noSelection: #expect(!hairline, "\(route)")
             }
         }

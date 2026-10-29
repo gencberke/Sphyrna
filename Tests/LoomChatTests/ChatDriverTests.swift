@@ -38,7 +38,8 @@ struct Rig {
     /// - Parameter probeFailures: the first this many toolchain resolutions fail as a capability probe does (a timeout).
     /// - Parameter listsForwardSubagentText: the fake CLI's help lists `--forward-subagent-text`, as Claude Code 2.1.300's does.
     static func make(environment: [String: String] = [:], version: String = "fake 1", plugin: Bool = true,
-                     probeFailures: Int = 0, listsForwardSubagentText: Bool = true) async throws -> Rig {
+                     probeFailures: Int = 0, listsForwardSubagentText: Bool = true,
+                     managedClaudeControllerFactory: ManagedTaskControllerFactory? = nil) async throws -> Rig {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-chat-\(UUID())", isDirectory: true)
         let home = root.appendingPathComponent("home", isDirectory: true)
         let profile = root.appendingPathComponent("claude-config", isDirectory: true)
@@ -56,6 +57,7 @@ struct Rig {
             executable: DriverFixture.binaries.appendingPathComponent("loom-run-host"), in: root
         )
         let supervisor = try await ProcessSupervisor.restoring(
+            ledgerURL: managedClaudeControllerFactory == nil ? nil : root.appendingPathComponent("ledger.json"),
             catalog: catalog,
             scopeLauncher: RunScopeLauncher(hostBundle: bundle, socketDirectory: socketDirectory.appendingPathComponent("rs"))
         )
@@ -92,7 +94,8 @@ struct Rig {
                 idlePolicy: SessionIdlePolicy(), codexIdentityTimeout: 3,
                 claudePluginDirectory: plugin ? root.appendingPathComponent("claude-plugin", isDirectory: true) : nil,
                 hookSilenceGrace: 3, catalogBackupDelay: nil,
-                toolchainProbeRetryPause: .milliseconds(50)
+                toolchainProbeRetryPause: .milliseconds(50),
+                managedClaudeControllerFactory: managedClaudeControllerFactory
             )
         )
         try await runtime.start()
@@ -122,6 +125,7 @@ struct Rig {
     func finish() async {
         let report = await runtime.shutdown()
         #expect(report.succeeded)
+        guard report.succeeded else { return }
         RunScopeLauncher.removeOwnedBundle(in: root)
         try? FileManager.default.removeItem(at: socketDirectory)
         try? FileManager.default.removeItem(at: root)

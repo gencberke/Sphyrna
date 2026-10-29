@@ -120,6 +120,27 @@ struct SidebarRenderTests {
                 "the model and accessibility leaves update without rebuilding the card bodies")
     }
 
+    @Test func managedProgressRevisionsDoNotRebuildSidebarCards() async throws {
+        let hosted = try await host(cards: 30)
+        defer { finish(hosted) }
+        let target = hosted.ids[3], task = UUID()
+        await hosted.hub.publish(sessionID: target, change: .managedTaskChanged(task))
+        hosted.model.apply(await hosted.hub.snapshot())
+        try await settle(hosted)
+        let meaningfulRevision = hosted.model.liveRevision
+        SidebarRenderProbe.reset()
+        for _ in 0..<20 {
+            await hosted.hub.publish(sessionID: target, change: .managedTaskChanged(task))
+            hosted.model.apply(await hosted.hub.snapshot())
+        }
+        try await settle(hosted)
+        #expect(SidebarRenderProbe.cardTotal == 0,
+                "streamed task progress belongs to the selected managed pane, not the sidebar card bodies")
+        #expect(hosted.model.liveStates[target]?.managedTaskRevision == 21)
+        #expect(hosted.model.rowModels[target]?.managedTaskRevision == 21)
+        #expect(hosted.model.liveRevision == meaningfulRevision, "task progress does not invalidate every project's status")
+    }
+
     /// Before: every card read the selected id, so a selection change evaluated all 30 cards.
     @Test func aSelectionChangeEvaluatesOnlyTheOldAndTheNewCard() async throws {
         let hosted = try await host(cards: 30)

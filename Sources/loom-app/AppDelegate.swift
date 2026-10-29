@@ -513,6 +513,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 let sessions = SessionService(runtime: created, startableProviders: startableProviders,
                                               structuredHost: chatHost)
                 let conversations = ConversationController(service: sessions, model: model)
+                model.setManagedAgentUIBridge(ManagedAgentUIBridge(
+                    read: { [weak created] child in
+                        guard let created else { throw SessionTaskError.notReady }
+                        return try await created.managedTaskForChild(sessionID: child)
+                    },
+                    respond: { [weak sessions] run, occurrence, decision in
+                        guard let sessions else { throw SessionTaskError.notReady }
+                        return try await sessions.respondManagedTask(run, occurrenceID: occurrence, decision: decision)
+                    },
+                    takeOver: { [weak sessions, weak model] run in
+                        guard let sessions, let model else { throw SessionTaskError.notReady }
+                        try await sessions.takeOverManagedTask(run) { [weak model] child in
+                            model?.select(child, revealInList: false)
+                        }
+                    }))
                 model.chatSessionsInstalled(runtime: created, host: chatHost)
                 await conversations.begin()
                 // The cleanup review (Settings → Sessions) is in every build (D-69); it deletes only what
