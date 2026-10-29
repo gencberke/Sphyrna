@@ -61,6 +61,74 @@ struct SidebarParityTests {
         accessibilityElements(in: view).first { $0.accessibilityRole?() == role && InkAX.label($0).hasPrefix(prefix) }
     }
 
+    @Test func aPinnedActiveReasonKeepsItsVisiblePinAndSingleAccessibleLabel() async throws {
+        enableAccessibilityTree()
+        let rig = try await rig()
+        defer { rig.model.stop(); try? FileManager.default.removeItem(at: rig.root) }
+        for appearance in [NSAppearance.Name.darkAqua, .aqua] {
+            for width in [280, 300] {
+                await rig.model.setPinned(rig.reason, true)
+                await rig.model.settle()
+                let hosting = NSHostingController(rootView: SidebarView(model: rig.model))
+                hosting.sizingOptions = []
+                let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: CGFloat(width), height: 800),
+                                      styleMask: [.borderless], backing: .buffered, defer: false)
+                window.isReleasedWhenClosed = false
+                defer { window.close() }
+                window.appearance = NSAppearance(named: appearance)
+                window.contentViewController = hosting
+                window.setContentSize(NSSize(width: CGFloat(width), height: 800))
+                try await settle(window)
+                let card = try #require(element("Review access,", role: .button, in: hosting.view))
+                let pinnedFrame = InkAX.frame(card)
+                let pinnedLabel = InkAX.label(card)
+                #expect(abs(pinnedFrame.height - 74) < 1)
+                #expect(pinnedLabel.contains("git status") && pinnedLabel.contains("topic/sidebar"))
+                #expect(pinnedLabel.components(separatedBy: "pinned").count == 2,
+                        "the card announces the pin exactly once: \(pinnedLabel)")
+                #expect(!accessibilityElements(in: hosting.view).contains {
+                    $0.accessibilityRole?() == .button && ["Pin", "Pinned"].contains(InkAX.label($0))
+                }, "the visible pin must not add a duplicate button")
+                let pinnedImage = try #require(hosting.view.bitmapImageRepForCachingDisplay(in: hosting.view.bounds))
+                hosting.view.cacheDisplay(in: hosting.view.bounds, to: pinnedImage)
+
+                await rig.model.setPinned(rig.reason, false)
+                await rig.model.settle()
+                try await settle(window)
+                let unpinnedCard = try #require(element("Review access,", role: .button, in: hosting.view))
+                let unpinnedFrame = InkAX.frame(unpinnedCard)
+                let unpinnedLabel = InkAX.label(unpinnedCard)
+                #expect(pinnedFrame == unpinnedFrame && !unpinnedLabel.contains("pinned"))
+                #expect(unpinnedLabel.contains("git status") && unpinnedLabel.contains("topic/sidebar"))
+                let unpinnedImage = try #require(hosting.view.bitmapImageRepForCachingDisplay(in: hosting.view.bounds))
+                hosting.view.cacheDisplay(in: hosting.view.bounds, to: unpinnedImage)
+                func color(_ image: NSBitmapImageRep, at point: NSPoint) throws -> NSColor {
+                    let local = hosting.view.convert(window.convertFromScreen(NSRect(origin: point, size: .zero)), from: nil)
+                    let x = Int(local.minX * CGFloat(image.pixelsWide) / hosting.view.bounds.width)
+                    let y = hosting.view.isFlipped ? local.minY : hosting.view.bounds.height - local.minY
+                    return try #require(image.colorAt(x: x, y: Int(y * CGFloat(image.pixelsHigh) / hosting.view.bounds.height))?
+                        .usingColorSpace(.sRGB))
+                }
+                var changed: [NSPoint] = []
+                for dx in 12..<(width - 38) {
+                    for dy in 10..<26 {
+                        let point = NSPoint(x: pinnedFrame.minX + CGFloat(dx), y: pinnedFrame.minY + CGFloat(dy))
+                        let a = try color(pinnedImage, at: point), b = try color(unpinnedImage, at: point)
+                        let delta = max(abs(a.redComponent - b.redComponent), abs(a.greenComponent - b.greenComponent),
+                                        abs(a.blueComponent - b.blueComponent))
+                        if delta > 0.03 { changed.append(point) }
+                    }
+                }
+                let xs = changed.map(\.x), ys = changed.map(\.y)
+                #expect(changed.count >= 4, "the pinned reason must visibly draw its pin: \(appearance), \(width), \(changed.count)")
+                if let x0 = xs.min(), let x1 = xs.max(), let y0 = ys.min(), let y1 = ys.max() {
+                    #expect(x1 - x0 <= 16 && y1 - y0 <= 16, "only the small pin changes in the bottom line")
+                }
+                #expect(!window.isVisible && !window.isKeyWindow)
+            }
+        }
+    }
+
     @Test func childAccessibilityPressInvokesItsActionOnce() async throws {
         enableAccessibilityTree()
         let record = SubagentRecord(id: "alpha", agentType: "explorer", startedAt: Date())

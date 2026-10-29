@@ -884,10 +884,10 @@ private struct SessionCardMeta: View {
                     .help(reasonHelp(reason, branch: branch))
             } else {
                 branchLabel(branch)
-                if row.record.pinned {
-                    Image(systemName: "pin.fill").font(LoomTheme.Typography.pinGlyph)
-                        .help(SessionCardView.pinnedGlyphHelp(cleanupReviewOffered: model.cleanupReview != nil))
-                }
+            }
+            if row.record.pinned {
+                Image(systemName: "pin.fill").font(LoomTheme.Typography.pinGlyph)
+                    .help(SessionCardView.pinnedGlyphHelp(cleanupReviewOffered: model.cleanupReview != nil))
             }
             Spacer(minLength: LoomTheme.Space.headerSpacing)
             HarnessMark(provider: row.record.session.provider, size: LoomTheme.Sidebar.cardHarnessMark)
