@@ -322,9 +322,15 @@ for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
 # ---------------------------------------------------------------- catalog helpers
 
 def row(state, sid):
-    for r in state.get('catalog', {}).get('activityRowDetails', []) or []:
+    catalog = state.get('catalog', {})
+    for r in catalog.get('activityRowDetails', []) or []:
         if r.get('id') == sid:
             return r
+    if catalog.get('selectedSessionID') == sid:
+        # The activity list is not always the shown list; the selected session's own fields carry the same words.
+        return {'id': sid, 'indicator': catalog.get('selectedIndicator'), 'live': bool(catalog.get('selectedRunID')),
+                'lifecycle': catalog.get('selectedLifecycle'), 'provider': catalog.get('selectedProvider'),
+                'conversationID': None, 'fromSelection': True}
     return None
 
 
@@ -395,6 +401,7 @@ class Cell:
 def start_from_draft(app, project, harness, model, effort, mode, text):
     """The draft page: a new draft, the model/effort/mode chips, the first message, Send. Returns (session id, requested)."""
     before = set(owners(app.snap('before-start')))
+    app.send('view-mode:activity')
     app.send(f'new-session:{project}')
     time.sleep(1)
     requested = app.request(f'draft-choice:{project}:{harness}:{model}:{effort}:{mode}', 'ack-draft-choice.json')
