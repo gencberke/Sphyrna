@@ -211,11 +211,12 @@ struct HeaderModelSegmentTests {
         // Its ring is read all the same (the composer's fallback), as before.
         #expect(rig.model.inspectorContextSessions == ["conv-main"])
 
-        // Codex is frozen (D-28): nothing.
+        // Codex's rollout carries its context (FB6-14): the segment is there and its ring is read for that session. With
+        // no reading and no launch model yet, the segment says nothing.
         try await select(rig.codex, in: rig)
-        #expect(!rig.model.headerShowsModelSegment(try #require(rig.model.selectedRow)))
+        #expect(rig.model.headerShowsModelSegment(try #require(rig.model.selectedRow)))
         #expect(rig.model.modelContent(of: try #require(rig.model.selectedRow).record) == nil)
-        #expect(rig.model.inspectorContextSessions.isEmpty)
+        #expect(rig.model.inspectorContextSessions == ["conv-codex"])
     }
 
     // MARK: Hosted pictures
@@ -522,21 +523,23 @@ struct HeaderModelSegmentTests {
         #expect(rig.model.launchModels.permissionMode(of: rig.main) == "default" && row.live?.permissionMode == "acceptEdits")
     }
 
-    @Test func aCodexSessionsOverviewHasOnlyWhatItAlwaysHad() async throws {
+    /// Codex's Overview has what its rollout carries (FB6-14): context, usage and the last turn's edits. Codex has no agents
+    /// and reports no run settings, so neither the Agents section nor Claude's harness facts appear.
+    @Test func aCodexSessionsOverviewHasWhatItsRolloutCarries() async throws {
         let rig = try await rig()
         defer { cleanup(rig) }
         rig.intents.version = "2.1.300"
         try await select(rig.codex, in: rig)
         let row = try #require(rig.model.selectedRow)
         let texts = try await overviewTexts(rig, row: row, waitingFor: "Folder")
-        #expect(rows(["Session", "Context", "Worktree"], in: texts) == ["Session", "Context", "Worktree"], "texts \(texts)")
+        let sections = ["Session", "Context", "Usage", "Worktree", "Changes"]
+        #expect(rows(sections, in: texts) == sections, "texts \(texts)")
         #expect(rows(["State", "Project", "Branch", "Folder"], in: texts) == ["State", "Project", "Branch", "Folder"])
-        #expect(rows(["Claude", "Model", "Mode", "Effort"], in: texts).isEmpty, "nothing new for Codex: \(texts)")
-        #expect(!texts.contains { $0.lowercased().hasPrefix("changes") || $0.lowercased().hasPrefix("agents") },
-                "no Changes or Agents section: \(texts)")
-        // Opened on Overview, its edits are not read either.
+        #expect(rows(["Claude", "Model", "Mode", "Effort"], in: texts).isEmpty, "no run settings for Codex: \(texts)")
+        #expect(!texts.contains { $0.lowercased().hasPrefix("agents") }, "no Agents section: \(texts)")
+        // Opened on Overview, the last turn's edits are read from the rollout.
         rig.model.setInspector(open: true, for: rig.codex)
-        #expect(rig.model.changesTrigger == nil)
+        #expect(rig.model.changesTrigger?.scope == .lastTurn && rig.model.changesTrigger?.source?.kind == .codex)
     }
 
     @Test func aSessionWithoutAgentsHidesTheAgentsSectionAndSaysThereIsNoReading() async throws {
