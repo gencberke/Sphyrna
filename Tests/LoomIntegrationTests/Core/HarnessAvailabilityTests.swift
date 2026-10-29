@@ -37,9 +37,9 @@ struct HarnessAvailabilityTests {
     @Test func notFoundIsOffAndTheSwitchIsDisabledWhateverThePreferenceSays() throws {
         let fixture = try path(with: [])
         defer { try? FileManager.default.removeItem(at: fixture.folder) }
-        let opencode = try #require(HarnessCatalogue.descriptor(for: .opencode))
+        let pi = try #require(HarnessCatalogue.descriptor(for: .pi))
 
-        let missing = HarnessAvailability.of(opencode, in: fixture.environment, isOn: true)
+        let missing = HarnessAvailability.of(pi, in: fixture.environment, isOn: true)
         #expect(missing.state == .notFound && !missing.isOn && !missing.isFound)
         #expect(!missing.canSwitch, "a CLI that is not on the PATH cannot be switched on")
         #expect(missing.executable == nil)
@@ -53,10 +53,10 @@ struct HarnessAvailabilityTests {
 
         let rows = HarnessAvailability.all(in: fixture.environment, connections: connections)
         #expect(rows.map(\.id) == HarnessCatalogue.ids)
-        #expect(rows.map(\.state) == [.notFound, .notFound, .off, .notFound, .off],
-                "Claude and Codex are not installed here; opencode and pi are found and off by default")
-        #expect(rows.filter(\.isFound).map(\.id) == [.opencode, .pi])
-        #expect(rows.filter { !$0.canSwitch }.map(\.id) == [.claude, .codex, .agy])
+        #expect(rows.map(\.state) == [.notFound, .notFound, .comingLater, .comingLater, .off],
+                "Claude and Codex are not installed here; pi is found and off by default; opencode and agy are coming later")
+        #expect(rows.filter(\.isFound).map(\.id) == [.opencode, .pi], "a harness coming later keeps its PATH result")
+        #expect(rows.filter { !$0.canSwitch }.map(\.id) == [.claude, .codex, .opencode, .agy])
     }
 
     @Test func theSwitchDefaultsToOnWhenFoundAndKeepsAnExplicitChoice() {
@@ -65,25 +65,25 @@ struct HarnessAvailabilityTests {
         #expect(!connections.isOn(.opencode) && !connections.isOn(.agy) && !connections.isOn(.pi), "off until switched on")
         #expect(connections.explicitChoices.isEmpty, "a default is the file's absence of an entry")
 
-        connections.setOn(.opencode, true)
-        #expect(connections.isOn(.opencode) && connections.explicitChoices == ["opencode": true])
+        connections.setOn(.pi, true)
+        #expect(connections.isOn(.pi) && connections.explicitChoices == ["pi": true])
         connections.setOn(.claude, false)
-        #expect(!connections.isOn(.claude) && connections.explicitChoices == ["opencode": true, "claude": false])
+        #expect(!connections.isOn(.claude) && connections.explicitChoices == ["pi": true, "claude": false])
 
-        connections.setOn(.opencode, false)
+        connections.setOn(.pi, false)
         connections.setOn(.claude, true)
         #expect(connections.explicitChoices.isEmpty, "back to the default removes the entry")
     }
 
     @Test func theReaderUsesTheCachedTerminalEnvironment() async throws {
-        let fixture = try path(with: ["agy"])
+        let fixture = try path(with: ["pi"])
         defer { try? FileManager.default.removeItem(at: fixture.folder) }
         let connections = HarnessConnections()
-        connections.setOn(.agy, true)
+        connections.setOn(.pi, true)
 
         let reader = HarnessAvailabilityReader(environment: { fixture.environment })
         let rows = try await reader.read(connections)
-        #expect(rows.first { $0.id == .agy }?.state == .on)
+        #expect(rows.first { $0.id == .pi }?.state == .on)
         #expect(rows.first { $0.id == .claude }?.state == .notFound)
     }
 

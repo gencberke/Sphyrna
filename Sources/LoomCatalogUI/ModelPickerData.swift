@@ -74,7 +74,9 @@ struct ModelPickerRow: Hashable {
         let descriptors = HarnessCatalogue.all.filter { scope == nil || $0.id == scope }
         let all = descriptors.map { descriptor -> Group in
             let state: HarnessAvailabilityState
-            if let availability, availability[descriptor.id]?.state == nil || availability[descriptor.id]?.state == .notFound {
+            if descriptor.comingLater {
+                state = .comingLater
+            } else if let availability, availability[descriptor.id]?.state == nil || availability[descriptor.id]?.state == .notFound {
                 state = .notFound
             } else if !(connections ?? catalog.connections).isOn(descriptor.id) {
                 state = .off
@@ -92,6 +94,7 @@ struct ModelPickerRow: Hashable {
             case .on: nil
             case .off: "\(group.descriptor.displayName) (off)"
             case .notFound: "\(group.descriptor.displayName) (not found)"
+            case .comingLater: "\(group.descriptor.displayName) (coming later)"
             }
         }
         groups = all.map { group in

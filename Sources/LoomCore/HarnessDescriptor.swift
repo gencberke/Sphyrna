@@ -56,6 +56,9 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
     public let onWhenFound: Bool
     /// Whether this build has a start path for the harness at all (production narrows it further).
     public let startable: Bool
+    /// The harness is frozen for this version (D-120): every list shows it with the "Coming later" label, nothing starts or
+    /// resumes it, and Sphyrna does not probe it or offer its models. Its start path stays in the tree, unused.
+    public let comingLater: Bool
     /// The stored provider this build runs the harness with; nil for a harness that has none yet.
     public let provider: ManagedSession.Provider?
     /// Product modes whose mapping has been established for this harness, and its safe fallback.
@@ -72,7 +75,8 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
         install: HarnessSetupCommand? = nil, signIn: HarnessSetupCommand? = nil, doctorArguments: [String]? = nil,
         docs: URL? = nil, profileVariable: String? = nil, profileFolder: String,
         versions: HarnessVersionTable? = nil, requiresAppServerListen: Bool = false, pinsDefaultProfile: Bool = false,
-        capabilities: HarnessCapabilities, onWhenFound: Bool, startable: Bool, provider: ManagedSession.Provider? = nil,
+        capabilities: HarnessCapabilities, onWhenFound: Bool, startable: Bool, comingLater: Bool = false,
+        provider: ManagedSession.Provider? = nil,
         markRendering: MarkRendering = .image, showsOnboardingWhenMissing: Bool = false,
         modes: [HarnessMode] = [], agentModes: [HarnessMode] = [], defaultMode: HarnessMode? = nil,
         defaultEfforts: [String] = [], sharesCrossHarnessModes: Bool = false,
@@ -98,6 +102,7 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
         self.transcriptFormat = transcriptFormat
         self.onWhenFound = onWhenFound
         self.startable = startable
+        self.comingLater = comingLater
         self.provider = provider
         self.modes = modes
         self.agentModes = agentModes

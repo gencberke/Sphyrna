@@ -25,6 +25,7 @@ enum HomeConnect {
         var word: String {
             switch row.availability {
             case .notFound: "Not found"
+            case .comingLater: HarnessDescriptor.comingLaterLabel
             case .off: "Off"
             case .on where row.descriptor.provider == nil: "Found"
             case .on:
@@ -52,10 +53,13 @@ enum HomeConnect {
     static let firstRunText = "Sphyrna works with the agents already on your Mac. Set up the ones you use, then add the folder you work in."
     static let noticeSuffix = "Sessions already listed stay readable."
 
-    /// Claude and Codex always appear on onboarding; the other harnesses only when found. An unsupported build never asks
-    /// for its setup, and a deliberate off choice does not raise the notice over an existing catalog.
+    /// Claude and Codex always appear on onboarding; the other harnesses only when found, a harness coming later too (with
+    /// its label and no action). An unsupported build never asks for its setup, and a deliberate off choice does not raise
+    /// the notice over an existing catalog.
     static func plan(rows: [ConnectionsContent.HarnessRow]) -> Plan {
-        let visible = rows.filter { $0.descriptor.showsOnboardingWhenMissing || $0.canSwitch }
+        let visible = rows.filter {
+            $0.descriptor.showsOnboardingWhenMissing || $0.canSwitch || ($0.isComingLater && $0.executable != nil)
+        }
         let cards = visible.map(card(for:))
         let attention = cards.filter { needsSetup($0.row) }
         let offNeedsOnboarding = cards.contains { $0.row.buildSupportsSessions && $0.row.availability == .off }
@@ -119,12 +123,19 @@ private struct HomeConnectCardView: View {
                             .foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
                     }
                     Spacer(minLength: LoomTheme.Home.connectRowGap)
-                    Circle().fill(LoomTheme.Connect.dotColor(card.row.state))
-                        .frame(width: LoomTheme.Connect.dot, height: LoomTheme.Connect.dot).accessibilityHidden(true)
-                    Text(card.word).homeType(LoomTheme.Home.connectWord).foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
+                    if card.row.isComingLater {
+                        InkBadge(text: card.word).fixedSize()
+                            .accessibilityIdentifier("home-connect-later-\(card.id.rawValue)")
+                    } else {
+                        Circle().fill(LoomTheme.Connect.dotColor(card.row.state))
+                            .frame(width: LoomTheme.Connect.dot, height: LoomTheme.Connect.dot).accessibilityHidden(true)
+                        Text(card.word).homeType(LoomTheme.Home.connectWord)
+                            .foregroundStyle(LoomTheme.Text.secondaryOnCardStyle)
+                    }
                 }
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(card.name), \(card.word), \(card.row.headline)")
+                .accessibilityLabel(card.row.isComingLater ? "\(card.name), \(card.word)"
+                    : "\(card.name), \(card.word), \(card.row.headline)")
                 if let note = card.row.startNote {
                     Text(note).homeType(LoomTheme.Home.codexNote).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                         .padding(.top, LoomTheme.Home.codexNoteGap)

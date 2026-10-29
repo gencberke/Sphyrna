@@ -144,7 +144,9 @@ the message under the field.
 radius 6.
 
 **Badge.** A capsule, 18 high, caption type. Muted fill with secondary text, or an outline. A status badge takes the status's
-wash and text colours.
+wash and text colours. A harness frozen for the version (D-120) carries the neutral badge **Coming later** wherever harnesses
+are listed (Connections' row and detail, Home's connect card, the model picker's group), in place of its status dot and with
+no action beside it.
 
 **Key chip.** One component for every shortcut (menus, tooltips, the palette's footer). SF Mono 11 in a 4-radius cap with a
 hairline. Never on a back-out action.

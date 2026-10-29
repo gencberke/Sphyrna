@@ -101,11 +101,12 @@ public struct HarnessCapabilities: Equatable, Sendable {
     }
 
     /// The capabilities of `id` in a build that can start the `startable` harnesses: `intrinsic(ofHarness:)`, with `startable`
-    /// per the set and the harness's own `startable` fact (a harness with no start path, and a synthetic session, is never
-    /// startable).
+    /// per the set and the harness's own `startable` fact (a harness with no start path, one that is coming later, and a
+    /// synthetic session, is never startable).
     public static func ofHarness(_ id: HarnessID, startable: Set<HarnessID>) -> HarnessCapabilities {
         let base = intrinsic(ofHarness: id)
-        let hasStartPath = HarnessCatalogue.descriptor(for: id)?.startable ?? false
+        let descriptor = HarnessCatalogue.descriptor(for: id)
+        let hasStartPath = (descriptor?.startable ?? false) && descriptor?.comingLater != true
         return HarnessCapabilities(
             hasHarness: base.hasHarness, startable: base.hasHarness && hasStartPath && startable.contains(id),
             structuredFace: base.structuredFace, readsTranscript: base.readsTranscript, sideChats: base.sideChats,

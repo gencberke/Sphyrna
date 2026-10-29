@@ -594,12 +594,14 @@ extension CatalogModel {
     // MARK: Send
 
     /// Why ↵ would not start a draft that has text, when the text itself is the reason: a first message that is
-    /// too long to be one argument of the process. Checked before any git step.
+    /// too long to be one argument of the process. Checked before any git step. A stored draft for a harness that is
+    /// coming later (D-120) says so instead.
     public func draftSendBlock(projectID: UUID?) -> String? {
+        guard let draft = newSession.draft(for: projectID) else { return nil }
+        if let reason = HarnessCatalogue.comingLaterReason(for: draft.choices.harness) { return reason }
         // The trimmed text is never longer than the text, so the common case needs no trimming: this is asked on
         // every redraw of the draft.
-        guard let draft = newSession.draft(for: projectID),
-              draft.text.utf8.count > NewSessionLaunch.maxFirstMessageBytes,
+        guard draft.text.utf8.count > NewSessionLaunch.maxFirstMessageBytes,
               draft.trimmedText.utf8.count > NewSessionLaunch.maxFirstMessageBytes else { return nil }
         return "This message is too long to start a session with (the limit is "
             + "\(NewSessionLaunch.maxFirstMessageBytes / 1024) KB). Shorten it, or keep the long part in a file and name it here."

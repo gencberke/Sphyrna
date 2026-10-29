@@ -60,17 +60,22 @@ private struct ConnectionRow: View {
                     Text(row.version).projectType(C.version).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                 }
                 Spacer(minLength: S.rowGap)
-                HStack(spacing: C.dotGap) {
-                    Circle().fill(C.dotColor(row.state)).frame(width: C.dot, height: C.dot).accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(row.headline).projectType(C.headline).foregroundStyle(LoomTheme.Text.secondaryStyle)
-                            .lineLimit(1).truncationMode(.tail)
-                        if row.showsAccountChanged {
-                            Text("Account changed").projectType(C.changed).foregroundStyle(LoomTheme.Status.attentionLight)
+                if row.isComingLater {
+                    InkBadge(text: row.headline).fixedSize()
+                        .accessibilityIdentifier("connection-later-\(row.id.rawValue)")
+                } else {
+                    HStack(spacing: C.dotGap) {
+                        Circle().fill(C.dotColor(row.state)).frame(width: C.dot, height: C.dot).accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(row.headline).projectType(C.headline).foregroundStyle(LoomTheme.Text.secondaryStyle)
+                                .lineLimit(1).truncationMode(.tail)
+                            if row.showsAccountChanged {
+                                Text("Account changed").projectType(C.changed).foregroundStyle(LoomTheme.Status.attentionLight)
+                            }
                         }
                     }
+                    .frame(maxWidth: C.headlineMaxWidth, alignment: .trailing)
                 }
-                .frame(maxWidth: C.headlineMaxWidth, alignment: .trailing)
             }
             .opacity(row.availability == .off ? C.offOpacity : 1)
             SettingsSwitch(title: "Connect \(row.name)", isOn: Binding(
@@ -100,7 +105,11 @@ private struct ConnectionDetail: View {
 
     var body: some View {
         SettingsGroup(label: row.name) {
-            if row.availability == .notFound {
+            if row.isComingLater, let reason = row.descriptor.comingLaterReason {
+                // D-120: no check, setup or Deep Check for a harness Sphyrna does not run yet; only what it is and its docs.
+                SettingsRow(title: "Status", detail: reason + ".") { InkBadge(text: row.headline).fixedSize() }
+                documentation
+            } else if row.availability == .notFound {
                 SettingsRow(title: "Status", detail: row.missingExplanation) { checkButton }
                 if let command = row.descriptor.install {
                     SettingsRowDivider()

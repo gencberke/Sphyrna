@@ -130,15 +130,17 @@ extension ConnectionsContent {
         var id: HarnessID { descriptor.id }
         var name: String { descriptor.displayName }
         var isOn: Bool { availability == .on }
+        /// The harness is coming later (D-120): the row shows the label and offers no switch, setup or start.
+        var isComingLater: Bool { availability == .comingLater }
         var canSwitch: Bool { availability == .on || availability == .off }
         var version: String { availability == .notFound ? "—" : (health?.version.map(HarnessVersionTable.text) ?? "—") }
-        var startNote: String? { buildSupportsSessions ? nil : "\(name) comes in a later version" }
+        var startNote: String? { buildSupportsSessions || isComingLater ? nil : "\(name) comes in a later version" }
         var showsAccountChanged: Bool { isOn && health?.accountChanged == true }
 
         var state: HarnessHealthState {
             switch availability {
             case .notFound: return .install
-            case .off: return .disabled
+            case .off, .comingLater: return .disabled
             case .on:
                 guard descriptor.provider != nil else { return .disabled }
                 guard let health, health.state != .install && health.state != .disabled else { return .checking }
@@ -150,6 +152,7 @@ extension ConnectionsContent {
         var headline: String {
             switch availability {
             case .notFound: "Not found on this Mac"
+            case .comingLater: HarnessDescriptor.comingLaterLabel
             case .off: "Off"
             case .on where descriptor.provider == nil: "Found"
             case .on where state == .checking: "Checking…"
@@ -189,7 +192,8 @@ extension ConnectionsContent {
             found = nil
             executable = nil
         }
-        let state: HarnessAvailabilityState? = found.map { $0 ? (switchedOn ? .on : .off) : .notFound }
+        let state: HarnessAvailabilityState? = descriptor.comingLater ? .comingLater
+            : found.map { $0 ? (switchedOn ? .on : .off) : .notFound }
         return HarnessRow(descriptor: descriptor, availability: state, executable: executable,
                           switchPreference: switchedOn, health: health, buildSupportsSessions: buildSupportsSessions, canStart: canStart)
     }
