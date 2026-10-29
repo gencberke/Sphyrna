@@ -124,11 +124,14 @@ struct OpenRequestBox: View {
                 .frame(maxHeight: LoomTheme.OpenRequest.messageMaxHeight)
                 .accessibilityLabel("Message")
             } else {
+                // The label belongs to a group around the text, as the scroll area's does: a selectable Text that carries
+                // its own label recurses without end inside SwiftUI when an assistive client reads it (ARCHITECTURE §12).
                 Text(content.preview).font(LoomTheme.OpenRequest.body)
                     .foregroundStyle(LoomTheme.Text.primary)
                     .lineLimit(OpenRequestBoxContent.previewLineLimit).textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityLabel("Message: \(content.preview)")
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Message")
             }
         }
         .padding(.vertical, LoomTheme.OpenRequest.messagePaddingV)

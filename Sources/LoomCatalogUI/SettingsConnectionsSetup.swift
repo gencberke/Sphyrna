@@ -32,7 +32,8 @@ struct HarnessSetupBlock: View {
                 Text("Or: \(alternative)").projectType(C.alternative).foregroundStyle(LoomTheme.Text.tertiaryStyle)
                     .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                     .padding(.top, C.commandGap)
-                    .accessibilityLabel("Other way to \(command.title.lowercased()) \(name): \(alternative)")
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Other way to \(command.title.lowercased()) \(name)")
             }
             HStack(spacing: C.commandGap) {
                 Button("Copy") { health.copy(command, forHarness: id) }
@@ -56,13 +57,16 @@ struct HarnessSetupBlock: View {
         "Run this in Terminal, then choose Check Again. Sphyrna does not run it for you."
     }
 
+    /// The command reads as the text of a group named by `label`: a selectable Text must never carry its own accessibility
+    /// label, which SwiftUI resolves by asking the text's AppKit element again, without end (ARCHITECTURE §12).
     private func commandField(_ text: String, label: String, id: String) -> some View {
         Text(text).projectType(C.commandFont).foregroundStyle(LoomTheme.Text.primary)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, C.commandPaddingH).padding(.vertical, C.commandPaddingV)
             .background(RoundedRectangle(cornerRadius: C.commandRadius).fill(C.commandFill))
-            .accessibilityLabel("\(label): \(text)")
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(label)
             .accessibilityIdentifier(id)
     }
 }
