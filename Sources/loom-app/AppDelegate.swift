@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import LoomCatalogUI
+import LoomChat
 import LoomCore
 import LoomLaunchOptions
 import LoomTerminal
@@ -471,10 +472,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // A previous Loom that crashed may have left scopes; their hosts
             // normally stopped them already. Verify, never start anything.
             let runsDirectory = root.appendingPathComponent("runs")
-            Task { [weak self] in
-                let recovery = await PreviousRunRecovery.recover(runsDirectory: runsDirectory, current: directory)
-                guard !recovery.leftovers.isEmpty else { return }
-                self?.model?.ownershipNotice = "Work left by a previous Sphyrna could not be fully stopped: "
+            // Recovery writes the exact durable scope-stop receipt before
+            // runtime.start retries interrupted task deletion. Its filesystem
+            // and process work runs off the main actor inside recover().
+            let recovery = await PreviousRunRecovery.recover(runsDirectory: runsDirectory, current: directory)
+            if !recovery.leftovers.isEmpty {
+                model.ownershipNotice = "Work left by a previous Sphyrna could not be fully stopped: "
                     + recovery.leftovers.joined(separator: "; ")
             }
 
@@ -620,7 +623,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 await MainActor.run {
                     self?.approvalNotifier?.verifiedLimitReached(delivery.signal, isCurrent: delivery.isCurrent)
                 }
-            })
+            }),
+            managedClaudeControllerFactory: { run, ingress in
+                try ManagedClaudeTaskController(run: run, ingress: ingress)
+            }
         )
     }
 
