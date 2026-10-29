@@ -18,6 +18,7 @@ struct SessionTaskWireRequest: Codable, Sendable {
     var nextOperationID: UUID?
     var replyToEventID: UUID?
     var eventIDs: [UUID]?
+    var readLeaseID: UUID?
     var kind: SessionTaskReportKind?
     var message: String?
     var after: Int64?
@@ -54,12 +55,13 @@ struct SessionTaskWireReply: Codable, Sendable {
 struct SessionTaskWireRouter: Sendable {
     let coordinator: SessionTaskCoordinator
     let requested: @Sendable (UUID) async -> Void
-    let reported: @Sendable (UUID) async -> Void
+    let readFence: SessionTaskReadFence
 
     init(coordinator: SessionTaskCoordinator,
          requested: @escaping @Sendable (UUID) async -> Void = { _ in },
          reported: @escaping @Sendable (UUID) async -> Void = { _ in }) {
-        self.coordinator = coordinator; self.requested = requested; self.reported = reported
+        self.coordinator = coordinator; self.requested = requested
+        readFence = SessionTaskReadFence { id in Task { await reported(id) } }
     }
 
     func handle(_ data: Data) async -> Data {
@@ -76,20 +78,15 @@ struct SessionTaskWireRouter: Sendable {
                 return reply(.init(status: "ok", task: status.task, nativeStatus: status.nativeStatus,
                                    missingReport: status.missingReport))
             case "read":
-                let page = try await coordinator.eventEntries(taskID: taskID, parent: call.claim,
-                    after: call.after ?? 0, limit: call.limit ?? SessionTaskLimits.pageSize)
-                return try SessionTaskWirePacking.page(page.items, next: page.next).data
+                return try await read(call, taskID: taskID, wait: false)
             case "wait":
-                guard let revision = call.revision, let seconds = call.seconds else { throw SessionTaskError.invalidPayload }
-                let changed = try await coordinator.wait(taskID: taskID, parent: call.claim,
-                                                          afterRevision: revision, seconds: seconds)
-                let page = try await coordinator.eventEntries(taskID: taskID, parent: call.claim,
-                    after: call.after ?? 0, limit: call.limit ?? SessionTaskLimits.pageSize)
-                return try SessionTaskWirePacking.page(page.items, next: page.next,
-                                                       revision: changed?.revision ?? revision).data
+                return try await read(call, taskID: taskID, wait: true)
             case "ack":
                 guard let ids = call.eventIDs else { throw SessionTaskError.invalidPayload }
                 try await coordinator.acknowledgeEvents(taskID: taskID, parent: call.claim, eventIDs: ids)
+                if let lease = call.readLeaseID {
+                    readFence.acknowledge(lease, taskID: taskID, claim: call.claim, eventIDs: ids)
+                }
                 return reply(.init(status: "ok"))
             case "input":
                 guard let round = call.roundID, let operation = call.operationID else { throw SessionTaskError.invalidPayload }
@@ -101,7 +98,7 @@ struct SessionTaskWireRouter: Sendable {
                       let kind = call.kind, let message = call.message else { throw SessionTaskError.invalidPayload }
                 let receipt = try await coordinator.report(taskID: taskID, child: call.claim, roundID: round,
                     operationID: operation, kind: kind, payload: message)
-                Task { await reported(taskID) }
+                readFence.scheduleWake(taskID: taskID)
                 return reply(.init(status: "ok", receipt: receipt))
             case "reply":
                 guard let operation = call.operationID, let message = call.message else { throw SessionTaskError.invalidPayload }
@@ -127,6 +124,28 @@ struct SessionTaskWireRouter: Sendable {
             return reply(.init(status: "refused", detail: String(describing: error)))
         } catch {
             return reply(.init(status: "unavailable"))
+        }
+    }
+
+    private func read(_ call: SessionTaskWireRequest, taskID: UUID, wait: Bool) async throws -> Data {
+        // Authenticate before a caller is allowed to hold back a nudge.
+        _ = try await coordinator.status(taskID: taskID, parent: call.claim)
+        let lease = try readFence.begin(taskID: taskID, claim: call.claim)
+        do {
+            var revision: Int64?
+            if wait {
+                guard let last = call.revision, let seconds = call.seconds else { throw SessionTaskError.invalidPayload }
+                revision = try await coordinator.wait(taskID: taskID, parent: call.claim,
+                                                       afterRevision: last, seconds: seconds)?.revision ?? last
+            }
+            let page = try await coordinator.eventEntries(taskID: taskID, parent: call.claim,
+                after: call.after ?? 0, limit: call.limit ?? SessionTaskLimits.pageSize)
+            let result = try SessionTaskWirePacking.page(page.items, next: page.next, revision: revision, readLeaseID: lease)
+            readFence.delivered(lease, eventIDs: result.returnedIDs)
+            return result.data
+        } catch {
+            readFence.release(lease)
+            throw error
         }
     }
 
@@ -173,13 +192,15 @@ struct SessionTaskWirePage: Codable, Equatable, Sendable {
     let events: [SessionTaskWireEvent]
     let next: Int64?
     let revision: Int64?
+    let readLeaseID: UUID?
 
-    init(events: [SessionTaskWireEvent], next: Int64?, revision: Int64? = nil) {
+    init(events: [SessionTaskWireEvent], next: Int64?, revision: Int64? = nil, readLeaseID: UUID? = nil) {
         version = 5
         status = "ok"
         self.events = events
         self.next = next
         self.revision = revision
+        self.readLeaseID = readLeaseID
     }
 }
 
@@ -193,7 +214,8 @@ enum SessionTaskWirePacking {
     }
 
     static func page(_ entries: [SessionTaskEventEntry], next: Int64?,
-                     revision: Int64? = nil, budget: Int = SessionTaskWireLimits.replyBytes) throws -> Result {
+                     revision: Int64? = nil, readLeaseID: UUID? = nil,
+                     budget: Int = SessionTaskWireLimits.replyBytes) throws -> Result {
         guard budget > 0, entries.count <= SessionTaskLimits.pageSize,
               entries.allSatisfy({ $0.cursor > 0 && $0.event.payload.utf8.count <= SessionTaskLimits.payloadBytes }),
               zip(entries, entries.dropFirst()).allSatisfy({ $0.0.cursor < $0.1.cursor }) else {
@@ -203,13 +225,13 @@ enum SessionTaskWirePacking {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         var events: [SessionTaskWireEvent] = []
-        var last = try encoder.encode(SessionTaskWirePage(events: [], next: nil, revision: revision))
+        var last = try encoder.encode(SessionTaskWirePage(events: [], next: nil, revision: revision, readLeaseID: readLeaseID))
         guard last.count <= cap else { throw SessionTaskWirePackingError.replyTooSmall }
         for (index, entry) in entries.enumerated() {
             let event = SessionTaskWireEvent(entry)
             let candidate = events + [event]
             let continuation = index + 1 < entries.count ? entry.cursor : next
-            let data = try encoder.encode(SessionTaskWirePage(events: candidate, next: continuation, revision: revision))
+            let data = try encoder.encode(SessionTaskWirePage(events: candidate, next: continuation, revision: revision, readLeaseID: readLeaseID))
             guard data.count <= cap else {
                 guard !events.isEmpty else { throw SessionTaskWirePackingError.replyTooSmall }
                 return Result(data: last, returnedIDs: events.map(\.id))

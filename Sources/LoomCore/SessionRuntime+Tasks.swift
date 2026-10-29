@@ -16,6 +16,7 @@ extension SessionRuntime {
             taskCoordinator = coordinator
             taskSocketPath = path
             taskSocket = socket
+            taskReadFence = router.readFence
         } catch {
             LoomLog.error(.lifecycle, "Task channel unavailable (\(LoomLog.category(of: error)))")
         }
@@ -59,6 +60,13 @@ extension SessionRuntime {
     public func sessionTaskProjection(id: UUID) async throws -> SessionTaskProjection? {
         guard let taskCoordinator else { throw SessionTaskError.storage }
         return try await taskCoordinator.projectionForUser(taskID: id)
+    }
+
+    /// The selected task's recent results for the user. This does not mark
+    /// them read by the parent or consume a provider wake.
+    public func sessionTaskLatestEvents(id: UUID, limit: Int = 10) async throws -> [SessionTaskEvent] {
+        guard let taskCoordinator else { throw SessionTaskError.storage }
+        return try await taskCoordinator.latestEventsForUser(taskID: id, limit: limit)
     }
 
     public func sessionTaskProjectionUpdates() async -> AsyncStream<UInt64> {

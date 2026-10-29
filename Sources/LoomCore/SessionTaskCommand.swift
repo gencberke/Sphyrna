@@ -115,6 +115,7 @@ public enum SessionTaskCommand {
                 output.standardOutput(String(decoding: json, as: UTF8.self))
                 if !page.events.isEmpty {
                     var ack = call; ack.command = "ack"; ack.eventIDs = page.events.map(\.id)
+                    ack.readLeaseID = page.readLeaseID
                     let result = try exchange(ack, socket: socket, timeout: 5)
                     guard let reply = try? JSONDecoder().decode(SessionTaskWireReply.self, from: result), reply.status == "ok" else {
                         output.standardError("error: read acknowledgement was not confirmed"); return 3

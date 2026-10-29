@@ -692,6 +692,12 @@ public actor SessionTaskCoordinator {
     /// A future UI bridge must not turn this into an unauthenticated wire read.
     func projectionForUser(taskID: UUID) throws -> SessionTaskProjection? { try store.task(taskID) }
 
+    func latestEventsForUser(taskID: UUID, limit: Int) throws -> [SessionTaskEvent] {
+        guard (1...10).contains(limit) else { throw SessionTaskError.invalidPage }
+        guard try store.task(taskID) != nil else { throw SessionTaskError.notFound }
+        return try store.latestEvents(taskID: taskID, limit: limit)
+    }
+
     func identity(for claim: SessionTaskClaim) async throws -> SessionTaskBinding { try await authenticated(claim) }
 
     func projectionsForUser(parentSessionID: UUID? = nil, after: UUID?, limit: Int) throws -> SessionTaskProjectionPage {

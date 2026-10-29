@@ -312,6 +312,7 @@ public actor SessionRuntime {
     /// its bounded, message-free projections.
     var taskCoordinator: SessionTaskCoordinator?
     var taskSocket: SessionTaskSocket?
+    var taskReadFence: SessionTaskReadFence?
     var taskSocketPath: String?
     var taskRunPlans: [UUID: SessionTaskRunPlan] = [:]
 
@@ -747,6 +748,8 @@ public actor SessionRuntime {
         shuttingDown = true
         for plan in taskRunPlans.values { plan.lease.revoke() }
         taskRunPlans.removeAll()
+        taskReadFence?.stop()
+        taskReadFence = nil
         await claudeLimitObserver?.cancelAll()
         if let socket = taskSocket { await socket.stopAndWait() }
         taskSocket = nil

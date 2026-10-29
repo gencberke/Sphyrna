@@ -204,6 +204,12 @@ final class SessionTaskStore {
         }
     }
 
+    func latestEvents(taskID: UUID, limit: Int) throws -> [SessionTaskEvent] {
+        let values = try list("SELECT body FROM events WHERE task=? ORDER BY sequence DESC LIMIT ?",
+                              [taskID.uuidString, String(limit)], as: SessionTaskEvent.self)
+        return Array(values.reversed())
+    }
+
     func claimEvents(_ ids: [UUID], operationID: UUID) throws {
         for id in ids {
             try run("UPDATE events SET state='claimed',wake_operation=? WHERE id=? AND state='pending'",

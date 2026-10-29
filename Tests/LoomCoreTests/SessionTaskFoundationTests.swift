@@ -259,6 +259,27 @@ struct TaskFixture {
 
 @Suite(.serialized)
 struct SessionTaskFoundationTests {
+    @Test func userLatestEventsAreBoundedOrderedAndDoNotAcknowledgeTheParent() async throws {
+        let f = try await TaskFixture.make()
+        defer { f.clean() }
+        for number in 1...3 {
+            let round = try #require(try await f.input("round \(number)").roundID)
+            _ = try await f.coordinator.deliverPending(taskID: f.taskID)
+            _ = try await f.report(round, payload: "result \(number)")
+            await f.host.setNative(.ready)
+        }
+        let recent = try await f.coordinator.latestEventsForUser(taskID: f.taskID, limit: 2)
+        #expect(recent.map(\.payload) == ["result 2", "result 3"])
+        await #expect(throws: SessionTaskError.notFound) {
+            try await f.coordinator.latestEventsForUser(taskID: UUID(), limit: 2)
+        }
+        await #expect(throws: SessionTaskError.invalidPage) {
+            try await f.coordinator.latestEventsForUser(taskID: f.taskID, limit: 11)
+        }
+        _ = try await f.coordinator.wakePending(taskID: f.taskID, operationID: UUID())
+        #expect(await f.host.lastWakeCount() == 3)
+    }
+
     @Test func userProjectionPagesAndCoalescedUpdatesContainOnlyTaskMetadata() async throws {
         let f = try await TaskFixture.make()
         defer { f.clean() }
