@@ -274,6 +274,7 @@ private struct RealAcceptanceEvidence: Encodable {
     var approvalTime: Date? = nil
     var approvalParameterKeys: [String] = []
     var approvalNonNullExtraKeys: [String] = []
+    var approvalChecks: [String: Bool] = [:]
     var inputObservedTime: Date? = nil
     var sessionID: String? = nil
     var serverPID: Int32? = nil
@@ -466,6 +467,16 @@ struct RealCodexDraftAcceptanceTests {
                 let parameters = pending.request.params.object ?? [:]
                 result.approvalParameterKeys = parameters.keys.sorted()
                 result.approvalNonNullExtraKeys = parameters.filter { !allowed.contains($0.key) && $0.value != .null }.keys.sorted()
+                result.approvalChecks = RealCodexApprovalGuard.diagnostics(parameters, script: script).merging([
+                    "bindingThread": pending.binding.threadID == threadID,
+                    "bindingSession": pending.binding.sessionID == launch.sessionID,
+                    "bindingRun": pending.binding.managedRunID == launch.runID,
+                    "bindingCwd": Self.isExactOwnedDirectory(pending.binding.workingDirectory, cwd: value.work.path),
+                    "requestCwd": Self.isExactOwnedDirectory(parameters["cwd"]?.string, cwd: value.work.path),
+                    "requestThread": pending.request.threadID == threadID,
+                    "requestMethod": pending.request.method == "item/commandExecution/requestApproval",
+                    "requestKind": pending.request.kind == .commandExecution,
+                ], uniquingKeysWith: { _, new in new })
                 try Self.requireExactApproval(pending, launch: launch, threadID: threadID, cwd: value.work.path, script: script)
                 result.turnID = pending.request.params.object?["turnId"]?.string
                 let published = await Self.waitUntil(5) {
@@ -742,7 +753,25 @@ private enum RealCodexApprovalGuard {
         // Additional permissions and network approval are deliberately absent
         // from allowedKeys. This client negotiates experimentalApi:true, so
         // Codex does not hide those fields for legacy-client compatibility.
-        return arguments(command) == ["/bin/zsh", "-lc", script]
+        let words = arguments(command)
+        return words == ["/bin/zsh", "-lc", script] || words == ["/bin/zsh", "-c", script]
+    }
+
+    static func diagnostics(_ params: [String: JSONValue], script: String) -> [String: Bool] {
+        let command = params["command"]?.string ?? ""
+        let words = arguments(command) ?? []
+        return [
+            "guardAccepted": matches(params, script: script),
+            "plainAcceptOffered": params["availableDecisions"]?.array?.contains(.string("accept")) == true,
+            "commandRawScript": command == script,
+            "threeDisplayWords": words.count == 3,
+            "shellZsh": words.first == "/bin/zsh",
+            "shellBash": words.first == "/bin/bash",
+            "loginShell": words.count > 1 && words[1] == "-lc",
+            "nonloginShell": words.count > 1 && words[1] == "-c",
+            "exactScriptArgument": words.count == 3 && words[2] == script,
+            "turnPresent": params["turnId"]?.string != nil,
+        ]
     }
 
     /// A bounded POSIX display-word decoder, not a shell. Reject expansions,
@@ -814,6 +843,7 @@ private enum RealCodexApprovalGuard {
     @Test func shellDisplayIsComparedAsAnExactArgumentVector() {
         let quoted = "'" + script.replacingOccurrences(of: "'", with: "'\\''") + "'"
         #expect(RealCodexApprovalGuard.matches(params(command: "/bin/zsh -lc " + quoted), script: script))
+        #expect(RealCodexApprovalGuard.matches(params(command: "/bin/zsh -c " + quoted), script: script))
         #expect(!RealCodexApprovalGuard.matches(params(command: "/bin/zsh -lc " + quoted + "; touch /tmp/extra"), script: script))
         #expect(!RealCodexApprovalGuard.matches(params(command: "/bin/zsh -lc \"$(printf extra)\""), script: script))
         #expect(!RealCodexApprovalGuard.matches(params(command: script), script: script))
