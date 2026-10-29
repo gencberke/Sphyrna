@@ -7,18 +7,32 @@ import Testing
 
 // This fixture is prepared for an explicit parent-owned, zero-input native
 // acceptance run. Discovery and ordinary checks never start a provider.
+private enum NativeOpenCodeAcceptanceMode: String {
+    case strictWrapper = "strict-test-wrapper"
+    case productPath = "product-owned-profile"
+    var reservationKind: String {
+        self == .strictWrapper ? "opencode-native-tui-zero-input-v1" : "opencode-product-path-zero-input-v1"
+    }
+}
+
 private enum NativeOpenCodeAcceptanceGate {
     static let required = [
         "LOOM_ACC_NATIVE_OPENCODE_EXECUTABLE", "LOOM_ACC_NATIVE_OPENCODE_ROOT",
         "LOOM_ACC_NATIVE_OPENCODE_EVIDENCE", "LOOM_ACC_NATIVE_OPENCODE_RESERVATION",
     ]
 
-    static var enabled: Bool {
+    private static var configured: Bool {
         let environment = ProcessInfo.processInfo.environment
         return environment["LOOM_ACC_NATIVE_OPENCODE"] == "1" &&
             required.allSatisfy { !(environment[$0] ?? "").isEmpty }
     }
 
+    static var enabled: Bool {
+        configured && ProcessInfo.processInfo.environment["LOOM_ACC_NATIVE_OPENCODE_PRODUCT_PATH"] != "1"
+    }
+    static var productEnabled: Bool {
+        configured && ProcessInfo.processInfo.environment["LOOM_ACC_NATIVE_OPENCODE_PRODUCT_PATH"] == "1"
+    }
 }
 
 private struct NativeOpenCodeAcceptanceFailure: Error, Equatable {
@@ -29,6 +43,17 @@ private struct NativeOpenCodeAcceptanceFailure: Error, Equatable {
 
 private func nativeAcceptanceRequire(_ value: Bool, _ phase: String) throws {
     guard value else { throw NativeOpenCodeAcceptanceFailure(phase) }
+}
+
+private func requireNoSystemOpenCodeConfiguration() throws {
+    // The unwrapped control must not inherit machine-level policy/config.
+    // Check existence only; never inspect its contents.
+    for path in ["/Library/Application Support/opencode",
+                 "/Library/Managed Preferences/gencberke/ai.opencode.managed.plist",
+                 "/Library/Managed Preferences/ai.opencode.managed.plist"] {
+        var info = stat()
+        try nativeAcceptanceRequire(lstat(path, &info) != 0 && errno == ENOENT, "system-config-source")
+    }
 }
 
 private enum NativeOpenCodeAcceptanceFiles {
@@ -164,7 +189,7 @@ private struct NativeOpenCodeAcceptanceInputs {
     let executable: String
     let executableWitness: NativeExecutableWitness
 
-    static func read() throws -> Self {
+    static func read(mode: NativeOpenCodeAcceptanceMode = .strictWrapper) throws -> Self {
         let environment = ProcessInfo.processInfo.environment
         func input(_ key: String) throws -> URL {
             guard let value = environment[key], value.hasPrefix("/"), !value.contains("\0") else {
@@ -192,7 +217,7 @@ private struct NativeOpenCodeAcceptanceInputs {
         // The only permitted native file is the installed binary named by the
         // parent-owned P1 metadata evidence, never a profile/config/data path.
         try nativeAcceptanceRequire(executable == "/Users/gencberke/.opencode/bin/opencode" &&
-            approval.kind == "opencode-native-tui-zero-input-v1" && approval.modelInputs == 0 &&
+            approval.kind == mode.reservationKind && approval.modelInputs == 0 &&
             approval.root == root.path && approval.executable == executable && approval.version == "2.2.0",
             "reservation-mismatch")
         try nativeAcceptanceRequire(executable.unicodeScalars.allSatisfy { scalar in
@@ -267,7 +292,8 @@ private struct NativeOpenCodeLayout {
             "XDG_CACHE_HOME": root.appendingPathComponent("xdg/cache").path,
             "XDG_STATE_HOME": root.appendingPathComponent("xdg/state").path,
             "OPENCODE_CONFIG_DIR": roots["config"]!, "OPENCODE_DISABLE_AUTOUPDATE": "1",
-            "OPENCODE_DISABLE_MODELS_FETCH": "1", "OPENCODE_CONFIG_PROJECT_DISABLE": "1",
+            "OPENCODE_DISABLE_MODELS_FETCH": "1", "OPENCODE_FILEWATCHER_DISABLE": "1", "OPENCODE_DISABLE_FFF": "1",
+            "OPENCODE_CONFIG_PROJECT_DISABLE": "1",
             "OPENCODE_DISABLE_PROJECT_CONFIG": "1", "OPENCODE_DISABLE_CLAUDE_CODE": "1",
             "OPENCODE_DISABLE_CLAUDE_CODE_SKILLS": "1",
             "OPENCODE_CONFIG_CONTENT": #"{"plugins":["-opencode.provider.*"],"enabled_providers":["opencode"],"warming":false}"#]
@@ -563,6 +589,9 @@ private actor NativeOpenCodeTUIIdentity {
 private final class NativeOpenCodeBundleAnchor: NSObject {}
 
 private struct NativeOpenCodeResult: Encodable {
+    var executionBoundary = NativeOpenCodeAcceptanceMode.strictWrapper.rawValue
+    var nativeAndProfileUnchanged = false
+    var systemConfigurationSourcesAbsent: Bool?
     var result = "FAIL"
     var phase = "setup"
     let modelInputs = 0
@@ -579,6 +608,14 @@ private struct NativeOpenCodeResult: Encodable {
     var protocolReplies = 0
     var terminalBytes = 0
     var cleanupVerified = false
+    var failureCategory: String?
+    var serverStartupPhase: String?
+    var serverExitStatus: Int32?
+    var serverOutputBytes: Int?
+    var serverOutputIndicators: [String]?
+    var serverLoaderLines: [String]?
+    var serverOutputCompleteness: String?
+    var serverOutputOverflow: Bool?
 }
 
 @Suite(.serialized)
@@ -636,7 +673,7 @@ struct NativeOpenCodeTUIAcceptanceTests {
     @Test func publishedReservationRecipeBindsTheActualLaunchEnvironment() throws {
         let layout = NativeOpenCodeLayout(root: URL(fileURLWithPath: "/private/tmp/loom-real/e1tui-synthetic"))
         #expect(NativeOpenCodeLayout.environmentDigest(try layout.environment()) ==
-                "d16bdac6fd81d258c2e6bb8476d866307a647339c4d1c2ade300cd988c157184")
+                "74a199836ce5c2ab98ea5f960b91ed5f9b3855035b5c95d2fd14816d0f351e01")
     }
 
     @Test func terminalCloseFreezesTheFinalAcceptanceObservation() {
@@ -656,7 +693,24 @@ struct NativeOpenCodeTUIAcceptanceTests {
                    "Explicit isolated zero-input native acceptance inputs are required"),
           .timeLimit(.minutes(6)))
     func ownedNativeTUIObservesItsExactNewSessionWithoutInput() async {
+        await runNativeOpenCodeAcceptance(mode: .strictWrapper)
+    }
+}
+
+/// Product-path control under the existing isolated native-test authority.
+/// Its result never establishes compatibility with the fixture-only sandbox.
+@Suite(.serialized)
+struct NativeOpenCodeProductPathAcceptanceTests {
+    @Test(.enabled(if: NativeOpenCodeAcceptanceGate.productEnabled,
+                   "Explicit product-path zero-input reservation is required"), .timeLimit(.minutes(6)))
+    func ownedProductPathObservesItsExactNewSessionWithoutInput() async {
+        await runNativeOpenCodeAcceptance(mode: .productPath)
+    }
+}
+
+private func runNativeOpenCodeAcceptance(mode: NativeOpenCodeAcceptanceMode) async {
         var result = NativeOpenCodeResult()
+        result.executionBoundary = mode.rawValue
         var input: NativeOpenCodeAcceptanceInputs?
         var supervisor: ProcessSupervisor?
         var scope: RunScope?
@@ -670,8 +724,12 @@ struct NativeOpenCodeTUIAcceptanceTests {
         var failure: String?
         let screen = NativeOpenCodeScreen()
         do {
-            let value = try NativeOpenCodeAcceptanceInputs.read()
+            let value = try NativeOpenCodeAcceptanceInputs.read(mode: mode)
             input = value
+            if mode == .productPath {
+                try requireNoSystemOpenCodeConfiguration()
+                result.systemConfigurationSourcesAbsent = true
+            }
             let layout = NativeOpenCodeLayout(root: value.root)
             let environment = try layout.environment()
             try nativeAcceptanceRequire(value.approval.roots == layout.roots &&
@@ -680,6 +738,7 @@ struct NativeOpenCodeTUIAcceptanceTests {
             claimed = true
             try layout.prepare()
             let boundary = try NativeOpenCodeBoundary.install(layout: layout, executable: value.executable)
+            let nativeCommand = mode == .strictWrapper ? layout.wrapper.path : value.executable
             _ = try OpenCodeTUIPlugin.install(in: layout.plugin)
             try boundary.validate()
 
@@ -698,7 +757,8 @@ struct NativeOpenCodeTUIAcceptanceTests {
             try nativeAcceptanceRequire(try NativeOpenCodeAcceptanceFiles.executableWitness(value.executable) == value.executableWitness,
                                         "native-executable-changed")
             result.phase = "native-profile"
-            let proof = try await OpenCodeProfileProof.acquire(supervisor: owner, executable: layout.wrapper.path,
+            if mode == .productPath { try requireNoSystemOpenCodeConfiguration() }
+            let proof = try await OpenCodeProfileProof.acquire(supervisor: owner, executable: nativeCommand,
                 environment: environment, workingDirectory: layout.work.path, expected: layout.profileRoots,
                 expectedResolved: layout.profileRoots, timeout: 10)
             result.profileProof = true
@@ -709,8 +769,9 @@ struct NativeOpenCodeTUIAcceptanceTests {
             scope = ownedScope
             observed.formUnion(try ownedScope.members().map(\.identity))
             result.phase = "server"
+            if mode == .productPath { try requireNoSystemOpenCodeConfiguration() }
             let server = OpenCodeServerManager(supervisor: owner, configuration: OpenCodeServerConfiguration(
-                executable: layout.wrapper.path, workingDirectory: layout.work.path, environment: environment,
+                executable: nativeCommand, workingDirectory: layout.work.path, environment: environment,
                 expectedVersion: value.approval.version, profileProof: proof, startupTimeout: 30, scope: ownedScope))
             manager = server
             let client = try await server.start()
@@ -768,7 +829,8 @@ struct NativeOpenCodeTUIAcceptanceTests {
             try await owner.createInternalSession(managed)
             terminalID = appID
             result.phase = "native-tui"
-            let launch = try await owner.launch(sessionID: appID, executable: layout.wrapper.path,
+            if mode == .productPath { try requireNoSystemOpenCodeConfiguration() }
+            let launch = try await owner.launch(sessionID: appID, executable: nativeCommand,
                 arguments: profile.arguments, environment: launchEnvironment, rows: 40, columns: 120,
                 outputSink: screen, managedRunID: runID, scope: ownedScope)
             guard let leader = launch.session.currentRun?.leader else { throw NativeOpenCodeAcceptanceFailure("tui-leader") }
@@ -793,11 +855,47 @@ struct NativeOpenCodeTUIAcceptanceTests {
             try boundary.validate(terminalPolicy: terminalPolicy)
             try nativeAcceptanceRequire(try NativeOpenCodeAcceptanceFiles.executableWitness(value.executable) == value.executableWitness,
                                         "native-executable-changed")
-            result.nativeAndBoundaryUnchanged = true
+            result.nativeAndBoundaryUnchanged = mode == .strictWrapper
+            result.nativeAndProfileUnchanged = true
             observed.formUnion(try ownedScope.members().map(\.identity))
             result.phase = "cleanup"
         } catch {
             failure = (error as? NativeOpenCodeAcceptanceFailure)?.phase ?? result.phase
+            if let error = error as? OpenCodeProfileError {
+                switch error {
+                case .invalidOutput: result.failureCategory = "profile-output"
+                case .unexpectedRoots: result.failureCategory = "profile-roots"
+                case .changed: result.failureCategory = "profile-changed"
+                case .unowned: result.failureCategory = "profile-owner"
+                case .unavailable: result.failureCategory = "profile-unavailable"
+                }
+            } else if let error = error as? OpenCodeError {
+                switch error {
+                case .invalidCapability: result.failureCategory = "capability"
+                case .invalidTarget: result.failureCategory = "target"
+                case .unverifiedServer: result.failureCategory = "server-identity"
+                case .invalidResponse: result.failureCategory = "response"
+                case .conflict: result.failureCategory = "conflict"
+                case .indeterminate: result.failureCategory = "indeterminate"
+                case .unavailable: result.failureCategory = "unavailable"
+                case .timeout: result.failureCategory = "timeout"
+                case .closed: result.failureCategory = "closed"
+                case .responseTooLarge: result.failureCategory = "output-bound"
+                case .httpStatus: result.failureCategory = "http-status"
+                }
+            } else if error is CancellationError { result.failureCategory = "cancelled" }
+            else if error is LoomError { result.failureCategory = "runtime" }
+            else { result.failureCategory = "fixture" }
+            if let manager {
+                let diagnostic = await manager.startupDiagnostic
+                result.serverStartupPhase = diagnostic.phase.rawValue
+                result.serverExitStatus = diagnostic.exitStatus
+                result.serverOutputBytes = diagnostic.outputBytes
+                result.serverOutputIndicators = diagnostic.indicators
+                result.serverLoaderLines = diagnostic.loaderLines
+                result.serverOutputCompleteness = diagnostic.outputCompleteness
+                result.serverOutputOverflow = diagnostic.outputOverflow
+            }
         }
 
         let screenState = screen.close()
@@ -859,5 +957,4 @@ struct NativeOpenCodeTUIAcceptanceTests {
         }
         if cleanup, let input { RunScopeLauncher.removeOwnedBundle(in: NativeOpenCodeLayout(root: input.root).host) }
         if result.result != "PASS" { Issue.record("Native zero-input acceptance failed: \(result.phase)") }
-    }
 }

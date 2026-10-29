@@ -26,6 +26,20 @@ public struct OpenCodeServerConfiguration: Sendable {
 /// Owns one foreground server inside the TUI's run scope. The caller must stop
 /// the TUI as well and use the last run's scope-empty proof for the whole run.
 public actor OpenCodeServerManager {
+    /// Content-free startup evidence; no native output or capability is kept
+    /// here. The bounded output buffer remains private to its run.
+    struct StartupDiagnostic: Sendable {
+        enum Phase: String, Sendable { case idle, profile, catalog, launch, listener, info, ready }
+        var phase = Phase.idle
+        var exitStatus: Int32?
+        var outputBytes = 0
+        var indicators: [String] = []
+        var loaderLines: [String] = []
+        /// Transport finish drains for a bounded period; it does not expose EOF proof.
+        var outputCompleteness = "not-finalized"
+        var outputOverflow = false
+    }
+    private(set) var startupDiagnostic = StartupDiagnostic()
     private struct Running: Sendable { let sessionID: UUID; let client: OpenCodeClient }
     private let supervisor: ProcessSupervisor
     private let configuration: OpenCodeServerConfiguration
@@ -120,32 +134,42 @@ public actor OpenCodeServerManager {
         guard configuration.startupTimeout.isFinite, configuration.startupTimeout > 0,
               configuration.startupTimeout <= 30, configuration.workingDirectory.hasPrefix("/"),
               !configuration.expectedVersion.isEmpty else { throw OpenCodeError.invalidTarget }
+        startupDiagnostic = StartupDiagnostic(phase: .profile)
         try await configuration.profileProof.validate(executable: configuration.executable,
                                                       environment: configuration.environment,
                                                       workingDirectory: configuration.workingDirectory)
         try Task.checkCancellation()
         let session = ManagedSession(provider: .synthetic, workingDirectory: configuration.workingDirectory)
+        startupDiagnostic.phase = .catalog
         try await supervisor.createInternalSession(session)
+        let output = OpenCodeStartupOutput()
+        var startupPassword: String?
         do {
             try Task.checkCancellation()
             var random = [UInt8](repeating: 0, count: 32)
             random.withUnsafeMutableBytes { arc4random_buf($0.baseAddress, $0.count) }
             let password = random.map { String(format: "%02x", $0) }.joined()
+            startupPassword = password
             let environment = LaunchEnvironment.make(base: configuration.environment,
                                                      runID: supervisor.ownershipRunID, sessionID: session.id)
             let profile = try OpenCodeLaunchProfile.server(environment: environment, password: password)
             try Task.checkCancellation()
-            let output = OpenCodeStartupOutput()
+            startupDiagnostic.phase = .launch
             let launch = try await supervisor.launch(sessionID: session.id, executable: configuration.executable,
                                                      arguments: profile.arguments, environment: profile.environment,
                                                      outputSink: output, scope: configuration.scope)
             guard let leader = launch.session.currentRun?.leader else { throw OpenCodeError.unavailable }
+            startupDiagnostic.phase = .listener
             let deadline = ProcessInfo.processInfo.systemUptime + configuration.startupTimeout
             repeat {
                 try Task.checkCancellation()
-                if await launch.terminal.exitStatus() != nil { throw OpenCodeError.unavailable }
+                if let status = await launch.terminal.exitStatus() {
+                    startupDiagnostic.exitStatus = status
+                    throw OpenCodeError.unavailable
+                }
                 if output.overflow { throw OpenCodeError.responseTooLarge }
                 if let url = output.serverURL {
+                    startupDiagnostic.phase = .info
                     let remaining = deadline - ProcessInfo.processInfo.systemUptime
                     guard remaining > 0 else { break }
                     let client = try OpenCodeClient(serverURL: url, password: password, leader: leader,
@@ -161,6 +185,7 @@ public actor OpenCodeServerManager {
                                                                       environment: configuration.environment,
                                                                       workingDirectory: configuration.workingDirectory)
                         output.stopCapturing()
+                        startupDiagnostic.phase = .ready
                         return Running(sessionID: session.id, client: client)
                     } catch OpenCodeError.httpStatus(503) {
                         await client.close()
@@ -177,7 +202,19 @@ public actor OpenCodeServerManager {
         } catch {
             // The caller's canceled task must not cancel the cleanup that proves
             // destruction. The supervisor retains the id if cleanup cannot pass.
-            _ = await Task.detached { await self.cleanUp(session.id) }.value
+            let cleanup = await Task.detached { await self.cleanUp(session.id) }.value
+            // Exit observation can precede the final PTY read. Finalize only
+            // after the supervisor's bounded output drain and cleanup attempt.
+            if let startupPassword {
+                let diagnostic = output.diagnostic(redacting: startupPassword)
+                startupDiagnostic.outputBytes = diagnostic.bytes
+                startupDiagnostic.indicators = diagnostic.indicators
+                startupDiagnostic.loaderLines = diagnostic.loaderLines
+                startupDiagnostic.outputOverflow = output.overflow
+                startupDiagnostic.outputCompleteness = cleanup.errors.isEmpty
+                    ? "bounded-drain-eof-unverified" : "cleanup-unverified"
+            }
+            output.stopCapturing()
             throw error
         }
     }
@@ -198,6 +235,60 @@ private final class OpenCodeStartupOutput: TerminalOutputSink, @unchecked Sendab
         }
     }
     var overflow: Bool { lock.withLock { tooLarge } }
+    func diagnostic(redacting password: String) -> (bytes: Int, indicators: [String], loaderLines: [String]) {
+        lock.withLock {
+            let text = String(decoding: bytes, as: UTF8.self).replacingOccurrences(of: password, with: "<capability>")
+            let normalized = text.replacingOccurrences(of: #"\x1B\[[0-?]*[ -/]*[@-~]"#,
+                with: "", options: .regularExpression).replacingOccurrences(of: "\r", with: "\n")
+            let lower = normalized.lowercased()
+            let indicators = ["operation not permitted", "permission denied", "eperm", "eacces",
+                              "invalid config", "cannot find", "module", "error", "dyld", "library not loaded",
+                              "symbol not found", "panic", "sandbox", "signature", "mapping", "bootstrap"]
+            // Exact runtime literals distinguish a real error from Bun's
+            // generic "Machine" metadata. Only finite labels leave the buffer.
+            let panicPhrases = [
+                ("panic(main thread):", "bun-main-panic"),
+                ("Trap instruction at address 0x", "trap-instruction"),
+                ("Illegal instruction at address 0x", "illegal-instruction"),
+                ("abort() called", "explicit-abort"),
+                ("reached unreachable code", "unreachable"),
+                ("Unaligned memory access", "unaligned-memory"),
+                ("Stack overflow", "stack-overflow"),
+                ("unsupported uv function:", "unsupported-uv"),
+                ("Bun encountered a crash when running a NAPI module", "napi-crash"),
+                ("panicked during a panic. Aborting.", "panic-during-panic"),
+                ("MachportCreationFailed", "machport-creation-failed"),
+                ("IoRequestLoop::ensure_init() succeeded before schedule()", "io-init-invariant"),
+                ("WTF::initMachExceptionHandlerThread", "mach-exception-handler")]
+            var tags = indicators.filter(lower.contains)
+            tags += panicPhrases.filter { normalized.contains($0.0) }.map(\.1)
+            for line in normalized.split(whereSeparator: \.isNewline).map({ $0.trimmingCharacters(in: .whitespaces) })
+                where line.hasPrefix("Crashed while ") {
+                if line.contains("resolving a module") { tags.append("resolving-module") }
+                if line.contains("loading native module:") {
+                    tags.append("loading-native-module")
+                    let modules = [("/$bunfs/root/watcher-tzt47keb.node", "watcher"),
+                                   ("/$bunfs/root/libfff_c-yhjnkhce.dylib", "fff"),
+                                   ("/$bunfs/root/librust_pty_arm64-cc26t8z1.dylib", "rust-pty"),
+                                   ("/$bunfs/root/libopentui-fpx6fz9r.dylib", "opentui")]
+                    let found = modules.filter { module in
+                        line.components(separatedBy: .whitespaces).contains { token in
+                            token.trimmingCharacters(in: CharacterSet(charactersIn: "\"'(),")).elementsEqual(module.0)
+                        }
+                    }.map(\.1)
+                    tags += found.isEmpty ? ["other-or-unreported"] : found
+                }
+            }
+            // Only public native loader diagnostics are admitted here. Never
+            // copy arbitrary provider output, configuration or terminal text.
+            let prefixes = ["dyld[", "Library not loaded:", "Reason:", "Symbol not found:"]
+            let lines = normalized.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { line in prefixes.contains { line.hasPrefix($0) } }.prefix(4)
+                .map { String($0.prefix(320)).replacingOccurrences(of: #"[A-Fa-f0-9]{24,}"#,
+                    with: "<digest>", options: .regularExpression) }
+            return (bytes.count, Array(Set(tags)).sorted(), lines)
+        }
+    }
     func stopCapturing() { lock.withLock { capturing = false; bytes.removeAll(keepingCapacity: false) } }
 
     var serverURL: URL? {

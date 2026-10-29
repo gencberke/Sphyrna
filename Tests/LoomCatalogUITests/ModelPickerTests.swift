@@ -139,8 +139,8 @@ private struct PickerMeasurementProbeLayout: Layout {
         guard case let .choose(.model(key)) = result else { Issue.record("Return did not choose a real model"); return }
         #expect(key == ModelPickerKey(harness: .codex, id: "gpt-sol"))
         #expect(ModelPickerDraft.choose(key, model: model, projectID: nil))
-        #expect(model.resolvedStart(for: nil).choices == HarnessLaunchChoices(harness: .codex, model: "gpt-sol", effort: "high"))
-        #expect(!model.canSendDraft(projectID: nil), "choosing a model never enables the frozen start")
+        #expect(model.resolvedStart(for: nil).choices == HarnessLaunchChoices(harness: .codex, model: "gpt-sol", effort: "high", mode: .askBeforeEdits))
+        #expect(!model.canSendDraft(projectID: nil), "choosing a model does not create a ready draft without a message or service")
         #expect(model.modelPickerState.recent.first == key)
         let before = model.resolvedStart(for: nil).choices
         model.modelCatalog.connections.setConnected(.codex, false)
@@ -161,7 +161,7 @@ private struct PickerMeasurementProbeLayout: Layout {
         #expect(ModelPickerDraft.choose(ModelPickerKey(harness: .codex, id: "same"), model: model, projectID: nil))
         model.setDraftEffort(.value("ultra"), projectID: nil)
         #expect(ModelPickerDraft.chooseDefault(harness: .codex, model: model, projectID: nil))
-        #expect(model.resolvedStart(for: nil).choices == HarnessLaunchChoices(harness: .codex, effort: "high"))
+        #expect(model.resolvedStart(for: nil).choices == HarnessLaunchChoices(harness: .codex, effort: "high", mode: .askBeforeEdits))
         let owner = ModelPickerDraft.owner(model: model, projectID: nil)
         #expect(ModelPickerDraft.resetEffort(expected: owner, model: model, projectID: nil))
         #expect(model.resolvedStart(for: nil).choices.effort == nil)
@@ -324,7 +324,7 @@ private struct PickerMeasurementProbeLayout: Layout {
         })
         #expect(host.state.handle(.return))
         try await settle()
-        #expect(model.resolvedStart(for: nil).choices == HarnessLaunchChoices(harness: .codex, model: "gpt-sol", effort: "high"))
+        #expect(model.resolvedStart(for: nil).choices == HarnessLaunchChoices(harness: .codex, model: "gpt-sol", effort: "high", mode: .askBeforeEdits))
         #expect(host.state.active == nil && !model.canSendDraft(projectID: nil))
         let effort = try #require(accessibilityElements(in: chips).first { InkAX.label($0) == "Effort, High" })
         #expect(effort.accessibilityPerformPress?() == true)
