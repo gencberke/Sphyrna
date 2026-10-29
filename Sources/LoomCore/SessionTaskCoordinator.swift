@@ -35,7 +35,8 @@ public actor SessionTaskCoordinator {
     /// proves the reserved child is newly owned by this task, never adopted.
     @discardableResult
     func createApproved(taskID: UUID, parent: SessionTaskClaim, childID: UUID, harness: HarnessID,
-                               childName: String, choices: HarnessLaunchChoices) async throws -> SessionTaskProjection {
+                        childName: String, choices: HarnessLaunchChoices,
+                        creationOperationID: UUID? = nil, creationFingerprint: String? = nil) async throws -> SessionTaskProjection {
         try SessionTaskLimits.text(childName)
         guard childName.utf8.count <= 160,
               !childName.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
@@ -48,7 +49,8 @@ public actor SessionTaskCoordinator {
         if let existing = try store.task(taskID) {
             guard existing.parentBinding == parentBinding, existing.childSessionID == childID,
                   existing.harness == harness, existing.childName == childName,
-                  existing.requestedChoices == choices else { throw SessionTaskError.conflictingOperation }
+                  existing.requestedChoices == choices, existing.creationOperationID == creationOperationID,
+                  existing.creationFingerprint == creationFingerprint else { throw SessionTaskError.conflictingOperation }
             return existing
         }
         guard await host.ownsNewChild(taskID: taskID, parent: parentBinding, childID: childID),
@@ -57,11 +59,12 @@ public actor SessionTaskCoordinator {
             if let existing = try store.task(taskID) {
                 guard existing.parentBinding == parentBinding, existing.childSessionID == childID,
                       existing.harness == harness, existing.childName == childName,
-                      existing.requestedChoices == choices else { throw SessionTaskError.conflictingOperation }
+                      existing.requestedChoices == choices, existing.creationOperationID == creationOperationID,
+                      existing.creationFingerprint == creationFingerprint else { throw SessionTaskError.conflictingOperation }
                 return existing
             }
             guard try !store.childExists(childID) else { throw SessionTaskError.childAlreadyOwned }
-            let task = SessionTaskProjection(id: taskID, parentSessionID: parent.sessionID, childSessionID: childID,
+            var task = SessionTaskProjection(id: taskID, parentSessionID: parent.sessionID, childSessionID: childID,
                 harness: harness, childName: childName, requestedChoices: choices,
                 effectiveModel: nil, effectiveEffort: nil, effectiveMode: nil,
                 parentBinding: parentBinding, childBinding: nil, lifecycle: .active,
@@ -71,6 +74,8 @@ public actor SessionTaskCoordinator {
                 uncertainChildEffects: 0, uncertainWakeEffects: 0, authorityEpoch: 0,
                 activeRoundID: nil, pendingRoundID: nil, currentAttentionID: nil,
                 nextOrdinal: 1, revision: 1)
+            task.creationOperationID = creationOperationID
+            task.creationFingerprint = creationFingerprint
             try store.create(task)
             return task
         }

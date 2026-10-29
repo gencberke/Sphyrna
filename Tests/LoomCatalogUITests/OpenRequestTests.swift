@@ -77,7 +77,7 @@ struct OpenRequestTests {
                                        choices: HarnessLaunchChoices(harness: .codex, model: "codex-test", effort: "high"))
         let codexContent = OpenRequestBoxContent(codex)
         #expect(codexContent.harnessName == "Codex" && codexContent.provider == .codex)
-        #expect(codexContent.model == "codex-test" && codexContent.effort == "high" && codexContent.mode == "Default mode")
+        #expect(codexContent.model == "codex-test" && codexContent.effort == "high" && codexContent.mode == "Ask before edits")
     }
 
     @Test func anAnsweredRequestFoldsToOneLineAndADismissedFailureDoesNot() {

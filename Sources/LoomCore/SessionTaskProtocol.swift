@@ -21,6 +21,12 @@ struct SessionTaskWireRequest: Codable, Sendable {
     var readLeaseID: UUID?
     var kind: SessionTaskReportKind?
     var message: String?
+    var name: String?
+    var project: String?
+    var harness: String?
+    var model: String?
+    var effort: String?
+    var mode: String?
     var after: Int64?
     var limit: Int?
     var revision: Int64?
@@ -54,13 +60,15 @@ struct SessionTaskWireReply: Codable, Sendable {
 /// the runtime remains the sole owner of any provider process.
 struct SessionTaskWireRouter: Sendable {
     let coordinator: SessionTaskCoordinator
+    let create: @Sendable (SessionTaskWireRequest) async -> SessionTaskWireReply
     let requested: @Sendable (UUID) async -> Void
     let readFence: SessionTaskReadFence
 
     init(coordinator: SessionTaskCoordinator,
+         create: @escaping @Sendable (SessionTaskWireRequest) async -> SessionTaskWireReply = { _ in .init(status: "unavailable") },
          requested: @escaping @Sendable (UUID) async -> Void = { _ in },
          reported: @escaping @Sendable (UUID) async -> Void = { _ in }) {
-        self.coordinator = coordinator; self.requested = requested
+        self.coordinator = coordinator; self.create = create; self.requested = requested
         readFence = SessionTaskReadFence { id in Task { await reported(id) } }
     }
 
@@ -68,6 +76,7 @@ struct SessionTaskWireRouter: Sendable {
         guard let call = try? JSONDecoder().decode(SessionTaskWireRequest.self, from: data),
               call.version == 5 else { return reply(.init(status: "invalid")) }
         do {
+            if call.command == "create" { return reply(await create(call)) }
             if call.command == "identity" {
                 return reply(.init(status: "ok", binding: try await coordinator.identity(for: call.claim)))
             }

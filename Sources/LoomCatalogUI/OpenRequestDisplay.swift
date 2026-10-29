@@ -42,7 +42,8 @@ struct OpenRequestBoxContent: Equatable {
     /// A single very long line is cut here in the preview (the full text is one click away).
     static let previewCharacterLimit = 480
 
-    let heading = "Open a new session?"
+    let heading: String
+    let taskBounds: String?
     /// "from <requester>", in mono on the heading's trailing side.
     let requester: String
     /// "1 of 3" when several requests wait, oldest first; nil for one.
@@ -73,6 +74,8 @@ struct OpenRequestBoxContent: Equatable {
     /// `position` and `count` are the card's place among the requests of this session, oldest first. The coordinator
     /// has already resolved the mode; nil model and effort mean the harness's own defaults.
     init(_ request: OpenSessionRequest, position: Int = 1, count: Int = 1) {
+        heading = request.task == nil ? "Open a new session?" : "Delegate a task?"
+        taskBounds = request.task.map { "Up to \($0.childInputLimit) child inputs, \($0.parentWakeLimit) parent wakes, for 1 hour." }
         requester = "from " + (request.requesterTitle ?? SessionOrigin.unknownRequester)
         counter = count > 1 ? "\(position) of \(count)" : nil
         title = request.title

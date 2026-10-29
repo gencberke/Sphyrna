@@ -54,6 +54,9 @@ struct OpenRequestBox: View {
             header(content)
             session(content)
             message(content)
+            if let bounds = content.taskBounds {
+                Text(bounds).font(LoomTheme.OpenRequest.meta).foregroundStyle(LoomTheme.Text.tertiaryStyle)
+            }
             if let failure = content.failure {
                 Text(failure).font(LoomTheme.OpenRequest.notice).foregroundStyle(LoomTheme.Status.failure)
                     .textSelection(.enabled)
@@ -66,7 +69,7 @@ struct OpenRequestBox: View {
         .depth(LoomTheme.Elevation.card)
         .fadesIn()
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Request to open a session: \(request.title)")
+        .accessibilityLabel("\(request.task == nil ? "Request to open a session" : "Request to delegate a task"): \(request.title)")
     }
 
     private func header(_ content: OpenRequestBoxContent) -> some View {

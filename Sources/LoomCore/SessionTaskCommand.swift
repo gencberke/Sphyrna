@@ -6,6 +6,8 @@ public enum SessionTaskCommand {
     public static let usage = """
         usage: "$SPHYRNA_CLI" task <command> --task <id> [options]
 
+          create --name <name> --harness <id> --message -
+                                         request an approved new task child
           identity                       identify this live terminal run
           status                         read task and native status
           read [--after <cursor>]        read task events; printed events are acknowledged
@@ -34,11 +36,11 @@ public enum SessionTaskCommand {
             return 0
         }
         let command = args[0]
-        let allowed = Set(["identity", "status", "read", "wait", "input", "report", "reply", "interrupt", "stop"])
+        let allowed = Set(["create", "identity", "status", "read", "wait", "input", "report", "reply", "interrupt", "stop"])
         guard allowed.contains(command) else { output.standardError("error: unknown task command\n\(usage)"); return 2 }
         var values: [String: String] = [:]
         var index = 1
-        let fields = Set(["--task", "--round", "--operation", "--next-operation", "--reply-to", "--kind", "--message", "--after", "--limit", "--revision", "--seconds"])
+        let fields = Set(["--task", "--round", "--operation", "--next-operation", "--reply-to", "--kind", "--message", "--after", "--limit", "--revision", "--seconds", "--name", "--project", "--harness", "--model", "--effort", "--mode"])
         while index < args.count {
             let flag = args[index]
             guard fields.contains(flag), index + 1 < args.count, values[flag] == nil else {
@@ -47,7 +49,9 @@ public enum SessionTaskCommand {
             values[flag] = args[index + 1]
             index += 2
         }
-        let taskID = values["--task"].flatMap(UUID.init(uuidString:))
+        let suppliedTask = values["--task"].flatMap(UUID.init(uuidString:))
+        if values["--task"] != nil && suppliedTask == nil { output.standardError("error: invalid --task"); return 2 }
+        let taskID = command == "create" ? (suppliedTask ?? UUID()) : suppliedTask
         guard command == "identity" || taskID != nil else {
             output.standardError("error: --task needs a task id"); return 2
         }
@@ -74,7 +78,15 @@ public enum SessionTaskCommand {
         if let raw = values["--seconds"] { guard let n = Double(raw), n > 0, n <= SessionTaskLimits.maxWait, n.isFinite else { output.standardError("error: invalid wait"); return 2 }; call.seconds = n }
         if command == "wait" { call.seconds = call.seconds ?? SessionTaskLimits.maxWait }
         if let kind = values["--kind"] { call.kind = SessionTaskReportKind(rawValue: kind) }
-        let effect = ["report", "reply", "interrupt", "stop"].contains(command)
+        if command == "create" {
+            guard let name = values["--name"], let harness = values["--harness"] else {
+                output.standardError("error: create requires --name and --harness"); return 2
+            }
+            call.name = name; call.harness = harness; call.project = values["--project"]
+            call.model = values["--model"]; call.effort = values["--effort"]; call.mode = values["--mode"]
+            output.standardOutput("task \(taskID!.uuidString.lowercased())")
+        }
+        let effect = ["create", "report", "reply", "interrupt", "stop"].contains(command)
         if effect, call.operationID == nil {
             call.operationID = UUID()
             output.standardOutput("operation \(call.operationID!.uuidString.lowercased())")
@@ -86,7 +98,7 @@ public enum SessionTaskCommand {
             call.nextOperationID = UUID()
             output.standardOutput("next-operation \(call.nextOperationID!.uuidString.lowercased())")
         }
-        if ["report", "reply", "interrupt"].contains(command) {
+        if ["create", "report", "reply", "interrupt"].contains(command) {
             guard values["--message"] == "-", let bytes = try? readStandardInput(),
                   let message = String(data: bytes, encoding: .utf8), (try? SessionTaskLimits.text(message)) != nil else {
                 output.standardError("error: --message - needs valid UTF-8 input of at most 16 KiB"); return 2
@@ -125,6 +137,10 @@ public enum SessionTaskCommand {
             }
             guard let reply = try? JSONDecoder().decode(SessionTaskWireReply.self, from: answer), reply.version == 5 else {
                 output.standardError("error: malformed task response"); return 3
+            }
+            if command == "create", reply.status == "pending" {
+                output.standardOutput("pending: approve or deny the task in Sphyrna")
+                return 0
             }
             if reply.status == "ok" {
                 if let message = reply.message { output.standardOutput(message) }

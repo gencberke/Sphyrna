@@ -33,6 +33,7 @@ extension SessionRuntime {
         }
         let launched = LaunchBox()
         let sessionID = try await openRequests.approve(requestID) { spec in
+            guard spec.task == nil else { throw SessionTaskError.notReady }
             guard let provider = spec.choices.harness.provider else {
                 let name = HarnessCatalogue.descriptor(for: spec.choices.harness)?.displayName ?? spec.choices.harness.rawValue
                 throw LoomError.message("\(name) cannot start an opened session in this build")
@@ -64,6 +65,7 @@ extension SessionRuntime {
     ) async throws -> RuntimeOpenedChat {
         let launched = ChatLaunchBox()
         let started = try await openRequests.approve(requestID) { spec in
+            guard spec.task == nil else { throw SessionTaskError.notReady }
             guard spec.choices.claudeChoices != nil else {
                 let name = HarnessCatalogue.descriptor(for: spec.choices.harness)?.displayName ?? spec.choices.harness.rawValue
                 throw LoomError.message("\(name) cannot start an opened session in this build")
@@ -85,12 +87,16 @@ extension SessionRuntime {
 
     /// The agent's command is answered `denied`; nothing starts.
     public func denyOpenRequest(_ requestID: UUID) async throws {
+        let taskID = await openRequests.snapshot().first { $0.id == requestID }?.task?.taskID
         try await openRequests.deny(requestID)
+        if let taskID { taskChildReservations[taskID] = nil }
     }
 
     /// Removes a failed request (a request still waiting counts as denied).
     public func dismissOpenRequest(_ requestID: UUID) async throws {
+        let taskID = await openRequests.snapshot().first { $0.id == requestID }?.task?.taskID
         try await openRequests.dismiss(requestID)
+        if let taskID { taskChildReservations[taskID] = nil }
     }
 }
 

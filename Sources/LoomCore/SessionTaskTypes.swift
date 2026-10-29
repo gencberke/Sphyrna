@@ -140,6 +140,9 @@ public struct SessionTaskProjection: Codable, Equatable, Sendable {
     public var currentAttentionID: UUID?
     public var nextOrdinal: Int
     public var revision: Int64
+    /// Internal idempotence key for the initial approved request, never a credential.
+    var creationOperationID: UUID? = nil
+    var creationFingerprint: String? = nil
 }
 
 public struct SessionTaskPage<Element: Sendable>: Sendable {

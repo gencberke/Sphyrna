@@ -102,6 +102,9 @@ struct SessionTaskRetiredRun: Sendable {
 struct SessionTaskChildReservation: Sendable {
     let parent: SessionTaskClaim
     let childID: UUID
+    let operationID: UUID?
+    let fingerprint: String?
+    var offered = false
 }
 
 struct SessionTaskExpectedInput: Sendable {

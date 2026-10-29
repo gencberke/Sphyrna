@@ -10,7 +10,10 @@ extension SessionRuntime {
             guard !shuttingDown else { return }
             let path = configuration.socketDirectory
                 .appendingPathComponent("c-\(UUID().uuidString.prefix(8)).sock").path
-            let router = SessionTaskWireRouter(coordinator: coordinator)
+            let router = SessionTaskWireRouter(coordinator: coordinator, create: { [weak self] call in
+                guard let self else { return .init(status: "unavailable") }
+                return await self.submitTaskRequest(call)
+            })
             let socket = try SessionTaskSocket(path: path, handler: router.handle)
             guard !shuttingDown else { _ = await socket.stopAndWait(); return }
             taskCoordinator = coordinator
@@ -23,7 +26,8 @@ extension SessionRuntime {
     }
 
     /// The reservation is app-owned, bounded and cannot adopt an existing row.
-    func reserveTaskChild(taskID: UUID, childID: UUID, parent: SessionTaskClaim) async throws {
+    func reserveTaskChild(taskID: UUID, childID: UUID, parent: SessionTaskClaim,
+                          operationID: UUID? = nil, fingerprint: String? = nil) async throws {
         guard !shuttingDown, taskChildReservations.count < OpenSessionCoordinator.maximumEntries,
               taskChildReservations[taskID] == nil, !taskChildReservations.values.contains(where: { $0.childID == childID }),
               parent.sessionID != childID,
@@ -35,7 +39,8 @@ extension SessionRuntime {
               await authenticateTaskRun(parent) != nil else { throw SessionTaskError.unauthorized }
         guard !shuttingDown, taskChildReservations[taskID] == nil,
               !taskChildReservations.values.contains(where: { $0.childID == childID }) else { throw SessionTaskError.unauthorized }
-        taskChildReservations[taskID] = SessionTaskChildReservation(parent: parent, childID: childID)
+        taskChildReservations[taskID] = SessionTaskChildReservation(parent: parent, childID: childID,
+                                                                     operationID: operationID, fingerprint: fingerprint)
     }
 
     func ownsReservedTaskChild(taskID: UUID, parent: SessionTaskBinding, childID: UUID) async -> Bool {

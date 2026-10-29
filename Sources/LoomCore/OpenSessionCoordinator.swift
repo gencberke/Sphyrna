@@ -1,5 +1,19 @@
 import Foundation
 
+/// Public, message-free metadata for an explicit task delegation card.
+public struct OpenSessionTaskRequest: Equatable, Sendable {
+    public let taskID: UUID
+    public let childID: UUID
+    public let operationID: UUID
+    public let childInputLimit = SessionTaskLimits.childInputs
+    public let parentWakeLimit = SessionTaskLimits.parentWakes
+    public let lifetimeSeconds = SessionTaskLimits.grantLifetime
+
+    init(taskID: UUID, childID: UUID, operationID: UUID) {
+        self.taskID = taskID; self.childID = childID; self.operationID = operationID
+    }
+}
+
 /// One entry of the list the UI shows (D-40): a request waiting for the user, one the user
 /// approved that is starting or failed to start.
 public struct OpenSessionRequest: Identifiable, Equatable, Sendable {
@@ -23,6 +37,7 @@ public struct OpenSessionRequest: Identifiable, Equatable, Sendable {
     public let choices: HarnessLaunchChoices
     /// True only when the agent omitted --mode and the user's default supplied it.
     public let modeFromUserDefault: Bool
+    public let task: OpenSessionTaskRequest?
     public let receivedAt: Date
     public internal(set) var phase: Phase
 
@@ -30,7 +45,7 @@ public struct OpenSessionRequest: Identifiable, Equatable, Sendable {
         id: UUID = UUID(), requesterID: UUID, requesterTitle: String? = nil, projectID: UUID,
         projectName: String, title: String, message: String,
         choices: HarnessLaunchChoices = HarnessLaunchChoices(), modeFromUserDefault: Bool = false,
-        receivedAt: Date = Date(), phase: Phase = .waiting
+        task: OpenSessionTaskRequest? = nil, receivedAt: Date = Date(), phase: Phase = .waiting
     ) {
         self.id = id
         self.requesterID = requesterID
@@ -41,6 +56,7 @@ public struct OpenSessionRequest: Identifiable, Equatable, Sendable {
         self.message = message
         self.choices = choices
         self.modeFromUserDefault = modeFromUserDefault
+        self.task = task
         self.receivedAt = receivedAt
         self.phase = phase
     }
@@ -91,6 +107,7 @@ struct OpenSessionSpec: Sendable {
     let message: String
     let choices: HarnessLaunchChoices
     let modeFromUserDefault: Bool
+    let task: OpenSessionTaskRequest?
 }
 
 /// Keeps the requests of agents until the user decides (contract section 7: nothing starts
@@ -159,6 +176,16 @@ actor OpenSessionCoordinator {
     // MARK: From the agent
 
     func submit(_ call: OpenSessionCall) async -> OpenSessionReply {
+        await submit(call, task: nil, authorizeTask: nil)
+    }
+
+    func submitTask(_ call: OpenSessionCall, task: OpenSessionTaskRequest,
+                    authorizeTask: @escaping @Sendable () async -> Bool) async -> OpenSessionReply {
+        await submit(call, task: task, authorizeTask: authorizeTask)
+    }
+
+    private func submit(_ call: OpenSessionCall, task: OpenSessionTaskRequest?,
+                        authorizeTask: (@Sendable () async -> Bool)?) async -> OpenSessionReply {
         guard !shutDown else { return Self.unavailable("Sphyrna is quitting") }
         guard let requesterID = await authorize(call.sessionID, call.managedRunID) else {
             return Self.unavailable("this process is not part of a live Sphyrna session")
@@ -198,6 +225,14 @@ actor OpenSessionCoordinator {
             choices.mode = candidate.flatMap { descriptor.modes.contains($0) ? $0 : nil } ?? descriptor.defaultMode
         }
 
+        // A task caller must still own its launch-local credential after all
+        // project/default resolution and immediately before the card exists.
+        if let authorizeTask, !(await authorizeTask()) {
+            return Self.unavailable("this task run is no longer live")
+        }
+        if task != nil, (try? SessionTaskLimits.text(input.message)) == nil {
+            return OpenSessionReply(status: .invalid, detail: "the task message is invalid or larger than 16 KiB")
+        }
         // Checked after the last suspension so two requests of one session cannot both pass.
         guard !shutDown else { return Self.unavailable("Sphyrna is quitting") }
         guard !entries.contains(where: {
@@ -208,13 +243,22 @@ actor OpenSessionCoordinator {
         guard entries.filter({ $0.request.isUndecided }).count < Self.maximumWaiting else {
             return OpenSessionReply(status: .invalid, detail: "too many requests are waiting in Sphyrna")
         }
-        let id = UUID()
+        let id = task?.taskID ?? UUID()
+        guard !entries.contains(where: { $0.request.id == id }) else {
+            return OpenSessionReply(status: .invalid, detail: "that task request already exists")
+        }
         let request = OpenSessionRequest(
             id: id, requesterID: requesterID, requesterTitle: requesterTitle, projectID: project.id,
             projectName: project.name, title: input.title,
             message: input.message, choices: choices, modeFromUserDefault: modeFromUserDefault,
-            receivedAt: Date(), phase: .waiting
+            task: task, receivedAt: Date(), phase: .waiting
         )
+        if task != nil {
+            entries.append(Entry(request: request, waiter: nil, timeout: nil))
+            trimEntries()
+            publish()
+            return OpenSessionReply(status: .pending)
+        }
         return await withCheckedContinuation { continuation in
             let timeout = Task { [replyDelay] in
                 try? await Task.sleep(for: .seconds(replyDelay))
@@ -362,7 +406,8 @@ actor OpenSessionCoordinator {
         do {
             let sessionID = try await start(OpenSessionSpec(
                 requesterID: request.requesterID, projectID: request.projectID, title: request.title,
-                message: request.message, choices: request.choices, modeFromUserDefault: request.modeFromUserDefault
+                message: request.message, choices: request.choices, modeFromUserDefault: request.modeFromUserDefault,
+                task: request.task
             ))
             resolveWaiter(id, OpenSessionReply(status: .started, sessionID: sessionID, title: request.title))
             remove(id)
