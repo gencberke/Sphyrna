@@ -33,6 +33,16 @@ public struct OpenCodeLiveSnapshot: Equatable, Sendable {
 /// outcomes are tied to an app input only after its exact inbox delivery in a
 /// witnessed busy period; a coalesced competing input makes attribution unknown.
 struct OpenCodeLiveState {
+    private struct ReservationCheckpoint {
+        let snapshot: OpenCodeLiveSnapshot
+        let sequence: Int64?
+        let receiptConfirmed: Bool
+        let runningStart: Int64?
+        let roundStart: Int64?
+        let delivered: Int64?
+        let terminal: OpenCodeExecutionOutcome?
+        let ambiguous: Bool
+    }
     let appSessionID: UUID
     let runID: UUID
     let nativeSessionID: String
@@ -45,6 +55,7 @@ struct OpenCodeLiveState {
     private var delivered: Int64?
     private var terminal: OpenCodeExecutionOutcome?
     private var ambiguous = false
+    private var reservationCheckpoint: ReservationCheckpoint?
 
     var isReliable: Bool { !unreliable }
 
@@ -141,6 +152,9 @@ struct OpenCodeLiveState {
             default: throw OpenCodeError.conflict
             }
         }
+        reservationCheckpoint = ReservationCheckpoint(snapshot: snapshot, sequence: lastSequence,
+            receiptConfirmed: receiptConfirmed, runningStart: runningStart, roundStart: roundStart,
+            delivered: delivered, terminal: terminal, ambiguous: ambiguous)
         let created = snapshot.creationSequence
         snapshot.creationSequence = nil
         snapshot.input = .init(roundID: roundID, inputID: inputID, state: .pending, creationSequence: created)
@@ -155,20 +169,43 @@ struct OpenCodeLiveState {
 
     mutating func receipt(inputID: String) throws {
         guard !unreliable, snapshot.input?.inputID == inputID else { throw OpenCodeError.invalidTarget }
+        reservationCheckpoint = nil
         receiptConfirmed = true
         updateInput()
     }
 
     mutating func indeterminate(inputID: String) {
         guard snapshot.input?.inputID == inputID else { return }
+        reservationCheckpoint = nil
         clearAttribution()
         updateInput()
+    }
+
+    /// The authenticated TUI explicitly rejected the command before SDK
+    /// dispatch. Restore only if no session event intervened; the caller's
+    /// separate admission lease is still responsible for native ingress.
+    mutating func rejectedBeforeDispatch(inputID: String) -> Bool {
+        guard !unreliable, snapshot.input?.inputID == inputID,
+              let saved = reservationCheckpoint, saved.sequence == lastSequence else {
+            reservationCheckpoint = nil
+            return false
+        }
+        snapshot = saved.snapshot
+        receiptConfirmed = saved.receiptConfirmed
+        runningStart = saved.runningStart
+        roundStart = saved.roundStart
+        delivered = saved.delivered
+        terminal = saved.terminal
+        ambiguous = saved.ambiguous
+        reservationCheckpoint = nil
+        return true
     }
 
     mutating func disconnected() { invalidate() }
 
     private mutating func invalidate() {
         unreliable = true
+        reservationCheckpoint = nil
         snapshot.execution = .unknown
         snapshot.creationSequence = nil
         clearAttribution()

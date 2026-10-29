@@ -171,6 +171,15 @@ public final class OpenCodeLiveFeed: @unchecked Sendable {
         }
     }
 
+    func rejectedBeforeDispatch(inputID: String) -> Bool {
+        lock.withLock {
+            guard connected, !ended, let before = state?.snapshot,
+                  state?.rejectedBeforeDispatch(inputID: inputID) == true else { return false }
+            publishIfChanged(before)
+            return true
+        }
+    }
+
     /// A single bounded subscriber per feed. A later subscriber replaces the
     /// former one; events continue to update the authoritative snapshot.
     public func updates() -> AsyncStream<OpenCodeLiveSnapshot> {

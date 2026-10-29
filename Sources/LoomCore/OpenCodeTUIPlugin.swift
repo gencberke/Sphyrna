@@ -25,10 +25,16 @@ public enum OpenCodeTUIPlugin {
     static let tuiModule = #"""
         import { createRoot, createEffect, untrack } from "solid-js";
         import { createConnection } from "node:net";
+        import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
         const id = "sphyrna.native-selection";
         const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         const nativeID = /^ses[a-zA-Z0-9_-]{1,125}$/;
+        const messageID = /^msg_[a-zA-Z0-9_-]{1,124}$/;
+        const hex = /^[0-9a-f]{64}$/;
+        const maxFrame = 72 * 1024;
+        const keysEqual = (value, keys) => value && typeof value === "object" && !Array.isArray(value) &&
+          Object.keys(value).sort().join(",") === keys.slice().sort().join(",");
 
         export default {
           id,
@@ -39,8 +45,7 @@ public enum OpenCodeTUIPlugin {
             const app = env.SPHYRNA_OPENCODE_TUI_APP_SESSION_ID;
             const run = env.SPHYRNA_OPENCODE_TUI_RUN_ID;
             const instance = env.SPHYRNA_OPENCODE_TUI_INSTANCE_ID;
-            if (!path || !path.startsWith("/") || path.includes("\0") ||
-                !/^[0-9a-f]{64}$/.test(token || "") ||
+            if (!path || !path.startsWith("/") || path.includes("\0") || !hex.test(token || "") ||
                 !uuid.test(app || "") || !uuid.test(run || "") || !uuid.test(instance || "")) return;
 
             const [clock, update] = context.storage.memory("generation", { initial: { value: 0 } });
@@ -50,28 +55,48 @@ public enum OpenCodeTUIPlugin {
               update((draft) => { draft.value = value + 1; });
               return value + 1;
             });
+            const mac = (role, nonce, generation) => createHmac("sha256", token)
+              .update(["sphyrna.opencode.tui.v1", role, nonce, app, run, instance, String(generation)].join("\n"))
+              .digest("hex");
 
-            let socket;
-            try { socket = createConnection({ path }); } catch { return; }
-            let closed = false;
-            let connected = false;
-            let sending = false;
-            let latest;
+            let socket, nonce, helloGeneration, hello;
+            try {
+              nonce = randomBytes(32).toString("hex");
+              helloGeneration = next();
+              hello = JSON.stringify({ version: 1, type: "hello", generation: helloGeneration,
+                appSessionID: app, runID: run, instanceID: instance, nonce,
+                proof: mac("hello", nonce, helloGeneration) }) + "\n";
+              socket = createConnection({ path });
+              socket.setEncoding("utf8");
+            } catch {
+              if (socket) socket.destroy();
+              return;
+            }
+            let closed = false, connected = false, authenticated = false, sending = false;
+            let latest, reply, inFlight, incoming = "", incomingBytes = 0;
             let disposeRoot = () => {};
+            let handshakeTimer;
+            const seenRequests = new Set(), seenMessages = new Set();
             const stop = () => {
               if (closed) return;
               closed = true;
-              latest = undefined;
+              if (handshakeTimer) clearTimeout(handshakeTimer);
+              latest = undefined; reply = undefined; incoming = ""; incomingBytes = 0;
+              if (inFlight) {
+                inFlight.text = undefined; inFlight.command.text = undefined;
+                inFlight.controller.abort(); inFlight = undefined;
+              }
               disposeRoot();
               socket.destroy();
             };
             const flush = () => {
-              if (closed || !connected || sending || latest === undefined) return;
-              const frame = latest;
-              latest = undefined;
+              if (closed || !connected || !authenticated || sending || (!latest && !reply)) return;
+              const takeReply = reply && (!latest || reply.generation < latest.generation);
+              const item = takeReply ? reply : latest;
+              if (takeReply) reply = undefined; else latest = undefined;
               sending = true;
               try {
-                socket.write(frame, (error) => {
+                socket.write(item.bytes, (error) => {
                   if (closed) return;
                   sending = false;
                   if (error) { stop(); return; }
@@ -79,28 +104,114 @@ public enum OpenCodeTUIPlugin {
                 });
               } catch { stop(); }
             };
-            let hello;
-            try {
-              hello = JSON.stringify({ version: 1, type: "hello", token, appSessionID: app,
-                                       runID: run, instanceID: instance, generation: next() }) + "\n";
-            } catch { stop(); return; }
+            const publishReply = (type, command, actual) => {
+              if (closed || reply) { stop(); return; }
+              try {
+                const generation = next();
+                const value = { version: 1, type, generation, requestID: command.requestID,
+                  appSessionID: app, runID: run, instanceID: instance, roundID: command.roundID };
+                if (actual) {
+                  value.nativeSessionID = actual.sessionID;
+                  value.messageID = actual.id;
+                  value.inputType = actual.type;
+                  value.text = actual.payload.text;
+                }
+                const bytes = JSON.stringify(value) + "\n";
+                if (Buffer.byteLength(bytes, "utf8") > maxFrame) { stop(); return; }
+                reply = { generation, bytes };
+                flush();
+              } catch { stop(); }
+            };
+            const handleCommand = (command) => {
+              if (!keysEqual(command, ["version", "type", "requestID", "appSessionID", "runID", "instanceID",
+                                       "roundID", "nativeSessionID", "messageID", "text"]) ||
+                  command.version !== 1 || command.type !== "prompt" ||
+                  command.appSessionID !== app || command.runID !== run || command.instanceID !== instance ||
+                  !uuid.test(command.requestID || "") || !uuid.test(command.roundID || "") ||
+                  !nativeID.test(command.nativeSessionID || "") || !messageID.test(command.messageID || "") ||
+                  typeof command.text !== "string" || !command.text || command.text.includes("\0") ||
+                  Buffer.byteLength(command.text, "utf8") > 48 * 1024) { stop(); return; }
+              if (inFlight || seenRequests.has(command.requestID) || seenMessages.has(command.messageID)) {
+                publishReply("indeterminate", command); return;
+              }
+              if (seenRequests.size >= 128 || seenMessages.size >= 128) {
+                publishReply("rejected", command); return;
+              }
+              let current;
+              try { current = context.ui.router.current(); }
+              catch { publishReply("rejected", command); return; }
+              if (current?.type !== "session" || current.sessionID !== command.nativeSessionID) {
+                publishReply("rejected", command); return;
+              }
+              let controller;
+              try { controller = new AbortController(); }
+              catch { publishReply("rejected", command); return; }
+              seenRequests.add(command.requestID); seenMessages.add(command.messageID);
+              const action = { controller, text: command.text, command };
+              inFlight = action;
+              let operation;
+              try {
+                operation = context.client.session.prompt({ sessionID: command.nativeSessionID,
+                  id: command.messageID, text: command.text }, { signal: controller.signal });
+              } catch {
+                inFlight = undefined; action.text = undefined; command.text = undefined;
+                publishReply("indeterminate", command); return;
+              }
+              Promise.resolve(operation).then((actual) => {
+                if (closed || inFlight !== action) return;
+                inFlight = undefined;
+                const valid = actual && actual.id === command.messageID && actual.sessionID === command.nativeSessionID &&
+                  actual.type === "user" && actual.payload && actual.payload.text === action.text;
+                action.text = undefined; command.text = undefined;
+                publishReply(valid ? "receipt" : "indeterminate", command, valid ? actual : undefined);
+              }, () => {
+                if (closed || inFlight !== action) return;
+                inFlight = undefined; action.text = undefined; command.text = undefined;
+                publishReply("indeterminate", command);
+              });
+            };
+            const handle = (line) => {
+              let value;
+              try { value = JSON.parse(line); } catch { stop(); return; }
+              if (!authenticated) {
+                if (!keysEqual(value, ["version", "type", "nonce", "proof"]) || value.version !== 1 ||
+                    value.type !== "welcome" || value.nonce !== nonce || !hex.test(value.proof || "")) { stop(); return; }
+                const expected = mac("welcome", nonce, helloGeneration);
+                if (!timingSafeEqual(Buffer.from(value.proof, "hex"), Buffer.from(expected, "hex"))) { stop(); return; }
+                authenticated = true;
+                if (handshakeTimer) clearTimeout(handshakeTimer);
+                handshakeTimer = undefined;
+                hello = undefined;
+                flush();
+                return;
+              }
+              handleCommand(value);
+            };
+            handshakeTimer = setTimeout(stop, 5000);
             socket.on("error", stop);
             socket.on("close", stop);
+            socket.on("data", (chunk) => {
+              if (closed || typeof chunk !== "string") { stop(); return; }
+              const parts = chunk.split("\n");
+              for (let i = 0; i < parts.length; i++) {
+                incomingBytes += Buffer.byteLength(parts[i], "utf8");
+                if (incomingBytes > maxFrame) { stop(); return; }
+                incoming += parts[i];
+                if (i < parts.length - 1) {
+                  if (!incoming) { stop(); return; }
+                  const line = incoming;
+                  incoming = ""; incomingBytes = 0;
+                  handle(line);
+                  if (closed) return;
+                }
+              }
+            });
             socket.on("connect", () => {
               if (closed) return;
               connected = true;
-              sending = true;
-              try {
-                socket.write(hello, (error) => {
-                  hello = undefined;
-                  if (closed) return;
-                  sending = false;
-                  if (error) { stop(); return; }
-                  flush();
-                });
-              } catch { stop(); }
+              try { socket.write(hello, (error) => { if (error) stop(); }); }
+              catch { stop(); }
             });
-
             createRoot((dispose) => {
               disposeRoot = dispose;
               createEffect(() => {
@@ -114,9 +225,10 @@ public enum OpenCodeTUIPlugin {
                     stop(); return;
                   }
                   try {
-                    const frame = { version: 1, type: "route", generation: next(), kind };
+                    const generation = next();
+                    const frame = { version: 1, type: "route", generation, kind };
                     if (kind === "session") frame.nativeSessionID = selected;
-                    latest = JSON.stringify(frame) + "\n";
+                    latest = { generation, bytes: JSON.stringify(frame) + "\n" };
                     flush();
                   } catch { stop(); }
                 });

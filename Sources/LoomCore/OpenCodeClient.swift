@@ -75,6 +75,7 @@ public actor OpenCodeClient {
 
     private var firstMessageID: String?
     private var receipts: [String: Receipt] = [:]
+    private var inputInFlight = false
     private static let receiptLimit = 128
 
     public init(serverURL: URL, password: String, leader: ProcessIdentity, profileProof: OpenCodeProfileProof,
@@ -273,6 +274,104 @@ public actor OpenCodeClient {
 
     public func submitInput(sessionID: String, messageID: String, roundID: UUID, text: String) async throws -> String {
         throw OpenCodeError.unavailable
+    }
+
+    /// Returns only after the native user inbox receipt matches the approved
+    /// input. Delivery and outcome remain separate live-feed evidence.
+    public func firstInput(sessionID: String, messageID: String, roundID: UUID, text: String,
+                           bridge: OpenCodeTUIBridge, admission: any OpenCodeTUIInputAdmission,
+                           timeout: TimeInterval = 10) async throws -> String {
+        guard selectedWasNew else { throw OpenCodeError.invalidTarget }
+        return try await admitViaTUI(sessionID: sessionID, messageID: messageID, roundID: roundID,
+                                     text: text, bridge: bridge, admission: admission, timeout: timeout, first: true)
+    }
+
+    public func submitInput(sessionID: String, messageID: String, roundID: UUID, text: String,
+                            bridge: OpenCodeTUIBridge, admission: any OpenCodeTUIInputAdmission,
+                            timeout: TimeInterval = 10) async throws -> String {
+        guard !selectedWasNew || firstMessageID != nil else { throw OpenCodeError.unavailable }
+        return try await admitViaTUI(sessionID: sessionID, messageID: messageID, roundID: roundID,
+                                     text: text, bridge: bridge, admission: admission, timeout: timeout, first: false)
+    }
+
+    private func admitViaTUI(sessionID: String, messageID: String, roundID: UUID, text: String,
+                             bridge: OpenCodeTUIBridge, admission: any OpenCodeTUIInputAdmission,
+                             timeout: TimeInterval, first: Bool) async throws -> String {
+        try await validateProfile()
+        let body = try inputBody(sessionID: sessionID, messageID: messageID, text: text)
+        guard timeout.isFinite, timeout > 0, timeout <= 30 else { throw OpenCodeError.invalidTarget }
+        let fingerprint = SHA256.hash(data: body)
+        if let receipt = receipts[messageID] {
+            guard receipt.sessionID == sessionID, receipt.roundID == roundID,
+                  receipt.fingerprint == fingerprint else { throw OpenCodeError.conflict }
+            switch receipt.admission {
+            case .accepted: return messageID
+            case .pending, .uncertain: throw OpenCodeError.indeterminate
+            }
+        }
+        guard !inputInFlight, let feed, feed.isConnected, let snapshot = feed.snapshot,
+              snapshot.nativeSessionID == sessionID, let directory = selectedDirectory,
+              bridge.matches(appSessionID: snapshot.appSessionID, runID: snapshot.runID,
+                             serverURL: serverURL, directory: directory) else { throw OpenCodeError.unavailable }
+        if first, let firstMessageID, firstMessageID != messageID { throw OpenCodeError.conflict }
+        guard receipts.count < Self.receiptLimit else { throw OpenCodeError.unavailable }
+        inputInFlight = true
+        defer { inputInFlight = false }
+        let requestID = UUID()
+        let input = OpenCodeTUIInputContext(appSessionID: snapshot.appSessionID, runID: snapshot.runID,
+                                            instanceID: bridge.inputInstanceID, nativeSessionID: sessionID,
+                                            requestID: requestID, roundID: roundID, messageID: messageID,
+                                            payloadFingerprint: Data(fingerprint))
+        let lease = try await admission.acquire(for: input)
+        var outcome: OpenCodeTUIInputAdmissionOutcome = .notDispatched
+        var reserved = false
+        do {
+            try Task.checkCancellation()
+            try await validateProfile()
+            try requireVerified()
+            guard feed.isConnected, let current = feed.snapshot, current.appSessionID == input.appSessionID,
+                  current.runID == input.runID, current.nativeSessionID == sessionID,
+                  selectedID == sessionID,
+                  bridge.matches(appSessionID: input.appSessionID, runID: input.runID,
+                                 serverURL: serverURL, directory: directory) else { throw OpenCodeError.unavailable }
+            try feed.begin(roundID: roundID, inputID: messageID, requireCreation: first)
+            if first { firstMessageID = messageID }
+            receipts[messageID] = Receipt(sessionID: sessionID, roundID: roundID,
+                                          fingerprint: fingerprint, admission: .pending)
+            reserved = true
+            outcome = .indeterminate
+            let reply = try await bridge.prompt(requestID: requestID, roundID: roundID,
+                                                nativeSessionID: sessionID, messageID: messageID,
+                                                text: text, timeout: timeout)
+            switch reply {
+            case .rejected:
+                if feed.rejectedBeforeDispatch(inputID: messageID) {
+                    receipts.removeValue(forKey: messageID)
+                    if first && firstMessageID == messageID { firstMessageID = nil }
+                    reserved = false
+                    outcome = .notDispatched
+                }
+                throw OpenCodeError.unavailable
+            case .indeterminate:
+                throw OpenCodeError.indeterminate
+            case let .receipt(nativeSessionID, actualID, actualText):
+                guard nativeSessionID == sessionID, actualID == messageID, actualText == text else {
+                    throw OpenCodeError.invalidResponse
+                }
+                receipts[messageID]?.admission = .accepted
+                if (try? feed.receipt(inputID: messageID)) != nil { outcome = .accepted }
+                else { feed.indeterminate(inputID: messageID) }
+                await lease.finish(outcome)
+                return messageID
+            }
+        } catch {
+            if reserved {
+                receipts[messageID]?.admission = .uncertain
+                feed.indeterminate(inputID: messageID)
+            }
+            await lease.finish(outcome)
+            throw error
+        }
     }
 
     // Retained behind the fail-closed public input methods until an action-time fence exists.

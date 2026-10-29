@@ -28,18 +28,52 @@ public final class OpenCodeTUIBridge: @unchecked Sendable {
         var source: DispatchSourceRead?
         var timeout: DispatchSourceTimer?
         var validation: Task<Void, Never>?
+        var writeSource: DispatchSourceWrite?
+        var outbound: [Outbound] = []
         init(fd: Int32, identity: RunScopeMember) { self.fd = fd; self.identity = identity }
+    }
+    private struct Outbound {
+        let bytes: Data
+        var offset = 0
+        let cancellation: InputCancellation?
+    }
+    private final class InputCancellation: @unchecked Sendable {
+        private let lock = NSLock()
+        private var cancelled = false
+        func cancel() { lock.withLock { cancelled = true } }
+        var isCancelled: Bool { lock.withLock { cancelled } }
+        func attempt(_ send: () -> Int) -> Int { lock.withLock { cancelled ? -2 : send() } }
+    }
+    private final class PendingInput {
+        let peerID: UUID
+        let requestID: UUID
+        let roundID: UUID
+        let nativeSessionID: String
+        let messageID: String
+        let continuation: CheckedContinuation<OpenCodeTUIInputReply, any Error>
+        var timer: DispatchSourceTimer?
+        init(peerID: UUID, requestID: UUID, roundID: UUID, nativeSessionID: String, messageID: String,
+             continuation: CheckedContinuation<OpenCodeTUIInputReply, any Error>) {
+            self.peerID = peerID; self.requestID = requestID; self.roundID = roundID
+            self.nativeSessionID = nativeSessionID; self.messageID = messageID; self.continuation = continuation
+        }
     }
     private struct Wire: Decodable {
         let version: Int
         let type: String
         let generation: Int64
-        let token: String?
+        let nonce: String?
+        let proof: String?
         let appSessionID: UUID?
         let runID: UUID?
         let instanceID: UUID?
         let kind: String?
         let nativeSessionID: String?
+        let requestID: UUID?
+        let roundID: UUID?
+        let messageID: String?
+        let inputType: String?
+        let text: String?
     }
     private struct SocketWitness {
         let device: dev_t
@@ -47,7 +81,7 @@ public final class OpenCodeTUIBridge: @unchecked Sendable {
         let uid: uid_t
     }
 
-    private static let frameLimit = 4096
+    private static let frameLimit = 72 * 1024
     private static let peerLimit = 4
     private static let maxGeneration: Int64 = 9_007_199_254_740_991
     private let queue = DispatchQueue(label: "sphyrna.opencode.tui-observer", qos: .userInitiated)
@@ -67,6 +101,7 @@ public final class OpenCodeTUIBridge: @unchecked Sendable {
     private var outstandingValidations = 0
     private var active: UUID?
     private var highest: Int64 = 0
+    private var pendingInput: PendingInput?
     private var ended = false
     private var selection: OpenCodeTUISelection
     private var observerID: UUID?
@@ -178,6 +213,96 @@ public final class OpenCodeTUIBridge: @unchecked Sendable {
         return pair.stream
     }
 
+    func matches(appSessionID: UUID, runID: UUID, serverURL: URL, directory: String) -> Bool {
+        self.appSessionID == appSessionID && self.runID == runID && policy.serverURL == serverURL &&
+            policy.directory == directory && policy.isValid
+    }
+
+    var inputInstanceID: UUID { instanceID }
+
+    /// One bounded command on the authenticated TUI connection. A timeout or
+    /// cancellation closes this generation: bytes already dispatched may have
+    /// been admitted by the native server and must never be replayed blindly.
+    func prompt(requestID: UUID, roundID: UUID, nativeSessionID: String, messageID: String,
+                text: String, timeout: TimeInterval) async throws -> OpenCodeTUIInputReply {
+        guard timeout.isFinite, timeout > 0, timeout <= 30 else { throw OpenCodeError.invalidTarget }
+        let cancellation = InputCancellation()
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation { continuation in
+                queue.async { [self] in
+                    guard !cancellation.isCancelled, !stateLock.withLock({ ended }), policy.isValid,
+                          let id = active, let peer = peers[id], peer.authenticated,
+                          Self.peer(peer.fd) == peer.identity, pendingInput == nil else {
+                        continuation.resume(throwing: OpenCodeError.unavailable)
+                        return
+                    }
+                    let value: [String: Any] = ["version": 1, "type": "prompt", "requestID": requestID.uuidString,
+                        "appSessionID": appSessionID.uuidString, "runID": runID.uuidString,
+                        "instanceID": instanceID.uuidString, "roundID": roundID.uuidString,
+                        "nativeSessionID": nativeSessionID, "messageID": messageID, "text": text]
+                    guard var data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
+                          data.count <= Self.frameLimit else {
+                        continuation.resume(throwing: OpenCodeError.invalidTarget)
+                        return
+                    }
+                    data.append(10)
+                    let pending = PendingInput(peerID: id, requestID: requestID, roundID: roundID,
+                                               nativeSessionID: nativeSessionID, messageID: messageID,
+                                               continuation: continuation)
+                    pendingInput = pending
+                    let timer = DispatchSource.makeTimerSource(queue: queue)
+                    timer.schedule(deadline: .now() + timeout)
+                    timer.setEventHandler { [weak self] in self?.finish() }
+                    pending.timer = timer
+                    timer.resume()
+                    enqueue(data, for: id, cancellation: cancellation)
+                }
+            }
+        } onCancel: {
+            cancellation.cancel()
+            self.queue.async { [weak self] in
+                guard self?.pendingInput?.requestID == requestID else { return }
+                self?.finish()
+            }
+        }
+    }
+
+    private func enqueue(_ bytes: Data, for id: UUID, cancellation: InputCancellation? = nil) {
+        guard let peer = peers[id], peer.outbound.count < 2 else { finish(); return }
+        peer.outbound.append(Outbound(bytes: bytes, cancellation: cancellation))
+        if peer.writeSource == nil {
+            let source = DispatchSource.makeWriteSource(fileDescriptor: peer.fd, queue: queue)
+            source.setEventHandler { [weak self] in self?.writeReady(id) }
+            peer.writeSource = source
+            source.resume()
+        }
+    }
+
+    private func writeReady(_ id: UUID) {
+        guard let peer = peers[id] else { return }
+        while !peer.outbound.isEmpty {
+            let item = peer.outbound[0]
+            let send: () -> Int = {
+                item.bytes.withUnsafeBytes {
+                    Darwin.send(peer.fd, $0.baseAddress!.advanced(by: item.offset), item.bytes.count - item.offset, 0)
+                }
+            }
+            let count = item.cancellation?.attempt(send) ?? send()
+            if count == -2 { finish(); return }
+            if count > 0 {
+                peer.outbound[0].offset += count
+                if peer.outbound[0].offset == item.bytes.count { peer.outbound.removeFirst() }
+                continue
+            }
+            if count < 0 && errno == EINTR { continue }
+            if count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) { return }
+            closePeer(id); return
+        }
+        peer.writeSource?.cancel()
+        peer.writeSource = nil
+    }
+
     public func stop() async {
         await withCheckedContinuation { continuation in
             queue.async { [self] in
@@ -248,7 +373,7 @@ public final class OpenCodeTUIBridge: @unchecked Sendable {
                 if byte == 10 {
                     guard !peer.bytes.isEmpty else { closePeer(id); return }
                     let data = Data(peer.bytes)
-                    peer.bytes.removeAll(keepingCapacity: true)
+                    peer.bytes.removeAll(keepingCapacity: false)
                     guard handle(data, peerID: id, peer: peer) else { closePeer(id); return }
                 } else {
                     peer.bytes.append(byte)
@@ -265,11 +390,16 @@ public final class OpenCodeTUIBridge: @unchecked Sendable {
               message.version == 1, message.generation > 0, message.generation <= Self.maxGeneration else { return false }
         let keys = Set(object.keys)
         if !peer.authenticated {
-            guard keys == Set(["version", "type", "generation", "token", "appSessionID", "runID", "instanceID"]),
-                  message.type == "hello", let supplied = message.token, secureEqual(supplied, token),
-                  message.appSessionID == appSessionID, message.runID == runID, message.instanceID == instanceID else {
+            guard keys == Set(["version", "type", "generation", "nonce", "proof", "appSessionID", "runID", "instanceID"]),
+                  message.type == "hello", let nonce = message.nonce, OpenCodeTUIAuthentication.validNonce(nonce),
+                  let supplied = message.proof, message.appSessionID == appSessionID,
+                  message.runID == runID, message.instanceID == instanceID else {
                 return false
             }
+            let expected = OpenCodeTUIAuthentication.proof(role: "hello", token: token, nonce: nonce,
+                                                           generation: message.generation, appSessionID: appSessionID,
+                                                           runID: runID, instanceID: instanceID)
+            guard secureEqual(supplied, expected) else { return false }
             guard message.generation > highest else {
                 if let active { closePeer(active) }
                 return false
@@ -281,10 +411,38 @@ public final class OpenCodeTUIBridge: @unchecked Sendable {
             peer.timeout = nil
             active = peerID
             publish(.unavailable, generation: nil)
+            let response: [String: Any] = ["version": 1, "type": "welcome", "nonce": nonce,
+                "proof": OpenCodeTUIAuthentication.proof(role: "welcome", token: token, nonce: nonce,
+                    generation: message.generation, appSessionID: appSessionID, runID: runID, instanceID: instanceID)]
+            guard var welcome = try? JSONSerialization.data(withJSONObject: response, options: [.sortedKeys]) else { return false }
+            welcome.append(10)
+            enqueue(welcome, for: peerID)
             return true
         }
-        guard active == peerID, message.type == "route", message.generation > highest,
-              let kind = message.kind else { return false }
+        guard active == peerID, message.generation > highest else { return false }
+        if message.type == "receipt" || message.type == "rejected" || message.type == "indeterminate" {
+            guard let pending = pendingInput, pending.peerID == peerID,
+                  message.requestID == pending.requestID, message.roundID == pending.roundID,
+                  message.appSessionID == appSessionID, message.runID == runID, message.instanceID == instanceID else { return false }
+            let shared = Set(["version", "type", "generation", "requestID", "appSessionID", "runID", "instanceID", "roundID"])
+            let reply: OpenCodeTUIInputReply
+            if message.type == "receipt" {
+                guard keys == shared.union(["nativeSessionID", "messageID", "inputType", "text"]),
+                      message.nativeSessionID == pending.nativeSessionID, message.messageID == pending.messageID,
+                      message.inputType == "user", let text = message.text,
+                      !text.isEmpty, text.utf8.count <= 48 * 1024, !text.contains("\0") else { return false }
+                reply = .receipt(nativeSessionID: pending.nativeSessionID, messageID: pending.messageID, text: text)
+            } else {
+                guard keys == shared else { return false }
+                reply = message.type == "rejected" ? .rejected : .indeterminate
+            }
+            highest = message.generation
+            pendingInput = nil
+            pending.timer?.cancel()
+            pending.continuation.resume(returning: reply)
+            return true
+        }
+        guard message.type == "route", let kind = message.kind else { return false }
         let route: OpenCodeTUIRoute
         switch kind {
         case "home":
@@ -320,9 +478,16 @@ public final class OpenCodeTUIBridge: @unchecked Sendable {
         peer.validation?.cancel()
         peer.timeout?.cancel()
         peer.source?.cancel()
+        peer.writeSource?.cancel()
+        peer.outbound.removeAll(keepingCapacity: false)
         Darwin.close(peer.fd)
         if active == id {
             active = nil
+            if let pending = pendingInput, pending.peerID == id {
+                pendingInput = nil
+                pending.timer?.cancel()
+                pending.continuation.resume(throwing: OpenCodeError.indeterminate)
+            }
             publish(.unavailable, generation: nil)
         }
     }
@@ -372,6 +537,7 @@ public final class OpenCodeTUIBridge: @unchecked Sendable {
             peer.validation?.cancel()
             peer.timeout?.cancel()
             peer.source?.cancel()
+            peer.writeSource?.cancel()
             Darwin.close(peer.fd)
         }
         var current = stat()
