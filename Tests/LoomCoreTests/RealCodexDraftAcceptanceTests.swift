@@ -109,6 +109,18 @@ private final class RealAcceptanceScreen: TerminalOutputSink, @unchecked Sendabl
             if bytes.count > 64 * 1024 { bytes = Data(bytes.suffix(64 * 1024)) }
         }
     }
+
+    func diagnostics() -> (signals: [String], queries: [String: Int]) {
+        lock.withLock {
+            let text = String(decoding: bytes, as: UTF8.self).lowercased()
+            let known = ["cursor position", "could not be read", "terminal", "not a tty", "unexpected argument",
+                         "permission overrides", "approvals_reviewer", "unauthorized", "trust", "error", "failed"]
+            return (known.filter { text.contains($0) }, [
+                "cursor": text.components(separatedBy: "\u{1b}[6n").count - 1,
+                "primaryAttributes": text.components(separatedBy: "\u{1b}[c").count - 1,
+            ])
+        }
+    }
 }
 
 private actor RealAcceptanceToolchain {
@@ -157,6 +169,8 @@ private struct RealAcceptanceEvidence: Encodable {
     var resumedObservedProcesses: [ProcessIdentity] = []
     var errorPhase: String? = nil
     var errorType: String? = nil
+    var terminalSignals: [String] = []
+    var terminalQueryCounts: [String: Int] = [:]
     var errorSignals: [String] = []
     var kind = "first-prompt-acceptance"
     var note = "No raw provider output, account data, credentials, or environment values recorded. Auxiliary model activity is unknown."
@@ -204,6 +218,7 @@ struct RealCodexDraftAcceptanceTests {
         var reservationConsumed = false
         var witnesses: [RealAcceptanceWitness] = []
         var inputs: RealAcceptanceInputs?
+        let screen = RealAcceptanceScreen()
         do {
             let value = try RealAcceptanceInputs.read()
             inputs = value
@@ -261,7 +276,6 @@ struct RealCodexDraftAcceptanceTests {
                 "Use no other commands, tools, files or network. Ask for approval if needed. " +
                 "Then reply exactly \(Self.completionMarker)."
             let choices = HarnessLaunchChoices(harness: .codex, model: "gpt-6-luna", effort: "low", mode: .askBeforeEdits)
-            let screen = RealAcceptanceScreen()
             try value.consumeReservation()
             reservationConsumed = true
             result.reservationTime = Date()
@@ -414,6 +428,9 @@ struct RealCodexDraftAcceptanceTests {
             }
             if let supervisor, (try? await supervisor.ownedProcesses().isEmpty) != true { result.cleanup = "failed-or-unknown" }
         }
+        let diagnostic = screen.diagnostics()
+        result.terminalSignals = diagnostic.signals
+        result.terminalQueryCounts = diagnostic.queries
         if let bundleRoot, result.quitResult == "verified", result.cleanup != "failed-or-unknown" {
             RunScopeLauncher.removeOwnedBundle(in: bundleRoot)
         }
