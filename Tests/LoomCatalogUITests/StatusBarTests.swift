@@ -221,17 +221,22 @@ import LoomTestSupport
         window.isReleasedWhenClosed = false
         window.contentViewController = bar
         defer { window.close() }
-        try await Task.sleep(for: .milliseconds(150))
-        bar.view.layoutSubtreeIfNeeded()
-        window.displayIfNeeded()
+        func draw() { bar.view.layoutSubtreeIfNeeded(); window.displayIfNeeded() }
+        await waitFor("the bar and its working count to draw") {
+            draw()
+            return StatusBarRenderProbe.rootBodies > 0 && StatusBarRenderProbe.workingBodies > 0
+        }
         let before = (StatusBarRenderProbe.rootBodies, StatusBarRenderProbe.workingBodies, StatusBarRenderProbe.menuBodies)
         #expect(before.0 > 0 && before.1 > 0 && !window.isVisible)
         let revision = rig.model.liveRevision
         try await rig.feed(.reason(StatusReason(.automaticTurn, detail: "Background command finished")), for: id)
         #expect(rig.model.liveRevision > revision && rig.model.workingSessionCount == 1)
-        try await Task.sleep(for: .milliseconds(150))
-        bar.view.layoutSubtreeIfNeeded()
-        window.displayIfNeeded()
+        // The negative window: for 150 ms of drawing, the reason re-evaluates no part of the bar.
+        await holds("no part of the bar re-evaluates for a reason that changes nothing it shows", for: .milliseconds(150)) {
+            draw()
+            return StatusBarRenderProbe.rootBodies == before.0 && StatusBarRenderProbe.workingBodies == before.1
+                && StatusBarRenderProbe.menuBodies == before.2
+        }
         #expect(StatusBarRenderProbe.rootBodies == before.0)
         #expect(StatusBarRenderProbe.workingBodies == before.1)
         #expect(StatusBarRenderProbe.menuBodies == before.2)
@@ -269,9 +274,16 @@ import LoomTestSupport
         window.contentViewController = status
         window.setContentSize(NSSize(width: 280, height: 26))
         defer { window.close() }
-        try await Task.sleep(for: .milliseconds(120))
-        status.view.layoutSubtreeIfNeeded()
-        window.displayIfNeeded()
+        func draw() { status.view.layoutSubtreeIfNeeded(); window.displayIfNeeded() }
+        func briefLine() -> Bool {
+            accessibilityElements(in: status.view).contains {
+                $0.accessibilityRole?() == .staticText && (InkAX.value($0) ?? InkAX.label($0)) == "Remora is reading a brief"
+            }
+        }
+        await waitFor("the bar's Settings button") {
+            draw()
+            return accessibilityElements(in: status.view).contains { InkAX.label($0) == "Settings" }
+        }
         let elements = accessibilityElements(in: status.view)
         let settings = try #require(elements.first { InkAX.label($0) == "Settings" })
         #expect(elements.contains { InkAX.label($0) == "Help" })
@@ -289,19 +301,9 @@ import LoomTestSupport
         model.integration.setKeepAwake(.off)
         #expect(model.integration.keepAwake == .off)
         model.remora.phase = .briefing
-        try await Task.sleep(for: .milliseconds(120))
-        status.view.layoutSubtreeIfNeeded()
-        window.displayIfNeeded()
-        #expect(accessibilityElements(in: status.view).contains {
-            $0.accessibilityRole?() == .staticText && (InkAX.value($0) ?? InkAX.label($0)) == "Remora is reading a brief"
-        })
+        await waitFor("the bar to say Remora is reading a brief") { draw(); return briefLine() }
         model.remora.phase = .asking
-        try await Task.sleep(for: .milliseconds(120))
-        status.view.layoutSubtreeIfNeeded()
-        window.displayIfNeeded()
-        #expect(!accessibilityElements(in: status.view).contains {
-            $0.accessibilityRole?() == .staticText && (InkAX.value($0) ?? InkAX.label($0)) == "Remora is reading a brief"
-        })
+        await waitFor("the brief line to go when Remora asks instead") { draw(); return !briefLine() }
     }
 
     @Test func usagePopoverUsesTheWindowHostAndClosesForEscapeDisconnectAndFullScreen() async throws {
@@ -333,19 +335,23 @@ import LoomTestSupport
         window.isReleasedWhenClosed = false
         window.contentViewController = root
         defer { window.close() }
-        func settle() async throws {
-            try await Task.sleep(for: .milliseconds(150))
-            root.view.layoutSubtreeIfNeeded()
-            window.displayIfNeeded()
-        }
+        func draw() { root.view.layoutSubtreeIfNeeded(); window.displayIfNeeded() }
         func claudeButton() -> AnyObject? {
             accessibilityElements(in: bar.view).first { InkAX.label($0).contains("Claude, 5-hour, 50% left") }
         }
-        try await settle()
+        func popoverShows(_ text: String) -> Bool {
+            accessibilityElements(in: host.view).contains { (InkAX.value($0) ?? InkAX.label($0)) == text }
+        }
+        func pressClaude(_ why: String) async throws {
+            await waitFor("the Claude limit button (\(why))") { draw(); return claudeButton() != nil }
+            #expect(try #require(claudeButton()).accessibilityPerformPress?() == true)
+            await waitFor("the Claude popover to open (\(why))") {
+                draw()
+                return host.state.active?.id == "status-limits-claude" && popoverShows("Check Again")
+            }
+        }
+        try await pressClaude("first open")
         #expect(!window.isVisible)
-        #expect(try #require(claudeButton()).accessibilityPerformPress?() == true)
-        try await settle()
-        #expect(host.state.active?.id == "status-limits-claude")
         let popoverElements = accessibilityElements(in: host.view)
         let check = try #require(popoverElements.first { InkAX.label($0) == "Check Again" })
         #expect(popoverElements.contains { InkAX.label($0) == "5-hour, 50% left" })
@@ -353,7 +359,11 @@ import LoomTestSupport
         #expect(source.asks == 1 && index.refreshCalls == 0, "opening the popover asks nothing")
         clock.advance(60)
         #expect(check.accessibilityPerformPress?() == true)
-        try await settle()
+        let readNow = "Read \(UsageText.time(clock.now, usage.timeZone))"
+        await waitFor("Check Again to read once more and show \(readNow)") {
+            draw()
+            return source.asks == 2 && popoverShows(readNow)
+        }
         #expect(source.asks == 2 && index.refreshCalls == 0)
         let updatedElements = accessibilityElements(in: host.view)
         #expect(updatedElements.contains {
@@ -361,26 +371,17 @@ import LoomTestSupport
         })
         let openUsage = try #require(updatedElements.first { InkAX.label($0) == "Open Usage" })
         #expect(openUsage.accessibilityPerformPress?() == true)
-        try await settle()
-        #expect(openedUsage && host.state.active == nil)
-        #expect(try #require(claudeButton()).accessibilityPerformPress?() == true)
-        try await settle()
+        await waitFor("Open Usage to open the Usage page and close the popover") { draw(); return openedUsage && host.state.active == nil }
+        try await pressClaude("before Escape")
         #expect(host.state.handle(.escape))
         #expect(host.state.active == nil)
-        try await settle()
-        #expect(try #require(claudeButton()).accessibilityPerformPress?() == true)
-        try await settle()
+        try await pressClaude("before a disconnect")
         connections.setConnected(.claude, false)
-        try await settle()
-        #expect(host.state.active == nil)
+        await waitFor("a disconnect to close the popover") { draw(); return host.state.active == nil }
         connections.setConnected(.claude, true)
-        try await settle()
-        #expect(try #require(claudeButton()).accessibilityPerformPress?() == true)
-        try await settle()
-        #expect(host.state.active != nil)
+        try await pressClaude("before full screen")
         NotificationCenter.default.post(name: NSWindow.willEnterFullScreenNotification, object: window)
-        try await settle()
-        #expect(host.state.active == nil)
+        await waitFor("entering full screen to close the popover") { draw(); return host.state.active == nil }
         #expect(!window.isVisible)
     }
 
