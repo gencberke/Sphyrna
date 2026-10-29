@@ -60,6 +60,8 @@ public struct SessionRuntimeConfiguration: Sendable {
     public var toolchainProbeRetryPause: Duration
     /// Verified native limit errors only; no probe or model request is made here.
     public var onClaudeLimitReset: ClaudeLimitResetCallbacks?
+    /// Optional task-only Claude stream controller, supplied from LoomChat.
+    public var managedClaudeControllerFactory: ManagedTaskControllerFactory?
 
     public init(
         toolchains: @escaping ProviderToolchainResolver, hookHelperPath: String,
@@ -82,7 +84,8 @@ public struct SessionRuntimeConfiguration: Sendable {
         openedModels: (@Sendable (HarnessID) async -> [ModelCatalogEntry])? = nil,
         openedDefaultMode: (@Sendable (UUID?, HarnessID) async -> HarnessMode?)? = nil,
         toolchainProbeRetryPause: Duration = .seconds(1),
-        onClaudeLimitReset: ClaudeLimitResetCallbacks? = nil
+        onClaudeLimitReset: ClaudeLimitResetCallbacks? = nil,
+        managedClaudeControllerFactory: ManagedTaskControllerFactory? = nil
     ) {
         self.toolchains = toolchains
         self.hookHelperPath = hookHelperPath
@@ -108,6 +111,7 @@ public struct SessionRuntimeConfiguration: Sendable {
         self.openedDefaultMode = openedDefaultMode
         self.toolchainProbeRetryPause = toolchainProbeRetryPause
         self.onClaudeLimitReset = onClaudeLimitReset
+        self.managedClaudeControllerFactory = managedClaudeControllerFactory
     }
 }
 
