@@ -12,6 +12,12 @@ import Testing
 public struct ProcessHeavy: TestTrait, SuiteTrait, TestScoping {
     public var isRecursive: Bool { true }
 
+    /// The suite's own scope (the gate) and each test case's (the sentinel). A recursive suite trait's default gives the
+    /// scope to the test cases only, and the suites beside each other would run together.
+    public func scopeProvider(for test: Test, testCase: Test.Case?) -> Self? {
+        test.isSuite || testCase != nil ? self : nil
+    }
+
     public func provideScope(for test: Test, testCase: Test.Case?,
                              performing function: @Sendable () async throws -> Void) async throws {
         guard test.isSuite else { return try await PoolSentinel.watch(function, at: test.sourceLocation) }
@@ -31,7 +37,8 @@ extension Trait where Self == ProcessHeavy {
 public enum ProcessHeavyGate {
     @TaskLocal public static var held = false
 
-    static var path: String { NSTemporaryDirectory() + "loom-process-heavy-tests-\(getpid()).lock" }
+    /// The lock file of this test process.
+    public static var path: String { NSTemporaryDirectory() + "loom-process-heavy-tests-\(getpid()).lock" }
 
     /// A descriptor holding the lock (-1 when the file cannot be opened: the suite then runs ungated).
     static func acquire() async -> Int32 {
