@@ -142,8 +142,9 @@ struct InspectorTests {
         #expect(content.finished.map(\.id) == ["done"])
         #expect(content.count == 4 && !content.isEmpty)
         #expect(content.running[0].time == "4m" && content.finished[0].time == "41s")
-        #expect(content.running[2].title == "Subagent" && content.running[2].depth == 2)
-        #expect(content.running[0].accessibilityLabel == "implementer, map the module, Running 4m")
+        // A row names the agent, never its brief (D-114); a record without a role falls back to a short id.
+        #expect(content.running[2].title == "Subagent nested" && content.running[2].depth == 2)
+        #expect(content.running[0].accessibilityLabel == "implementer, Running 4m")
         #expect(content.finished[0].accessibilityLabel == "Explore, Finished 41s")
         #expect(InspectorAgentsContent(records: [], now: now).isEmpty)
     }

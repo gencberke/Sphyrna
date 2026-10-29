@@ -436,7 +436,7 @@ struct SubagentPanelTests {
         rig.model.closeSubagent()
         try await settle()
         #expect(!labels().contains("Back to the list of agents") && !panel.isFeeding)
-        #expect(labels().contains { $0.hasPrefix("implementer, map the module") }, "the list of agents is back")
+        #expect(labels().contains { $0.hasPrefix("implementer, Claude, Running") }, "the list of agents is back")
     }
 
     @Test func openingTheShownSubagentAgainKeepsItsPanelReading() async throws {

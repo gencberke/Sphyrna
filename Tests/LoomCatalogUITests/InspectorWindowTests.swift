@@ -150,8 +150,10 @@ struct InspectorWindowTests {
         rig.model.selectInspectorTab(.agents)
         await rig.settle()
         let labels = rig.labels()
-        #expect(labels.contains { $0.hasPrefix("implementer, map the module, Running") }, "labels \(labels)")
-        #expect(labels.contains { $0.hasPrefix("Explore, find handlers, Finished") }, "labels \(labels)")
+        // Each row names the agent and its harness, never the brief (D-114).
+        #expect(labels.contains { $0.hasPrefix("implementer, Claude, Running") }, "labels \(labels)")
+        #expect(labels.contains { $0.hasPrefix("Explore, Claude, Finished") }, "labels \(labels)")
+        #expect(!labels.contains { $0.contains("map the module") || $0.contains("find handlers") }, "labels \(labels)")
         #expect(labels.contains("Agents, 2") || labels.contains("Agents"), "labels \(labels)")
     }
 
