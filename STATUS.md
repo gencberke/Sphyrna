@@ -1,15 +1,9 @@
 # Status (Live Relay Board)
 
-- **Updated:** 2026-10-29, 19:45 +03.
+- **Updated:** 2026-10-29, 21:15 +03.
 - **State:** `in continuation` (Claude as planner-reviewer and optimizer, D-118). The original D-112 daily-use 1.8.0 goal is **incomplete**. Pi is deferred (D-113). No public release, installed-app replacement, push, tag or PR authority.
-- **Accepted source:** local `v2` through `dec1b63`: `3ac3b1e` plus the continuation's fixes (the AX crash `ca1a71e`, socket test oracles `d3f3066`, icon-only menus `5f9e1cd`, stale expectations `0dabf49`/`244e478`/`c2d081a`, the empty Agents list `5cfd1af`, mixed-project usage `80e828b` with its D-94 correction `61449e6`, the opening window `1e88c0a`, helper jobs off the cooperative pool `dec1b63`). The rejected semantic Menu differential stays withdrawn; `5f9e1cd` is a different, measured change.
-- **Current verification:** the full release/window gate on `e58c2c9` (`181940-24037`) FAILED with 48 issues (69 at 15:04). The release build and staged release tree PASS, and the window suites PASS alone (`181646-20409`, 43 tests). The one triage is in `evidence/r9/claude-continuation-20261029/gate-e58c2c9/REPORT.md`:
-  - a D-94 violation from `80e828b`, fixed in `61449e6`;
-  - a real pool-starvation defect (helper jobs on the cooperative pool), fixed in `dec1b63` with a failing-first test;
-  - a start-of-run stall of 1.5–5.2 s in every LoomCore run, which remains, its cause not found (it cannot be sampled in the hardened test runner). Its victims are all the LoomCore timing issues;
-  - window suites whose key, click and focus do not land only inside the full UI run. The inferred cause is other suites' key windows.
-
-  There is no passing full gate. The signed-app AX crash no longer reproduces in the scenario that crashed `3ac3b1e`.
+- **Accepted source:** local `v2` through `92d6129`: `3ac3b1e` plus the continuation's fixes. They are: the AX crash `ca1a71e`, socket test oracles `d3f3066`, icon-only menus `5f9e1cd`, stale expectations `0dabf49`/`244e478`/`c2d081a`, the empty Agents list `5cfd1af`, mixed-project usage `80e828b`/`61449e6`, the opening window `1e88c0a`, the cooperative-pool blockers `dec1b63`/`bcd59d5` with the test fixtures `1769c1b`/`e98d153`, window tests run apart `16a9158`, per-model popover state `cb06749`, and the mailbox test `92d6129`.
+- **Current verification:** the full release/window gate on `16a9158` (`200514-71144`) FAILED with **6 issues in 2 tests** (48 on `e58c2c9`, 69 at 15:04). The release build and staged release tree PASS, and the start-of-run stall is gone. Both tests are fixed since: `cb06749` with a failing-first test, and `92d6129`, a test-timing dependency. The window tests did not run, because `check.sh` stops at the first failing step. The triage, with the in-process stack probe that found the stall's cause, is in `evidence/r9/claude-continuation-20261029/gate-e58c2c9/REPORT.md`. There is no passing full gate yet: `--full --idle` on `92d6129` is due when the Mac is idle. The signed-app AX crash no longer reproduces in the scenario that crashed `3ac3b1e`.
 - **Evidence:** continuation `~/Library/Caches/loom-v2/evidence/r9/claude-continuation-20261029/REPORT.md` (with `claude-ax-20261029/` and `claude-ax-ca1a71e/`); final wrap `~/Library/Caches/loom-v2/evidence/r9/final-wrap-20261029/` — `TEST-EVIDENCE.md`, `UI-MATRIX.md`, `FULL-GATE-ISSUES.json`, `CANDIDATE.json`, `DELETION-BEFORE/AFTER.json`, resource metric JSON and `CLAUDE-HANDOFF.md`.
 - **Power / build:** user idle authorization persists for window/full runs when the Mac is actually idle; AC and thermal nominal at 18:06. One shared build slot, isolated scratch `~/Library/Caches/loom-v2/build/v2`. No build, test, worker or app fixture is running.
 
@@ -30,7 +24,7 @@
 
 | Tree | Branch / checkpoint | Owner / state |
 | --- | --- | --- |
-| `~/Library/Caches/loom-v2/wt/v2` | local `v2`, `dec1b63` (+ this STATUS commit) | Claude planner continuation; clean after each commit |
+| `~/Library/Caches/loom-v2/wt/v2` | local `v2`, `92d6129` (+ this STATUS commit) | Claude planner continuation; clean after each commit |
 | `wt/r9-m1` | `slice/r9-m1`, `ae9774b`, clean | c4 completed; integrated, report in `r9/m1` |
 | `wt/r9-resource` | `slice/r9-resource`, `9ef909c`, clean | b3 completed; integrated, report in `r9/resource` |
 | `wt/r9-m1-ui`, `wt/r9-x2`, `wt/r9-e2`, `wt/r9-e1-native`, `wt/r9-f1`, `wt/r9-e1` | `9091534`, `ba830ea`, `f0cad4d`, `c97a34c`, `8dc5e95`, `d09e18a` | completed warm history; recovery/source-equivalence cleanup remains planner-owned, no active writes |
@@ -42,9 +36,9 @@ No implementer file locks remain. Do not restart completed workers or repeat acc
 ## Next actions by role
 
 - **@planner / Claude continuation:**
-  - Find the start-of-run stall. Options are an in-process probe that records which tests hold the pool when a heartbeat stops, or a non-parallel LoomCore run to tell contention from a serial blocker. Then move the other blocking `Task.detached` sites off the pool if they are the cause.
-  - Run `WindowEventTests` apart from the other UI suites in `check.sh`.
-  - Re-run the full gate when the Mac is idle, and triage it before accepting daily use. Then the open features (managed AGY, OpenCode, D2, F2, G1, I1) and native/UI/performance acceptance, then the closing optimizer review. Preserve permission/effort settings and user-data isolation. No release/install inference.
+  - Run `--full --idle` on `92d6129` when the Mac is idle, and triage it before accepting daily use. It is the first full run of the window tests on their own.
+  - Move the three bounded waits still in `Task.detached` off the pool (`RunScope.launchBlocking`, the Codex socket connect, the plan-limits exchange; ARCHITECTURE names them).
+  - Fold in the read-only test infrastructure review (session `test-infra-review`, report `evidence/r9/test-infra-review/REPORT.md`) after the user has seen it. Then the open features (managed AGY, OpenCode, D2, F2, G1, I1) and native/UI/performance acceptance, then the closing optimizer review. Preserve permission/effort settings and user-data isolation. No release/install inference.
 - **@implementer-core:** completed, no active assignment. Reuse warm context only with a new self-contained bounded Brief; no autonomous retry or native/model run.
 - **@implementer-ink:** completed, no active assignment. Preserve the rejected AX differential and reports for diagnosis; do not repeat the same patch without new evidence.
 - **@optimizer:** early structural review and focused stalled-flow/AX advisories complete, read-only. Final full-app independent acceptance is still due after implementation and actual gates.
