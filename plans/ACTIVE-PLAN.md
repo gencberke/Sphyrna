@@ -46,8 +46,9 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 | 3 | B5c Settings, sheets, palette, menus and About | integrated `7f77000`; 97 affected tests PASS (one corpus measurement skipped), six controlled theme renders; native/window/energy remain pooled |
 | 3 | X1 reference/sidebar parity | integrated26088a1 (c3adafb +26088a1);65 parent scoped tests PASS, failing-first raster/AX evidence; native parity pooled; clean source-equivalent tree/branch/scratch removed with recovery bundle |
 | 4 | F0 cross-harness child contract/foundation | integratedc7fc0ab/0c9b2a8;24 fake-host tests pass including typed host-resolved native input proof. Durable stable relationship/fresh rounds, explicit results/attention, bounded task grant, wait/check/interrupt and lifecycle fences. F1 wires existing owner/CLI/UI |
-| 4 | F1 runtime/CLI and task agent UI | running in r9-f1 / r9-f1-ui; staged fake proofs are not whole-flow acceptance |
-| 4 | E1 opencode · E2 agy · F2 Changes → session · G1 supported Remora backends · H1 usage · I1 names | queued; P1 OpenCode2.2 owned zero-input metadata passes, local wire fixture prepared; AGY strict isolation unproved |
+| 4 | F1 runtime/CLI and task agent UI | UI integrated44447c3 with78 parent tests; core runningr9-f1, runtime bridge/card/CLI and three-round proof pending; staged fake proofs are not whole-flow acceptance |
+| 4 | H1 usage | runningr9-h1; model windows, reasoning/day usage, bounded typed reset signal + off-by-default memory-only notification |
+| 4 | E1 opencode · E2 agy · F2 Changes → session · G1 supported Remora backends · I1 names | queued; E1 source report complete, native G1 local wire PASS2captures/0real model inputs; AGY strict isolation still unproved |
 | — | E3 pi | deferred from1.8.0 byD-113; no probe/integration in current goal |
 | 5 | Z the gate, the optimizer, the release | planner |
 
