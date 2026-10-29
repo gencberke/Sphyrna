@@ -201,6 +201,63 @@ struct SessionTaskRoundIntegrationTests {
         #expect((await context.runtime.shutdown()).succeeded)
     }
 
+    @Test(arguments: [true, false])
+    func claudeInterruptWaitsForANewerIdleOfTheSamePromptBeforeTheNextRound(hasIdle: Bool) async throws {
+        var environment = ["LOOM_FAKE_TASK_ROUNDS": "1", "LOOM_FAKE_CLAUDE_TASK_INTERRUPT": "1"]
+        if !hasIdle { environment["LOOM_FAKE_CLAUDE_NO_INTERRUPT_IDLE"] = "1" }
+        let context = try await SessionRuntimeTests.makeContext(extraEnvironment: environment, claudeVersion: "2.0.0")
+        defer { context.cleanup() }
+        do {
+            let folder = context.root.appendingPathComponent("claude-task-interrupt", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let project = try await context.catalog.addProject(path: folder.path).project
+            let parentScreen = SessionRuntimeTests.Screen(), gate = context.runtime.inputGate
+            let parent = try await context.runtime.startConversation(provider: .claude, projectID: project.id, outputSink: parentScreen)
+            parentScreen.attach(parent.terminal)
+            let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+            #expect(try await SessionRuntimeTests.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+            let socket = try #require(await context.runtime.taskSocketPath)
+            let coordinator = try #require(await context.runtime.taskCoordinator), task = UUID()
+            let create = try Self.helper(["create", "--task", task.uuidString, "--operation", UUID().uuidString,
+                "--name", "Claude child", "--harness", "claude", "--message", "-"],
+                claim: claim, socket: socket, input: "fixture-round-1")
+            #expect(create.0 == 0)
+            let childScreen = SessionRuntimeTests.Screen()
+            let child = try await context.runtime.approveOpenRequest(task, outputSink: childScreen, expectedProvider: .claude,
+                onTerminalReady: { launch in
+                    childScreen.attach(launch.terminal)
+                    gate.register(runID: launch.runID, queue: TerminalInputQueue(endpoint: launch.terminal, onError: { _ in }))
+                })
+            #expect(await childScreen.contains("FAKE-TASK-ACTIVE", timeout: 6))
+            let before = try await coordinator.status(taskID: task, parent: claim)
+            let first = try #require(before.activeRound?.id)
+            #expect(before.nativeStatus == .working)
+            let reply = try Self.helper(["interrupt", "--task", task.uuidString, "--round", first.uuidString,
+                "--operation", UUID().uuidString, "--next-operation", UUID().uuidString, "--message", "-"],
+                claim: claim, socket: socket, input: "fixture-round-2")
+            let value = try #require(try JSONSerialization.jsonObject(with: Data(reply.1.utf8)) as? [String: Any])
+            let delivery = (value["receipt"] as? [String: Any])?["delivery"] as? String
+            #expect(reply.0 == 0 && delivery == (hasIdle ? "verified" : "unverified"))
+            #expect(await childScreen.contains("FAKE-TASK-INTERRUPTED"))
+            if hasIdle {
+                let result = try await Self.waitForEvent(task: task, coordinator: coordinator, claim: claim, socket: socket, cursor: 0)
+                #expect(result.0 != first && result.1 == "fixture-result: fixture-round-2")
+            } else {
+                let status = try await coordinator.status(taskID: task, parent: claim)
+                #expect(status.task.lifecycle == .revoked && status.pendingRound?.phase == .queued)
+                #expect(try await coordinator.latestEventsForUser(taskID: task, limit: 10).isEmpty)
+            }
+            let controls = (try? String(contentsOf: context.state.appendingPathComponent("fake-claude-task-controls"), encoding: .utf8)) ?? ""
+            #expect(controls.split(separator: "\n") == ["escape"])
+            let stale = try await coordinator.interruptAndUpdate(taskID: task, parent: claim, roundID: first,
+                operationID: UUID(), nextOperationID: UUID(), message: "must not run")
+            #expect(stale.delivery == .alreadySettled)
+            #expect(try await context.runtime.stopConversation(sessionID: child.sessionID).succeeded)
+            #expect(try await context.runtime.stopConversation(sessionID: parent.sessionID).succeeded)
+        } catch { Issue.record("Claude task interrupt fixture failed: \(error)") }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
+
     @Test func reportedResultWakesACleanReadyParentWithOnlyATaskPointer() async throws {
         let context = try await SessionRuntimeTests.makeContext(extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1"],
                                                                 claudeVersion: "2.0.0")

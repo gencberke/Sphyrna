@@ -209,6 +209,7 @@ struct FakeClaude {
     let environment = ProcessInfo.processInfo.environment
     var promptCount = 0
     var currentPrompt: String?
+    var heldTaskRound = false
     let registryStartedAt = Date()
     /// Like Claude: `--effort` or `/effort` hold for this process only. Once set, each reply is
     /// recorded in the profile's transcript with its effort, as Claude records it.
@@ -521,6 +522,33 @@ struct FakeClaude {
                 remember(line)
                 hook("UserPromptSubmit", ["prompt_id": "p\(promptCount)"])
                 if line.hasPrefix("Sphyrna task:") && environment["LOOM_FAKE_TASK_ROUNDS"] == "1" {
+                    if environment["LOOM_FAKE_CLAUDE_TASK_INTERRUPT"] == "1", !heldTaskRound {
+                        heldTaskRound = true
+                        guard fakeSphyrnaTaskRound(line, report: false) else {
+                            out("FAKE-TASK-ROUND-REFUSED\r\n> ")
+                            return
+                        }
+                        var original = termios()
+                        guard tcgetattr(STDIN_FILENO, &original) == 0 else { out("FAKE-TASK-RAW-FAILED\r\n"); return }
+                        var raw = original
+                        cfmakeraw(&raw)
+                        guard tcsetattr(STDIN_FILENO, TCSANOW, &raw) == 0 else { out("FAKE-TASK-RAW-FAILED\r\n"); return }
+                        out("FAKE-TASK-ACTIVE\r\n")
+                        var input = pollfd(fd: STDIN_FILENO, events: Int16(POLLIN), revents: 0), byte: UInt8 = 0
+                        let escaped = poll(&input, 1, 6_000) > 0 && Darwin.read(STDIN_FILENO, &byte, 1) == 1 && byte == 0x1b
+                        _ = tcsetattr(STDIN_FILENO, TCSANOW, &original)
+                        if escaped {
+                            if let stateDirectory {
+                                let path = stateDirectory.appendingPathComponent("fake-claude-task-controls")
+                                let existing = (try? String(contentsOf: path, encoding: .utf8)) ?? ""
+                                try? (existing + "escape\n").write(to: path, atomically: true, encoding: .utf8)
+                            }
+                            usleep(3_000)
+                            if environment["LOOM_FAKE_CLAUDE_NO_INTERRUPT_IDLE"] != "1" { registry("idle") }
+                            out("FAKE-TASK-INTERRUPTED\r\n> ")
+                        } else { out("FAKE-TASK-INTERRUPT-UNKNOWN\r\n> ") }
+                        return // Native abort paths need not emit a Stop hook.
+                    }
                     out(fakeSphyrnaTaskRound(line) ? "FAKE-TASK-ROUND-OK\r\n" : "FAKE-TASK-ROUND-REFUSED\r\n")
                 } else { out("echo: \(line)\r\n") }
                 recordReply()

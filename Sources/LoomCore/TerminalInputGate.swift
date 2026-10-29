@@ -103,6 +103,11 @@ public final class TerminalInputGate: @unchecked Sendable {
         lock.withLock { queues[runID] }?.enqueueReservedAutomatic(ticket, bytes: bytes, transaction: transaction) ?? false
     }
 
+    func enqueueReservedTaskInterrupt(runID: UUID, ticket: TerminalInputQueue.AutomaticInputTicket,
+                                      transaction: @escaping TerminalWriteTransaction) -> Bool {
+        lock.withLock { queues[runID] }?.enqueueReservedTaskInterrupt(ticket, transaction: transaction) ?? false
+    }
+
     func enqueueAutomatic(runID: UUID, bytes: Data,
                           transaction: @escaping TerminalWriteTransaction) -> TerminalInputQueue.AutomaticInputTicket? {
         lock.withLock { queues[runID]?.enqueueAutomatic(bytes, transaction: transaction) }

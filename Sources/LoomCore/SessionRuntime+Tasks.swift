@@ -80,6 +80,7 @@ extension SessionRuntime {
         taskIngress.remove(runID: plan.claim.managedRunID)
         taskExpectedInputs[plan.claim.managedRunID] = nil
         finishTaskProofWaiters(runID: plan.claim.managedRunID, observation: nil)
+        finishTaskInterruptWaiters(runID: plan.claim.managedRunID)
         taskRunPlans[sessionID] = nil
         if !shuttingDown {
             Task { [weak self] in
@@ -315,9 +316,16 @@ extension SessionRuntime {
                                observedAt: envelope.taskIngressUptime, plan: plan)
             return
         }
+        guard let prompt = await harnesses.claude.adapter.taskCurrentPrompt(runID: envelope.managedRunID),
+              prompt.promptID == event.promptID,
+              let current = taskExpectedInputs[envelope.managedRunID], current.effect === expected.effect,
+              current.binding == binding, current.digest == digest,
+              taskRunPlans[envelope.sessionID]?.lease === plan.lease, plan.lease.isEnabled else { return }
+        expected = current
+        expected.providerPromptGeneration = prompt.generation
         if let promptID = event.promptID, !promptID.isEmpty, promptID.utf8.count <= 256, !promptID.utf8.contains(0) {
             expected.observed = .providerPrompt(promptID)
-        } else { expected.observed = .appInputObservation(UUID()) }
+        } else { expected.observed = .appInputObservation(prompt.generation) }
         taskExpectedInputs[envelope.managedRunID] = expected
         acceptTaskObservation(expected)
     }

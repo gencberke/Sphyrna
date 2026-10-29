@@ -26,6 +26,35 @@ struct SessionTaskLaunchContext: Sendable {
     var wakeReservation: WakeReservation?
 }
 
+struct SessionTaskInterruptWaiter {
+    let target: SessionTaskRoundTarget
+    let parentBinding: SessionTaskBinding
+    let parentPlan: SessionTaskRunPlan
+    let childPlan: SessionTaskRunPlan
+    let promptGeneration: UUID
+    let inputGeneration: UInt64
+    let requestedAt: Double
+    let ticket: TerminalInputQueue.AutomaticInputTicket
+    let continuation: CheckedContinuation<Bool, Never>
+    let timeout: Task<Void, Never>
+    var evaluating = false
+    var retryRequested = false
+}
+
+private final class SessionTaskInterruptClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Double?
+    func write(_ body: () throws -> Int) rethrows -> Int {
+        try lock.withLock {
+            let before = Date().timeIntervalSince1970 * 1_000
+            let count = try body()
+            if count > 0 { value = before }
+            return count
+        }
+    }
+    var requestedAt: Double? { lock.withLock { value } }
+}
+
 extension SessionRuntime {
     func approveTaskRequest(_ spec: OpenSessionSpec, rows: UInt16, columns: UInt16,
                             outputSink: (any TerminalOutputSink)?,
@@ -106,7 +135,10 @@ extension SessionRuntime {
             }
             let proofNeeded = taskExpectedInputs[runID]?.rolloutCandidate != nil &&
                 taskProofWaiters.values.contains { $0.binding.managedRunID == runID }
-            if deliveryNeeded || proofNeeded {
+            let interruptNeeded = taskInterruptWaiters.values.contains {
+                $0.target.binding.managedRunID == runID || $0.parentBinding.managedRunID == runID
+            }
+            if deliveryNeeded || proofNeeded || interruptNeeded {
                 plan.lease.observeQuiescence { [weak self] in
                     Task { await self?.taskRunBecameQuiescent(sessionID: sessionID, runID: runID) }
                 }
@@ -124,6 +156,7 @@ extension SessionRuntime {
             if context.wakeNeeded && parentMatches { scheduleTaskWake(taskID) }
         }
         scheduleTaskFileProof(runID: runID)
+        scheduleTaskInterruptProof(runID: runID)
     }
 
     /// A report is app-only. Its separate, bounded nudge is submitted only at
@@ -473,8 +506,104 @@ extension SessionRuntime {
         }
     }
 
-    /// A Codex interrupt addresses only the native turn proved for this task
-    /// round. The replacement remains queued until the same child is Ready.
+    private func waitForClaudeInterrupt(_ target: SessionTaskRoundTarget, parentBinding: SessionTaskBinding,
+                                        parentPlan: SessionTaskRunPlan, childPlan: SessionTaskRunPlan,
+                                        promptGeneration: UUID, inputGeneration: UInt64, requestedAt: Double,
+                                        ticket: TerminalInputQueue.AutomaticInputTicket) async -> Bool {
+        guard taskInterruptWaiters.count < 32 else { return false }
+        let id = UUID()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if Task.isCancelled { continuation.resume(returning: false); return }
+                let timeout = Task { [weak self] in
+                    do { try await Task.sleep(for: .seconds(5)) } catch { return }
+                    await self?.finishTaskInterruptWaiter(id, verified: false)
+                }
+                taskInterruptWaiters[id] = SessionTaskInterruptWaiter(target: target, parentBinding: parentBinding,
+                    parentPlan: parentPlan, childPlan: childPlan, promptGeneration: promptGeneration,
+                    inputGeneration: inputGeneration, requestedAt: requestedAt, ticket: ticket,
+                    continuation: continuation, timeout: timeout)
+                updateTaskQuiescenceObservers()
+                scheduleTaskInterruptProof(runID: target.binding.managedRunID)
+            }
+        } onCancel: { Task { await self.finishTaskInterruptWaiter(id, verified: false) } }
+    }
+
+    func finishTaskInterruptWaiters(runID: UUID) {
+        let ids = taskInterruptWaiters.compactMap { id, waiter in
+            waiter.target.binding.managedRunID == runID || waiter.parentBinding.managedRunID == runID ? id : nil
+        }
+        for id in ids { finishTaskInterruptWaiter(id, verified: false) }
+    }
+
+    private func finishTaskInterruptWaiter(_ id: UUID, verified: Bool) {
+        guard let waiter = taskInterruptWaiters.removeValue(forKey: id) else { return }
+        waiter.timeout.cancel()
+        waiter.continuation.resume(returning: verified)
+        updateTaskQuiescenceObservers()
+    }
+
+    private func scheduleTaskInterruptProof(runID: UUID) {
+        for (id, var waiter) in taskInterruptWaiters where
+            waiter.target.binding.managedRunID == runID || waiter.parentBinding.managedRunID == runID {
+            if waiter.evaluating { waiter.retryRequested = true; taskInterruptWaiters[id] = waiter; continue }
+            waiter.evaluating = true
+            waiter.retryRequested = false
+            taskInterruptWaiters[id] = waiter
+            Task { [weak self] in await self?.evaluateTaskInterruptProof(id) }
+        }
+    }
+
+    private func evaluateTaskInterruptProof(_ id: UUID) async {
+        guard let waiter = taskInterruptWaiters[id] else { return }
+        defer {
+            if var current = taskInterruptWaiters[id] {
+                let retry = current.retryRequested
+                current.evaluating = false; current.retryRequested = false
+                taskInterruptWaiters[id] = current
+                if retry { scheduleTaskInterruptProof(runID: current.target.binding.managedRunID) }
+            }
+        }
+        let binding = waiter.target.binding, purpose = SessionTaskExpectedInput.Purpose.child(
+            taskID: waiter.target.taskID, roundID: waiter.target.roundID, operationID: waiter.target.inputOperationID)
+        guard !shuttingDown, waiter.target.attemptInterrupt({ true }),
+              let parentRevision = waiter.parentPlan.lease.admit({ $0 }),
+              let childRevision = waiter.childPlan.lease.admit({ $0 }),
+              let coordinator = taskCoordinator,
+              let task = try? await coordinator.projectionForUser(taskID: waiter.target.taskID),
+              task.lifecycle == .revoked, task.childBinding == binding, task.parentBinding == waiter.parentBinding,
+              let reservation = taskChildReservations[waiter.target.taskID],
+              await authenticateTaskRun(reservation.parent) == waiter.parentBinding,
+              await taskNativeStatus(binding) == .ready,
+              let context = await supervisor.runContext(runID: binding.managedRunID),
+              let prompt = await harnesses.claude.adapter.taskCurrentPrompt(runID: binding.managedRunID),
+              prompt.generation == waiter.promptGeneration,
+              let idle = await harnesses.claude.adapter.taskIdleProof(runID: binding.managedRunID,
+                  nativeSessionID: binding.nativeSessionID, workingDirectory: context.session.workingDirectory),
+              idle.promptGeneration == waiter.promptGeneration, idle.updatedAt > waiter.requestedAt,
+              let expected = taskExpectedInputs[binding.managedRunID], expected.purpose == purpose,
+              expected.binding == binding, expected.providerPromptGeneration == waiter.promptGeneration,
+              expected.confirmedObservation != nil, expected.acceptedGeneration == waiter.inputGeneration,
+              taskInterruptWaiters[id] != nil,
+              taskRunPlans[binding.sessionID]?.lease === waiter.childPlan.lease,
+              taskRunPlans[waiter.parentBinding.sessionID]?.lease === waiter.parentPlan.lease,
+              waiter.parentPlan.lease.permits(revision: parentRevision),
+              waiter.childPlan.lease.permits(revision: childRevision) else { return }
+        let gate = inputGate
+        let verified = waiter.target.attemptInterrupt {
+            waiter.parentPlan.lease.withOptionalAdmission(revision: parentRevision) {
+                waiter.childPlan.lease.withOptionalAdmission(revision: childRevision) {
+                    guard gate.hasInputGeneration(runID: binding.managedRunID, generation: waiter.inputGeneration),
+                          gate.confirmAutomaticInput(runID: binding.managedRunID, ticket: waiter.ticket) else { return 0 }
+                    return 1
+                }
+            } == 1
+        }
+        if verified { finishTaskInterruptWaiter(id, verified: true) }
+    }
+
+    /// Interrupt only the exact proved execution. The replacement remains
+    /// queued until the same owned child reaches a verified Ready edge.
     func interruptTaskRound(_ target: SessionTaskRoundTarget) async -> SessionTaskEffect {
         let binding = target.binding
         guard !shuttingDown, let coordinator = taskCoordinator,
@@ -485,23 +614,69 @@ extension SessionRuntime {
               parentPlan.claim.managedRunID == task.parentBinding.managedRunID,
               parentPlan.claim.generation == task.parentBinding.generation,
               childPlan.claim.managedRunID == binding.managedRunID, childPlan.claim.generation == binding.generation,
+              let parentRevision = parentPlan.lease.admit({ $0 }), let childRevision = childPlan.lease.admit({ $0 }),
               await authenticateTaskRun(reservation.parent) == task.parentBinding,
-              let turn = target.nativeTurnID,
-              await taskInputObservation(purpose: .child(taskID: target.taskID, roundID: target.roundID,
-                                                         operationID: target.inputOperationID), binding: binding) == .nativeTurn(turn),
+              let observation = await taskInputObservation(purpose: .child(taskID: target.taskID, roundID: target.roundID,
+                                                                           operationID: target.inputOperationID), binding: binding),
+              target.execution == nil || target.execution == observation,
               await taskNativeStatus(binding) == .working,
-              let record = runs[binding.managedRunID], record.provider == .codex,
-              let client = record.server?.client,
-              let ticket = inputGate.reserveAutomaticInput(runID: binding.managedRunID) else { return .unknown }
-        guard let parentRevision = parentPlan.lease.admit({ $0 }), let childRevision = childPlan.lease.admit({ $0 }),
-              await supervisor.taskBinding(for: childPlan.claim) == binding,
+              parentPlan.lease.permits(revision: parentRevision), childPlan.lease.permits(revision: childRevision),
+              let record = runs[binding.managedRunID],
+              let ticket = inputGate.reserveAutomaticInput(runID: binding.managedRunID) else { return .deferred }
+        guard await supervisor.taskBinding(for: childPlan.claim) == binding,
               taskRunPlans[task.parentSessionID]?.lease === parentPlan.lease,
               taskRunPlans[binding.sessionID]?.lease === childPlan.lease,
               parentPlan.lease.permits(revision: parentRevision), childPlan.lease.permits(revision: childRevision) else {
             inputGate.releaseReservedAutomatic(runID: binding.managedRunID, ticket: ticket)
-            return .unknown
+            return .deferred
         }
         let gate = inputGate
+        if record.provider == .claude {
+            let purpose = SessionTaskExpectedInput.Purpose.child(taskID: target.taskID, roundID: target.roundID,
+                                                                  operationID: target.inputOperationID)
+            guard target.nativeTurnID == nil,
+                  let expected = taskExpectedInputs[binding.managedRunID], expected.purpose == purpose,
+                  expected.binding == binding, expected.confirmedObservation == observation,
+                  let promptGeneration = expected.providerPromptGeneration, let inputGeneration = expected.acceptedGeneration,
+                  let prompt = await harnesses.claude.adapter.taskCurrentPrompt(runID: binding.managedRunID),
+                  prompt.generation == promptGeneration,
+                  taskExpectedInputs[binding.managedRunID]?.effect === expected.effect,
+                  gate.hasInputGeneration(runID: binding.managedRunID, generation: inputGeneration),
+                  parentPlan.lease.permits(revision: parentRevision), childPlan.lease.permits(revision: childRevision) else {
+                gate.releaseReservedAutomatic(runID: binding.managedRunID, ticket: ticket)
+                return .deferred
+            }
+            let clock = SessionTaskInterruptClock()
+            let admitted = gate.enqueueReservedTaskInterrupt(runID: binding.managedRunID, ticket: ticket) { write in
+                var result: Result<Int?, Error>?
+                let allowed = target.attemptInterrupt {
+                    result = Result {
+                        try parentPlan.lease.withOptionalAdmission(revision: parentRevision) {
+                            try childPlan.lease.withOptionalAdmission(revision: childRevision) { try clock.write(write) }
+                        }
+                    }
+                    return true
+                }
+                guard allowed, let result else { return nil }
+                return try result.get()
+            }
+            guard admitted else { gate.releaseReservedAutomatic(runID: binding.managedRunID, ticket: ticket); return .deferred }
+            switch await ticket.writeOutcome() {
+            case .notWritten: return .deferred
+            case .unknown: return .unknown
+            case .written:
+                guard let requestedAt = clock.requestedAt else { return .unknown }
+                let verified = await waitForClaudeInterrupt(target, parentBinding: task.parentBinding,
+                    parentPlan: parentPlan, childPlan: childPlan, promptGeneration: promptGeneration,
+                    inputGeneration: inputGeneration, requestedAt: requestedAt, ticket: ticket)
+                return verified ? .verified : .unknown
+            }
+        }
+        guard record.provider == .codex, let turn = target.nativeTurnID, observation == .nativeTurn(turn),
+              let client = record.server?.client else {
+            gate.releaseReservedAutomatic(runID: binding.managedRunID, ticket: ticket)
+            return .deferred
+        }
         do {
             let accepted = try await client.interruptTaskTurn(threadID: binding.nativeSessionID, turnID: turn,
                 transaction: { write in

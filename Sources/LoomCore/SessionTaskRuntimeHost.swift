@@ -145,6 +145,7 @@ struct SessionTaskExpectedInput: Sendable {
         let expectedNativeTurn: String?
         let lastSequence: UInt64
         let generation: UInt64
+        let providerPromptGeneration: UUID?
     }
     let purpose: Purpose
     let binding: SessionTaskBinding
@@ -161,6 +162,7 @@ struct SessionTaskExpectedInput: Sendable {
     var expectedNativeTurn: String?
     var lastSequence: UInt64 = 0
     var acceptedGeneration: UInt64?
+    var providerPromptGeneration: UUID?
     var retainedChild: RetainedChildProof?
 
     func retainedChildProof() -> RetainedChildProof? {
@@ -168,7 +170,7 @@ struct SessionTaskExpectedInput: Sendable {
         return .init(purpose: purpose, binding: binding, digest: digest, ticket: ticket, effect: effect,
                      requiresNativeReceipt: requiresNativeReceipt, clientMessageID: clientMessageID,
                      observation: observation, expectedNativeTurn: expectedNativeTurn, lastSequence: lastSequence,
-                     generation: generation)
+                     generation: generation, providerPromptGeneration: providerPromptGeneration)
     }
 
     static func restoring(_ proof: RetainedChildProof) -> SessionTaskExpectedInput {
@@ -179,6 +181,7 @@ struct SessionTaskExpectedInput: Sendable {
         result.expectedNativeTurn = proof.expectedNativeTurn
         result.lastSequence = proof.lastSequence
         result.acceptedGeneration = proof.generation
+        result.providerPromptGeneration = proof.providerPromptGeneration
         return result
     }
 

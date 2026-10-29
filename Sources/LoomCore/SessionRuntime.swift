@@ -349,6 +349,7 @@ public actor SessionRuntime {
     var taskRunPlans: [UUID: SessionTaskRunPlan] = [:]
     var taskExpectedInputs: [UUID: SessionTaskExpectedInput] = [:]
     var taskProofWaiters: [UUID: SessionTaskProofWaiter] = [:]
+    var taskInterruptWaiters: [UUID: SessionTaskInterruptWaiter] = [:]
     var taskChildReservations: [UUID: SessionTaskChildReservation] = [:]
     var taskLaunchContexts: [UUID: SessionTaskLaunchContext] = [:]
     var taskDeliveriesInFlight: Set<UUID> = []

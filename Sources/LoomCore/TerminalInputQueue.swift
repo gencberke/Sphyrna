@@ -290,6 +290,18 @@ public final class TerminalInputQueue: @unchecked Sendable {
                                   transaction: @escaping TerminalWriteTransaction) -> Bool {
         guard bytes.count > 1, bytes.count <= 16 * 1024, bytes.last == 0x0d,
               bytes.dropLast().allSatisfy({ (0x20...0x7e).contains($0) }) else { return false }
+        return enqueueReservedBytes(ticket, bytes: bytes, transaction: transaction)
+    }
+
+    /// The default native Claude turn interrupt is precisely one Escape byte.
+    /// Its result still needs separate current-prompt/idle evidence.
+    func enqueueReservedTaskInterrupt(_ ticket: AutomaticInputTicket,
+                                      transaction: @escaping TerminalWriteTransaction) -> Bool {
+        enqueueReservedBytes(ticket, bytes: Data([0x1b]), transaction: transaction)
+    }
+
+    private func enqueueReservedBytes(_ ticket: AutomaticInputTicket, bytes: Data,
+                                      transaction: @escaping TerminalWriteTransaction) -> Bool {
         let accepted = lock.withLock {
             guard let outstanding = automaticOutstanding, outstanding.ticket == ticket,
                   outstanding.generation == unclassifiedGeneration, !automaticExternalEffect, automaticWriter != nil,
