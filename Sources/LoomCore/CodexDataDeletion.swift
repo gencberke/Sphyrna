@@ -23,30 +23,9 @@ extension SessionRuntime {
     /// anything is recorded or removed.
     func codexDeletionCandidate(_ id: UUID, preflight: Bool) async throws -> CodexDeletionCandidate {
         let (session, providerIDs) = try await deletableSession(id)
-        let toolchain: ProviderToolchain
-        do { toolchain = try await self.toolchain(for: .codex) } catch {
-            throw SessionRuntimeError.deletionRefused("Codex was not found, so Sphyrna cannot tell where it keeps this session")
-        }
-        guard let profile = toolchain.profileDirectory else {
-            throw SessionRuntimeError.deletionRefused("Sphyrna cannot tell which Codex folder keeps this session")
-        }
-        // The real path (`resolvingSymlinksInPath` keeps `/var`, and the probe's home is a link to a short path).
-        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
-        let home = realpath(profile.path, &buffer) != nil
-            ? URL(fileURLWithPath: String(cString: buffer), isDirectory: true) : profile
-        switch Self.configFolderState(home.path) {
-        case .present: break
-        case .absent: throw SessionRuntimeError.deletionRefused("The Codex data folder was not found")
-        case .unavailable:
-            throw SessionRuntimeError.deletionRefused("The Codex data folder is not available (is its volume mounted?)")
-        }
+        let home = try await codexDeletionHome()
         let nativeIDs = CodexDataInventory.nativeIDs(of: providerIDs, sessionID: id)
-        let inventory: CodexDataInventory
-        do {
-            inventory = try await Task.detached { try CodexDataInventory.scan(nativeIDs: nativeIDs, home: home) }.value
-        } catch {
-            throw SessionRuntimeError.deletionRefused(Self.codexReason(for: error))
-        }
+        let inventory = try await codexInventory(nativeIDs, home: home, readsIndex: true)
         if preflight, !nativeIDs.isEmpty {
             let foreign: Bool
             do {
@@ -65,13 +44,70 @@ extension SessionRuntime {
                                       workingDirectory: session.workingDirectory, inventory: inventory)
     }
 
+    /// The Codex home a deletion uses: the toolchain's, its real path, present and reachable.
+    private func codexDeletionHome() async throws -> URL {
+        let toolchain: ProviderToolchain
+        do { toolchain = try await self.toolchain(for: .codex) } catch {
+            throw SessionRuntimeError.deletionRefused("Codex was not found, so Sphyrna cannot tell where it keeps this session")
+        }
+        guard let profile = toolchain.profileDirectory else {
+            throw SessionRuntimeError.deletionRefused("Sphyrna cannot tell which Codex folder keeps this session")
+        }
+        // The real path (`resolvingSymlinksInPath` keeps `/var`, and the probe's home is a link to a short path).
+        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+        let home = realpath(profile.path, &buffer) != nil
+            ? URL(fileURLWithPath: String(cString: buffer), isDirectory: true) : profile
+        switch Self.configFolderState(home.path) {
+        case .present: return home
+        case .absent: throw SessionRuntimeError.deletionRefused("The Codex data folder was not found")
+        case .unavailable:
+            throw SessionRuntimeError.deletionRefused("The Codex data folder is not available (is its volume mounted?)")
+        }
+    }
+
+    private func codexInventory(_ nativeIDs: [String], home: URL, readsIndex: Bool) async throws -> CodexDataInventory {
+        do {
+            return try await Task.detached {
+                try CodexDataInventory.scan(nativeIDs: nativeIDs, home: home, readsIndex: readsIndex)
+            }.value
+        } catch {
+            throw SessionRuntimeError.deletionRefused(Self.codexReason(for: error))
+        }
+    }
+
+    /// A preview reads the rollouts and what is kept, never the session index, which only the deletion needs.
     func codexDeletionPreview(_ id: UUID) async throws -> ConversationDeletionPreview {
-        let candidate = try await codexDeletionCandidate(id, preflight: false)
-        let rollouts = candidate.inventory.rollouts
-        return ConversationDeletionPreview(
-            sessionID: id, fileCount: rollouts.count, byteCount: rollouts.reduce(0) { $0 + $1.bytes },
-            configDirectory: candidate.home.path, isRunning: await supervisor.session(id: id)?.currentRun != nil,
-            notRemoved: candidate.inventory.kept, unreachable: [], provider: .codex
+        let (_, providerIDs) = try await deletableSession(id)
+        let home = try await codexDeletionHome()
+        let nativeIDs = CodexDataInventory.nativeIDs(of: providerIDs, sessionID: id)
+        return await codexPreview(id, home: home,
+                                  inventory: try await codexInventory(nativeIDs, home: home, readsIndex: false))
+    }
+
+    /// The previews of many Codex sessions from ONE walk of their Codex home (the cleanup review, Storage), each equal to
+    /// what `codexDeletionPreview` gives for it. A session it would refuse has no entry; a refused home or walk, none.
+    func codexDeletionPreviews(_ ids: [UUID]) async -> [UUID: ConversationDeletionPreview] {
+        var sessions: [(id: UUID, nativeIDs: [String])] = []
+        for id in ids {
+            guard let deletable = try? await deletableSession(id) else { continue }
+            sessions.append((id, CodexDataInventory.nativeIDs(of: deletable.providerIDs, sessionID: id)))
+        }
+        guard !sessions.isEmpty, let home = try? await codexDeletionHome(),
+              let inventory = try? await codexInventory(sessions.flatMap(\.nativeIDs), home: home, readsIndex: false)
+        else { return [:] }
+        var previews: [UUID: ConversationDeletionPreview] = [:]
+        for session in sessions {
+            previews[session.id] = await codexPreview(session.id, home: home,
+                                                      inventory: inventory.restricted(to: session.nativeIDs))
+        }
+        return previews
+    }
+
+    private func codexPreview(_ id: UUID, home: URL, inventory: CodexDataInventory) async -> ConversationDeletionPreview {
+        ConversationDeletionPreview(
+            sessionID: id, fileCount: inventory.rollouts.count, byteCount: inventory.rollouts.reduce(0) { $0 + $1.bytes },
+            configDirectory: home.path, isRunning: await supervisor.session(id: id)?.currentRun != nil,
+            notRemoved: inventory.kept, unreachable: [], provider: .codex
         )
     }
 

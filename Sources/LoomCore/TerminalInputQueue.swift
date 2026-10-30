@@ -230,10 +230,12 @@ public final class TerminalInputQueue: @unchecked Sendable {
     /// A first message passed to the CLI as a launch argument is the run's first submission, though no terminal
     /// byte carried it. Record its digest as typed input is recorded, written at `launchedAt` (before the spawn), so
     /// its provider observation proves the same clean boundary. Any earlier mixed input wins: then it stays unknown.
+    /// Bytes still draining here can only be the terminal's answers to the CLI's early queries (queued at attach, with
+    /// no typed or automatic byte before them); they are not input, and `confirmManualInput` waits for them.
     func expectLaunchSubmission(digest: Data, launchedAt: UInt64) {
         lock.withLock {
             guard digest.count == 32, unclassifiedGeneration == 0, !automaticEverUsed, manualSubmission == nil,
-                  manualBytes == 0, pending.count == sent, failure == nil, closedReason == nil else { return }
+                  manualBytes == 0, failure == nil, closedReason == nil else { return }
             manualSubmission = (digest, unclassifiedGeneration, sent, launchedAt)
         }
     }

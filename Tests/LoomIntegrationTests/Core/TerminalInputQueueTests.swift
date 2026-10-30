@@ -52,6 +52,22 @@ private final class PausedTaskWrite: @unchecked Sendable {
     func release() { gate.release() }
 }
 
+/// A PTY whose input buffer stays full (every write accepts 0 bytes, as EAGAIN) until `release()`.
+private final class HeldPTY: @unchecked Sendable {
+    private let lock = NSLock()
+    private var open = false
+    private var stored = Data()
+    func release() { lock.withLock { open = true } }
+    func write(_ data: Data) -> Int {
+        lock.withLock {
+            guard open else { return 0 }
+            stored.append(data)
+            return data.count
+        }
+    }
+    var received: Data { lock.withLock { stored } }
+}
+
 private final class PTYOutput: @unchecked Sendable {
     private let lock = NSLock()
     private var bytes = Data()
@@ -157,6 +173,30 @@ struct TerminalInputQueueTests {
         queue.releaseReservedAutomatic(ticket)
         #expect(queue.enqueue(Data("new draft".utf8)))
         #expect(queue.reserveAutomaticInput() == nil)
+    }
+
+    /// The r9 delta pass, N3: a CLI that queries its terminal before the surface attaches gets the answers queued at
+    /// attach, so they may still be draining when the run registers. They are not input: the launch first message stays
+    /// the expected first submission, its observation waits for them, then proves the clean boundary.
+    @Test func aLaunchFirstMessageStaysExpectedWhileTerminalAnswersStillDrain() async throws {
+        let pty = HeldPTY()
+        let queue = TerminalInputQueue(capacity: 1024, writer: { pty.write($0) }, onError: { _ in })
+        let answer = Data("\u{1b}[?62;22c\u{1b}]11;rgb:0000/0000/0000\u{1b}\\".utf8)
+        #expect(queue.enqueueTerminalResponse(answer))
+        let launchedAt = DispatchTime.now().uptimeNanoseconds
+        let digest = Data(SHA256.hash(data: Data("first message".utf8)))
+        queue.expectLaunchSubmission(digest: digest, launchedAt: launchedAt)
+        if case .pendingDrain = queue.confirmManualInput(digest: digest, observedAt: launchedAt + 1) {} else {
+            Issue.record("The answers still draining defer the proof; they must not drop the expectation")
+        }
+        pty.release()
+        try await waitUntilIdle(queue)
+        #expect(pty.received == answer)
+        if case .confirmed = queue.confirmManualInput(digest: digest, observedAt: launchedAt + 1) {} else {
+            Issue.record("Once the answers are written, the first message's observation proves the clean boundary")
+        }
+        let ticket = try #require(queue.reserveAutomaticInput(), "automatic input may follow the first message")
+        queue.releaseReservedAutomatic(ticket)
     }
 
     @Test func editedOrMultilineManualBytesNeverCreateAPlainSubmissionProof() async throws {

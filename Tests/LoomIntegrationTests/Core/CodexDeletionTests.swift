@@ -197,6 +197,54 @@ struct CodexDeletionTests {
         #expect((await world.runtime.shutdown()).succeeded)
     }
 
+    /// The cleanup review and Storage preview every Codex session from one walk of the home (the r9 delta pass, S1): each
+    /// preview is that session's own, equal to its single preview; a session with no native thread yet shows nothing.
+    @Test func theCleanupPreviewsOfManyCodexSessionsAreEachSessionsOwn() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let world = try await Self.makeWorld(env)
+        let first = try Seed(env), second = try Seed(env)
+        let a = try await Self.addSession(world, nativeID: first.threadID)
+        let b = try await Self.addSession(world, nativeID: second.threadID)
+        let unstarted = try await Self.addSession(world, nativeID: nil)
+        let previews = await world.runtime.deletionPreviews(ids: [a.id, b.id, unstarted.id])
+        #expect(previews.count == 3)
+        for id in [a.id, b.id, unstarted.id] {
+            #expect(previews[id] == (try await world.runtime.deletionPreview(id: id)))
+        }
+        #expect(previews[a.id]?.fileCount == 1)
+        #expect(previews[a.id]?.byteCount == Int64(try Data(contentsOf: first.rollout).count))
+        #expect(previews[a.id]?.notRemoved == ["history.jsonl", "tui-thread-reference-capabilities/\(first.threadID)"])
+        #expect(previews[b.id]?.notRemoved == ["history.jsonl", "tui-thread-reference-capabilities/\(second.threadID)"])
+        #expect(previews[unstarted.id]?.fileCount == 0)
+        #expect(Self.deletionCalls(env).isEmpty, "a preview asks Codex nothing")
+        #expect((await world.runtime.shutdown()).succeeded)
+    }
+
+    /// A preview reads no session index (S1): its sizes show even when the index cannot be read, and the deletion, which
+    /// needs the index, still refuses with the reason before anything changes.
+    @Test func aPreviewReadsNoSessionIndexButTheDeletionStillNeedsIt() async throws {
+        let env = try Env()
+        defer { env.cleanup() }
+        let world = try await Self.makeWorld(env)
+        let target = try Seed(env)
+        let session = try await Self.addSession(world, nativeID: target.threadID)
+        let index = env.codexHome.appendingPathComponent("session_index.jsonl")
+        try FileManager.default.removeItem(at: index)
+        try FileManager.default.createDirectory(at: index, withIntermediateDirectories: false,
+                                                attributes: [.posixPermissions: 0o700])
+        let preview = try await world.runtime.deletionPreview(id: session.id)
+        #expect(preview.fileCount == 1)
+        #expect(await world.runtime.deletionPreviews(ids: [session.id])[session.id] == preview)
+        await #expect(throws: SessionRuntimeError.deletionRefused("Codex's session index cannot be read")) {
+            try await world.runtime.deleteConversation(id: session.id)
+        }
+        #expect(target.rolloutExists && target.serverKnowsIt)
+        #expect(try await world.catalog.session(id: session.id) != nil)
+        #expect(try await world.catalog.pendingDeletions().isEmpty)
+        #expect((await world.runtime.shutdown()).succeeded)
+    }
+
     @Test func aSessionWhoseNativeDataIsAlreadyGoneIsDeletedAndARepeatFindsNothing() async throws {
         let env = try Env()
         defer { env.cleanup() }

@@ -53,8 +53,10 @@ extension CodexDataInventory {
     }
 
     /// Reads the home for `nativeIDs`. Bounded by `maximumEntries` directory entries and `maximumSeconds`; a walk that cannot
-    /// finish throws `.incomplete` rather than report less than is there.
-    public static func scan(nativeIDs: [String], home: URL, maximumEntries: Int = 200_000, maximumSeconds: Double = 10,
+    /// finish throws `.incomplete` rather than report less than is there. `readsIndex: false` leaves `session_index.jsonl`
+    /// unread (`indexRecords` is then 0): a preview shows only the rollouts and what is kept.
+    public static func scan(nativeIDs: [String], home: URL, readsIndex: Bool = true, maximumEntries: Int = 200_000,
+                            maximumSeconds: Double = 10,
                             maximumIndexBytes: Int = 64 * 1024 * 1024) throws -> CodexDataInventory {
         let wanted = Set(nativeIDs.compactMap { UUID(uuidString: $0)?.uuidString.lowercased() })
         guard home.isFileURL else { throw CodexDataError.unsafeHome }
@@ -77,12 +79,27 @@ extension CodexDataInventory {
         }
         guard walk.complete else { throw CodexDataError.incomplete }
 
-        let records = try indexRecords(root, wanted: wanted, maximumBytes: maximumIndexBytes)
+        let records = try readsIndex ? indexRecords(root, wanted: wanted, maximumBytes: maximumIndexBytes) : 0
         var kept: [String] = []
         if exists(root, historyName) { kept.append(historyName) }
         for id in wanted.sorted() where exists(root, "\(markerFolder)/\(id)") { kept.append("\(markerFolder)/\(id)") }
         return CodexDataInventory(rollouts: walk.items.sorted { $0.relativePath < $1.relativePath },
                                   indexRecords: records, kept: kept)
+    }
+
+    /// The part of a scan of many sessions' ids that is `nativeIDs`', as a scan of those ids alone with `readsIndex: false`
+    /// reads it: one walk of the home serves every session of a cleanup review or of Storage.
+    func restricted(to nativeIDs: [String]) -> CodexDataInventory {
+        let wanted = Set(nativeIDs.compactMap { UUID(uuidString: $0)?.uuidString.lowercased() })
+        guard !wanted.isEmpty else { return CodexDataInventory(rollouts: [], indexRecords: 0, kept: []) }
+        let own = rollouts.filter { item in
+            Self.rolloutID(String(item.relativePath.split(separator: "/").last ?? "")).map(wanted.contains) ?? false
+        }
+        let marker = Self.markerFolder + "/"
+        let keptHere = kept.filter {
+            $0 == Self.historyName || ($0.hasPrefix(marker) && wanted.contains(String($0.dropFirst(marker.count))))
+        }
+        return CodexDataInventory(rollouts: own, indexRecords: 0, kept: keptHere)
     }
 
     /// The id a rollout's file name carries ("rollout-<time>-<uuid>.jsonl" or ".jsonl.zst"), lowercased; nil otherwise.

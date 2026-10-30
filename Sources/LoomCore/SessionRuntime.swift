@@ -578,6 +578,7 @@ public actor SessionRuntime {
             }
         } catch {
             revokeTaskRun(sessionID: sessionID, runID: runID)
+            inputGate.dropLaunchSubmission(runID: runID)
             throw error
         }
     }

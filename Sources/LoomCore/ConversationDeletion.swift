@@ -104,21 +104,22 @@ extension SessionRuntime {
         return await preview(id, plan: candidate.plan)
     }
 
-    /// The previews of many conversations from ONE scan of the Claude profile (the cleanup review). A conversation
-    /// `deletionPreview` would refuse, or whose plan cannot be made, has no entry; every other one equals what
-    /// `deletionPreview(id:)` gives for it.
+    /// The previews of many conversations from ONE scan of the Claude profile and ONE walk of the Codex home (the cleanup
+    /// review, Storage). A conversation `deletionPreview` would refuse, or whose plan cannot be made, has no entry; every
+    /// other one equals what `deletionPreview(id:)` gives for it.
     public func deletionPreviews(ids: [UUID]) async -> [UUID: ConversationDeletionPreview] {
         var requests: [(id: UUID, request: DeletionRequest)] = []
-        var previews: [UUID: ConversationDeletionPreview] = [:]
+        var codex: [UUID] = []
         for id in ids {
-            // A Codex session is not in Claude's scan: its own preview reads its Codex home.
+            // A Codex session is not in Claude's scan: the Codex sessions share one walk of their Codex home.
             if case .codex? = (try? await catalog.session(id: id))??.session.provider {
-                previews[id] = try? await codexDeletionPreview(id)
+                codex.append(id)
                 continue
             }
             guard let request = try? await deletionRequest(id) else { continue }
             requests.append((id, request))
         }
+        var previews: [UUID: ConversationDeletionPreview] = codex.isEmpty ? [:] : await codexDeletionPreviews(codex)
         guard let first = requests.first?.request else { return previews }
         let configDirectory = first.configDirectory, temporaryRoot = first.temporaryRoot
         let dryRuns = requests.map {
@@ -165,7 +166,8 @@ extension SessionRuntime {
         let itemCount: Int
         if case .codex? = try await catalog.session(id: id)?.session.provider {
             let candidate = try await codexDeletionCandidate(id, preflight: true)
-            // The home is the one this session's Codex runs used, recorded now and never reconstructed later.
+            // The toolchain's Codex home now, as this session's runs resolve it, recorded and never reconstructed later.
+            // A run that used another home (an earlier `CODEX_HOME`) is not seen; after 1.8.0 the run records its home.
             plan = CatalogDeletionPlan(provider: .codex, providerIDs: candidate.providerIDs,
                                        configDirectory: candidate.home.path, workingDirectory: candidate.workingDirectory)
             itemCount = candidate.inventory.rollouts.count

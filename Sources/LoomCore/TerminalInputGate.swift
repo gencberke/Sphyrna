@@ -51,6 +51,11 @@ public final class TerminalInputGate: @unchecked Sendable {
         queue?.expectLaunchSubmission(digest: digest, launchedAt: launchedAt)
     }
 
+    /// A start that failed before its terminal registered leaves no expectation behind.
+    func dropLaunchSubmission(runID: UUID) {
+        lock.withLock { launchSubmissions[runID] = nil }
+    }
+
     /// Lets the runtime retry deferred work when its actual terminal attaches.
     func observeRegistrations(_ observer: (@Sendable (UUID) -> Void)?) {
         lock.withLock { registrationObserver = observer }
