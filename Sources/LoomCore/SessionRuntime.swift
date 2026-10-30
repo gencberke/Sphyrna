@@ -887,7 +887,8 @@ public actor SessionRuntime {
         peerMailbox = nil
         peerPendingRequests.removeAll()
         let taskSocketStopped = if let socket = taskSocket { await socket.stopAndWait() } else { true }
-        taskSocket = nil
+        // An unverified cleanup keeps the socket: a retried Quit asks it again and hears the same failure.
+        if taskSocketStopped { taskSocket = nil }
         taskSocketPath = nil
         await taskCoordinator?.finishProjectionUpdates()
         let liveRuns = runs.count
