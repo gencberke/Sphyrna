@@ -136,7 +136,7 @@ A reported implementation is **not** an accepted one until `@planner` reviews th
    - `Package.swift`, `Vendor/SwiftTerm/LOOM-VENDOR.md`, and canonical docs have one owner per round.
 2. **Git & Shared Tree ([D-16](DECISIONS.md)):**
    - Never run `git stash`, `git checkout`, `git reset`, `git clean`, or revert changes you did not make.
-   - **Never commit, push, tag, or open a PR unless `@user` explicitly asked in chat** (or within an authorized track workflow where `@planner` commits slices on local worktree branches `ink`, `core`, `v2`). `v2` is local-only and never pushed without `@user`'s word.
+   - **Never commit, push, tag, or open a PR unless `@user` explicitly asked in chat** (or within an authorized track workflow where `@planner` commits slices on local worktree branches `ink`, `core`, `v2`). `v2` is pushed only to its private backup `gencberke/loom-dev`, and only on `@user`'s word.
 3. **Builds, Slot & Heat ([D-13](DECISIONS.md)):**
    - **No parallel builds.** Always build and test through `scripts/check.sh --scratch <your-path-outside-Documents> --suite <Suite>`, which acquires the shared build slot (`~/Library/Caches/loom-run1/build-slot.lock`). Never invoke `swift build` or `swift test` directly.
    - Check `pmset -g therm` before heavy runs. Window tests (`--windows --idle`), full gates (`--full --idle`), packaging, and performance measurements run **only** when `@user` says the Mac is idle.

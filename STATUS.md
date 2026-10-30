@@ -14,5 +14,5 @@
 - **@planner:** read COLD-START.md, recreate the `v2` worktree, re-run `SidebarStatusTests` (unverified since D-125), then plan
   from COLD-START §5 with `@user`.
 - **@implementer-core / @implementer-ink / @optimizer:** nothing queued.
-- **@user:** whether to push the loom tree and publish 1.6.0–1.8.0; whether `v2` gets a remote; the rename to `Sphyrna.app`
+- **@user:** whether to push the loom tree and publish 1.6.0–1.8.0; the rename to `Sphyrna.app`
   (D-123).

@@ -7,7 +7,7 @@ what state it was left in, how to get a working tree back, and what is open. The
 
 | What | Where | State |
 | --- | --- | --- |
-| Source of truth | branch `v2` in `~/Documents/github/loom-dev` | Local only: `loom-dev` has no remote, so its `.git` is the only copy of `v2`'s history. 1.8.0 is the tag `release/1.8.0` (`9fb92ae4`); `v2` is that commit plus this archive cleanup. |
+| Source of truth | branch `v2` in `~/Documents/github/loom-dev` | Backed up to the private GitHub repo `gencberke/loom-dev` (remote `origin`): `v2` and the 19 `release/*` tags; the other branches are local only. If the local `.git` is lost: `git clone -b v2 https://github.com/gencberke/loom-dev.git`. 1.8.0 is the tag `release/1.8.0` (`9fb92ae4`); `v2` is that commit plus this archive cleanup. |
 | `loom-dev`'s own checkout | `~/Documents/github/loom-dev`, branch `swarm/1` | An old branch whose working tree mirrors `v2`'s docs (uncommitted). Never check out `v2` there, never edit or build its `Sources/`; work in a worktree (§3). |
 | Release tree | `~/Documents/github/loom`, branch `main` | `fbe98bb` = tag `v1.8.0`. Its `main` is 8 commits ahead of `origin/main` (public `main` is still 0.4.4): 1.6.0 to 1.8.0 were never pushed, and there is no GitHub release. Older promote commits sit on its local `history` branch. |
 | Installed app | `/Applications/Loom.app` | Sphyrna 1.8.0, build 10800, `LoomRevision fbe98bb`, signed. Its data is `~/Library/Application Support/Loom` and `~/.loom`: the user's, never test material. |
@@ -108,7 +108,7 @@ scripts/check.sh --scratch ~/Library/Caches/loom-v2/build/v2 --suite SidebarStat
       4. Check `mdfind "kMDItemCFBundleIdentifier == 'local.loom.desktop'"` lists one copy.
       5. Open the app and turn Open at login back on.
     - `build.sh` still installs `Loom.app`, so change it in the same step.
-11. **Pushing.** Push the loom tree (8 commits) and publish GitHub releases, if wanted. Also decide whether `v2` gets a remote.
+11. **Pushing.** Push the loom tree (8 commits) and publish GitHub releases, if wanted.
 
 ## 6. Decisions to know first
 
