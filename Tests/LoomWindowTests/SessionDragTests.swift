@@ -59,21 +59,21 @@ struct SessionDragSourceTests {
         }
     }
 
-    @Test func activityCardsAreDragSources() async throws {
+    @Test(.renderProbe) func activityCardsAreDragSources() async throws {
         let (model, root, ids) = try await fixture(mode: .activity)
-        defer { SessionDragProbe.stop(); model.stop(); try? FileManager.default.removeItem(at: root) }
-        SessionDragProbe.watch()
+        defer { model.stop(); try? FileManager.default.removeItem(at: root) }
+        RenderProbeExclusive.watchDragSources()
         let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 320, height: 600), key: true)
         defer { window.orderOut(nil) }
         #expect(await waitUntil { hosting.view.layoutSubtreeIfNeeded(); return SessionDragProbe.sources.isSuperset(of: ids) },
                 "both cards carry the drag in the activity view")
     }
 
-    @Test func projectRowsAreDragSourcesAndKeepTheirClickDoubleClickAndAccessibility() async throws {
+    @Test(.renderProbe) func projectRowsAreDragSourcesAndKeepTheirClickDoubleClickAndAccessibility() async throws {
         enableAccessibilityTree()
         let (model, root, ids) = try await fixture(mode: .projects)
-        defer { SessionDragProbe.stop(); model.stop(); try? FileManager.default.removeItem(at: root) }
-        SessionDragProbe.watch()
+        defer { model.stop(); try? FileManager.default.removeItem(at: root) }
+        RenderProbeExclusive.watchDragSources()
         let (window, hosting) = host(SidebarView(model: model), size: NSSize(width: 320, height: 600), key: true)
         defer { window.orderOut(nil) }
         func drawn() -> [String] { ["In project", "Loose"].filter { row($0, in: hosting.view) != nil } }

@@ -100,7 +100,9 @@ extension ApprovedOpeningFaceFixtures {
         let request = OpenSessionWireRequest(
             authenticationToken: hooks.authenticationToken, sessionID: fixture.requester, managedRunID: run,
             title: ApprovedOpeningFaceShared.title, project: nil, message: ApprovedOpeningFaceShared.message)
-        let reply = Task.detached { try OpenSessionClient.exchange(request, socketPath: control) }
+        let reply = Task {
+            try await onOwnThread("open-session exchange") { try OpenSessionClient.exchange(request, socketPath: control) }
+        }
         #expect(await waitUntil { fixture.model.openRequests.count == 1 })
         fixture.model.approveOpenRequest(try #require(fixture.model.openRequests.first).id)
         let answer = try await reply.value

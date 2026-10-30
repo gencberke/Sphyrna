@@ -43,9 +43,7 @@ import LoomTestSupport
     }
 
     private func waitForReader(_ reader: HeldReader) async throws {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while !(await reader.entered), ContinuousClock.now < deadline { await Task.yield() }
-        #expect(await reader.entered)
+        await waitFor("the held reader to be entered", within: .seconds(2)) { await reader.entered }
     }
 
     @Test func anAppliedMainFailureEmitsOnlyItsExactCurrentPrompt() async throws {

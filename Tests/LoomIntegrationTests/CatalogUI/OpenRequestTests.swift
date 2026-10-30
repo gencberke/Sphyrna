@@ -350,7 +350,9 @@ struct OpenRequestTests {
             let request = OpenSessionWireRequest(
                 authenticationToken: hooks.authenticationToken, sessionID: requester.sessionID,
                 managedRunID: requester.runID, title: title, project: nil, message: message)
-            return Task.detached { try OpenSessionClient.exchange(request, socketPath: control) }
+            return Task {
+                try await onOwnThread("open-session exchange") { try OpenSessionClient.exchange(request, socketPath: control) }
+            }
         }
     }
 

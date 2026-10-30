@@ -13,7 +13,7 @@ private struct PeerNullPipeSink: PipeOutputSink {
 struct SessionPeerIntegrationTests {
     private enum FixtureError: Error { case timeout }
 
-    private static func inbox(_ arguments: [String], claim: SessionTaskClaim, socket: String) throws -> (Int32, String) {
+    private static func inbox(_ arguments: [String], claim: SessionTaskClaim, socket: String) async throws -> (Int32, String) {
         let process = Process(), output = Pipe()
         process.executableURL = RuntimeFixture.binaries.appendingPathComponent("loom-hook")
         process.arguments = ["inbox"] + arguments
@@ -21,13 +21,11 @@ struct SessionPeerIntegrationTests {
             "SPHYRNA_TASK_SESSION_ID": claim.sessionID.uuidString, "SPHYRNA_TASK_RUN_ID": claim.managedRunID.uuidString,
             "SPHYRNA_TASK_GENERATION": claim.generation.uuidString]
         process.standardInput = FileHandle.nullDevice; process.standardOutput = output; process.standardError = FileHandle.nullDevice
-        let ended = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in ended.signal() }
         try process.run()
-        guard ended.wait(timeout: .now() + 8) == .success else {
-            process.terminate(); _ = ended.wait(timeout: .now() + 1); throw FixtureError.timeout
+        guard await childEnded(process, within: .seconds(8)) else {
+            process.terminate(); _ = await childEnded(process, within: .seconds(1)); throw FixtureError.timeout
         }
-        return (process.terminationStatus, String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self))
+        return (process.terminationStatus, String(decoding: await readToEnd(output.fileHandleForReading), as: UTF8.self))
     }
 
     @Test func approvalDeliversOnlyAPointerAfterReadyAndInboxReadsOnce() async throws {
@@ -70,11 +68,11 @@ struct SessionPeerIntegrationTests {
             #expect(!targetScreen.snapshot.contains("Sphyrna: message"), "working targets never receive input")
             #expect(await targetScreen.contains("Sphyrna: message", timeout: 6))
             #expect(!targetScreen.snapshot.contains(marker), "only a pointer enters the target's context")
-            let peek = try Self.inbox(["--peek"], claim: targetClaim, socket: socket)
+            let peek = try await Self.inbox(["--peek"], claim: targetClaim, socket: socket)
             #expect(peek.0 == 0 && peek.1.contains(marker))
-            let first = try Self.inbox([], claim: targetClaim, socket: socket)
+            let first = try await Self.inbox([], claim: targetClaim, socket: socket)
             #expect(first.0 == 0 && first.1.contains(marker))
-            let second = try Self.inbox([], claim: targetClaim, socket: socket)
+            let second = try await Self.inbox([], claim: targetClaim, socket: socket)
             #expect(second.0 == 0 && !second.1.contains(marker))
             #expect(try await context.runtime.stopConversation(sessionID: target.sessionID).succeeded)
             #expect(try await context.runtime.stopConversation(sessionID: sender.sessionID).succeeded)
@@ -227,9 +225,9 @@ struct SessionPeerIntegrationTests {
             let pointerEvidence = targetProvider == .codex ? "FAKE-PEER-WAKE" : "Sphyrna: message"
             #expect(await targetScreen.contains(pointerEvidence, timeout: 6))
             #expect(!targetScreen.snapshot.contains(marker))
-            let received = try Self.inbox([], claim: targetClaim, socket: socket)
+            let received = try await Self.inbox([], claim: targetClaim, socket: socket)
             #expect(received.0 == 0 && received.1.contains(marker))
-            #expect(try Self.inbox([], claim: targetClaim, socket: socket).1.contains(marker) == false)
+            #expect(try await Self.inbox([], claim: targetClaim, socket: socket).1.contains(marker) == false)
             #expect(try await context.runtime.stopConversation(sessionID: target.sessionID).succeeded)
             #expect(try await context.runtime.stopConversation(sessionID: sender.sessionID).succeeded)
         } catch { Issue.record("cross-provider peer fixture failed: \(error)") }

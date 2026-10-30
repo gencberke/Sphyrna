@@ -2,6 +2,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 /// CP4-G: worktree protection on real temp git repositories, and the coordinator that feeds the
 /// planner and runs only confirmed manual deletions. Temp trees only; the deletion itself is a
@@ -18,22 +19,14 @@ struct CleanupCoordinatorTests {
     }
 
     @discardableResult
-    private func git(_ arguments: [String], in directory: URL) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["-c", "user.name=Loom Test", "-c", "user.email=loom@example.invalid",
-                             "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main",
-                             "-C", directory.path] + arguments
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = Pipe()
-        try process.run()
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            throw TestFailure("git \(arguments.joined(separator: " ")) exited \(process.terminationStatus)")
+    private func git(_ arguments: [String], in directory: URL) async throws -> String {
+        let result = try await runToEnd("/usr/bin/git", ["-c", "user.name=Loom Test", "-c", "user.email=loom@example.invalid",
+                                                         "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main",
+                                                         "-C", directory.path] + arguments)
+        guard result.status == 0 else {
+            throw TestFailure("git \(arguments.joined(separator: " ")) exited \(result.status)")
         }
-        return String(decoding: data, as: UTF8.self)
+        return result.outputText
     }
 
     struct TestFailure: Error, CustomStringConvertible {
@@ -48,21 +41,21 @@ struct CleanupCoordinatorTests {
         let worktree: URL
     }
 
-    private func makeRepository(in root: URL) throws -> Repository {
+    private func makeRepository(in root: URL) async throws -> Repository {
         let remote = root.appendingPathComponent("remote.git")
         let main = root.appendingPathComponent("main")
         let worktree = root.appendingPathComponent("linked")
         try FileManager.default.createDirectory(at: remote, withIntermediateDirectories: true)
-        try git(["init", "--bare"], in: remote)
+        try await git(["init", "--bare"], in: remote)
         try FileManager.default.createDirectory(at: main, withIntermediateDirectories: true)
-        try git(["init"], in: main)
+        try await git(["init"], in: main)
         try Data("one\n".utf8).write(to: main.appendingPathComponent("file.txt"))
-        try git(["add", "."], in: main)
-        try git(["commit", "-m", "first"], in: main)
-        try git(["remote", "add", "origin", remote.path], in: main)
-        try git(["push", "origin", "main"], in: main)
-        try git(["worktree", "add", "-b", "feature", worktree.path], in: main)
-        try git(["push", "origin", "feature"], in: main)
+        try await git(["add", "."], in: main)
+        try await git(["commit", "-m", "first"], in: main)
+        try await git(["remote", "add", "origin", remote.path], in: main)
+        try await git(["push", "origin", "main"], in: main)
+        try await git(["worktree", "add", "-b", "feature", worktree.path], in: main)
+        try await git(["push", "origin", "feature"], in: main)
         return Repository(root: root, main: main, worktree: worktree)
     }
 
@@ -80,7 +73,7 @@ struct CleanupCoordinatorTests {
     @Test func aCleanPushedLinkedWorktreeIsNotProtected() async throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        let repository = try makeRepository(in: root)
+        let repository = try await makeRepository(in: root)
         let protection = try protection()
         #expect(CleanupWorktreeProtection.isLinkedWorktree(directory: repository.worktree.path))
         #expect(await protection.verdict(workingDirectory: repository.worktree.path) == .clear)
@@ -89,7 +82,7 @@ struct CleanupCoordinatorTests {
     @Test func aMainCheckoutAndAFolderOutsideGitAreNotWorktrees() async throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        let repository = try makeRepository(in: root)
+        let repository = try await makeRepository(in: root)
         // Dirty on purpose: only linked worktrees are protected by this rule.
         try Data("dirty\n".utf8).write(to: repository.main.appendingPathComponent("new.txt"))
         let plain = root.appendingPathComponent("plain")
@@ -103,7 +96,7 @@ struct CleanupCoordinatorTests {
     @Test func uncommittedChangesProtectAWorktree() async throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        let repository = try makeRepository(in: root)
+        let repository = try await makeRepository(in: root)
         let protection = try protection()
         try Data("untracked\n".utf8).write(to: repository.worktree.appendingPathComponent("new.txt"))
         #expect(isProtected(await protection.verdict(workingDirectory: repository.worktree.path)))
@@ -116,21 +109,21 @@ struct CleanupCoordinatorTests {
     @Test func anUnpushedCommitProtectsAWorktree() async throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        let repository = try makeRepository(in: root)
+        let repository = try await makeRepository(in: root)
         try Data("two\n".utf8).write(to: repository.worktree.appendingPathComponent("file.txt"))
-        try git(["commit", "-am", "local only"], in: repository.worktree)
+        try await git(["commit", "-am", "local only"], in: repository.worktree)
         let protection = try protection()
         #expect(isProtected(await protection.verdict(workingDirectory: repository.worktree.path)))
-        try git(["push", "origin", "feature"], in: repository.worktree)
+        try await git(["push", "origin", "feature"], in: repository.worktree)
         #expect(await protection.verdict(workingDirectory: repository.worktree.path) == .clear)
     }
 
     @Test func aStashProtectsAWorktree() async throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        let repository = try makeRepository(in: root)
+        let repository = try await makeRepository(in: root)
         try Data("stashed\n".utf8).write(to: repository.worktree.appendingPathComponent("file.txt"))
-        try git(["stash", "push"], in: repository.worktree)
+        try await git(["stash", "push"], in: repository.worktree)
         let protection = try protection()
         #expect(isProtected(await protection.verdict(workingDirectory: repository.worktree.path)))
     }
@@ -146,7 +139,7 @@ struct CleanupCoordinatorTests {
         #expect(isProtected(await protection.verdict(workingDirectory: broken.path)))
 
         // A capture that fails (a timeout reaches the verdict as a throw) protects too.
-        let repository = try makeRepository(in: root)
+        let repository = try await makeRepository(in: root)
         let failing = CleanupWorktreeProtection { _ in throw TestFailure("timed out") }
         #expect(isProtected(await failing.verdict(workingDirectory: repository.worktree.path)))
         // Unparsable output is not "zero unpushed commits".
@@ -157,7 +150,7 @@ struct CleanupCoordinatorTests {
     @Test func protectionReadsGitOnlyReadOnlyWithoutOptionalLocks() async throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        let repository = try makeRepository(in: root)
+        let repository = try await makeRepository(in: root)
         let seen = Mutex<[[String]]>([])
         let recording = CleanupWorktreeProtection { arguments in
             seen.withLock { $0.append(arguments) }

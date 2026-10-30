@@ -489,7 +489,7 @@ extension SessionRuntime {
     ) async throws -> CodexSessionCoordinator {
         let coordinator = CodexSessionCoordinator(
             client: client, supervisor: supervisor, adapter: harnesses.codex.adapter,
-            router: CodexSessionRouter(diagnostics: routingDiagnostics)
+            router: CodexSessionRouter(diagnostics: routingDiagnostics), joinTimeout: configuration.codexJoinTimeout
         )
         do {
             await codexSetupObserverForTesting?(.installing)

@@ -43,7 +43,7 @@ struct OwnershipBoundaryTests {
         #expect(await supervisor.shutdown().succeeded)
     }
 
-    @Test func staleRecoveryFailureDoesNotBlockAnotherCommand() throws {
+    @Test func staleRecoveryFailureDoesNotBlockAnotherCommand() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-recovery-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
         let broken = root.appendingPathComponent("runs/broken")
@@ -57,8 +57,8 @@ struct OwnershipBoundaryTests {
         probe.environment = environment
         probe.standardOutput = FileHandle.nullDevice
         probe.standardError = FileHandle.nullDevice
-        try probe.run(); probe.waitUntilExit()
-        #expect(probe.terminationStatus == 0)
+        try probe.run()
+        #expect(await exitStatus(of: probe) == 0)
         #expect(FileManager.default.fileExists(atPath: broken.appendingPathComponent("recovery-error.txt").path))
         #expect(!FileManager.default.fileExists(atPath: broken.appendingPathComponent("recovered").path))
     }

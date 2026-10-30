@@ -309,6 +309,45 @@ extension ChatHosted {
             #expect(after.label == "Compacting")
             expectRows(presentation, stream, "status", source.model)
         }
+
+        #if DEBUG // the row check is debug only
+        /// Two presentations checked at the same time, each by its own verifier (`ChatRowVerifier`), as two suites that verify
+        /// rows run side by side. The check used to be one process-wide switch and report (`verifiesRows`/`onMismatch`): the
+        /// suite that finished first turned it off for the other, or took its reports. A stream that drifts from its
+        /// presentation reports to its own verifier, and the other one's stays clean, and checked.
+        @Test func twoPresentationsCheckedAtOnceReportEachToItsOwnVerifier() throws {
+            let first = ChatPresentation(sessionID: "verify-first-\(UUID())", workingDirectory: nil)
+            let second = ChatPresentation(sessionID: "verify-second-\(UUID())", workingDirectory: nil)
+            let firstStream = ChatHostedStream(), secondStream = ChatHostedStream()
+            defer { firstStream.controller.stop(); secondStream.controller.stop() }
+            let firstCheck = ChatRowCheck(), secondCheck = ChatRowCheck()
+            firstCheck.watch(first)
+            secondCheck.watch(second)
+            first.attach(firstStream.controller)
+            second.attach(secondStream.controller)
+            var firstSource = SyntheticSource(), secondSource = SyntheticSource()
+            #expect(first.apply(firstSource.snapshot()) && second.apply(secondSource.snapshot()))
+            for number in 1...3 {
+                turn(number, &firstSource, into: first, firstStream)
+                turn(number, &secondSource, into: second, secondStream)
+            }
+            #expect(firstCheck.mismatches.isEmpty && secondCheck.mismatches.isEmpty,
+                    "\(firstCheck.mismatches) \(secondCheck.mismatches)")
+
+            // The first stream's first two rows trade places behind its presentation; the next rebuild of each is checked.
+            var drifted = firstStream.controller.rows
+            try #require(drifted.count > 2, "rows: \(drifted.count)")
+            drifted.swapAt(0, 1)
+            firstStream.controller.apply(drifted, hasOlder: false)
+            first.toggle("no-such-row")
+            second.toggle("no-such-row")
+
+            #expect(firstCheck.mismatches.count == 1 && firstCheck.mismatches.first?.contains(first.sessionID) == true,
+                    "the drift is reported to the first presentation's own verifier: \(firstCheck.mismatches)")
+            secondCheck.expectClean("the second presentation, checked beside the first")
+            #expect(firstCheck.checks == secondCheck.checks, "both checked every rebuild: \(firstCheck.checks), \(secondCheck.checks)")
+        }
+        #endif
     }
 }
 

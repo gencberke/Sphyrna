@@ -16,6 +16,7 @@ enum SessionRuntimeRig {
         claudePlugin: Bool = false,
         hookHelperPath: String? = nil,
         hookSilenceGrace: TimeInterval = 3,
+        codexJoinTimeout: TimeInterval = CodexSessionCoordinator.defaultJoinTimeout,
         catalogBackupDelay: TimeInterval? = nil,
         claudeVersion: String = "fake 1",
         extraClaudeHelp: String = "",
@@ -45,9 +46,7 @@ enum SessionRuntimeRig {
             let copy = bin.appendingPathComponent("loom-fake-provider")
             try FileManager.default.copyItem(atPath: fakePath, toPath: copy.path)
             fakePath = copy.path
-            let bundle = try RunScopeLauncher.assembleOwnedBundle(
-                executable: RuntimeFixture.binaries.appendingPathComponent("loom-run-host"), in: root
-            )
+            let bundle = try SharedRunHost.bundle(for: RuntimeFixture.binaries.appendingPathComponent("loom-run-host"))
             supervisor = try await ProcessSupervisor.restoring(
                 ledgerURL: durableLedger ? root.appendingPathComponent("ledger.json") : nil, catalog: catalog,
                 scopeLauncher: RunScopeLauncher(hostBundle: bundle, socketDirectory: socketDirectory.appendingPathComponent("rs"))
@@ -82,7 +81,7 @@ enum SessionRuntimeRig {
                 toolchains: resolver,
                 hookHelperPath: hookHelperPath ?? RuntimeFixture.binaries.appendingPathComponent("loom-hook").path,
                 socketDirectory: socketDirectory, homeDirectory: home.path,
-                idlePolicy: idlePolicy, codexIdentityTimeout: 3,
+                idlePolicy: idlePolicy, codexIdentityTimeout: 3, codexJoinTimeout: codexJoinTimeout,
                 claudePluginDirectory: claudePlugin ? root.appendingPathComponent("claude-plugin", isDirectory: true) : nil,
                 hookSilenceGrace: hookSilenceGrace, catalogBackupDelay: catalogBackupDelay,
                 runsRecovered: runsRecovered, defaultOpenedMode: defaultOpenedMode, openedModels: openedModels,

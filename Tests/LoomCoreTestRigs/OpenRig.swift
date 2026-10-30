@@ -78,16 +78,18 @@ final class OpenRig: @unchecked Sendable {
 
     func send(_ request: OpenSessionWireRequest, timeout: TimeInterval = 10) async throws -> OpenSessionReply {
         let path = socketPath
-        return try await Task.detached {
+        return try await onOwnThread("open-session exchange") {
             try OpenSessionClient.exchange(request, socketPath: path, replyTimeout: timeout)
-        }.value
+        }
     }
 
     /// Sends in the background (the call blocks while the request is pending).
     func sendInBackground(_ request: OpenSessionWireRequest, timeout: TimeInterval = 10) -> Task<OpenSessionReply, any Error> {
         let path = socketPath
-        return Task.detached {
-            try OpenSessionClient.exchange(request, socketPath: path, replyTimeout: timeout)
+        return Task {
+            try await onOwnThread("open-session exchange") {
+                try OpenSessionClient.exchange(request, socketPath: path, replyTimeout: timeout)
+            }
         }
     }
 

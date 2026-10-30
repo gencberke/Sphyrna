@@ -15,20 +15,13 @@ extension WindowEventTests {
 @MainActor
 @Suite(.timeLimit(.minutes(2)))
 struct SettingsWindowClickTests {
-    private func settle(_ window: NSWindow) async throws {
-        for _ in 0..<5 {
-            try await Task.sleep(for: .milliseconds(80))
-            window.contentView?.layoutSubtreeIfNeeded()
-            window.displayIfNeeded()
-        }
+    private func draw(_ window: NSWindow) {
+        window.contentView?.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
     }
 
-    private func element(in window: NSWindow, where matches: (AnyObject) -> Bool) async throws -> AnyObject? {
-        for _ in 0..<30 {
-            if let view = window.contentView, let found = accessibilityElements(in: view).first(where: matches) { return found }
-            try await Task.sleep(for: .milliseconds(100))
-        }
-        return nil
+    private func element(in window: NSWindow, where matches: (AnyObject) -> Bool) -> AnyObject? {
+        window.contentView.flatMap { accessibilityElements(in: $0).first(where: matches) }
     }
 
     /// Mouse-down and mouse-up at the centre of `element`'s frame, sent as `SearchFocusAndHitTests` sends them. Nothing is posted to
@@ -43,12 +36,32 @@ struct SettingsWindowClickTests {
         }
         NSApp.sendEvent(try event(.leftMouseDown))
         NSApp.sendEvent(try event(.leftMouseUp))
-        try await settle(window)
     }
 
     private func tab(_ section: SettingsSection, in window: NSWindow) async throws -> AnyObject {
-        try #require(await element(in: window) { InkAX.identifier($0) == "settings-tab-\(section.title)" },
-                     "the \(section.title) tab is drawn")
+        let identifier = "settings-tab-\(section.title)"
+        let found = await waitFor("the \(section.title) tab to be drawn", observe: { () -> AnyObject? in
+            draw(window)
+            return element(in: window) { InkAX.identifier($0) == identifier }
+        }, until: { $0 != nil })
+        return try #require(found, "the \(section.title) tab is drawn")
+    }
+
+    /// Waits for a click to open `section`.
+    private func opens(_ section: SettingsSection, _ navigation: SettingsNavigation, in window: NSWindow) async {
+        await waitFor("the \(section.title) section to open") { draw(window); return navigation.section == section }
+    }
+
+    /// Waits for `section`'s tab to be drawn as the open one: the band, and the page under it, show it.
+    private func shows(_ section: SettingsSection, in window: NSWindow) async {
+        let identifier = "settings-tab-\(section.title)"
+        await waitFor("the \(section.title) tab to be drawn open") {
+            draw(window)
+            // UIAccessibilityTraitSelected, the bit SwiftUI sets for `.isSelected` (InkHostTests reads it the same way).
+            return element(in: window) { InkAX.identifier($0) == identifier }.map {
+                (($0.accessibilityAttributeValue?(NSAccessibility.Attribute(rawValue: "AXTraits")) as? Int) ?? 0) & 0x8 != 0
+            } == true
+        }
     }
 
     @Test func aClickOnATabSwitchesItAndAPageControlAnswersItsClick() async throws {
@@ -59,25 +72,33 @@ struct SettingsWindowClickTests {
         let window = SettingsWindowConfiguration.makeWindow(content: SettingsWindowClickShared.settingsTestView(model, navigation), background: .windowBackgroundColor)
         defer { window.orderOut(nil) }
         window.makeKeyAndOrderFront(nil)
-        try await settle(window)
+        let theme = try await tab(.theme, in: window)
         let origin = window.frame.origin
 
         // From General, the window's first tab.
-        try await click(try await tab(.theme, in: window), in: window)
+        try await click(theme, in: window)
+        await opens(.theme, navigation, in: window)
         #expect(navigation.section == .theme, "a click on Theme, from General, opens Theme")
 
         // From Remora, where Home's ⋯ → Remora opens the window.
         navigation.open(.remora)
-        try await settle(window)
+        await shows(.remora, in: window)
         try await click(try await tab(.about, in: window), in: window)
+        await opens(.about, navigation, in: window)
         #expect(navigation.section == .about, "a click on About, from Remora, opens About")
         try await click(try await tab(.general, in: window), in: window)
+        await opens(.general, navigation, in: window)
         #expect(navigation.section == .general, "a click on General, from About, opens General")
 
         // D-100: while the Chat face is frozen General has no "Sessions run in" switch.
         navigation.open(.general)
-        try await settle(window)
-        #expect(try await element(in: window) { InkAX.label($0) == "Sessions run in" } == nil, "no face to choose")
+        await shows(.general, in: window)
+        // The negative window: the 3 s the old lookup polled for the switch.
+        await holds("General shows no \"Sessions run in\" switch", for: .seconds(3)) {
+            draw(window)
+            return element(in: window) { InkAX.label($0) == "Sessions run in" } == nil
+        }
+        #expect(element(in: window) { InkAX.label($0) == "Sessions run in" } == nil, "no face to choose")
         #expect(model.newSessionFace == .terminal)
         #expect(window.frame.origin == origin, "a still click does not move the window")
     }

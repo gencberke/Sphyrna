@@ -221,11 +221,10 @@ extension ChatHosted {
             // The tone is one global that other suites read: it is flipped and restored in one synchronous stretch on the main
             // actor, with no suspension in between, so nothing else can run while it is wrong.
             let neutral = Self.cellPixels(rig)
-            let tone = LoomTheme.ThemeState.shared.tone
-            LoomTheme.ThemeState.shared.tone = tone == .warm ? .cool : .warm
+            let tone = RenderProbeExclusive.holdTone(LoomTheme.ThemeState.shared.tone == .warm ? .cool : .warm)
             Self.flush(rig)
             let flipped = Self.cellPixels(rig), fresh = Self.freshPixels(rig, appearance: NSAppearance(named: .darkAqua))
-            LoomTheme.ThemeState.shared.tone = tone
+            RenderProbeExclusive.holdTone(tone)
             let moved = Self.difference(neutral, flipped), toneGap = Self.difference(flipped, fresh)
             print("BUDGET stream measure: a change of tone moves \(String(format: "%.3f", moved * 100)) % of the cell's pixels; the drawn cell then differs from a fresh one in \(String(format: "%.3f", toneGap * 100)) %")
             #expect(moved > 0.01, "the tone change moved \(moved * 100) % of the cell's pixels")

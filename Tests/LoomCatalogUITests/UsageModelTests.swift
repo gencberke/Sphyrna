@@ -64,7 +64,7 @@ struct UsageModelTests {
         #expect(usage.chip == nil)
         index.setBlocking(true)
         usage.refresh(reason: .launch)
-        while index.refreshCalls == 0 { await Task.yield() }
+        await waitFor("the first scan") { index.refreshCalls > 0 }
         #expect(usage.state == .indexing) // nothing indexed yet: the very first scan
         index.setTokens(1_200_000)
         #expect(usage.chip?.kind == .indexing)
@@ -128,7 +128,7 @@ struct UsageModelTests {
         let usage = model(index)
         index.setBlocking(true)
         usage.refresh(reason: .manual)
-        while index.refreshCalls == 0 { await Task.yield() } // the scan is running
+        await waitFor("the scan") { index.refreshCalls > 0 } // the scan is running
         for _ in 0..<5 { usage.refresh(reason: .manual) }
         index.release()
         await usage.settle()
@@ -752,7 +752,7 @@ struct UsageFreshnessTests {
         let usage = model(FakeUsageIndex(), limits: source, clock: clock)
         usage.observeTurnCompletions(0)
         usage.refresh(reason: .launch)
-        while source.asks == 0 { await Task.yield() }
+        await waitFor("the limits source to be asked") { source.asks > 0 }
         clock.advance(3_600)
         usage.observeTurnCompletions(1)
         usage.setSettingsWindowVisible(true)

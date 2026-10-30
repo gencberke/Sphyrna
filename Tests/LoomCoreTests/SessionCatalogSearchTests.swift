@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 /// `searchSessions` (one search for every list) and `listedSession` (one row for a patch) against the
 /// per-list `sessionPage` reads they replace.
@@ -112,7 +113,7 @@ struct SessionCatalogSearchTests {
         let catalog = world.catalog
         let task = Task { () -> Bool in
             // Cancelled before the catalog is asked: the read must refuse instead of scanning.
-            while !Task.isCancelled { await Task.yield() }
+            await waitFor("the test to cancel the search") { Task.isCancelled }
             do {
                 _ = try await catalog.searchSessions(search: "needle", order: .creation, groupLimit: 100)
                 return false

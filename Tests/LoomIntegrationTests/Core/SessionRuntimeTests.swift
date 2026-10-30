@@ -5,27 +5,8 @@ import Testing
 import LoomTestSupport
 @testable import LoomCoreTestRigs
 
-private final class RuntimeCatalogGate: @unchecked Sendable {
-    private let condition = NSCondition()
-    private var waiting = false
-    private var released = false
-    var entered: Bool { condition.withLock { waiting } }
-    func hold() {
-        condition.lock()
-        waiting = true
-        while !released { condition.wait() }
-        condition.unlock()
-    }
-    func release() {
-        condition.lock()
-        released = true
-        condition.broadcast()
-        condition.unlock()
-    }
-}
-
 private extension SessionCatalog {
-    func holdForRuntimeQuitTest(_ gate: RuntimeCatalogGate) { gate.hold() }
+    func holdForRuntimeQuitTest(_ gate: ActorFreezeGate) { gate.hold() }
 }
 
 private final class RuntimeFlag: @unchecked Sendable {
@@ -154,7 +135,7 @@ struct SessionRuntimeTests {
         let context = try await SessionRuntimeRig.makeContext(catalogBackupDelay: 3_600)
         defer { context.cleanup() }
         let store = context.catalog.backupStore
-        let gate = RuntimeCatalogGate()
+        let gate = ActorFreezeGate()
         store.setAfterCopyHookForTesting { gate.hold() }
         defer { store.setAfterCopyHookForTesting(nil) }
         await context.runtime.scheduleCatalogBackup(force: true)
@@ -679,7 +660,7 @@ struct SessionRuntimeTests {
         // Finish one run without delivering its end frame, then hold the
         // other run's real catalog transition across the bounded Quit.
         #expect((try await context.supervisor.stop(sessionID: ended.sessionID)).succeeded)
-        let gate = RuntimeCatalogGate()
+        let gate = ActorFreezeGate()
         defer { gate.release() }
         let hold = Task.detached { await context.catalog.holdForRuntimeQuitTest(gate) }
         #expect(await SessionRuntimeRig.waitUntil { gate.entered })

@@ -189,7 +189,7 @@ struct ControlFamilyTests {
     }
 
     /// Exercise the drawn states: the track, selected segment, badge and field edge must actually use their design colours.
-    @MainActor @Test func sharedControlsDrawTheirStateColours() throws {
+    @MainActor @Test(.renderProbe) func sharedControlsDrawTheirStateColours() throws {
         func render<V: View>(_ view: V) throws -> NSBitmapImageRep {
             let renderer = ImageRenderer(content: view.environment(\.colorScheme, .dark))
             renderer.scale = 1
@@ -217,12 +217,7 @@ struct ControlFamilyTests {
             #expect(close(try rgba(image, 10, 5), selection == "One" ? selected : muted), "first segment, \(selection)")
             #expect(close(try rgba(image, image.pixelsWide - 10, 5), selection == "Two" ? selected : muted), "second segment, \(selection)")
         }
-        let hover = HoverForce.shared
-        let wasArmed = hover.armed
-        let previous = hover.held
-        defer { hover.hold(previous); hover.armed = wasArmed }
-        hover.armed = true
-        hover.hold("segment:Two")
+        RenderProbeExclusive.holdHover("segment:Two")
         let hovered = try render(InkSegmented(values: ["One", "Two"], title: { $0 }, selection: "One", onSelect: { _ in }))
         let hoverFill = try rgba(render(Rectangle().fill(LoomTheme.Surface.muted)
             .overlay(Rectangle().fill(LoomTheme.Surface.hover)).frame(width: 8, height: 8)), 4, 4)
@@ -244,10 +239,10 @@ struct ControlFamilyTests {
                 }
             }
         }
-        hover.hold(nil)
+        RenderProbeExclusive.holdHover(nil)
         let link = Button("Details") {}.buttonStyle(ControlButtonStyle(kind: .link, size: .small, key: "test-link"))
         let resting = try render(link)
-        hover.hold("test-link")
+        RenderProbeExclusive.holdHover("test-link")
         let lit = try render(link)
         #expect(try alphaTotal(lit) > alphaTotal(resting) + 5, "a hovered link gains its underline")
     }

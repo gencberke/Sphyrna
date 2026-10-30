@@ -4,6 +4,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import LoomCore
+@testable import LoomCoreTestRigs
 import LoomTestSupport
 
 /// Temporary folders of one test (run host bundles, the test child's copy),
@@ -120,9 +121,7 @@ struct PipeScopeTests {
 
     private func makeSupervisor() throws -> ProcessSupervisor {
         let root = scratch.folder("loom-pipe-scope")
-        let bundle = try RunScopeLauncher.assembleOwnedBundle(
-            executable: productsDirectory.appendingPathComponent("loom-run-host"), in: root
-        )
+        let bundle = try SharedRunHost.bundle(for: productsDirectory.appendingPathComponent("loom-run-host"))
         return try ProcessSupervisor(scopeLauncher: RunScopeLauncher(
             hostBundle: bundle, socketDirectory: root.appendingPathComponent("s")
         ))
@@ -265,23 +264,17 @@ struct PipeScopeTests {
         do {
             let launch = try await start(["pipe-echo"], supervisor: supervisor, sink: sink)
             _ = try await sink.firstObject()
-            let entered = DispatchSemaphore(value: 0)
-            let proceed = DispatchSemaphore(value: 0)
+            // The admission runs on the pipe's own I/O queue; the gate holds the write there until it is cancelled.
+            let gate = ActorFreezeGate()
             let input = Task {
                 await launch.pipe.writeManaged(Data("cancelled-input\n".utf8)) { write in
-                    entered.signal()
-                    _ = proceed.wait(timeout: .now() + 5)
+                    gate.hold()
                     return try write()
                 }
             }
-            let reachedGate = await withCheckedContinuation { continuation in
-                DispatchQueue.global().async {
-                    continuation.resume(returning: entered.wait(timeout: .now() + 5) == .success)
-                }
-            }
+            await waitFor("the write to reach its admission", within: .seconds(5)) { gate.entered }
             input.cancel()
-            proceed.signal()
-            #expect(reachedGate)
+            gate.release()
             #expect(await input.value == .deferred)
 
             let accepted = await launch.pipe.writeManaged(Data("accepted-input\n".utf8)) { write in try write() }

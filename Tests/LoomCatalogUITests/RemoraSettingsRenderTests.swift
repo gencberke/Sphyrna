@@ -13,7 +13,7 @@ import LoomCore
 /// set beside the reference; without it each is drawn once in Ink and the test only checks that something was drawn. The data is a
 /// temporary memory with sample lines and notes: no Claude, no profile, no vault.
 @MainActor
-@Suite(.serialized, .timeLimit(.minutes(8)))
+@Suite(.serialized, .timeLimit(.minutes(8)), .renderProbe)
 struct RemoraSettingsRenderTests {
     private let size = NSSize(width: LoomTheme.Settings.width, height: LoomTheme.Settings.height)
 
@@ -60,9 +60,8 @@ struct RemoraSettingsRenderTests {
 
     private func render<V: View>(_ view: V, name: String, dark: Bool, tone: PaneTone, height: CGFloat? = nil) async throws -> NSBitmapImageRep {
         let size = NSSize(width: size.width, height: height ?? size.height)
-        let previous = LoomTheme.ThemeState.shared.tone
-        LoomTheme.ThemeState.shared.tone = tone
-        defer { LoomTheme.ThemeState.shared.tone = previous }
+        let previous = RenderProbeExclusive.holdTone(tone)
+        defer { RenderProbeExclusive.holdTone(previous) }
         let hosting = NSHostingController(rootView: view.frame(width: size.width, height: size.height)
             .environment(\.colorScheme, dark ? .dark : .light))
         hosting.sizingOptions = []

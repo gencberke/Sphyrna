@@ -33,18 +33,20 @@ struct ProcessLifecycleTests {
         #expect((0.9...1.1).contains(ratio))
     }
 
-    private func killAndReap(_ process: Process) {
+    /// Kills a fixture process and awaits its end; Foundation reaps it.
+    private func killAndReap(_ process: Process) async {
         let pid = process.processIdentifier
         guard pid > 0 else { return }
         _ = Darwin.kill(pid, SIGKILL)
-        let deadline = ProcessInfo.processInfo.systemUptime + 1
-        repeat {
-            let result = waitpid(pid, nil, WNOHANG)
-            if result == pid || result == -1 && errno == ECHILD { return }
-            if result == -1 && errno != EINTR { break }
-            usleep(10_000)
-        } while ProcessInfo.processInfo.systemUptime < deadline
-        Issue.record("Fixture process \(pid) was not reaped within one second")
+        if !(await childEnded(process, within: .seconds(1))) {
+            Issue.record("Fixture process \(pid) was not reaped within one second")
+        }
+    }
+
+    /// The fixture's kill for a `defer`, which cannot await, when a test ends early: a signal only, sent while the process
+    /// is still Foundation's to reap. A test that reaches its end awaits `killAndReap`.
+    private func stopFixture(_ process: Process) {
+        if process.isRunning { _ = Darwin.kill(process.processIdentifier, SIGKILL) }
     }
 
     private var childPath: String {
@@ -147,7 +149,7 @@ struct ProcessLifecycleTests {
         external.executableURL = URL(fileURLWithPath: "/bin/sleep")
         external.arguments = ["30"]
         try external.run()
-        defer { killAndReap(external) }
+        defer { stopFixture(external) }
         let before = try #require(ProcessTable.snapshot().first {
             $0.identity.pid == external.processIdentifier
         })
@@ -159,6 +161,7 @@ struct ProcessLifecycleTests {
         })
         #expect(before.identity == after.identity)
         #expect(external.isRunning)
+        await killAndReap(external)
     }
 
     @Test func failedExecAndShutdownRejectNewLaunches() async throws {
@@ -185,12 +188,12 @@ struct ProcessLifecycleTests {
         }
     }
 
-    @Test func reusedPIDCannotBeSignaled() throws {
+    @Test func reusedPIDCannotBeSignaled() async throws {
         let external = Process()
         external.executableURL = URL(fileURLWithPath: "/bin/sleep")
         external.arguments = ["30"]
         try external.run()
-        defer { killAndReap(external) }
+        defer { stopFixture(external) }
         let record = try #require(ProcessTable.snapshot().first {
             $0.identity.pid == external.processIdentifier
         })
@@ -201,6 +204,7 @@ struct ProcessLifecycleTests {
         )
         try ProcessTable.signal(wrong, SIGKILL)
         #expect(external.isRunning)
+        await killAndReap(external)
     }
 
     @Test func documentsUnobservedAppleEscapeBoundary() async throws {
@@ -236,10 +240,10 @@ struct ProcessLifecycleTests {
         let output = Pipe()
         probe.standardOutput = output
         try probe.run()
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        probe.waitUntilExit()
+        let data = await readToEnd(output.fileHandleForReading)
+        let status = await exitStatus(of: probe)
         #expect(probe.terminationReason == .uncaughtSignal)
-        #expect(probe.terminationStatus == SIGKILL)
+        #expect(status == SIGKILL)
         let path = String(decoding: data, as: UTF8.self)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let url = URL(fileURLWithPath: path)
@@ -252,8 +256,7 @@ struct ProcessLifecycleTests {
         recovery.executableURL = probePath
         recovery.arguments = ["recover-stale"]
         try recovery.run()
-        recovery.waitUntilExit()
-        #expect(recovery.terminationStatus == 0)
+        #expect(await exitStatus(of: recovery) == 0)
         #expect(try await observer.ownedProcesses().isEmpty)
         _ = await observer.shutdown()
         #expect(FileManager.default.fileExists(

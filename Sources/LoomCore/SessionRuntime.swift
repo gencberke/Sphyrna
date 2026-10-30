@@ -16,6 +16,8 @@ public struct SessionRuntimeConfiguration: Sendable {
     /// callback keeps identity pending until provider completion, Stop or Quit.
     public var codexIdentityTimeout: TimeInterval
     public var codexServerStartupTimeout: TimeInterval
+    /// How long a join of an opened Codex thread (`thread/resume`) waits for the server (`CodexSessionCoordinator`).
+    public var codexJoinTimeout: TimeInterval
     /// A resumed run that ends this quickly is checked for provider history errors.
     public var resumeDiagnosticsWindow: TimeInterval
     /// Where a deletion also looks for Claude's temporary task output (tier 2); nil skips it.
@@ -69,6 +71,7 @@ public struct SessionRuntimeConfiguration: Sendable {
         homeDirectory: String = FileManager.default.homeDirectoryForCurrentUser.path,
         clientVersion: String = "sphyrna", idlePolicy: SessionIdlePolicy = SessionIdlePolicy(),
         codexIdentityTimeout: TimeInterval = 10, codexServerStartupTimeout: TimeInterval = 8,
+        codexJoinTimeout: TimeInterval = CodexSessionCoordinator.defaultJoinTimeout,
         resumeDiagnosticsWindow: TimeInterval = 15,
         claudeTemporaryRoot: URL? = ClaudeDataInventory.defaultTemporaryRoot,
         forgetters: ConversationForgetters = .shared,
@@ -95,6 +98,7 @@ public struct SessionRuntimeConfiguration: Sendable {
         self.idlePolicy = idlePolicy
         self.codexIdentityTimeout = codexIdentityTimeout
         self.codexServerStartupTimeout = codexServerStartupTimeout
+        self.codexJoinTimeout = codexJoinTimeout
         self.resumeDiagnosticsWindow = resumeDiagnosticsWindow
         self.claudeTemporaryRoot = claudeTemporaryRoot
         self.forgetters = forgetters

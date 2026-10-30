@@ -352,7 +352,8 @@ struct RemoraCallTests {
         let rig = try Rig()
         let suffix = "<sessions>\nSTABLE-MARKER-\(UUID().uuidString)\n</sessions>\n"
         let request = RemoraRequest(kind: .question, model: "haiku", effort: "low", pack: "STDIN-PART", systemSuffix: suffix)
-        let stream = rig.call(["LOOM_FAKE_REMORA": "slow"]).run(request)
+        // Four deltas 400 ms apart (about 1.6 s): the file is looked at while the child runs.
+        let stream = rig.call(["LOOM_FAKE_REMORA": "slow", "LOOM_FAKE_REMORA_ANSWER": "The answer, in a few pieces."]).run(request)
         async let collected = collect(stream)
         // While the child runs: one file, 0600, in the 0700 folder next to the run folder, rules then suffix.
         let folder = rig.root.appendingPathComponent("remora")

@@ -257,13 +257,18 @@ extension ChatHosted {
             RunLoop.main.run(until: Date().addingTimeInterval(0.02))
             presentation.setWorking(false)
             #expect(presentation.lastTimings.total < 16, "the rebuild alone is cheap: \(presentation.lastTimings.total) ms")
-            Thread.sleep(forTimeInterval: 0.03)
+            Self.stall(0.03)
             RunLoop.main.run(until: Date().addingTimeInterval(0.02))
             #expect((presentation.streamingInterval ?? .zero) >= .milliseconds(150), "\(String(describing: presentation.streamingInterval))")
         }
 
-        /// Holds the main thread (`Thread.sleep` is unavailable in an async test).
-        private static func stall(_ seconds: TimeInterval) { Thread.sleep(forTimeInterval: seconds) }
+        /// Keeps the main thread busy for `seconds` inside the current run-loop turn, the way a costly display pass does. It
+        /// works instead of sleeping: a sleep is unavailable in an async test and is the blocking wait the tests keep off the
+        /// cooperative pool; this runs on the main actor, never on the pool.
+        private static func stall(_ seconds: TimeInterval) {
+            let end = ContinuousClock.now + .seconds(seconds)
+            while ContinuousClock.now < end {}
+        }
 
         /// A change deferred in the same pass as a costly rebuild is scheduled before that turn's cost is known (it is zero while
         /// the turn runs): when the timer wakes, it asks the interval again and waits the stretched one.

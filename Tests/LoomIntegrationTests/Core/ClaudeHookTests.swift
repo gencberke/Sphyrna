@@ -6,23 +6,11 @@ import Testing
 import LoomTestSupport
 
 private final class HookEnvelopeCollector: @unchecked Sendable {
-    private let condition = NSCondition()
+    private let lock = NSLock()
     private var storage: [ClaudeHookEnvelope] = []
+    var envelopes: [ClaudeHookEnvelope] { lock.withLock { storage } }
 
-    func append(_ envelope: ClaudeHookEnvelope) {
-        condition.lock()
-        storage.append(envelope)
-        condition.broadcast()
-        condition.unlock()
-    }
-
-    func waitForCount(_ count: Int, timeout: TimeInterval) -> [ClaudeHookEnvelope] {
-        let deadline = Date().addingTimeInterval(timeout)
-        condition.lock()
-        defer { condition.unlock() }
-        while storage.count < count, condition.wait(until: deadline) {}
-        return storage
-    }
+    func append(_ envelope: ClaudeHookEnvelope) { lock.withLock { storage.append(envelope) } }
 }
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
@@ -54,7 +42,7 @@ struct ClaudeHookTests {
         #expect(await tracker.status().activity == .waitingForInput)
     }
 
-    @Test func authenticatedUnixSocketDeliversOnlyValidMessages() throws {
+    @Test func authenticatedUnixSocketDeliversOnlyValidMessages() async throws {
         let root = URL(fileURLWithPath: "/tmp/lh-\(UUID().uuidString.prefix(8))", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let socketPath = root.appendingPathComponent("events.sock").path
@@ -80,15 +68,16 @@ struct ClaudeHookTests {
                 envelope, socketPath: socketPath, authenticationToken: "wrong-token"
             )
         }
-        #expect(collector.waitForCount(1, timeout: 0.05).isEmpty)
+        await holds("no envelope from a wrong token", for: .milliseconds(50)) { collector.envelopes.isEmpty }
 
         try ClaudeHookClient.send(
             envelope, socketPath: socketPath, authenticationToken: "correct-token"
         )
-        #expect(collector.waitForCount(1, timeout: 1) == [envelope])
+        await waitFor("the envelope", within: .seconds(1)) { !collector.envelopes.isEmpty }
+        #expect(collector.envelopes == [envelope])
     }
 
-    @Test func helperForwardsInheritedSessionAndRunIdentity() throws {
+    @Test func helperForwardsInheritedSessionAndRunIdentity() async throws {
         let root = URL(fileURLWithPath: "/tmp/lh-\(UUID().uuidString.prefix(8))", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let socketPath = root.appendingPathComponent("events.sock").path
@@ -100,7 +89,6 @@ struct ClaudeHookTests {
         defer { server.stop() }
         let sessionID = UUID(), runID = UUID(), generation = UUID()
         let input = try payload(event: "SessionStart", fields: ["source": "startup"])
-        let pipe = Pipe()
         let process = Process()
         process.executableURL = Products.directory.appendingPathComponent("loom-hook")
         process.environment = [
@@ -111,17 +99,12 @@ struct ClaudeHookTests {
             "SPHYRNA_TASK_GENERATION": generation.uuidString,
             "SPHYRNA_TASK_TOKEN": "synthetic-run-secret",
         ]
-        process.standardInput = pipe
-        let output = Pipe()
-        process.standardOutput = output
-        try process.run()
-        try pipe.fileHandleForWriting.write(contentsOf: input)
-        try pipe.fileHandleForWriting.close()
-        process.waitUntilExit()
+        let helper = try await runToEnd(process, input: input)
 
-        #expect(process.terminationStatus == 0)
-        #expect(output.fileHandleForReading.readDataToEndOfFile().isEmpty, "helper never emits an approval/decision")
-        let received = try #require(collector.waitForCount(1, timeout: 1).first)
+        #expect(helper.status == 0)
+        #expect(helper.output.isEmpty, "helper never emits an approval/decision")
+        await waitFor("the helper's envelope", within: .seconds(1)) { !collector.envelopes.isEmpty }
+        let received = try #require(collector.envelopes.first)
         #expect(received.sessionID == sessionID)
         #expect(received.managedRunID == runID)
         #expect(received.taskGeneration == generation && received.taskCredential == "synthetic-run-secret")
@@ -300,7 +283,7 @@ struct ClaudeHookTests {
         }
     }
 
-    @Test func connectionAcceptanceOrderSurvivesDelayedFirstPayloadAndEOF() throws {
+    @Test func connectionAcceptanceOrderSurvivesDelayedFirstPayloadAndEOF() async throws {
         let root = URL(fileURLWithPath: "/tmp/lh-\(UUID().uuidString.prefix(8))", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let socket = root.appendingPathComponent("ordered.sock").path
@@ -318,14 +301,15 @@ struct ClaudeHookTests {
         let middle = wire.count / 2
         try writeTestSocket(descriptor, data: Data(wire.prefix(middle)))
         try ClaudeHookClient.send(second, socketPath: socket, authenticationToken: "token")
-        #expect(collector.waitForCount(1, timeout: 0.05).isEmpty,
-                "A later connection must not overtake a first connection still awaiting payload/EOF")
+        await holds("A later connection must not overtake a first connection still awaiting payload/EOF",
+                    for: .milliseconds(50)) { collector.envelopes.isEmpty }
         try writeTestSocket(descriptor, data: Data(wire.suffix(from: middle)))
         #expect(Darwin.shutdown(descriptor, SHUT_WR) == 0)
-        #expect(collector.waitForCount(2, timeout: 1) == [first, second])
+        await waitFor("both envelopes", within: .seconds(1)) { collector.envelopes.count >= 2 }
+        #expect(collector.envelopes == [first, second])
     }
 
-    @Test func stalledConnectionHasBoundedReadAndDoesNotBlockSessionEndForever() throws {
+    @Test func stalledConnectionHasBoundedReadAndDoesNotBlockSessionEndForever() async throws {
         let root = URL(fileURLWithPath: "/tmp/lh-\(UUID().uuidString.prefix(8))", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let socket = root.appendingPathComponent("bounded.sock").path
@@ -337,7 +321,8 @@ struct ClaudeHookTests {
         try writeTestSocket(stalled, data: Data("{".utf8))
         let ending = ClaudeHookEnvelope(sessionID: UUID(), managedRunID: UUID(), payload: try payload(event: "SessionEnd"))
         try ClaudeHookClient.send(ending, socketPath: socket, authenticationToken: "token")
-        #expect(collector.waitForCount(1, timeout: 2) == [ending])
+        await waitFor("the session end's envelope", within: .seconds(2)) { !collector.envelopes.isEmpty }
+        #expect(collector.envelopes == [ending])
     }
 
     private func connectedTestSocket(_ path: String) throws -> Int32 {

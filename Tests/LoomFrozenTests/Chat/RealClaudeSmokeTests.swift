@@ -13,18 +13,8 @@ import LoomTestSupport
 @Suite(.serialized, .timeLimit(.minutes(5)),
        .enabled(if: ProcessInfo.processInfo.environment["LOOM_V16_REAL_CLAUDE"] == "1"))
 struct RealClaudeSmokeTests {
-    private static func capture(_ executable: String, _ arguments: [String], environment: [String: String]) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.environment = environment
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return String(decoding: data, as: UTF8.self)
+    private static func capture(_ executable: String, _ arguments: [String], environment: [String: String]) async throws -> String {
+        try await runToEnd(executable, arguments, environment: environment).outputText
     }
 
     private func waitUntil(_ seconds: Double, _ condition: () async -> Bool) async -> Bool {
@@ -51,9 +41,9 @@ struct RealClaudeSmokeTests {
                                  "LOGNAME": NSUserName(), "LANG": "en_US.UTF-8"]
         launchEnvironment["TMPDIR"] = env["TMPDIR"]
         let toolEnvironment = launchEnvironment
-        let capabilities = ProviderCapabilities(
-            version: try Self.capture(claude, ["--version"], environment: child).trimmingCharacters(in: .whitespacesAndNewlines),
-            help: try Self.capture(claude, ["--help"], environment: child))
+        let version = try await Self.capture(claude, ["--version"], environment: child)
+        let help = try await Self.capture(claude, ["--help"], environment: child)
+        let capabilities = ProviderCapabilities(version: version.trimmingCharacters(in: .whitespacesAndNewlines), help: help)
 
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-v16-real-\(UUID())", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

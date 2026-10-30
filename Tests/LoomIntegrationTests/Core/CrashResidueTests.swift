@@ -3,6 +3,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 @testable import LoomCoreTestRigs
 
 /// H1-B item 7: what a crash leaves behind is cleaned up at the next start, without touching
@@ -36,7 +37,7 @@ struct CrashResidueTests {
 
     // MARK: Sockets
 
-    @Test func onlySocketsNothingListensOnAreRemovedAndALiveOnesSurvive() throws {
+    @Test func onlySocketsNothingListensOnAreRemovedAndALiveOnesSurvive() async throws {
         let directory = try socketDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let stale = directory.appendingPathComponent("h-DEADBEEF.sock").path
@@ -57,8 +58,9 @@ struct CrashResidueTests {
         #expect(!exists(stale) && !exists(staleControl))
         #expect(exists(live) && exists(own) && exists(unrelated) && exists(plainFile))
         // The live server answered the probe and treated the empty connection as nothing.
-        Thread.sleep(forTimeInterval: 0.1)
-        #expect(HookDiagnostics.snapshot().malformedMessages == counters.malformedMessages)
+        await holds("the probe counts as no malformed message", for: .milliseconds(100)) {
+            HookDiagnostics.snapshot().malformedMessages == counters.malformedMessages
+        }
         // A second sweep finds nothing more.
         #expect(StaleSocketSweep.sweep(directory: directory, ownRunPrefix: "aaaa1111").removed == 0)
     }
@@ -193,7 +195,6 @@ struct CrashResidueTests {
             try FileManager.default.createDirectory(at: broken, withIntermediateDirectories: true)
             try Data("x".utf8).write(to: broken.appendingPathComponent("ledger.json"))
             _ = PreviousRunRecovery.recoverBlocking(runsDirectory: runs, current: nil, scopeTimeout: 1)
-            Thread.sleep(forTimeInterval: 0.02)
         }
         let kept = try FileManager.default.contentsOfDirectory(atPath: runs.appendingPathComponent("quarantine").path)
         #expect(kept.count == PreviousRunRecovery.quarantineKeepCount)

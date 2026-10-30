@@ -191,8 +191,9 @@ struct DisplayAndPreferencesTests {
         #expect(reloaded.current == store.current)
         #expect(reloaded.current.viewMode == .projects && reloaded.current.selectedSessionID == id)
 
-        let modified = try FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate] as? Date
-        Thread.sleep(forTimeInterval: 0.03)
+        // A date long past stands for the last write: any write now would replace it.
+        let modified = Date(timeIntervalSince1970: 1_000_000_000)
+        try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: url.path)
         try store.update { $0.viewMode = .projects } // same value
         #expect(try FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate] as? Date == modified)
         try store.update { $0.sidebarWidth = 10 }

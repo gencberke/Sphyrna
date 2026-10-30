@@ -7,7 +7,7 @@ import LoomTestSupport
 @Suite(.serialized, .processHeavy, .timeLimit(.minutes(2)))
 struct SessionTaskCreateTests {
     private static func create(taskID: UUID, operationID: UUID, claim: SessionTaskClaim,
-                               socket: String, message: String, harness: String = "codex") throws -> (Int32, String) {
+                               socket: String, message: String, harness: String = "codex") async throws -> (Int32, String) {
         let process = Process()
         process.executableURL = RuntimeFixture.binaries.appendingPathComponent("loom-hook")
         process.arguments = ["task", "create", "--task", taskID.uuidString, "--operation", operationID.uuidString,
@@ -16,14 +16,8 @@ struct SessionTaskCreateTests {
                                "SPHYRNA_TASK_SESSION_ID": claim.sessionID.uuidString,
                                "SPHYRNA_TASK_RUN_ID": claim.managedRunID.uuidString,
                                "SPHYRNA_TASK_GENERATION": claim.generation.uuidString]
-        let output = Pipe(), input = Pipe(), errors = Pipe()
-        process.standardOutput = output; process.standardInput = input; process.standardError = errors
-        try process.run()
-        input.fileHandleForWriting.write(Data(message.utf8))
-        try input.fileHandleForWriting.close()
-        process.waitUntilExit()
-        let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        return (process.terminationStatus, text)
+        let result = try await runToEnd(process, input: Data(message.utf8))
+        return (result.status, result.outputText)
     }
 
     @Test func approvingATaskStartsTheOwnedChildAndDeliversItsFirstPointerOnlyAfterReady() async throws {
@@ -43,8 +37,8 @@ struct SessionTaskCreateTests {
             #expect(try await SessionRuntimeRig.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
             let socket = try #require(await context.runtime.taskSocketPath)
             let taskID = UUID(), operationID = UUID()
-            #expect(try Self.create(taskID: taskID, operationID: operationID, claim: claim, socket: socket,
-                                    message: "fixture-round-1", harness: "claude").0 == 0)
+            #expect(try await Self.create(taskID: taskID, operationID: operationID, claim: claim, socket: socket,
+                                          message: "fixture-round-1", harness: "claude").0 == 0)
             let request = try #require(await context.runtime.openRequestSnapshot().first { $0.id == taskID })
             let childID = try #require(request.task?.childID)
             let started = try await context.runtime.approveManagedTaskRequest(taskID, expectedProvider: .claude)
@@ -78,8 +72,8 @@ struct SessionTaskCreateTests {
             let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
             #expect(try await SessionRuntimeRig.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
             let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
-            #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
-                                    message: "Never admitted", harness: "claude").0 == 0)
+            #expect(try await Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                          message: "Never admitted", harness: "claude").0 == 0)
             let childID = try #require(await context.runtime.openRequestSnapshot().first?.task?.childID)
             let approval = Task { try? await context.runtime.approveManagedTaskRequest(taskID, expectedProvider: .claude) }
             #expect(await SessionRuntimeRig.waitUntil(5) { await inputGate.entered })
@@ -114,8 +108,8 @@ struct SessionTaskCreateTests {
             let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
             #expect(try await SessionRuntimeRig.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
             let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
-            #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
-                                    message: "Must not run", harness: "codex").0 == 0)
+            #expect(try await Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                          message: "Must not run", harness: "codex").0 == 0)
             let childID = try #require(await context.runtime.openRequestSnapshot().first?.task?.childID)
             context.toolchainSwitch.slow(by: 0.7)
             let approval = Task {
@@ -156,8 +150,8 @@ struct SessionTaskCreateTests {
             let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
             #expect(try await SessionRuntimeRig.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
             let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
-            #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
-                                    message: "Do not retarget", harness: "claude").0 == 0)
+            #expect(try await Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                          message: "Do not retarget", harness: "claude").0 == 0)
             let childID = try #require(await context.runtime.openRequestSnapshot().first?.task?.childID)
             let approval = Task { try? await context.runtime.approveManagedTaskRequest(taskID, expectedProvider: .claude) }
             #expect(await SessionRuntimeRig.waitUntil(5) { await inputGate.entered })
@@ -186,7 +180,7 @@ struct SessionTaskCreateTests {
         let context = try await SessionRuntimeRig.makeContext(extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1",
             "LOOM_FAKE_TASK_HOLD_FIRST": "1"], scoped: true, durableLedger: true, claudeVersion: "2.0.0")
         defer { context.cleanup() }
-        let hold = TaskDeletionTransitionGate()
+        let hold = ActorFreezeGate()
         defer { hold.release() }
         do {
             let folder = context.root.appendingPathComponent("task-stop-move", isDirectory: true)
@@ -196,8 +190,8 @@ struct SessionTaskCreateTests {
             let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
             #expect(try await SessionRuntimeRig.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
             let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
-            #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
-                                    message: "Do not follow a moved child", harness: "codex").0 == 0)
+            #expect(try await Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                          message: "Do not follow a moved child", harness: "codex").0 == 0)
             let childID = try await context.runtime.approveManagedTaskRequest(taskID, expectedProvider: .codex)
             let childRun = try #require(await context.supervisor.session(id: childID)?.currentRun?.id)
             #expect(try await SessionRuntimeRig.waitUntil(5) {
@@ -236,15 +230,15 @@ struct SessionTaskCreateTests {
             let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
             #expect(try await SessionRuntimeRig.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
             let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
-            #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
-                                    message: "Retain until stopped", harness: "codex").0 == 0)
+            #expect(try await Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                          message: "Retain until stopped", harness: "codex").0 == 0)
             let childID = try await context.runtime.approveManagedTaskRequest(taskID, expectedProvider: .codex)
             #expect(try await SessionRuntimeRig.waitUntil(3) {
                 await context.runtime.taskLaunchContexts[taskID]?.firstInputEffect?.hasEffect == true
             })
             let pendingTask = UUID()
-            #expect(try Self.create(taskID: pendingTask, operationID: UUID(), claim: claim, socket: socket,
-                                    message: "A pending request is also forgotten", harness: "codex").0 == 0)
+            #expect(try await Self.create(taskID: pendingTask, operationID: UUID(), claim: claim, socket: socket,
+                                          message: "A pending request is also forgotten", harness: "codex").0 == 0)
             #expect(await context.runtime.openRequestSnapshot().contains { $0.id == pendingTask })
             try await context.runtime.removeFromLoomOnly(id: parent.sessionID)
             #expect(!(await context.runtime.openRequestSnapshot()).contains { $0.id == pendingTask })
@@ -269,8 +263,8 @@ struct SessionTaskCreateTests {
             let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
             #expect(try await SessionRuntimeRig.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
             let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
-            #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
-                                    message: "No process is started", harness: "claude").0 == 0)
+            #expect(try await Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                          message: "No process is started", harness: "claude").0 == 0)
             let childID = try #require(await context.runtime.openRequestSnapshot().first?.task?.childID)
             await #expect(throws: SessionTaskError.self) {
                 _ = try await context.runtime.approveManagedTaskRequest(taskID, expectedProvider: .claude)
@@ -302,8 +296,8 @@ struct SessionTaskCreateTests {
             #expect(try await SessionRuntimeRig.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
             let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
             let harness = provider == .claude ? "claude" : "codex"
-            #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
-                                    message: "No child input is admitted", harness: harness).0 == 0)
+            #expect(try await Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                          message: "No child input is admitted", harness: harness).0 == 0)
             let childID = try #require(await context.runtime.openRequestSnapshot().first?.task?.childID)
             let approval = Task { try? await context.runtime.approveManagedTaskRequest(taskID, expectedProvider: provider) }
             try #require(await SessionRuntimeRig.waitUntil(5) { await gate.entered })
@@ -341,8 +335,8 @@ struct SessionTaskCreateTests {
             let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
             #expect(try await SessionRuntimeRig.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
             let socket = try #require(await context.runtime.taskSocketPath), taskID = UUID()
-            #expect(try Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
-                                    message: "Keep this task on stop failure", harness: "codex").0 == 0)
+            #expect(try await Self.create(taskID: taskID, operationID: UUID(), claim: claim, socket: socket,
+                                          message: "Keep this task on stop failure", harness: "codex").0 == 0)
             let childID = try await context.runtime.approveManagedTaskRequest(taskID, expectedProvider: .codex)
             let childRun = try #require(await context.supervisor.session(id: childID)?.currentRun?.id)
             #expect(try await SessionRuntimeRig.waitUntil(3) {
@@ -379,20 +373,20 @@ struct SessionTaskCreateTests {
         #expect(try await SessionRuntimeRig.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
         let socket = try #require(await context.runtime.taskSocketPath)
         let taskID = UUID(), operationID = UUID()
-        let first = try Self.create(taskID: taskID, operationID: operationID, claim: claim, socket: socket, message: "Review this change")
+        let first = try await Self.create(taskID: taskID, operationID: operationID, claim: claim, socket: socket, message: "Review this change")
         #expect(first.0 == 0 && first.1.contains("pending"))
         let request = try #require(await context.runtime.openRequestSnapshot().first { $0.id == taskID })
         let grant = try #require(request.task)
         #expect(grant.childInputLimit == 3 && grant.parentWakeLimit == 6 && grant.lifetimeSeconds == 3_600)
         #expect(request.requesterID == parent.sessionID && request.choices.harness == .codex)
         #expect(try await context.catalog.session(id: grant.childID) == nil)
-        let retry = try Self.create(taskID: taskID, operationID: operationID, claim: claim, socket: socket, message: "Review this change")
+        let retry = try await Self.create(taskID: taskID, operationID: operationID, claim: claim, socket: socket, message: "Review this change")
         let afterRetry = await context.runtime.openRequestSnapshot()
         #expect(retry.0 == 0 && afterRetry.count == 1)
-        #expect(try Self.create(taskID: taskID, operationID: operationID, claim: claim, socket: socket, message: "Different text").0 == 1)
+        #expect(try await Self.create(taskID: taskID, operationID: operationID, claim: claim, socket: socket, message: "Different text").0 == 1)
         let forged = SessionTaskClaim(sessionID: claim.sessionID, managedRunID: claim.managedRunID,
                                       generation: claim.generation, credential: "wrong")
-        #expect(try Self.create(taskID: UUID(), operationID: UUID(), claim: forged, socket: socket, message: "Review").0 == 1)
+        #expect(try await Self.create(taskID: UUID(), operationID: UUID(), claim: forged, socket: socket, message: "Review").0 == 1)
         try await context.runtime.denyOpenRequest(taskID)
         #expect(await context.runtime.taskChildReservations[taskID] == nil)
         #expect(try await context.catalog.session(id: grant.childID) == nil)
@@ -408,25 +402,6 @@ private final class TaskDeletionFailure: @unchecked Sendable {
     func clear() { lock.withLock { enabled = false } }
 }
 
-private final class TaskDeletionTransitionGate: @unchecked Sendable {
-    private let condition = NSCondition()
-    private var waiting = false
-    private var released = false
-    var entered: Bool { condition.withLock { waiting } }
-    func hold() {
-        condition.lock()
-        waiting = true
-        while !released { condition.wait() }
-        condition.unlock()
-    }
-    func release() {
-        condition.lock()
-        released = true
-        condition.broadcast()
-        condition.unlock()
-    }
-}
-
 private extension SessionCatalog {
-    func holdTaskDeletionTransition(_ gate: TaskDeletionTransitionGate) { gate.hold() }
+    func holdTaskDeletionTransition(_ gate: ActorFreezeGate) { gate.hold() }
 }

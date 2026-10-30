@@ -193,9 +193,7 @@ struct B5cSurfaceTests {
         #expect(sansError < monoError, "the human-readable scope is drawn in the reading face")
     }
 
-    @Test func settingsCardKeepsItsPaperEdgeAndReactsToTone() async throws {
-        let previous = LoomTheme.ThemeState.shared.tone
-        defer { LoomTheme.ThemeState.shared.tone = previous }
+    @Test(.renderProbe) func settingsCardKeepsItsPaperEdgeAndReactsToTone() async throws {
         var inkCenters: [PaneTone: NSColor] = [:]
         var paperCanvases: [PaneTone: NSColor] = [:]
         for dark in [true, false] {
@@ -205,7 +203,7 @@ struct B5cSurfaceTests {
             window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
             defer { window.close() }
             for tone in [PaneTone.neutral, .warm, .cool] {
-                LoomTheme.ThemeState.shared.tone = tone
+                RenderProbeExclusive.holdTone(tone)
                 try await Task.sleep(for: .milliseconds(100))
                 host.layoutSubtreeIfNeeded()
                 window.displayIfNeeded()

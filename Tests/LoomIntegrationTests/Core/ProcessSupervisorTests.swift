@@ -36,27 +36,8 @@ private actor StopPhaseProbe {
     }
 }
 
-private final class CatalogTransitionGate: @unchecked Sendable {
-    private let condition = NSCondition()
-    private var waiting = false
-    private var released = false
-    var entered: Bool { condition.withLock { waiting } }
-    func hold() {
-        condition.lock()
-        waiting = true
-        while !released { condition.wait() }
-        condition.unlock()
-    }
-    func release() {
-        condition.lock()
-        released = true
-        condition.broadcast()
-        condition.unlock()
-    }
-}
-
 private extension SessionCatalog {
-    func holdForTransitionTest(_ gate: CatalogTransitionGate) { gate.hold() }
+    func holdForTransitionTest(_ gate: ActorFreezeGate) { gate.hold() }
 }
 
 private final class CountingOutputSink: TerminalOutputSink, @unchecked Sendable {
@@ -734,7 +715,7 @@ struct ProcessSupervisorTests {
     @Test func pendingResumeReservesDestinationAgainstLaunchAndAnotherAdoption() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-adopt-target-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
-        let gate = CatalogTransitionGate()
+        let gate = ActorFreezeGate()
         defer { gate.release() }
         let catalog = try SessionCatalog(url: root.appendingPathComponent("sessions.sqlite3"),
                                         existingRunTransitionFailpoint: { gate.hold() })
@@ -925,7 +906,7 @@ struct ProcessSupervisorTests {
         let id = UUID()
         let live = try await launch("stubborn", sessionID: id, supervisor: supervisor)
         _ = try await ready(terminal: live.terminal)
-        let run = try #require(live.session.currentRun?.id), probe = StopPhaseProbe(), gate = CatalogTransitionGate()
+        let run = try #require(live.session.currentRun?.id), probe = StopPhaseProbe(), gate = ActorFreezeGate()
         defer { gate.release() }
         try await supervisor.registerStopHooks(runID: run, hooks: ManagedRunStopHooks(
             prepare: { await probe.prepare() }, completed: { try await probe.complete() }))
@@ -1078,7 +1059,7 @@ struct ProcessSupervisorTests {
                                       provider: .claude, providerConversationID: "A")
         _ = try await ready(terminal: launch.terminal)
         let runID = try #require(launch.session.currentRun?.id)
-        let gate = CatalogTransitionGate()
+        let gate = ActorFreezeGate()
         defer { gate.release() }
         let hold = Task.detached { await catalog.holdForTransitionTest(gate) }
         while !gate.entered { try await Task.sleep(for: .milliseconds(1)) }
@@ -1120,7 +1101,7 @@ struct ProcessSupervisorTests {
                                       provider: .claude, providerConversationID: "A")
         _ = try await ready(terminal: launch.terminal)
         let runID = try #require(launch.session.currentRun?.id)
-        let gate = CatalogTransitionGate()
+        let gate = ActorFreezeGate()
         defer { gate.release() }
         let hold = Task.detached { await catalog.holdForTransitionTest(gate) }
         while !gate.entered { try await Task.sleep(for: .milliseconds(1)) }

@@ -26,12 +26,12 @@ struct ChatRewindDriverTests {
         let driver: ChatSessionDriver
         let id = UUID()
 
-        /// - Parameter trashDelay: how long the trash step takes (an Undo that holds the session for a while).
-        init(environment: [String: String] = [:], trashDelay: TimeInterval = 0) async throws {
+        /// - Parameter trashGate: holds the trash step until the test releases it (an Undo that holds the session for a while).
+        init(environment: [String: String] = [:], trashGate: ActorFreezeGate? = nil) async throws {
             let rig = try await Rig.make(environment: environment)
             let log = TrashLog()
             let store = ChatRewindStore(directory: rig.root.appendingPathComponent("chat-rewinds", isDirectory: true), trash: { url in
-                if trashDelay > 0 { Thread.sleep(forTimeInterval: trashDelay) }
+                trashGate?.hold()
                 log.add(url.path)
                 try FileManager.default.removeItem(at: url)
             })
@@ -283,8 +283,9 @@ struct ChatRewindDriverTests {
     }
 
     @Test func theQueuesSendNowAndResumeWaitWhileAnUndoRuns() async throws {
-        // The Undo's trash step is slow, so the Undo holds the session for a while.
-        let bench = try await Bench(trashDelay: 2)
+        // The Undo's trash step is held until the test releases it, so the Undo holds the session meanwhile.
+        let trashGate = ActorFreezeGate()
+        let bench = try await Bench(trashGate: trashGate)
         try await bench.write("c.txt", "see")
         let second = try await bench.write("d.txt", "dee")
         let d = try #require(try await bench.driver.rewindPreview(userMessageID: second).files.first { $0.hasSuffix("d.txt") })
@@ -294,11 +295,13 @@ struct ChatRewindDriverTests {
         let item = try await bench.driver.enqueue("after the undo")
 
         async let undo = bench.driver.undoRewind(rewindID: result.rewindID)
+        defer { trashGate.release() }
         #expect(await waitUntil { await bench.driver.rewindAvailability() == .notIdle })
         // No turn starts in the middle of it, from the queue either; the item stays.
         await #expect(throws: ChatDriverError.busy) { try await bench.driver.sendQueuedNow(id: item) }
         await #expect(throws: ChatDriverError.busy) { try await bench.driver.resumeQueue() }
         #expect(await bench.driver.snapshot().queue.items.map(\.id) == [item])
+        trashGate.release()
         #expect(try await undo.trashed == [c])
 
         try await bench.driver.sendQueuedNow(id: item)

@@ -3,6 +3,7 @@ import Darwin
 import Foundation
 import Testing
 @testable import LoomCore
+import LoomTestSupport
 
 /// Every tree lives under a temp directory; the real ~/.claude is never read.
 @Suite(.serialized)
@@ -305,13 +306,13 @@ struct ClaudeDataInventoryTests {
         #expect(fixture.exists("projects/p/\(Self.a).jsonl"))
     }
 
-    @Test func aBooleanPidIsNotPidOneAndTheFileNameDecides() throws {
+    @Test func aBooleanPidIsNotPidOneAndTheFileNameDecides() async throws {
         let fixture = try Fixture()
         try fixture.populate()
         let child = Process()
         child.executableURL = URL(fileURLWithPath: "/usr/bin/true")
         try child.run()
-        child.waitUntilExit()
+        _ = await exitStatus(of: child)
         // `"pid": true` read as an NSNumber is 1 (launchd, always alive); the name is a dead pid.
         try fixture.write("sessions/\(child.processIdentifier).json",
                           "{\"pid\":true,\"sessionId\":\"\(Self.a)\",\"kind\":\"interactive\"}")
@@ -388,14 +389,14 @@ struct ClaudeDataInventoryTests {
         #expect(planned.unrelatedUnreachable == ["projects/-elsewhere"])
     }
 
-    @Test func staleSessionFilesDoNotBlock() throws {
+    @Test func staleSessionFilesDoNotBlock() async throws {
         let fixture = try Fixture()
         try fixture.populate()
         // A dead process: spawn and reap one.
         let child = Process()
         child.executableURL = URL(fileURLWithPath: "/usr/bin/true")
         try child.run()
-        child.waitUntilExit()
+        _ = await exitStatus(of: child)
         try sessionFile(fixture, pid: child.processIdentifier, id: Self.a)
         // A live pid reused since: the recorded start time is not the process's.
         try sessionFile(fixture, pid: getpid(), id: Self.a, procStart: "Thu Jan  1 00:00:00 1970")

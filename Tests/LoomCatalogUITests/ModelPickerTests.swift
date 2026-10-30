@@ -213,21 +213,25 @@ private struct PickerMeasurementProbeLayout: Layout {
         otherWindow.contentView = otherContent
         defer { otherWindow.close() }
 
-        func settle() async throws {
-            try await Task.sleep(for: .milliseconds(150))
+        func draw() {
             content.layoutSubtreeIfNeeded()
             otherContent.layoutSubtreeIfNeeded()
             window.displayIfNeeded()
             otherWindow.displayIfNeeded()
         }
-        try await settle()
-        let button = try #require(accessibilityElements(in: chips).first { InkAX.label($0).hasPrefix("Model, ") })
+        func modelChip() -> AnyObject? { accessibilityElements(in: chips).first { InkAX.label($0).hasPrefix("Model, ") } }
+        await waitFor("the Model chip") { draw(); return modelChip() != nil }
+        let button = try #require(modelChip())
         #expect(button.accessibilityPerformPress?() == true)
-        try await settle()
+        await waitFor("the model picker to open") { draw(); return host.state.active?.id == "draft-model" }
         #expect(host.state.active?.id == "draft-model")
 
         shown.on = false
-        try await settle()
+        // The negative window: for 150 ms of drawing after the other strip leaves, this picker stays open.
+        await holds("this picker stays open while another model's draft strip leaves", for: .milliseconds(150)) {
+            draw()
+            return host.state.active?.id == "draft-model"
+        }
         #expect(host.state.active?.id == "draft-model", "another model's draft strip leaving the screen shut this picker")
     }
 
@@ -260,51 +264,73 @@ private struct PickerMeasurementProbeLayout: Layout {
         window.isReleasedWhenClosed = false
         window.contentView = content
         defer { host.state.dismiss(); window.close() }
-        func settle() async throws {
-            try await Task.sleep(for: .milliseconds(150))
+        func draw() {
             content.layoutSubtreeIfNeeded()
             window.displayIfNeeded()
         }
         func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap { descendants($0) } }
+        func modelChip() -> AnyObject? { accessibilityElements(in: chips).first { InkAX.label($0).hasPrefix("Model, ") } }
         func open() async throws {
-            let button = try #require(accessibilityElements(in: chips).first { InkAX.label($0).hasPrefix("Model, ") })
+            await waitFor("the Model chip") { draw(); return modelChip() != nil }
+            let button = try #require(modelChip())
             #expect(button.accessibilityPerformPress?() == true)
-            try await settle()
+            await waitFor("the model picker to open") { draw(); return host.state.active?.id == "draft-model" }
             #expect(host.state.active?.id == "draft-model")
         }
         func rail(_ name: String) async throws {
             let button = try #require(accessibilityElements(in: host.view).first { InkAX.label($0) == name })
             #expect(button.accessibilityPerformPress?() == true)
-            try await settle()
+            draw()
         }
 
-        try await settle()
         try await open()
-        let list = try #require(descendants(host.view).compactMap { $0 as? NSScrollView }.first { scroll in
-            guard let document = scroll.documentView else { return false }
-            return document.bounds.height > scroll.contentView.bounds.height + 1
-        })
+        let found = await waitFor("the picker's scrolling model list", observe: { () -> NSScrollView? in
+            draw()
+            return descendants(host.view).compactMap { $0 as? NSScrollView }.first { scroll in
+                guard let document = scroll.documentView else { return false }
+                return document.bounds.height > scroll.contentView.bounds.height + 1
+            }
+        }, until: { $0 != nil })
+        let list = try #require(found)
         try await rail("Recent models")
+        // Recent is the list's first group: the rail scrolls the list to its top.
+        let document = try #require(list.documentView)
+        let listTop = document.isFlipped ? 0 : document.bounds.height - list.contentView.bounds.height
+        await waitFor("the rail to scroll the list to Recent") {
+            draw()
+            return abs(list.contentView.bounds.minY - listTop) <= 2 * LoomTheme.ModelPicker.rowHeight
+        }
         let top = list.contentView.bounds.minY
         #expect(host.state.handle(.up))
-        try await settle()
+        await waitFor("↑ to wrap the list to its last row") {
+            draw()
+            return abs(list.contentView.bounds.minY - top) > LoomTheme.ModelPicker.bodyHeight
+        }
         let bottom = list.contentView.bounds.minY
         #expect(abs(bottom - top) > LoomTheme.ModelPicker.bodyHeight)
         #expect(host.state.handle(.down))
-        try await settle()
+        await waitFor("↓ to wrap the list back to the Recent row") {
+            draw()
+            return abs(list.contentView.bounds.minY - top) <= 2 * LoomTheme.ModelPicker.rowHeight
+        }
         #expect(abs(list.contentView.bounds.minY - top) <= 2 * LoomTheme.ModelPicker.rowHeight,
                 "wrapping returns to the Recent row, not its duplicate in the harness group")
         #expect(host.state.handle(.down) && host.state.handle(.return))
-        try await settle()
+        await waitFor("Return to choose the recent Same model") {
+            draw()
+            return model.resolvedStart(for: nil).choices.model == "same" && host.state.active == nil
+        }
         #expect(model.resolvedStart(for: nil).choices.harness == .codex)
         #expect(model.resolvedStart(for: nil).choices.model == "same")
 
         #expect(ModelPickerDraft.choose(sol, model: model, projectID: nil))
-        try await settle()
         try await open()
         try await rail("Claude · On")
         #expect(host.state.handle(.return))
-        try await settle()
+        await waitFor("Return to choose Claude's first model") {
+            draw()
+            return model.resolvedStart(for: nil).choices.harness == .claude && host.state.active == nil
+        }
         #expect(model.resolvedStart(for: nil).choices.harness == .claude)
         #expect(model.resolvedStart(for: nil).choices.model == "model-0")
 
@@ -313,7 +339,11 @@ private struct PickerMeasurementProbeLayout: Layout {
         try await rail("agy · Coming later")
         _ = host.state.handle(.down)
         #expect(host.state.handle(.return))
-        try await settle()
+        // The negative window: for 150 ms of drawing, Return on a group that is coming later chooses nothing and the picker stays.
+        await holds("Return on agy's group chooses nothing", for: .milliseconds(150)) {
+            draw()
+            return host.state.active?.id == "draft-model" && model.resolvedStart(for: nil).choices == before
+        }
         #expect(host.state.active?.id == "draft-model")
         #expect(model.resolvedStart(for: nil).choices == before)
         #expect(!window.isVisible)
@@ -347,10 +377,14 @@ private struct PickerMeasurementProbeLayout: Layout {
         window.appearance = NSAppearance(named: .aqua)
         window.contentView = content
         defer { window.close() }
-        func settle() async throws {
-            try await Task.sleep(for: .milliseconds(150))
+        func draw() {
             content.layoutSubtreeIfNeeded()
             window.displayIfNeeded()
+        }
+        /// Draws again after a change of appearance, for the evidence pictures alone: no assertion reads the result.
+        func repaint() async throws {
+            try await Task.sleep(for: .milliseconds(150)) // sleep: an evidence picture's appearance; nothing marks it drawn
+            draw()
         }
         func picture(_ name: String) throws {
             guard let path = ProcessInfo.processInfo.environment["LOOM_B4_RENDER_DIR"], !path.isEmpty else { return }
@@ -361,11 +395,19 @@ private struct PickerMeasurementProbeLayout: Layout {
             try #require(image.representation(using: .png, properties: [:]))
                 .write(to: directory.appendingPathComponent("b4-\(name)-fixture.png"))
         }
-        try await settle()
+        await waitFor("the Model, Default chip") {
+            draw()
+            return accessibilityElements(in: chips).contains { InkAX.label($0) == "Model, Default" }
+        }
         #expect(!window.isVisible)
         let modelButton = try #require(accessibilityElements(in: chips).first { InkAX.label($0) == "Model, Default" })
         #expect(modelButton.accessibilityPerformPress?() == true)
-        try await settle()
+        await waitFor("the model picker to open with its list") {
+            draw()
+            return host.state.active?.id == "draft-model" && accessibilityElements(in: host.view).contains {
+                $0.accessibilityRole?() == .list && InkAX.label($0) == "Models"
+            }
+        }
         #expect(host.state.active?.id == "draft-model")
         let panelElements = accessibilityElements(in: host.view)
         #expect(panelElements.contains { InkAX.label($0) == "Search models" })
@@ -375,54 +417,66 @@ private struct PickerMeasurementProbeLayout: Layout {
         #expect(host.state.contentSize == CGSize(width: LoomTheme.ModelPicker.width, height: LoomTheme.ModelPicker.height))
         try picture("models-paper")
         window.appearance = NSAppearance(named: .darkAqua)
-        try await settle()
+        try await repaint()
         try picture("models-ink")
         window.appearance = NSAppearance(named: .aqua)
-        try await settle()
+        try await repaint()
         let searched = ModelPickerDraft.projection(model: model, query: "sol")
         cursor.search("sol", rows: searched.rows(defaultFor: .claude))
-        try await settle()
-        #expect(accessibilityElements(in: host.view).contains {
-            $0.accessibilityRole?() == .button && InkAX.label($0).hasPrefix("Sol")
-        })
+        func solRow() -> Bool {
+            accessibilityElements(in: host.view).contains { $0.accessibilityRole?() == .button && InkAX.label($0).hasPrefix("Sol") }
+        }
+        await waitFor("the search for sol to show Sol") { draw(); return solRow() }
+        #expect(solRow())
         #expect(host.state.handle(.return))
-        try await settle()
+        await waitFor("Return to choose Sol and close the picker") {
+            draw()
+            return model.resolvedStart(for: nil).choices.model == "gpt-sol" && host.state.active == nil
+        }
         #expect(model.resolvedStart(for: nil).choices == HarnessLaunchChoices(harness: .codex, model: "gpt-sol", effort: "high", mode: .askBeforeEdits))
         #expect(host.state.active == nil && !model.canSendDraft(projectID: nil))
         let effort = try #require(accessibilityElements(in: chips).first { InkAX.label($0) == "Effort, High" })
         #expect(effort.accessibilityPerformPress?() == true)
-        try await settle()
+        func effortMenu() -> Bool {
+            accessibilityElements(in: host.view).contains { $0.accessibilityRole?() == .menu && InkAX.label($0) == "Effort for Sol" }
+        }
+        await waitFor("the effort menu for Sol to open") { draw(); return host.state.active?.id == "draft-effort" && effortMenu() }
         #expect(host.state.active?.id == "draft-effort")
-        #expect(accessibilityElements(in: host.view).contains {
-            $0.accessibilityRole?() == .menu && InkAX.label($0) == "Effort for Sol"
-        })
+        #expect(effortMenu())
         #expect(host.state.contentSize.width == LoomTheme.ModelPicker.effortWidth)
         try picture("effort-paper")
         window.appearance = NSAppearance(named: .darkAqua)
-        try await settle()
+        try await repaint()
         try picture("effort-ink")
         window.appearance = NSAppearance(named: .aqua)
-        try await settle()
+        try await repaint()
         #expect(host.state.handle(.down) && host.state.handle(.return))
-        try await settle()
+        await waitFor("the default effort to be chosen and the chip to say so") {
+            draw()
+            return host.state.active == nil && accessibilityElements(in: chips).contains { InkAX.label($0) == "Effort, Default" }
+        }
         #expect(model.resolvedStart(for: nil).choices.effort == nil && host.state.active == nil)
         #expect(accessibilityElements(in: chips).contains { InkAX.label($0) == "Effort, Default" })
         let current = model.resolvedStart(for: nil).choices
         let modelAgain = try #require(accessibilityElements(in: chips).first { InkAX.label($0).hasPrefix("Model, ") })
         #expect(modelAgain.accessibilityPerformPress?() == true)
-        try await settle()
+        await waitFor("the model picker to open again") { draw(); return host.state.active?.id == "draft-model" }
         #expect(host.state.handle(.escape) && model.resolvedStart(for: nil).choices == current)
         #expect(modelAgain.accessibilityPerformPress?() == true)
-        try await settle()
         // agy is coming later (D-120), so pi is the group that is not available and sends the person to Connections.
-        let off = try #require(accessibilityElements(in: host.view).first { InkAX.label($0) == "pi · Not found" })
+        func element(_ label: String) -> AnyObject? { accessibilityElements(in: host.view).first { InkAX.label($0) == label } }
+        await waitFor("the picker to show pi's group as not found") { draw(); return element("pi · Not found") != nil }
+        let off = try #require(element("pi · Not found"))
         #expect(off.accessibilityPerformPress?() == true)
-        try await settle()
+        await waitFor("pi's group to offer Install…") { draw(); return element("Install…") != nil }
         var openedConnections = false
         model.onShowSettings = { openedConnections = $0 == .connections }
-        let turnOn = try #require(accessibilityElements(in: host.view).first { InkAX.label($0) == "Install…" })
+        let turnOn = try #require(element("Install…"))
         #expect(turnOn.accessibilityPerformPress?() == true)
-        try await settle()
+        await waitFor("Install… to open Connections and close the picker") {
+            draw()
+            return openedConnections && host.state.active == nil
+        }
         #expect(openedConnections && host.state.active == nil)
 
         // A real hosted scroll moves the rail's active group without a probe or scan.
@@ -431,12 +485,15 @@ private struct PickerMeasurementProbeLayout: Layout {
         }, readAt: Date()))
         let opener = try #require(accessibilityElements(in: chips).first { InkAX.label($0).hasPrefix("Model, ") })
         #expect(opener.accessibilityPerformPress?() == true)
-        try await settle()
         func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap { descendants($0) } }
-        let list = try #require(descendants(host.view).compactMap { $0 as? NSScrollView }.first { scroll in
-            guard let document = scroll.documentView else { return false }
-            return document.bounds.height > scroll.contentView.bounds.height + 1
-        })
+        let found = await waitFor("the picker's scrolling model list", observe: { () -> NSScrollView? in
+            draw()
+            return descendants(host.view).compactMap { $0 as? NSScrollView }.first { scroll in
+                guard let document = scroll.documentView else { return false }
+                return document.bounds.height > scroll.contentView.bounds.height + 1
+            }
+        }, until: { $0 != nil })
+        let list = try #require(found)
         let document = try #require(list.documentView)
         let limit = document.bounds.height - list.contentView.bounds.height
         func scroll(to y: CGFloat) {
@@ -444,10 +501,10 @@ private struct PickerMeasurementProbeLayout: Layout {
             list.reflectScrolledClipView(list.contentView)
         }
         scroll(to: document.isFlipped ? 0 : limit)
-        try await settle()
+        await waitFor("the scroll to the top to make Recent the active group") { draw(); return cursor.activeSection == .recent }
         #expect(cursor.activeSection == .recent)
         scroll(to: document.isFlipped ? limit : 0)
-        try await settle()
+        await waitFor("the scroll to the bottom to move the active group off Recent") { draw(); return cursor.activeSection != .recent }
         #expect(cursor.activeSection != .recent)
         host.state.dismiss()
         #expect(!window.isVisible)
@@ -465,12 +522,15 @@ private struct PickerMeasurementProbeLayout: Layout {
         window.isReleasedWhenClosed = false
         window.contentView = hosting
         defer { window.close() }
-        try await Task.sleep(for: .milliseconds(150))
-        hosting.layoutSubtreeIfNeeded()
-        window.displayIfNeeded()
-        let menu = try #require(accessibilityElements(in: hosting).first {
-            $0.accessibilityRole?() == .menu && InkAX.label($0) == "Bounded layout"
-        })
+        func boundedMenu() -> AnyObject? {
+            accessibilityElements(in: hosting).first { $0.accessibilityRole?() == .menu && InkAX.label($0) == "Bounded layout" }
+        }
+        await waitFor("the Bounded layout menu") {
+            hosting.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            return boundedMenu() != nil
+        }
+        let menu = try #require(boundedMenu())
         #expect(abs(InkAX.frame(menu).width - 156) < 1 && abs(InkAX.frame(menu).height - 48) < 1)
         #expect(probe.unboundedMeasurements.isEmpty, "the parent layout must never measure the child with an oversized proposal")
         #expect(accessibilityElements(in: menu).contains { $0.accessibilityRole?() == .button && InkAX.label($0) == "Choose" })
@@ -486,19 +546,25 @@ private struct PickerMeasurementProbeLayout: Layout {
         window.isReleasedWhenClosed = false
         window.contentView = hosting
         defer { window.close() }
-        func settle() async throws {
-            try await Task.sleep(for: .milliseconds(150))
+        func draw() {
             hosting.layoutSubtreeIfNeeded()
             window.displayIfNeeded()
         }
-        try await settle()
+        await waitFor("the nested view's first body") { draw(); return probe.childBodies > 0 }
         let before = probe.childBodies
         #expect(before > 0)
         probe.unrelated += 1
-        try await settle()
+        // The negative window: for 150 ms of drawing, the parent's unrelated change re-evaluates no nested body.
+        await holds("the nested view stays quiet for its parent's unrelated change", for: .milliseconds(150)) {
+            draw()
+            return probe.childBodies == before
+        }
         #expect(probe.childBodies == before, "an unchanged nested host should not redraw when its parent alone changes")
         probe.title = "Second"
-        try await settle()
+        await waitFor("the new title to reach the nested view") {
+            draw()
+            return accessibilityElements(in: hosting).contains { (InkAX.value($0) ?? InkAX.label($0)) == "Second" }
+        }
         #expect(accessibilityElements(in: hosting).contains { (InkAX.value($0) ?? InkAX.label($0)) == "Second" },
                 "a real content change still reaches the nested view")
     }
@@ -514,12 +580,15 @@ private struct PickerMeasurementProbeLayout: Layout {
         window.isReleasedWhenClosed = false
         window.contentView = hosting
         defer { window.close() }
-        try await Task.sleep(for: .milliseconds(150))
-        hosting.layoutSubtreeIfNeeded()
-        window.displayIfNeeded()
-        let menu = try #require(accessibilityElements(in: hosting).first {
-            $0.accessibilityRole?() == .menu && InkAX.label($0) == "Sizing test"
-        } as? NSView)
+        func sizingMenu() -> AnyObject? {
+            accessibilityElements(in: hosting).first { $0.accessibilityRole?() == .menu && InkAX.label($0) == "Sizing test" }
+        }
+        await waitFor("the Sizing test menu") {
+            hosting.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            return sizingMenu() != nil
+        }
+        let menu = try #require(sizingMenu() as? NSView)
         let frame = InkAX.frame(menu)
         #expect(abs(frame.width - 156) < 1 && abs(frame.height - 48) < 1, "SwiftUI still measures the actual content")
         #expect(menu.intrinsicContentSize.width == NSView.noIntrinsicMetric && menu.intrinsicContentSize.height == NSView.noIntrinsicMetric,
@@ -550,20 +619,25 @@ private struct PickerMeasurementProbeLayout: Layout {
         window.isReleasedWhenClosed = false
         window.contentView = content
         defer { host.state.dismiss(); window.close() }
-        func settle() async throws {
-            try await Task.sleep(for: .milliseconds(150))
+        func draw() {
             content.layoutSubtreeIfNeeded()
             window.displayIfNeeded()
         }
-        func openEffort() async throws {
-            let button = try #require(accessibilityElements(in: chips).first { InkAX.label($0).hasPrefix("Effort, ") })
+        func effortChip() -> AnyObject? { accessibilityElements(in: chips).first { InkAX.label($0).hasPrefix("Effort, ") } }
+        /// Opens the effort menu and waits for it to be measured with `menu`, the model's own menu.
+        func openEffort(_ menu: String) async throws {
+            await waitFor("the Effort chip") { draw(); return effortChip() != nil }
+            let button = try #require(effortChip())
             #expect(button.accessibilityPerformPress?() == true)
-            try await settle()
+            await waitFor("the effort menu \(menu) to open") {
+                draw()
+                return host.state.active?.id == "draft-effort" && host.state.contentSize.height > 0
+                    && accessibilityElements(in: host.view).contains { $0.accessibilityRole?() == .menu && InkAX.label($0) == menu }
+            }
             #expect(host.state.active?.id == "draft-effort")
         }
 
-        try await settle()
-        try await openEffort()
+        try await openEffort("Effort for Sol")
         let singleLevel = host.state.contentSize
         #expect(singleLevel.width == LoomTheme.ModelPicker.effortWidth && singleLevel.height > 0)
         #expect(accessibilityElements(in: host.view).contains {
@@ -574,8 +648,12 @@ private struct PickerMeasurementProbeLayout: Layout {
         content.setFrameSize(NSSize(width: 650, height: 480))
         host.view.frame = content.bounds
         chips.frame.origin.y = 350
-        try await settle()
-        try await openEffort()
+        draw()
+        try await openEffort("Effort for Same Codex")
+        await waitFor("the menu to measure its second effort row") {
+            draw()
+            return abs(host.state.contentSize.height - singleLevel.height - LoomTheme.ModelPicker.rowHeight) < 1
+        }
         #expect(host.state.contentSize.width == singleLevel.width)
         #expect(abs(host.state.contentSize.height - singleLevel.height - LoomTheme.ModelPicker.rowHeight) < 1,
                 "a second effort row increases the measured menu by one row")
@@ -585,23 +663,33 @@ private struct PickerMeasurementProbeLayout: Layout {
         #expect(InkAX.frame(menu).width > 0 && InkAX.frame(menu).height > 0)
         let ultra = try #require(accessibilityElements(in: host.view).first { InkAX.identifier($0) == "draft-effort-choice-Ultra" })
         #expect(ultra.accessibilityPerformPress?() == true)
-        try await settle()
+        await waitFor("Ultra to be chosen and the menu to close") {
+            draw()
+            return host.state.active == nil && model.resolvedStart(for: nil).choices.effort == "ultra"
+        }
         #expect(host.state.active == nil && model.resolvedStart(for: nil).choices.effort == "ultra")
 
-        try await openEffort()
+        try await openEffort("Effort for Same Codex")
         let manyLevels = ["low", "medium", "high", "xhigh", "max", "ultra", "super", "deep", "extra"]
         model.modelCatalog.apply(HarnessReading(provider: .codex, models: [
             HarnessModel(id: "same", displayName: "Same Codex", isDefault: false, efforts: manyLevels)
         ], readAt: Date()))
-        try await settle()
-        #expect(host.state.active?.id == "draft-effort")
         let cappedHeight = 2 * LoomTheme.ModelPicker.effortInset + LoomTheme.ModelPicker.effortHeaderHeight
             + LoomTheme.ModelPicker.effortListMaxHeight
+        await waitFor("the open menu to resize to its capped list and show Super") {
+            draw()
+            return host.state.contentSize.height == cappedHeight
+                && accessibilityElements(in: host.view).contains { InkAX.identifier($0) == "draft-effort-choice-Super" }
+        }
+        #expect(host.state.active?.id == "draft-effort")
         #expect(host.state.contentSize.width == LoomTheme.ModelPicker.effortWidth && host.state.contentSize.height == cappedHeight,
                 "an open menu resizes to its capped list when a cached reading adds levels")
         #expect(accessibilityElements(in: host.view).contains { InkAX.identifier($0) == "draft-effort-choice-Super" })
         #expect(host.state.handle(.down) && host.state.handle(.return))
-        try await settle()
+        await waitFor("Super to be chosen and the menu to close") {
+            draw()
+            return host.state.active == nil && model.resolvedStart(for: nil).choices.effort == "super"
+        }
         #expect(host.state.active == nil && model.resolvedStart(for: nil).choices.effort == "super")
         #expect(!window.isVisible)
     }
@@ -626,9 +714,11 @@ private struct PickerMeasurementProbeLayout: Layout {
         window.isReleasedWhenClosed = false
         window.contentView = hosting
         defer { window.close() }
-        try await Task.sleep(for: .milliseconds(150))
-        hosting.layoutSubtreeIfNeeded()
-        window.displayIfNeeded()
+        await waitFor("the composer's Model, Plain chip") {
+            hosting.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            return accessibilityElements(in: hosting).contains { InkAX.label($0) == "Model, Plain" }
+        }
         let elements = accessibilityElements(in: hosting)
         #expect(elements.contains { InkAX.label($0) == "Model, Plain" })
         #expect(!elements.contains { InkAX.label($0).hasPrefix("Effort,") })

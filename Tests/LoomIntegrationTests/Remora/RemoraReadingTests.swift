@@ -24,7 +24,9 @@ struct RemoraReadingTests {
     @Test func theCountsComeAfterThePackAndBeforeAnyTextAndNameTheScopedProject() async throws {
         let rig = try RemoraHostRig()
         try await seedNote(rig)
-        let host = rig.makeHost(script: ["LOOM_FAKE_REMORA": "slow"], withTranscript: true)
+        // A slow answer of four deltas (400 ms apart, about 1.6 s): the child still runs when the counts are read.
+        let host = rig.makeHost(script: ["LOOM_FAKE_REMORA": "slow", "LOOM_FAKE_REMORA_ANSWER": "The answer, in a few pieces."],
+                                withTranscript: true)
         let events = Events()
         rig.forgetProcesses()
         let running = Task {
@@ -32,7 +34,7 @@ struct RemoraReadingTests {
                            onReading: { events.items.append("reading"); events.readings.append($0) },
                            onText: { _ in events.items.append("text") })
         }
-        // The child is running (a slow answer, 400 ms between deltas) and the counts are already there.
+        // The child is running and the counts are already there.
         _ = try #require(await rig.pid())
         #expect(events.readings == [RemoraReading(sessions: 1, projectNotes: 1, project: .init(id: rig.project, name: "loom"))])
         guard case .answered = await running.value else { Issue.record("the call did not finish"); await rig.finish(); return }

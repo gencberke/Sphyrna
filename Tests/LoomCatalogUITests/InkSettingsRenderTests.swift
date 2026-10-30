@@ -11,7 +11,7 @@ import Testing
 /// the tones in `LOOM_SETTINGS_RENDER_TONES`, `neutral` by default) to be set beside the reference; without it each section is drawn once
 /// in Ink and the test only checks that something was drawn.
 @MainActor
-@Suite(.serialized, .timeLimit(.minutes(5)))
+@Suite(.serialized, .timeLimit(.minutes(5)), .renderProbe)
 struct InkSettingsRenderTests {
     private let size = NSSize(width: LoomTheme.Settings.width, height: LoomTheme.Settings.height)
     private static let now = Date(timeIntervalSince1970: 1_791_374_400)
@@ -37,9 +37,8 @@ struct InkSettingsRenderTests {
     /// Draws a view in a window nobody sees and returns what it drew; writes the picture when a folder is set.
     private func render<V: View>(_ view: V, name: String, dark: Bool, tone: PaneTone,
                                      after: (() -> Void)? = nil) async throws -> NSBitmapImageRep {
-        let previous = LoomTheme.ThemeState.shared.tone
-        LoomTheme.ThemeState.shared.tone = tone
-        defer { LoomTheme.ThemeState.shared.tone = previous }
+        let previous = RenderProbeExclusive.holdTone(tone)
+        defer { RenderProbeExclusive.holdTone(previous) }
         let hosting = NSHostingController(rootView: view.frame(width: size.width, height: size.height)
             .environment(\.colorScheme, dark ? .dark : .light))
         hosting.sizingOptions = []

@@ -21,18 +21,8 @@ enum AgentsLiveRealShared {
         }
     }
 
-    static func capture(_ executable: String, _ arguments: [String], environment: [String: String]) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.environment = environment
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return String(decoding: data, as: UTF8.self)
+    static func capture(_ executable: String, _ arguments: [String], environment: [String: String]) async throws -> String {
+        try await runToEnd(executable, arguments, environment: environment).outputText
     }
 
     /// The runtime of one real test: the isolated profile, a run host, the hook helper, a catalog in a temporary folder.
@@ -51,9 +41,9 @@ enum AgentsLiveRealShared {
                                      "LOGNAME": NSUserName(), "LANG": "en_US.UTF-8"]
             launchEnvironment["TMPDIR"] = env["TMPDIR"]
             let toolEnvironment = launchEnvironment
-            let capabilities = ProviderCapabilities(
-                version: try AgentsLiveRealShared.capture(claude, ["--version"], environment: child).trimmingCharacters(in: .whitespacesAndNewlines),
-                help: try AgentsLiveRealShared.capture(claude, ["--help"], environment: child))
+            let version = try await AgentsLiveRealShared.capture(claude, ["--version"], environment: child)
+            let help = try await AgentsLiveRealShared.capture(claude, ["--help"], environment: child)
+            let capabilities = ProviderCapabilities(version: version.trimmingCharacters(in: .whitespacesAndNewlines), help: help)
 
             let root = FileManager.default.temporaryDirectory.appendingPathComponent("loom-v23-real-\(UUID())", isDirectory: true)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

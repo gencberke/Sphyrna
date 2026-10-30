@@ -158,7 +158,7 @@ struct OptimizerUITests {
         index.setBlocking(true)
         usage.windowActivityChanged(false)
         usage.windowActivityChanged(true) // the window came up while the first page was still loading
-        while index.refreshCalls == 0 { await Task.yield() }
+        await waitFor("the index's first refresh") { index.refreshCalls > 0 }
         usage.refresh(reason: .launch)    // the first page finished
         index.release()
         await usage.settle()
@@ -233,7 +233,7 @@ struct OptimizerUITests {
         let usage = usageModel(index)
         index.setBlocking(true)
         usage.refresh(reason: .launch)
-        while index.refreshCalls == 0 { await Task.yield() }
+        await waitFor("the index's first refresh") { index.refreshCalls > 0 }
         #expect(usage.state == .idle)
         #expect(usage.chip == nil, "a warm launch keeps the chip hidden until the scan ends")
         index.release()
@@ -246,7 +246,7 @@ struct OptimizerUITests {
         let usage = usageModel(index)
         index.setBlocking(true)
         usage.refresh(reason: .launch)
-        while index.refreshCalls == 0 { await Task.yield() }
+        await waitFor("the index's first refresh") { index.refreshCalls > 0 }
         #expect(usage.state == .indexing)
         #expect(usage.chip?.kind == .indexing)
         index.release()
@@ -262,7 +262,7 @@ struct OptimizerUITests {
         index.setBlocking(true)
         usage.windowActivityChanged(false)
         usage.windowActivityChanged(true)
-        while index.refreshCalls < 2 { await Task.yield() }
+        await waitFor("the retry's refresh") { index.refreshCalls >= 2 }
         guard case .failed = usage.state else { Issue.record("a retry must not flip to \(usage.state)"); return }
         #expect(usage.chip == nil)
         index.release()

@@ -67,29 +67,24 @@ struct DiagnosticsExportTests {
         #expect(ClaudeHookClient.failureDescription(ClaudeHookTransportError.timeout("connect")) == "connect timed out")
     }
 
-    @Test func theRealHelperExitsNonZeroWhenNothingListensAndZeroWhenLoomAnswers() throws {
+    @Test func theRealHelperExitsNonZeroWhenNothingListensAndZeroWhenLoomAnswers() async throws {
         let root = URL(fileURLWithPath: "/tmp/lh-\(UUID().uuidString.prefix(8))", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: root) }
-        func run(socket: String, token: String) throws -> Int32 {
+        func run(socket: String, token: String) async throws -> Int32 {
             let process = Process()
             process.executableURL = RuntimeFixture.binaries.appendingPathComponent("loom-hook")
             process.environment = ["LOOM_HOOK_SOCKET": socket, "LOOM_HOOK_TOKEN": token,
                                    "LOOM_SESSION_ID": UUID().uuidString, "LOOM_MANAGED_RUN_ID": UUID().uuidString]
-            let input = Pipe()
-            process.standardInput = input
-            try process.run()
-            try input.fileHandleForWriting.write(contentsOf: Data(#"{"session_id":"s","hook_event_name":"SessionStart"}"#.utf8))
-            try input.fileHandleForWriting.close()
-            process.waitUntilExit()
-            return process.terminationStatus
+            let input = Data(#"{"session_id":"s","hook_event_name":"SessionStart"}"#.utf8)
+            return try await runToEnd(process, input: input).status
         }
-        #expect(try run(socket: root.appendingPathComponent("none.sock").path, token: "t") == 1)
+        #expect(try await run(socket: root.appendingPathComponent("none.sock").path, token: "t") == 1)
         let live = root.appendingPathComponent("live.sock").path
         let server = try ClaudeHookServer(socketPath: live, authenticationToken: "right") { _ in }
         defer { server.stop() }
-        #expect(try run(socket: live, token: "wrong") == 1)
-        #expect(try run(socket: live, token: "right") == 0)
+        #expect(try await run(socket: live, token: "wrong") == 1)
+        #expect(try await run(socket: live, token: "right") == 0)
     }
 
     // MARK: Export

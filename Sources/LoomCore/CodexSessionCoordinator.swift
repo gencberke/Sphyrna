@@ -73,12 +73,18 @@ public actor CodexSessionCoordinator {
     private var issueHandler: (@Sendable (String) -> Void)?
     private var serverGone: (@Sendable () async -> Bool)?
 
+    /// How long a join waits for the server's answer before it fails as a timeout.
+    public static let defaultJoinTimeout: TimeInterval = 20
+    private let joinTimeout: TimeInterval
+
     public init(
         client: CodexAppServerClient, supervisor: ProcessSupervisor,
         adapter: CodexSessionAdapter,
-        router: CodexSessionRouter = CodexSessionRouter()
+        router: CodexSessionRouter = CodexSessionRouter(),
+        joinTimeout: TimeInterval = CodexSessionCoordinator.defaultJoinTimeout
     ) {
         self.client = client
+        self.joinTimeout = joinTimeout
         self.supervisor = supervisor
         self.adapter = adapter
         self.router = router
@@ -452,11 +458,11 @@ public actor CodexSessionCoordinator {
         let binding = join.binding, generation = join.generation, attemptID = UUID()
         join.attemptID = attemptID
         let barrier = cleanupByThread[binding.threadID]
-        let client = self.client
+        let client = self.client, timeout = joinTimeout
         let task = Task {
             if let barrier { try await barrier.value }
             // Never cancel a sent RPC: cancellation is not a server rollback.
-            try await client.joinThread(binding.threadID)
+            try await client.joinThread(binding.threadID, timeout: timeout)
         }
         join.task = task
         joins[runID] = join

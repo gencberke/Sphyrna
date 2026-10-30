@@ -3,6 +3,7 @@ import Foundation
 import Testing
 import SwiftTerm
 @testable import LoomTerminal
+import LoomTestSupport
 
 @MainActor
 struct TerminalProductTests {
@@ -17,7 +18,7 @@ struct TerminalProductTests {
         #expect(surface.view.font.pointSize == 14)
     }
 
-    @Test func multipleDroppedPathsAreShellQuotedWithoutEnter() throws {
+    @Test func multipleDroppedPathsAreShellQuotedWithoutEnter() async throws {
         let urls = [URL(fileURLWithPath: "/tmp/çok boşluk 🧵"), URL(fileURLWithPath: "/tmp/a'b\"c"),
                     URL(fileURLWithPath: "/tmp/line\nreturn\rtab\tescape\u{1b}")]
         let text = LoomTerminalView.quotedPaths(urls)
@@ -26,13 +27,9 @@ struct TerminalProductTests {
         let shell = Process()
         shell.executableURL = URL(fileURLWithPath: "/bin/zsh")
         shell.arguments = ["-f", "-c", "printf '%s\\0' " + text]
-        let output = Pipe()
-        shell.standardOutput = output
-        try shell.run()
-        let bytes = output.fileHandleForReading.readDataToEndOfFile()
-        shell.waitUntilExit()
-        #expect(shell.terminationStatus == 0)
-        #expect(bytes == Data((urls.map(\.path).joined(separator: "\0") + "\0").utf8))
+        let result = try await runToEnd(shell)
+        #expect(result.status == 0)
+        #expect(result.output == Data((urls.map(\.path).joined(separator: "\0") + "\0").utf8))
         #expect(LoomTerminalView.quotedPaths([URL(string: "https://example.com")!]).isEmpty)
     }
 

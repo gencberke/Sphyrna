@@ -3,7 +3,8 @@ import Testing
 
 // The one bounded wait of the tests (DEVELOPMENT §3.1): a test waits for a condition, never for time, and a wait that runs
 // out names what it waited for and the last value it saw. The waits record their own issue, so a call site needs no
-// `#expect` around them; they return whether the condition held, for a test that cannot go on without it.
+// `#expect` around them; they return whether the condition held, for a test that cannot go on without it. They run on the
+// caller's actor (`#isolation`), so a condition may read what a main-actor test holds.
 
 /// The longest a wait in a test lasts unless it says otherwise. A condition that needs longer names its reason at the call.
 public let defaultWait: Duration = .seconds(10)
@@ -14,7 +15,7 @@ public let waitPoll: Duration = .milliseconds(10)
 /// Waits until `condition` holds, for `within` at most. On a timeout it records "waited <s> s for <what>".
 @discardableResult
 public func waitFor(_ what: @autoclosure () -> String, within: Duration = defaultWait,
-                    sourceLocation: SourceLocation = #_sourceLocation,
+                    sourceLocation: SourceLocation = #_sourceLocation, isolation: isolated (any Actor)? = #isolation,
                     _ condition: () async throws -> Bool) async rethrows -> Bool {
     let clock = ContinuousClock()
     let start = clock.now
@@ -31,7 +32,7 @@ public func waitFor(_ what: @autoclosure () -> String, within: Duration = defaul
 /// records "waited <s> s for <what>; last saw <value>".
 @discardableResult
 public func waitFor<Value>(_ what: @autoclosure () -> String, within: Duration = defaultWait,
-                           sourceLocation: SourceLocation = #_sourceLocation,
+                           sourceLocation: SourceLocation = #_sourceLocation, isolation: isolated (any Actor)? = #isolation,
                            observe: () async throws -> Value, until: (Value) -> Bool) async rethrows -> Value {
     let clock = ContinuousClock()
     let start = clock.now
@@ -51,7 +52,7 @@ public func waitFor<Value>(_ what: @autoclosure () -> String, within: Duration =
 /// statement of how long "nothing happens" is watched; it records "<what> broke after <s> s" when it does not hold.
 @discardableResult
 public func holds(_ what: @autoclosure () -> String, for window: Duration,
-                  sourceLocation: SourceLocation = #_sourceLocation,
+                  sourceLocation: SourceLocation = #_sourceLocation, isolation: isolated (any Actor)? = #isolation,
                   _ condition: () async throws -> Bool) async rethrows -> Bool {
     let clock = ContinuousClock()
     let start = clock.now

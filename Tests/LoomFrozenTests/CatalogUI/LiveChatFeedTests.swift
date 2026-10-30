@@ -84,7 +84,7 @@ actor ScriptedLiveSource: ChatLiveSource {
 
 extension ChatHosted {
     /// The live chat's feed: the transcript's history above the driver's live model in one presentation, kept consistent
-    /// with a full rebuild after every change (`ChatPresentation.verifiesRows`).
+    /// with a full rebuild after every change (`ChatRowCheck`).
     @MainActor
     @Suite
     struct LiveChatFeedTests {
@@ -109,27 +109,6 @@ extension ChatHosted {
             }
 
             func remove() { try? FileManager.default.removeItem(at: root) }
-        }
-
-        /// Mismatches the row check reported.
-        final class Reports: @unchecked Sendable {
-            var mismatches: [String] = []
-        }
-
-        private func verifyRows() -> Reports {
-            let reports = Reports()
-            #if DEBUG
-            ChatPresentation.verifiesRows = true
-            ChatPresentation.onMismatch = { reports.mismatches.append($0) }
-            #endif
-            return reports
-        }
-
-        private func stopVerifying() {
-            #if DEBUG
-            ChatPresentation.verifiesRows = false
-            ChatPresentation.onMismatch = nil
-            #endif
         }
 
         private func waitUntil(_ timeout: Double = 5, _ condition: () -> Bool) async -> Bool {
@@ -165,8 +144,6 @@ extension ChatHosted {
         }
 
         @Test func theHandOffShowsTheBoundaryTurnOnceAndNothingIsDrawnTwice() async throws {
-            let reports = verifyRows()
-            defer { stopVerifying() }
             // Two turns before the run, and the run's first turn, which the CLI already wrote.
             let profile = try Profile(lines: ChatFixture.turn(1) + ChatFixture.turn(2, start: 10) + [
                 ChatFixture.user("prompt 3", uuid: "u3", at: 20),
@@ -179,6 +156,7 @@ extension ChatHosted {
             let feed = LiveChatFeed(source: source, card: card, conversationID: profile.id, configDirectory: profile.root,
                                     workingDirectory: nil)
             let stream = ChatHostedStream()
+            let rowCheck = ChatRowCheck(feed)
             feed.attach(stream.controller)
             feed.start()
             #expect(await waitUntil { feed.phase == .ready && Self.prompts(feed.presentation.model).count == 3 })
@@ -196,13 +174,11 @@ extension ChatHosted {
             #expect(feed.presentation.model.rowInputsEqual(feed.joinedModelForTesting))
             #expect(stream.controller.rows.filter { if case .user = $0.kind { true } else { false } }.count == 4)
             #expect(feed.snapshotsAsked == 0)
-            #expect(reports.mismatches.isEmpty, "\(reports.mismatches)")
+            rowCheck.expectClean("the feed")
             stream.controller.stop()
         }
 
         @Test func aNewRunReadsTheHistoryAgainWithWhatRanInTheTerminalBetween() async throws {
-            let reports = verifyRows()
-            defer { stopVerifying() }
             let profile = try Profile(lines: [ChatFixture.user("prompt 1", uuid: "u1", at: 0),
                                               ChatFixture.assistant("m1", uuid: "a1", blocks: [ChatFixture.text("answer 1")], at: 1)])
             defer { profile.remove() }
@@ -212,6 +188,7 @@ extension ChatHosted {
             let feed = LiveChatFeed(source: source, card: card, conversationID: profile.id, configDirectory: profile.root,
                                     workingDirectory: nil)
             let stream = ChatHostedStream()
+            let rowCheck = ChatRowCheck(feed)
             feed.attach(stream.controller)
             feed.start()
             #expect(await waitUntil { feed.phase == .ready && Self.prompts(feed.presentation.model) == ["prompt 1"] })
@@ -227,15 +204,13 @@ extension ChatHosted {
             #expect(await waitUntil { Self.prompts(feed.presentation.model).count == 4 })
             #expect(Self.prompts(feed.presentation.model) == ["prompt 1", "prompt 2", "prompt 3", "prompt 4"])
             #expect(feed.presentation.model.rowInputsEqual(feed.joinedModelForTesting))
-            #expect(reports.mismatches.isEmpty, "\(reports.mismatches)")
+            rowCheck.expectClean("the feed")
             stream.controller.stop()
         }
 
         /// Chat → Terminal → Chat, then a run that added nothing (stopped at once) and the terminal again: each new run
         /// reads the history again by its generation, and the earlier runs' face markers stay, at their time.
         @Test func aNewRunThatAddedNothingStillReadsTheHistoryAgainAndEarlierMarkersStay() async throws {
-            let reports = verifyRows()
-            defer { stopVerifying() }
             let profile = try Profile(lines: [ChatFixture.user("prompt 1", uuid: "u1", at: 0),
                                               ChatFixture.assistant("m1", uuid: "a1", blocks: [ChatFixture.text("answer 1")], at: 1)])
             defer { profile.remove() }
@@ -247,6 +222,7 @@ extension ChatHosted {
             let feed = LiveChatFeed(source: source, card: card, conversationID: profile.id, configDirectory: profile.root,
                                     workingDirectory: nil)
             let stream = ChatHostedStream()
+            let rowCheck = ChatRowCheck(feed)
             feed.attach(stream.controller)
             feed.start()
             #expect(await waitUntil { feed.phase == .ready && Self.prompts(feed.presentation.model) == ["prompt 1"] })
@@ -270,7 +246,7 @@ extension ChatHosted {
             #expect(await waitUntil { Self.prompts(feed.presentation.model) == ["prompt 1", "prompt 2", "prompt 3"] })
             #expect(markers() == [.face(.continuedInTerminal)])
             #expect(feed.presentation.model.rowInputsEqual(feed.joinedModelForTesting))
-            #expect(reports.mismatches.isEmpty, "\(reports.mismatches)")
+            rowCheck.expectClean("the feed")
             stream.controller.stop()
         }
 
@@ -401,12 +377,11 @@ extension ChatHosted {
         }
 
         @Test func aLostChangeAsksTheDriverForASnapshot() async throws {
-            let reports = verifyRows()
-            defer { stopVerifying() }
             let card = UUID()
             let source = ScriptedLiveSource(card: card, conversationID: nil)
             let feed = LiveChatFeed(source: source, card: card, conversationID: nil, configDirectory: nil, workingDirectory: nil)
             let stream = ChatHostedStream()
+            let rowCheck = ChatRowCheck(feed)
             feed.attach(stream.controller)
             feed.start()
             await Self.liveTurn(source, 1)
@@ -422,13 +397,11 @@ extension ChatHosted {
             expected = await source.model
             #expect(await waitUntil { feed.presentation.model.rowInputsEqual(expected) })
             #expect(feed.snapshotsAsked == 1)
-            #expect(reports.mismatches.isEmpty, "\(reports.mismatches)")
+            rowCheck.expectClean("the feed")
             stream.controller.stop()
         }
 
         @Test func clearFollowsTheRunToTheNewCardWithTheMarkerAndNoHistory() async throws {
-            let reports = verifyRows()
-            defer { stopVerifying() }
             let profile = try Profile(lines: ChatFixture.turn(1))
             defer { profile.remove() }
             let card = UUID()
@@ -437,6 +410,7 @@ extension ChatHosted {
             let feed = LiveChatFeed(source: source, card: card, conversationID: profile.id, configDirectory: profile.root,
                                     workingDirectory: nil)
             let stream = ChatHostedStream()
+            let rowCheck = ChatRowCheck(feed)
             feed.attach(stream.controller)
             feed.start()
             #expect(await waitUntil { Self.prompts(feed.presentation.model) == ["prompt 1", "prompt 2"] })
@@ -454,18 +428,17 @@ extension ChatHosted {
             await Self.liveTurn(source, 5)
             #expect(await waitUntil { Self.prompts(feed.presentation.model) == ["prompt 5"] })
             #expect(stream.controller.rows.filter { if case .user = $0.kind { true } else { false } }.count == 1)
-            #expect(reports.mismatches.isEmpty, "\(reports.mismatches)")
+            rowCheck.expectClean("the feed")
             stream.controller.stop()
         }
 
         @Test func theLiveRowFollowsTheDriversWorkAndActivityAndTheNoticesItsSignals() async throws {
-            let reports = verifyRows()
-            defer { stopVerifying() }
             let card = UUID()
             let source = ScriptedLiveSource(card: card, conversationID: nil)
             await source.change { $0.appendPendingUser(uuid: "u1", text: "prompt 1") }
             let feed = LiveChatFeed(source: source, card: card, conversationID: nil, configDirectory: nil, workingDirectory: nil)
             let stream = ChatHostedStream()
+            let rowCheck = ChatRowCheck(feed)
             feed.attach(stream.controller)
             feed.start()
             #expect(await waitUntil { feed.phase == .ready })
@@ -485,7 +458,7 @@ extension ChatHosted {
             await source.change { $0.apply(LiveScript.result()) }
             await source.setState { $0.turnRunning = false }
             #expect(await waitUntil { live() == nil })
-            #expect(reports.mismatches.isEmpty, "\(reports.mismatches)")
+            rowCheck.expectClean("the feed")
             stream.controller.stop()
         }
 

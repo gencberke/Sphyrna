@@ -15,8 +15,7 @@ import LoomTestSupport
         let task = Task { await ClaudeLimitResetSignalReader.waitForSignal(rig.context, onRead: {
             attempts.withLock { $0 += 1 }
         }) }
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while attempts.withLock({ $0 }) == 0, ContinuousClock.now < deadline { await Task.yield() }
+        await waitFor("the reader's first read", within: .seconds(2)) { attempts.withLock { $0 } > 0 }
         #expect(attempts.withLock { $0 } == 1)
         // Atomic replacement exercises the directory and inode reattachment,
         // not only a write notification on the original descriptor.
@@ -34,8 +33,7 @@ import LoomTestSupport
         let task = Task { await ClaudeLimitResetSignalReader.waitForSignal(rig.context, onRead: {
             attempts.withLock { $0 += 1 }
         }) }
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while attempts.withLock({ $0 }) == 0, ContinuousClock.now < deadline { await Task.yield() }
+        await waitFor("the reader's first read", within: .seconds(2)) { attempts.withLock { $0 } > 0 }
         #expect(attempts.withLock { $0 } == 1)
         let start = ContinuousClock.now
         task.cancel()

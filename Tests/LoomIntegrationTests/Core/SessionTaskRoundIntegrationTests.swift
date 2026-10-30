@@ -9,7 +9,7 @@ struct SessionTaskRoundIntegrationTests {
     private enum FixtureError: Error { case helperTimeout, missingEvent, malformedEvent }
 
     private static func helper(_ arguments: [String], claim: SessionTaskClaim, socket: String,
-                               input: String? = nil) throws -> (Int32, String) {
+                               input: String? = nil) async throws -> (Int32, String) {
         let process = Process(), output = Pipe(), stdin = Pipe()
         process.executableURL = RuntimeFixture.binaries.appendingPathComponent("loom-hook")
         process.arguments = ["task"] + arguments
@@ -17,17 +17,15 @@ struct SessionTaskRoundIntegrationTests {
             "SPHYRNA_TASK_SESSION_ID": claim.sessionID.uuidString, "SPHYRNA_TASK_RUN_ID": claim.managedRunID.uuidString,
             "SPHYRNA_TASK_GENERATION": claim.generation.uuidString]
         process.standardOutput = output; process.standardInput = stdin; process.standardError = FileHandle.nullDevice
-        let ended = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in ended.signal() }
         try process.run()
         if let input { stdin.fileHandleForWriting.write(Data(input.utf8)) }
         try stdin.fileHandleForWriting.close()
-        guard ended.wait(timeout: .now() + 8) == .success else {
+        guard await childEnded(process, within: .seconds(8)) else {
             process.terminate()
-            _ = ended.wait(timeout: .now() + 1)
+            _ = await childEnded(process, within: .seconds(1))
             throw FixtureError.helperTimeout
         }
-        let data = output.fileHandleForReading.readDataToEndOfFile()
+        let data = await readToEnd(output.fileHandleForReading)
         return (process.terminationStatus, String(decoding: data, as: UTF8.self))
     }
 
@@ -46,11 +44,11 @@ struct SessionTaskRoundIntegrationTests {
                                      socket: String, cursor: Int64) async throws -> (UUID, String, Int64) {
         for _ in 0..<4 {
             let revision = try await coordinator.status(taskID: task, parent: claim).task.revision
-            let read = try helper(["read", "--task", task.uuidString, "--after", String(cursor)], claim: claim, socket: socket)
+            let read = try await helper(["read", "--task", task.uuidString, "--after", String(cursor)], claim: claim, socket: socket)
             guard read.0 == 0 else { throw FixtureError.malformedEvent }
             if let found = try event(read.1) { return found }
-            let waited = try helper(["wait", "--task", task.uuidString, "--after", String(cursor),
-                                     "--revision", String(revision), "--seconds", "3"], claim: claim, socket: socket)
+            let waited = try await helper(["wait", "--task", task.uuidString, "--after", String(cursor),
+                                           "--revision", String(revision), "--seconds", "3"], claim: claim, socket: socket)
             guard waited.0 == 0 else { throw FixtureError.malformedEvent }
             if let found = try event(waited.1) { return found }
         }
@@ -157,7 +155,7 @@ struct SessionTaskRoundIntegrationTests {
             })
             let initial = try await coordinator.status(taskID: taskID, parent: claim)
             let round = try #require(initial.activeRound?.id), nextOperation = UUID()
-            let interrupt = try Self.helper(["interrupt", "--task", taskID.uuidString, "--round", round.uuidString,
+            let interrupt = try await Self.helper(["interrupt", "--task", taskID.uuidString, "--round", round.uuidString,
                 "--operation", UUID().uuidString, "--next-operation", nextOperation.uuidString, "--message", "-"],
                 claim: claim, socket: socket, input: "fixture-round-2")
             let payload = try #require(try JSONSerialization.jsonObject(with: Data(interrupt.1.utf8)) as? [String: Any])
@@ -211,7 +209,7 @@ struct SessionTaskRoundIntegrationTests {
             #expect(try await SessionRuntimeRig.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
             let socket = try #require(await context.runtime.taskSocketPath)
             let coordinator = try #require(await context.runtime.taskCoordinator), task = UUID()
-            let create = try Self.helper(["create", "--task", task.uuidString, "--operation", UUID().uuidString,
+            let create = try await Self.helper(["create", "--task", task.uuidString, "--operation", UUID().uuidString,
                 "--name", "Claude child", "--harness", "claude", "--message", "-"],
                 claim: claim, socket: socket, input: "fixture-round-1")
             #expect(create.0 == 0)
@@ -231,7 +229,7 @@ struct SessionTaskRoundIntegrationTests {
             })
             let arguments = ["interrupt", "--task", task.uuidString, "--round", first.uuidString,
                 "--operation", UUID().uuidString, "--next-operation", UUID().uuidString, "--message", "-"]
-            let pending = Task.detached { try Self.helper(arguments, claim: claim, socket: socket, input: "fixture-round-2") }
+            let pending = Task { try await Self.helper(arguments, claim: claim, socket: socket, input: "fixture-round-2") }
             if providerStops {
                 #expect(await SessionRuntimeRig.waitUntil(3) { await resultGate.entered }, "audit=\(audit.summary)")
                 #expect(await SessionRuntimeRig.waitUntil(3) { await context.runtime.taskProofWaiters.count > 0 },
@@ -282,7 +280,7 @@ struct SessionTaskRoundIntegrationTests {
             let socket = try #require(await context.runtime.taskSocketPath)
             let coordinator = try #require(await context.runtime.taskCoordinator)
             let task = UUID()
-            let create = try Self.helper(["create", "--task", task.uuidString, "--operation", UUID().uuidString,
+            let create = try await Self.helper(["create", "--task", task.uuidString, "--operation", UUID().uuidString,
                 "--name", "Fixture child", "--harness", "codex", "--message", "-"],
                 claim: claim, socket: socket, input: "fixture-round-1")
             #expect(create.0 == 0 && create.1.contains("pending"))
@@ -293,7 +291,7 @@ struct SessionTaskRoundIntegrationTests {
                 return status.task.parentWakesUsed == 1 && status.task.parentWakesConsumed == 1
             })
             #expect(!parentScreen.snapshot.contains("fixture-result: fixture-round-1"))
-            let read = try Self.helper(["read", "--task", task.uuidString], claim: claim, socket: socket)
+            let read = try await Self.helper(["read", "--task", task.uuidString], claim: claim, socket: socket)
             #expect(read.0 == 0 && read.1.contains("fixture-result: fixture-round-1"))
             let final = try await coordinator.status(taskID: task, parent: claim)
             #expect(final.task.parentWakesUsed == 1 && final.task.parentWakesConsumed == 1)
@@ -352,7 +350,7 @@ struct SessionTaskRoundIntegrationTests {
             let socket = try #require(await context.runtime.taskSocketPath)
             let coordinator = try #require(await context.runtime.taskCoordinator)
             let task = UUID()
-            let create = try Self.helper(["create", "--task", task.uuidString, "--operation", UUID().uuidString,
+            let create = try await Self.helper(["create", "--task", task.uuidString, "--operation", UUID().uuidString,
                 "--name", "Fixture child", "--harness", "codex", "--message", "-"],
                 claim: claim, socket: socket, input: "fixture-round-1")
             #expect(create.0 == 0)
@@ -360,9 +358,9 @@ struct SessionTaskRoundIntegrationTests {
             let waiting = context.state.appendingPathComponent("task-report-waiting")
             #expect(try await SessionRuntimeRig.waitUntil(4) { FileManager.default.fileExists(atPath: waiting.path) })
             let revision = try await coordinator.status(taskID: task, parent: claim).task.revision
-            let waiter = Task.detached {
-                try Self.helper(["wait", "--task", task.uuidString, "--revision", String(revision), "--seconds", "6"],
-                                claim: claim, socket: socket)
+            let waiter = Task {
+                try await Self.helper(["wait", "--task", task.uuidString, "--revision", String(revision), "--seconds", "6"],
+                                      claim: claim, socket: socket)
             }
             #expect(try await SessionRuntimeRig.waitUntil(3) { await context.runtime.taskReadFence?.hasReader(taskID: task) == true })
             try "release".write(to: context.state.appendingPathComponent("task-report-release"), atomically: true, encoding: .utf8)
@@ -396,7 +394,7 @@ struct SessionTaskRoundIntegrationTests {
             let socket = try #require(await context.runtime.taskSocketPath)
             let coordinator = try #require(await context.runtime.taskCoordinator)
             let outer = UUID()
-            let outerCreate = try Self.helper(["create", "--task", outer.uuidString, "--operation", UUID().uuidString,
+            let outerCreate = try await Self.helper(["create", "--task", outer.uuidString, "--operation", UUID().uuidString,
                 "--name", "Middle", "--harness", "codex", "--message", "-"],
                 claim: topClaim, socket: socket, input: "fixture-round-1")
             #expect(outerCreate.0 == 0)
@@ -408,7 +406,7 @@ struct SessionTaskRoundIntegrationTests {
             let original = try #require(try await coordinator.status(taskID: outer, parent: topClaim).activeRound)
             let middleClaim = try #require(await context.runtime.taskRunPlans[middleID]?.claim)
             let inner = UUID()
-            let innerCreate = try Self.helper(["create", "--task", inner.uuidString, "--operation", UUID().uuidString,
+            let innerCreate = try await Self.helper(["create", "--task", inner.uuidString, "--operation", UUID().uuidString,
                 "--name", "Leaf", "--harness", "claude", "--message", "-"],
                 claim: middleClaim, socket: socket, input: "fixture-round-1")
             #expect(innerCreate.0 == 0)
@@ -418,13 +416,13 @@ struct SessionTaskRoundIntegrationTests {
             })
             let nested = try await coordinator.status(taskID: inner, parent: middleClaim)
             #expect(nested.task.parentWakesUsed == 0 && nested.task.parentWakesConsumed == 0)
-            let innerRead = try Self.helper(["read", "--task", inner.uuidString], claim: middleClaim, socket: socket)
+            let innerRead = try await Self.helper(["read", "--task", inner.uuidString], claim: middleClaim, socket: socket)
             #expect(innerRead.0 == 0 && innerRead.1.contains("fixture-result: fixture-round-1"))
-            let report = try Self.helper(["report", "--task", outer.uuidString, "--round", original.id.uuidString,
+            let report = try await Self.helper(["report", "--task", outer.uuidString, "--round", original.id.uuidString,
                 "--operation", UUID().uuidString, "--kind", "completed", "--message", "-"],
                 claim: middleClaim, socket: socket, input: "nested result")
             #expect(report.0 == 0)
-            let result = try Self.helper(["read", "--task", outer.uuidString], claim: topClaim, socket: socket)
+            let result = try await Self.helper(["read", "--task", outer.uuidString], claim: topClaim, socket: socket)
             #expect(result.0 == 0 && result.1.contains("nested result"))
             let middleBinding = try #require(await context.runtime.authenticateTaskRun(middleClaim))
             let target = SessionTaskRoundTarget(taskID: outer, roundID: original.id, inputOperationID: original.operationID,
@@ -483,8 +481,8 @@ struct SessionTaskRoundIntegrationTests {
             for number in 1...3 {
                 if number > 1 {
                     let operation = UUID(); operations.insert(operation)
-                    let reply = try Self.helper(["reply", "--task", taskID.uuidString, "--operation", operation.uuidString,
-                                                 "--message", "-"], claim: claim, socket: socket, input: "fixture-round-\(number)")
+                    let reply = try await Self.helper(["reply", "--task", taskID.uuidString, "--operation", operation.uuidString,
+                                                       "--message", "-"], claim: claim, socket: socket, input: "fixture-round-\(number)")
                     #expect(reply.0 == 0)
                 }
                 let result = try await Self.waitForEvent(task: taskID, coordinator: coordinator, claim: claim,

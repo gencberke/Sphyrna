@@ -387,7 +387,7 @@ final class ChatPresentation {
             controller.apply(patches: patches, fresh: fresh, hasOlder: hasOlder)
         }
         #if DEBUG
-        if Self.verifiesRows { verify(controller, input) }
+        if let verifier { verify(controller, input, verifier) }
         #endif
         lastTimings = Timings(model: pendingModelMs, derive: Self.milliseconds(from: began, to: derived),
                               stream: Self.milliseconds(from: derived, to: .now))
@@ -397,18 +397,14 @@ final class ChatPresentation {
     @ObservationIgnored private var pendingModelMs = 0.0
 
     #if DEBUG
-    /// Checks, after every rebuild, that the stream holds the rows `ChatRowBuilder` derives from scratch (a debug build only,
-    /// and costly: it derives all of them). Tests turn it on; `onMismatch` gets the report, and without it a mismatch stops the
-    /// debug build.
-    nonisolated(unsafe) static var verifiesRows = false
-    nonisolated(unsafe) static var onMismatch: ((String) -> Void)?
+    /// Checks this presentation's rebuilds (`ChatRowVerifier`); nil checks nothing. Its owner gives it.
+    @ObservationIgnored var verifier: ChatRowVerifier?
 
-    private func verify(_ controller: ChatStreamController, _ input: ChatBuildInput) {
+    private func verify(_ controller: ChatStreamController, _ input: ChatBuildInput, _ verifier: ChatRowVerifier) {
         let expected = ChatRowBuilder.rows(input)
-        guard controller.rows != expected || store.rows != expected else { return }
+        guard controller.rows != expected || store.rows != expected else { return verifier.checked(nil) }
         let first = zip(controller.rows, expected).enumerated().first { $1.0 != $1.1 }?.offset ?? min(controller.rows.count, expected.count)
-        let report = "session \(sessionID): rows differ from a full rebuild at \(first) (\(controller.rows.count) shown, \(expected.count) expected)"
-        if let onMismatch = Self.onMismatch { onMismatch(report) } else { assertionFailure(report) }
+        verifier.checked("session \(sessionID): rows differ from a full rebuild at \(first) (\(controller.rows.count) shown, \(expected.count) expected)")
     }
     #endif
 
@@ -419,3 +415,26 @@ final class ChatPresentation {
         return Double(d.components.seconds) * 1000 + Double(d.components.attoseconds) / 1e15
     }
 }
+
+#if DEBUG
+/// Checks, after every rebuild of the presentations it is given, that the stream holds the rows `ChatRowBuilder` derives from
+/// scratch (a debug build only, and costly: it derives all of them). A test makes one and gives it to the presentations it
+/// watches through their owner (`LiveChatFeed.rowVerifier`, `ChatTranscriptView`'s `chatRowVerifier` environment); a
+/// presentation without one checks nothing. Each test has its own, so a test running beside it never turns it off or
+/// reads its reports.
+@MainActor
+final class ChatRowVerifier {
+    private let onMismatch: (String) -> Void
+    /// Rebuilds checked so far: a test sees that its presentations were checked at all.
+    private(set) var checks = 0
+
+    init(onMismatch: @escaping (String) -> Void) {
+        self.onMismatch = onMismatch
+    }
+
+    fileprivate func checked(_ mismatch: String?) {
+        checks += 1
+        if let mismatch { onMismatch(mismatch) }
+    }
+}
+#endif

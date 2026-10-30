@@ -83,7 +83,8 @@ enum SessionServiceShared {
         func resumeSession(sessionID: UUID) async throws {
             resumed.append(sessionID)
             guard let resumeHold else { return }
-            await resumeHold.gate.wait()
+            let gate = resumeHold.gate
+            await gate.wait()
             throw resumeHold.error
         }
 

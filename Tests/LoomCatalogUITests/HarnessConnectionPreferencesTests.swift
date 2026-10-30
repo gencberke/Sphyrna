@@ -16,10 +16,7 @@ struct HarnessConnectionPreferencesTests {
         let connections = store.makeHarnessConnections()
         let choice = !connections.isOn(id)
         connections.setOn(id, choice)
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while store.current.isHarnessConnected(id) != choice, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        await waitFor("the switch for \(id) to be saved") { store.current.isHarnessConnected(id) == choice }
         #expect(store.current.isHarnessConnected(id) == choice, "The app's switch saves every catalogue id")
         let reloaded = UIPreferencesStore(url: url).makeHarnessConnections()
         // A harness coming later (D-120) keeps its stored choice but is never offered.

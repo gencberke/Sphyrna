@@ -222,7 +222,9 @@ struct SessionServiceTests: SessionServiceFixtures {
         let socket = try #require(hooks.controlSocketPath)
         let wire = OpenSessionWireRequest(authenticationToken: hooks.authenticationToken, sessionID: requester.sessionID,
             managedRunID: requester.runID, title: "Codex", project: nil, message: "go", harness: "codex")
-        let reply = Task.detached { try OpenSessionClient.exchange(wire, socketPath: socket) }
+        let reply = Task {
+            try await onOwnThread("open-session exchange") { try OpenSessionClient.exchange(wire, socketPath: socket) }
+        }
         let runtime = rig.context.runtime
         let deadline = ProcessInfo.processInfo.systemUptime + 5
         while await runtime.openRequestSnapshot().isEmpty && ProcessInfo.processInfo.systemUptime < deadline {

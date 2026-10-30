@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import LoomCore
 @testable import LoomCoreTestRigs
+import LoomTestSupport
 
 private final class EventPeer: @unchecked Sendable {
     let listener: Int32
@@ -97,23 +98,22 @@ private final class EventSink: @unchecked Sendable {
     func disconnect() { lock.withLock { _disconnected += 1 } }
 }
 
+/// Holds the stream's own read queue inside the event callback until `release()`, so a close has to wait for it.
 private final class BlockingEventSink: @unchecked Sendable {
     private let lock = NSLock()
-    private let gate = DispatchSemaphore(value: 0)
-    private var inside = false
+    private let gate = ActorFreezeGate()
     private var began = 0
     private var finished = 0
-    var callbackEntered: Bool { lock.withLock { inside } }
+    var callbackEntered: Bool { gate.entered }
     var starts: Int { lock.withLock { began } }
     var completions: Int { lock.withLock { finished } }
     func receive(_ event: OpenCodeEvent) -> Bool {
-        lock.withLock { inside = true }
-        gate.wait()
+        gate.hold()
         return true
     }
     func markStart() { lock.withLock { began += 1 } }
     func markFinished() { lock.withLock { finished += 1 } }
-    func release() { gate.signal() }
+    func release() { gate.release() }
 }
 
 @Suite(.serialized) struct OpenCodeEventStreamTests {
