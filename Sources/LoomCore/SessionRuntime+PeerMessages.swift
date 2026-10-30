@@ -216,7 +216,10 @@ extension SessionRuntime {
 
     private func performPeerDelivery(_ sessionID: UUID) async {
         var deferred = false
+        // The step a pass ended at, for the log: an outcome line per pass, ids and step words only.
+        var step = "start"
         defer {
+            LoomLog.notice(.session, "Peer pointer \(LoomLog.ref(sessionID)) \(deferred ? "deferred" : "ended") at \(step)")
             let anotherEdge = peerDeliveriesRequested.remove(sessionID) != nil
             peerDeliveriesInFlight.remove(sessionID)
             if !deferred && !anotherEdge { peersNeedingDelivery.remove(sessionID) }
@@ -227,13 +230,18 @@ extension SessionRuntime {
               let plan = taskRunPlans[sessionID] else { return }
         // Attachment can precede native identity and provider ingress. Keep
         // the durable delivery pending until the next observed Ready edge.
+        step = "identity"
         guard let revision = plan.lease.admit({ $0 }), let binding = await authenticateTaskRun(plan.claim) else {
             deferred = true; return
         }
+        step = "deletion"
         guard (try? await catalog.isDeletionPending(sessionID)) == false,
               !deletionsInFlight.contains(sessionID), let targetFence = peerTargetFences.acquire(sessionID) else { return }
-        guard await taskNativeStatus(binding) == .ready else { deferred = true; return }
+        let status = await taskNativeStatus(binding)
+        step = "status-\(status.rawValue)"
+        guard status == .ready else { deferred = true; return }
         _ = inputGate.establishFreshCleanInput(runID: binding.managedRunID)
+        step = "input-gate"
         guard let ticket = inputGate.reserveAutomaticInput(runID: binding.managedRunID) else {
             deferred = true
             _ = inputGate.notifyWhenAutomaticMayProceed(runID: binding.managedRunID) { [weak self] in
@@ -242,9 +250,11 @@ extension SessionRuntime {
             return
         }
         defer { inputGate.releaseReservedAutomatic(runID: binding.managedRunID, ticket: ticket) }
+        step = "begin"
         guard let intent = try? await mailbox.beginPointer(target: sessionID, nativeSessionID: binding.nativeSessionID) else { return }
         let outcome = await deliverPeerPointer(intent, binding: binding, plan: plan, revision: revision,
                                                targetFence: targetFence, readFence: readFence, ticket: ticket)
+        step = "pointer-\(outcome)"
         try? await mailbox.settlePointer(intent, outcome: outcome)
         if case .deferred = outcome { deferred = true }
     }
@@ -255,7 +265,9 @@ extension SessionRuntime {
         guard let record = runs[binding.managedRunID], let transport = harnesses[record.provider]?.taskTransport,
               targetFence.isActive,
               plan.lease.permits(revision: revision), !deletionsInFlight.contains(binding.sessionID),
-              (try? await catalog.isDeletionPending(binding.sessionID)) == false else { return .deferred }
+              (try? await catalog.isDeletionPending(binding.sessionID)) == false else {
+            LoomLog.notice(.session, "Peer pointer \(LoomLog.ref(binding.sessionID)) not written: run"); return .deferred
+        }
         let title = String(intent.senderTitle.unicodeScalars.prefix(80).map { scalar -> Character in
             let ascii = scalar.value
             return (ascii >= 0x20 && ascii <= 0x7e && scalar != "\"" && scalar != "\\") ? Character(scalar) : "_"
@@ -268,6 +280,7 @@ extension SessionRuntime {
         guard await prepareTaskInput(purpose: purpose, binding: binding, digest: digest, effect: effect, ticket: ticket,
                                      requiresNativeReceipt: transport == .ownedAppServer, clientMessageID: clientID),
               targetFence.isActive, plan.lease.permits(revision: revision) else {
+            LoomLog.notice(.session, "Peer pointer \(LoomLog.ref(binding.sessionID)) not written: expected input")
             clearTaskExpectation(purpose, binding: binding); return .deferred
         }
         let transaction: TerminalWriteTransaction = { write in
@@ -284,13 +297,19 @@ extension SessionRuntime {
             return try result.get()
         }
         if transport == .ownedAppServer {
-            guard let client = record.server?.client else { clearTaskExpectation(purpose, binding: binding); return .deferred }
+            guard let client = record.server?.client else {
+                LoomLog.notice(.session, "Peer pointer \(LoomLog.ref(binding.sessionID)) not written: no app-server client")
+                clearTaskExpectation(purpose, binding: binding); return .deferred
+            }
             let gate = inputGate
             do {
                 guard let turn = try await client.startTaskTurn(threadID: binding.nativeSessionID, text: pointer,
                     clientMessageID: clientID, transaction: { write in
                         try transaction { try gate.writeReservedAutomatic(runID: binding.managedRunID, ticket: ticket, write) ?? 0 }
-                    }) else { clearTaskExpectation(purpose, binding: binding); return .deferred }
+                    }) else {
+                    LoomLog.notice(.session, "Peer pointer \(LoomLog.ref(binding.sessionID)) not written: turn not started")
+                    clearTaskExpectation(purpose, binding: binding); return .deferred
+                }
                 guard confirmCodexTaskTurn(turn, purpose: purpose, binding: binding) else { return .unknown }
                 return .verified
             } catch { return .unknown }

@@ -561,6 +561,12 @@ extension SessionRuntime {
         return try await taskCoordinator.latestEventsForUser(taskID: id, limit: limit)
     }
 
+    /// The task's rounds for the user (development acceptance reads ids and phases only; it is not the parent's read).
+    public func sessionTaskRounds(id: UUID, limit: Int = 50) async throws -> [SessionTaskRound] {
+        guard let taskCoordinator else { throw SessionTaskError.storage }
+        return try await taskCoordinator.roundsForUser(taskID: id, limit: limit)
+    }
+
     public func sessionTaskProjectionUpdates() async -> AsyncStream<UInt64> {
         guard let taskCoordinator else { return AsyncStream { $0.finish() } }
         return await taskCoordinator.projectionUpdatesForUser()

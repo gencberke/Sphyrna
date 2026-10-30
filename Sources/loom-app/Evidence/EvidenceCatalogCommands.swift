@@ -93,6 +93,7 @@ extension DevelopmentEvidence {
             if !handled { handled = await handleChatCommand(name, argument) }
             if !handled { handled = await handleEdgeCommand(name, argument) }
             if !handled { handled = await handleRemoraCommand(name, argument) }
+            if !handled { handled = await handleAcceptanceCommand(name, argument) }
             guard handled else {
                 _ = await handleKeyCommand(name, argument)
                 return
