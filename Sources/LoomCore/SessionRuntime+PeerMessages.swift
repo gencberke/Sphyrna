@@ -21,6 +21,8 @@ extension SessionRuntime {
                 return .init(status: prior.rawValue)
             }
             try SessionTaskLimits.text(message)
+            // Refused before anything is stored: the target could never read its inbox.
+            if let reason = await sessionChannelBlockedReason(sessionID: targetID) { return .init(status: "refused", detail: reason) }
             guard !deletionsInFlight.contains(targetID),
                   try await !catalog.isDeletionPending(targetID),
                   let sender = try await catalog.session(id: senderBinding.sessionID),

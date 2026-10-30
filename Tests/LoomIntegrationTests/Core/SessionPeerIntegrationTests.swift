@@ -186,7 +186,8 @@ struct SessionPeerIntegrationTests {
     }
 
 
-    @Test(arguments: [ManagedSession.Provider.claude, .codex])
+    // A send to a Codex target is refused: its sandbox blocks the channel (SessionChannelSandboxIntegrationTests).
+    @Test(arguments: [ManagedSession.Provider.codex])
     func aProviderDescendantSendsToTheOtherHarness(senderProvider: ManagedSession.Provider) async throws {
         let context = try await SessionRuntimeRig.makeContext(extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1"],
                                                                 claudeVersion: "2.0.0")

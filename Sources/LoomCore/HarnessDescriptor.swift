@@ -12,6 +12,12 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
         case image, template, luminanceMask, boxedText(String)
     }
 
+    /// The modes in which the harness's sandbox blocks Sphyrna's session channel, and the reason surfaces give.
+    public struct SessionChannelBlock: Equatable, Sendable {
+        public let modes: [HarnessMode]
+        public let reason: String
+    }
+
     /// Consumers must select a decoder by format; general transcript reads do
     /// not imply that a Claude JSONL reader can understand every harness.
     public enum TranscriptFormat: Equatable, Sendable {
@@ -69,6 +75,9 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
     public let sharesCrossHarnessModes: Bool
     /// Effort levels known for the harness's own default model when no model was named.
     public let defaultEfforts: [String]
+    /// The modes in which the harness's own sandbox blocks Sphyrna's session channel (`SessionChannelSandbox`), with the
+    /// reason every surface gives; a start without a mode counts as `defaultMode`.
+    public let sessionChannelBlocked: SessionChannelBlock?
 
     public init(
         id: HarnessID, displayName: String, command: String, mark: String, markFallback: String? = nil,
@@ -80,7 +89,8 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
         markRendering: MarkRendering = .image, showsOnboardingWhenMissing: Bool = false,
         modes: [HarnessMode] = [], agentModes: [HarnessMode] = [], defaultMode: HarnessMode? = nil,
         defaultEfforts: [String] = [], sharesCrossHarnessModes: Bool = false,
-        transcriptFormat: TranscriptFormat? = nil
+        transcriptFormat: TranscriptFormat? = nil,
+        sessionChannelBlocked: SessionChannelBlock? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -109,6 +119,7 @@ public struct HarnessDescriptor: Equatable, Sendable, Identifiable {
         self.defaultMode = defaultMode
         self.defaultEfforts = defaultEfforts
         self.sharesCrossHarnessModes = sharesCrossHarnessModes
+        self.sessionChannelBlocked = sessionChannelBlocked
     }
 
     /// The doctor command as a person reads it ("claude doctor"), nil when the CLI has none.

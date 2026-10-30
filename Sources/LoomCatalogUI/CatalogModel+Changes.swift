@@ -344,7 +344,7 @@ extension CatalogModel {
     /// Where the comments can go now. A Chat session as before; a terminal run once the runtime said that run takes
     /// messages (`refreshChangesReceiver`, which the tab runs for each run).
     func changesSendAvailability(for sessionID: UUID) -> ChangesSendAvailability {
-        guard let row = changesRow(sessionID) else { return .unavailable }
+        guard let row = changesRow(sessionID), changesChannelBlockedReason(for: sessionID) == nil else { return .unavailable }
         if capabilities(of: row.record.session.provider).structuredFace,
            liveChatDriver(for: sessionID) != nil || showsStoppedLiveChat(row) { return .ready }
         guard runEndpoint(of: row) == .terminal, let run = row.live?.runID,
@@ -361,10 +361,20 @@ extension CatalogModel {
         return "Send to \(capabilities(of: row.record.session.provider).displayName)"
     }
 
-    /// The footer's note when Send is absent for a stopped session (nil otherwise).
+    /// The footer's note when Send is absent: the harness's reason when its session can never take them, or for a
+    /// stopped session that it takes them while it runs (nil otherwise).
     func changesSendNote(for sessionID: UUID) -> String? {
+        if let reason = changesChannelBlockedReason(for: sessionID) { return reason }
         guard changesSendTitle(for: sessionID) == nil, let row = changesRow(sessionID), !isRunning(row) else { return nil }
         return "Comments are sent while the session runs"
+    }
+
+    /// Why the session's own harness keeps it off the session channel (`SessionChannelSandbox`: Codex in a mode that
+    /// sandboxes it), by its recorded mode; a mode not loaded yet counts as the start default, which also sandboxes.
+    func changesChannelBlockedReason(for sessionID: UUID) -> String? {
+        guard let row = changesRow(sessionID) else { return nil }
+        return SessionChannelSandbox.blockedReason(harness: HarnessID(row.record.session.provider),
+                                                   mode: HarnessMode.fromStored(launchModels.permissionMode(of: sessionID)))
     }
 
     /// Asks the runtime whether the session's live terminal run takes messages, and keeps the answer for that run. The tab

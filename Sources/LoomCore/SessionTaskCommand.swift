@@ -150,7 +150,8 @@ public enum SessionTaskCommand {
             output.standardError("error: \(reply.detail ?? reply.status)")
             return reply.status == "invalid" ? 2 : reply.status == "refused" ? 1 : 3
         } catch {
-            output.standardError("error: Sphyrna task connection did not complete; do not retry an effect with a new operation id")
+            output.standardError(SessionChannelSandbox.helperConnectFailure(error, environment: environment)
+                ?? "error: Sphyrna task connection did not complete; do not retry an effect with a new operation id")
             return 3
         }
     }

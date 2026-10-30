@@ -4,22 +4,19 @@ import Foundation
 /// Codex server. The complete command help remains on demand.
 enum SessionTaskSkill {
     static let name = "sphyrna"
+    /// Every mode Sphyrna starts Codex in sandboxes it with the network off (`SessionChannelSandbox`), so this entry
+    /// names the channel only to say it is blocked; it advertises no task, send or inbox command a session cannot run.
     static let content = """
         ---
         name: sphyrna
-        description: This session runs inside Sphyrna. Delegate tasks or send approved messages between sessions. Run "$SPHYRNA_CLI" task --help or send --help for details.
+        description: This session runs inside Sphyrna. \(SessionChannelSandbox.codexReason), so Sphyrna's task and message commands are not available here.
         ---
 
-        # Sphyrna task channel
+        # Sphyrna session channel
 
-        Run `"$SPHYRNA_CLI" task --help` for the current commands. A child reports a
-        completed, failed, or needs-input result explicitly. After reporting
-        needs-input, finish the current turn so the parent can reply safely.
-        Native tool approvals always belong to the user.
-        Managed children show progress and permission cards; Take Over ends
-        parent automation. Read/status/wait retrieve later results. Automatic
-        nudges require an ordinary terminal parent; nested managed parents
-        must wait/read. Use only harnesses and actions currently offered by help.
+        \(SessionChannelSandbox.codexReason): the sandbox denies the helper's
+        connection to Sphyrna, so tasks, messages and the inbox are not available
+        in this session. Native tool approvals always belong to the user.
 
         """
 

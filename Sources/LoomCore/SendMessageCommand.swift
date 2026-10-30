@@ -114,7 +114,8 @@ public enum SendMessageCommand {
             default: output.standardError("error: \(reply.detail ?? "message connection unavailable")"); return 3
             }
         } catch {
-            output.standardError("error: Sphyrna did not answer; reuse the same operation id")
+            output.standardError(SessionChannelSandbox.helperConnectFailure(error, environment: environment)
+                ?? "error: Sphyrna did not answer; reuse the same operation id")
             return 3
         }
     }
