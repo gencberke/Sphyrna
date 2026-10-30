@@ -37,7 +37,7 @@ def probe(flags):
         # The guards read the real Sources/ and Tests/; the fixture has neither, and routing is what it checks.
         for name in ['check-source-guards.py', 'check-tests.py']:
             (fixture / 'scripts' / name).write_text('print("guard stub")\n')
-        for name in ['LoomCatalogUI', 'loom-app', 'LoomCore', 'LoomChat', 'LoomLaunchOptions', 'LoomRemora']:
+        for name in ['LoomCatalogUI', 'loom-app', 'LoomCore', 'LoomChat', 'LoomLaunchOptions', 'LoomRemora', 'LoomTerminal', 'loom-hook']:
             (fixture / 'Sources' / name).mkdir(parents=True)
             (fixture / 'Sources' / name / 'Fixture.swift').write_text('// Isolated routing fixture.\n')
         (fixture / 'bin').mkdir()
@@ -103,6 +103,11 @@ code, calls, out = probe(['--tests', '--windows', '--idle'])
 t = tests(calls)
 assert code == 0 and len(t) == 2 and filters(t[-1]) == ['^LoomWindowTests\\.'], (code, calls, out)
 print('PASS: --windows runs LoomWindowTests in a swift test of its own, after the rest')
+
+code, calls, out = probe(['--windows', '--idle', '--suite', 'PinnedKeyEventTests'])
+t = tests(calls)
+assert code == 0 and len(t) == 1 and filters(t[0]) == ['^LoomWindowTests\\..*(PinnedKeyEventTests)'], (code, calls, out)
+print('PASS: --windows --suite runs the named suites in T3 only, alone')
 
 code, calls, out = probe(['--full', '--idle'])
 t = tests(calls)

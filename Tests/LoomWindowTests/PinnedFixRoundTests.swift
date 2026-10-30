@@ -31,6 +31,17 @@ struct PinnedKeyEventTests {
         try? await Task.sleep(for: .milliseconds(250)) // sleep: the card's focus state is private to its view; nothing to observe
     }
 
+    /// Waits for a key's effect on the model and for the window to draw it. A key sent before the card has drawn the last
+    /// one's change is lost (the T3 gate on 4122193: the second → straight after the first never moved the ring), so the
+    /// next key goes in only once the change is on screen.
+    private func drawn(_ what: @autoclosure () -> String, in window: NSWindow, _ condition: () -> Bool) async {
+        await waitFor(what()) {
+            window.contentView?.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            return condition()
+        }
+    }
+
     /// Return, Esc and Space answer nothing; ← and → move the ring; Space presses the button the ring is on; Tab goes back
     /// to the composer. These go through the card's real key handling, as the window delivers them.
     @Test func realKeysMoveTheRingPressTheFocusedButtonAndNeverApproveOrDeny() async throws {
@@ -59,16 +70,16 @@ struct PinnedKeyEventTests {
 
         // → chooses Deny (first), → again Allow once; Space presses it.
         try press("\u{F703}", keyCode: 124, in: window)
-        await waitFor("→ to put the ring on Deny") { cards.focusedIndex == 0 }
+        await drawn("→ to put the ring on Deny", in: window) { cards.focusedIndex == 0 }
         #expect(cards.focusedIndex == 0)
         try press("\u{F703}", keyCode: 124, in: window)
-        await waitFor("→ to move the ring to Allow Once") { cards.focusedIndex == 1 }
+        await drawn("→ to move the ring to Allow Once", in: window) { cards.focusedIndex == 1 }
         #expect(cards.focusedIndex == 1)
         try press("\u{F702}", keyCode: 123, in: window)
-        await waitFor("← to move the ring back to Deny") { cards.focusedIndex == 0 }
+        await drawn("← to move the ring back to Deny", in: window) { cards.focusedIndex == 0 }
         #expect(cards.focusedIndex == 0)
         try press("\u{F703}", keyCode: 124, in: window)
-        await waitFor("→ to move the ring to Allow Once again") { cards.focusedIndex == 1 }
+        await drawn("→ to move the ring to Allow Once again", in: window) { cards.focusedIndex == 1 }
         // Esc and Return with the ring on a button still press nothing.
         try press("\u{1b}", keyCode: 53, in: window)
         try press("\r", keyCode: 36, in: window)
