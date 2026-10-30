@@ -67,18 +67,19 @@ enum SessionTaskPresentation {
     }
 }
 
-/// The selected task's bounded reported events are held by this view only and released when it closes.
+/// The selected task's bounded reported events are held by this view only and released when it closes. They are read again
+/// when the task's own revision changes (a new report raises it), and the last read stays shown while the next one runs.
 struct SessionTaskDetailView: View {
     let model: CatalogModel
     let task: SessionTaskProjection
     let back: () -> Void
     @State private var read: SessionTaskUIState.EventRead = .unavailable
-    @State private var isReading = false
+    @State private var readTask: UUID?
 
     private struct ReadKey: Equatable {
         let task: UUID
         let generation: UInt64
-        let revision: UInt64
+        let revision: Int64
     }
 
     var body: some View {
@@ -101,7 +102,7 @@ struct SessionTaskDetailView: View {
                 Text(SessionTaskPresentation.status(task)).projectType(LoomTheme.Agents.note)
                     .foregroundStyle(SessionTaskPresentation.needsParentInput(task) ? AnyShapeStyle(LoomTheme.Status.attentionLight)
                                                                                   : AnyShapeStyle(LoomTheme.Text.secondaryStyle))
-                if isReading {
+                if readTask != task.id {
                     Text("Reading task reports…").projectType(LoomTheme.Agents.detail).foregroundStyle(LoomTheme.Text.secondaryStyle)
                 } else {
                     reports
@@ -111,12 +112,11 @@ struct SessionTaskDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityIdentifier("session-task-detail")
-        .task(id: ReadKey(task: task.id, generation: model.sessionTasks.sourceGeneration, revision: model.sessionTasks.revision)) {
-            isReading = true
+        .task(id: ReadKey(task: task.id, generation: model.sessionTasks.sourceGeneration, revision: task.revision)) {
             let result = await model.sessionTasks.readEvents(for: task.id)
             guard !Task.isCancelled else { return }
             read = result
-            isReading = false
+            readTask = task.id
         }
         .focusable().focusEffectDisabled()
         .onKeyPress(phases: .down) { press in
