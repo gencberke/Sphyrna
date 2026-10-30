@@ -17,7 +17,7 @@
 #   --frozen  adds TF in debug, after the rest: code D-100 and D-102 left unreachable, kept and compiled, run on demand;
 #             with --suite, the named suites there instead of the whole lane.
 #   --windows adds T3 in a swift test of its own, after every other test step; needs --idle (unlocked screen, Mac idle
-#             by the user's word).
+#             by the user's word); with --suite, the named suites there instead of the whole of T3, and nowhere else.
 #   --full    needs --idle: the staged release-tree build (--release-tree), then swift test -c release over T1 and T2
 #             (the release test build), then T3 alone in release. No plain swift build -c release: packaging builds
 #             its products by name, and the release test build compiles everything the gate runs (D-119).
@@ -209,7 +209,7 @@ if (( unit || integration )); then
   (( integration )) && tiers+=(T2) filters+=($integration_filters)
   step "swift test$cfg_label (${(j: and :)tiers})" swift_test $test_cfg $filters
 fi
-if (( ${#suites} )); then
+if (( ${#suites} && ! windows )); then
   filters=(); for s in $suites; do filters+=(--filter $s); done
   skips=(--skip '^LoomWindowTests\.'); (( frozen )) || skips+=(--skip '^LoomFrozenTests\.')
   step "swift test --filter ${(j:, :)suites}" swift_test $filters $skips
@@ -217,7 +217,11 @@ fi
 (( frozen && ! ${#suites} )) && step "swift test (TF frozen)" swift_test $frozen_filters
 # The window tests never share a run with another target: offscreen suites host windows too, and in the e58c2c9 gate the
 # window tests' clicks, keys and focus did not land among them (each passed alone).
-(( windows )) && step "swift test$cfg_label (T3 window, alone)" swift_test $test_cfg $window_filters
+if (( windows && ${#suites} )); then
+  step "swift test$cfg_label (T3 window, alone: ${(j:, :)suites})" swift_test $test_cfg --filter "^LoomWindowTests\..*(${(j:|:)suites})"
+elif (( windows )); then
+  step "swift test$cfg_label (T3 window, alone)" swift_test $test_cfg $window_filters
+fi
 (( tests_ran )) || echo "  --    tests not run (--unit, --integration, --tests, --suite <Name>, --frozen or --windows)"
 if (( tests_ran )); then
   summary=$(grep -E 'Test run with [0-9]+ tests? .*(passed|failed)|Executed [0-9]+ tests?' "$log" | tail -n 2 || true)
