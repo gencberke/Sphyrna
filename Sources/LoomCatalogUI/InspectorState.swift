@@ -114,9 +114,11 @@ extension CatalogModel {
 
     /// The sessions whose context is shown right now: the selected Claude session while its inspector is open on
     /// Overview, while the ring of its live Chat composer is on screen (V17), and while the header's model segment is
-    /// (every face without the bar, fix round 3 F). These are the "visible sessions" of `UsageModel.trackContext`.
+    /// (every face without the bar, fix round 3 F). These are the "visible sessions" of `UsageModel.trackContext`, which
+    /// reads Claude's index: a Codex session's reading comes from its rollout (`loadSessionUsage`), never from here.
     var inspectorContextSessions: [String] {
         guard let row = selectedRow, capabilities(of: row.record.session.provider).readsContext,
+              HarnessTranscriptKind(provider: row.record.session.provider)?.contextIsTracked == true,
               let conversationID = row.record.session.providerConversationID else { return [] }
         let inspectorShows = inspector.isOpen(for: row.id) && shownInspectorTab == .overview
         let headerShows = detailRoute.showsSessionHeader && headerShowsModelSegment(row)
