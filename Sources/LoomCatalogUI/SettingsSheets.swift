@@ -35,6 +35,8 @@ struct DeleteSheetText: Equatable {
         let title: String
         let fileCount: Int?
         let byteCount: Int64?
+        /// Whose data deleting it removes.
+        var provider: ManagedSession.Provider = .claude
     }
 
     let title: String
@@ -49,18 +51,28 @@ struct DeleteSheetText: Equatable {
     static let keptItems = [
         "Your prompts in Claude's shared prompt history", "Project files and worktrees", "Anything already sent to Anthropic",
     ]
+    /// What Codex's own delete removes for the checked Codex sessions (D-121), as `DeleteSessionFacts` says it for one.
+    static let codexRemovedItems = ["The rollouts and Codex's records of them", "Their entries in Codex's session index"]
 
-    /// `folder` is the Claude profile as the user reads it ("~/.claude"); nil leaves it out of the totals.
+    /// `folder` is the Claude profile as the user reads it ("~/.claude"); nil leaves it out of the totals, and so does a
+    /// checked Codex session, whose files are in its Codex home.
     static func make(rows: [Row], folder: String?, size: (Int64) -> String = Self.size) -> DeleteSheetText {
         let count = rows.count
         let one = count == 1
+        let codex = rows.contains { if case .codex = $0.provider { true } else { false } }
+        let claude = rows.contains { if case .codex = $0.provider { false } else { true } }
+        let whose = [claude ? "Claude's" : nil, codex ? "Codex's" : nil].compactMap { $0 }.joined(separator: " and ")
+        var kept: [String] = []
+        for item in (claude ? keptItems : []) + (codex ? DeleteSessionFacts.codexKeptItems : []) where !kept.contains(item) {
+            kept.append(item)
+        }
         return DeleteSheetText(
             title: "Delete \(count) \(one ? "session" : "sessions")?",
             names: rows.map(\.title).joined(separator: ", "),
-            lead: "Sphyrna removes \(one ? "it" : "them") from Sphyrna, and deletes Claude's local files for \(one ? "it" : "them"). This can't be undone.",
-            removed: removedItems,
-            totals: totals(rows, folder: folder, size: size),
-            kept: keptItems)
+            lead: "Sphyrna removes \(one ? "it" : "them") from Sphyrna, and deletes \(whose) local files for \(one ? "it" : "them"). This can't be undone.",
+            removed: (claude ? removedItems : []) + (codex ? codexRemovedItems : []),
+            totals: totals(rows, folder: codex ? nil : folder, size: size),
+            kept: kept)
     }
 
     static func size(_ bytes: Int64) -> String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
@@ -193,7 +205,7 @@ struct DeleteSessionsSheet: View {
     private var rows: [DeleteSheetText.Row] {
         (review.review?.eligible ?? []).filter { review.isSelected($0.id) }.map {
             DeleteSheetText.Row(title: $0.record.displayTitle(projectName: catalog.projectName(for: $0.record)),
-                                fileCount: $0.fileCount, byteCount: $0.byteCount)
+                                fileCount: $0.fileCount, byteCount: $0.byteCount, provider: $0.record.session.provider)
         }
     }
 }

@@ -17,11 +17,11 @@ struct HarnessCapabilitiesTests {
             usageLimits: true, modelCatalog: true, reportsRunSettings: true, displayName: "Claude")
     }
 
-    /// Codex's bounded transcript, context and edit reads do not enable Chat, subagents or deletion.
+    /// Codex's bounded transcript, context and edit reads do not enable Chat or subagents; it deletes through its own server (D-121).
     private static func codex(startable: Bool) -> HarnessCapabilities {
         HarnessCapabilities(
             hasHarness: true, startable: startable, structuredFace: false, readsTranscript: true, sideChats: false,
-            readsContext: true, readsEdits: true, subagents: false, rewind: false, quickQuestion: false, deletes: false,
+            readsContext: true, readsEdits: true, subagents: false, rewind: false, quickQuestion: false, deletes: true,
             usageLimits: true, modelCatalog: true, reportsRunSettings: false, displayName: "Codex")
     }
 

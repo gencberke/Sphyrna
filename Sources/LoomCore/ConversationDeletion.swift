@@ -76,6 +76,8 @@ public struct PendingConversationDeletion: Sendable, Equatable, Identifiable {
     public let updatedAt: Date
     /// A step is executing in this process right now.
     public let isRunning: Bool
+    /// Whose data the deletion removes (the record's plan): the banner names that harness.
+    public var provider: ManagedSession.Provider = .claude
 }
 
 public enum ConversationDeletionOutcome: Sendable, Equatable {
@@ -396,7 +398,7 @@ extension SessionRuntime {
         PendingConversationDeletion(
             id: record.sessionID, state: record.state, attempts: record.attempts,
             lastFailure: record.lastError, requestedAt: record.requestedAt, updatedAt: record.updatedAt,
-            isRunning: running ?? deletionsInFlight.contains(record.sessionID)
+            isRunning: running ?? deletionsInFlight.contains(record.sessionID), provider: record.plan.provider
         )
     }
 

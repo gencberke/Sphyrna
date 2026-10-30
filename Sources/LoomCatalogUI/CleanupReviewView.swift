@@ -112,7 +112,7 @@ struct CleanupReviewView: View {
             }
             SessionRowText(title: title, detail: details(row), dimmed: result == .deleted)
             if let result {
-                ResultText(result: result)
+                ResultText(result: result, harness: HarnessCapabilities.intrinsic(of: row.record.session.provider).displayName)
             } else if review.phase == .deleting && review.isSelected(row.id) {
                 Text("Waiting").projectType(S.sessionWhy).foregroundStyle(LoomTheme.Text.secondaryStyle)
             }
@@ -201,11 +201,12 @@ private struct SessionRowText: View {
 
 private struct ResultText: View {
     let result: CleanupRowResult
+    let harness: String
 
     private typealias S = LoomTheme.Settings
 
     var body: some View {
-        Text(CleanupText.result(result))
+        Text(CleanupText.result(result, harness: harness))
             .projectType(S.sessionWhy)
             .foregroundStyle(color)
             .lineLimit(2).multilineTextAlignment(.trailing)

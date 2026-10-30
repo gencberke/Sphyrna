@@ -80,7 +80,7 @@ struct DeleteConversationSheet: View {
         case .loading:
             HStack(spacing: LoomTheme.Space.headerSpacing) {
                 ProgressView().controlSize(.small)
-                Text("Checking what Claude has kept for this session…")
+                Text(confirmation.checkingText)
                     .projectType(LoomTheme.Sheet.text).foregroundStyle(LoomTheme.Text.secondary)
             }
             .padding(.top, LoomTheme.Sheet.textTop)
@@ -116,7 +116,7 @@ extension View {
             Button(DeletionCopy.removeButton, role: .destructive) { model.removeFromLoomOnly(id) }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(DeletionCopy.removeMessage)
+            Text(DeletionCopy.removeMessage(harness: model.deletionHarness(id)))
         }
     }
 }

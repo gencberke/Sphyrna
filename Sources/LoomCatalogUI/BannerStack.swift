@@ -72,6 +72,8 @@ struct BannerDeletion: Equatable {
     var lastFailure: String?
     var canRetry: Bool
     var canRemove: Bool
+    /// Whose data the deletion removes, as the user reads it: the failure's words name it.
+    var harness = "Claude"
 }
 
 /// Everything the stack reads, in plain values.
@@ -96,7 +98,7 @@ enum BannerItems {
         if let text = sources.recoveryFailure { items.append(BannerItem(kind: .deletionRecovery, tone: .failure, text: text)) }
         for deletion in sources.deletions where !deletion.isDeleting {
             items.append(BannerItem(
-                kind: .deletionFailure(deletion.id), tone: .failure, text: DeletionCopy.bannerText(lastFailure: deletion.lastFailure),
+                kind: .deletionFailure(deletion.id), tone: .failure, text: DeletionCopy.bannerText(lastFailure: deletion.lastFailure, harness: deletion.harness),
                 detail: deletion.title.flatMap { $0.isEmpty ? nil : $0 }, deletion: deletion.id,
                 canRetry: deletion.canRetry, canRemove: deletion.canRemove))
         }
@@ -163,7 +165,8 @@ extension Banners {
             deletions: records.map { record in
                 BannerDeletion(id: record.id, title: model.deletions.titles[record.id], isDeleting: model.isDeleting(record.id),
                                lastFailure: record.lastFailure, canRetry: model.canRetryDeletion(record.id),
-                               canRemove: model.canRemoveFromLoomOnly(record.id))
+                               canRemove: model.canRemoveFromLoomOnly(record.id),
+                               harness: HarnessCapabilities.intrinsic(of: record.provider).displayName)
             },
             ownership: model.ownershipNotice, info: model.infoMessage, status: model.statusMessage)
     }
