@@ -19,12 +19,20 @@ enum ChangesMessage {
         return (["Comments on the changes (\(scopeName)):"] + blocks).joined(separator: "\n\n")
     }
 
+    /// One terminal send: the text, the comments it carries exactly as it carries them (a comment cut to fit has its cut
+    /// text), and how many of the scope's comments it left out or cut to stay within the bound.
+    struct TerminalMessage: Equatable {
+        let text: String
+        let sent: [ChangeComment]
+        let notSent: Int
+    }
+
     /// The message a terminal session reads with `inbox`: "Comments on the changes (<scope name>):", then per file, in the
     /// order `comments` come (the file list's), its path and each of its comments: "line N: > <the line>" and the comment,
     /// indented under the path. It holds at most `limit` UTF-8 bytes: the oldest comments (`oldestFirst`, the order they
     /// were written) are left out first and the message says how many; a single comment longer than that is cut.
-    static func terminalText(scopeName: String, comments: [ChangeComment], oldestFirst: [UUID],
-                             limit: Int = byteLimit) -> String {
+    static func terminalMessage(scopeName: String, comments: [ChangeComment], oldestFirst: [UUID],
+                                limit: Int = byteLimit) -> TerminalMessage {
         var kept = comments
         var age = oldestFirst.filter { id in comments.contains { $0.id == id } }
         age += comments.map(\.id).filter { !age.contains($0) }
@@ -43,8 +51,15 @@ enum ChangesMessage {
                 cut(&only.anchor.text, by: text.utf8.count - limit)
                 text = terminalBody(scopeName, [only], omitted: omitted)
             }
+            return TerminalMessage(text: text, sent: [only], notSent: omitted + 1)
         }
-        return text
+        return TerminalMessage(text: text, sent: kept, notSent: omitted)
+    }
+
+    /// `terminalMessage`'s text alone.
+    static func terminalText(scopeName: String, comments: [ChangeComment], oldestFirst: [UUID],
+                             limit: Int = byteLimit) -> String {
+        terminalMessage(scopeName: scopeName, comments: comments, oldestFirst: oldestFirst, limit: limit).text
     }
 
     private static func terminalBody(_ scopeName: String, _ comments: [ChangeComment], omitted: Int) -> String {

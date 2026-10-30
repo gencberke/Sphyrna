@@ -213,12 +213,12 @@ struct HeaderModelSegmentTests {
         // Its ring is read all the same (the composer's fallback), as before.
         #expect(rig.model.inspectorContextSessions == ["conv-main"])
 
-        // Codex's rollout carries its context (FB6-14): the segment is there and its ring is read for that session. With
-        // no reading and no launch model yet, the segment says nothing.
+        // Codex's rollout carries its context (FB6-14): the segment is there and reads the rollout itself, never Claude's
+        // index. With no reading and no launch model yet, the segment says nothing.
         try await select(rig.codex, in: rig)
         #expect(rig.model.headerShowsModelSegment(try #require(rig.model.selectedRow)))
         #expect(rig.model.modelContent(of: try #require(rig.model.selectedRow).record) == nil)
-        #expect(rig.model.inspectorContextSessions == ["conv-codex"])
+        #expect(rig.model.inspectorContextSessions.isEmpty, "a Codex id never reaches Claude's index")
     }
 
     // MARK: Hosted pictures

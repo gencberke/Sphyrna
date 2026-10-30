@@ -2,8 +2,8 @@ import Foundation
 import LoomCore
 import SwiftUI
 
-// The header's model segment (fix round 3 F, D-69): the model and the context fill of a Claude session on every
-// face that has no composer bar. The live chat keeps its bar and gets no second copy (DESIGN §6 Header).
+// The header's model segment (fix round 3 F, D-69): the model and the context fill of a Claude or Codex session on
+// every face that has no composer bar. The live chat keeps its bar and gets no second copy (DESIGN §6 Header).
 
 /// What the segment says: the model's short name in the composer bar's wording and, once the usage index holds a reading,
 /// a small ring. Before the first reply the model is the one the session was launched with, if one was picked; never a
@@ -18,10 +18,17 @@ struct HeaderModelContent: Equatable {
     let accessibilityLabel: String
 
     /// Nil when there is nothing to show: no reading and no model picked at launch. `catalog` names an alias (`CatalogModel.modelCatalog`).
-    @MainActor init?(usage: ContextUsage?, launchModel: String?, catalog: ModelCatalog) {
-        let reported = usage.map(\.model).flatMap { $0.isEmpty ? nil : $0 }
+    /// A Codex session (`kind`) names the model its rollout recorded (`recordedModel`, else the reading's) by the Codex
+    /// catalog's title, else by its id.
+    @MainActor init?(usage: ContextUsage?, launchModel: String?, catalog: ModelCatalog,
+                     kind: HarnessTranscriptKind = .claude, recordedModel: String? = nil) {
+        let reported = (recordedModel ?? usage?.model).flatMap { $0.isEmpty ? nil : $0 }
         let launched = Self.launchTitle(launchModel, catalog: catalog)
-        let title = reported.map(ComposerBarText.prettyModel) ?? launched
+        let title: String?
+        switch kind {
+        case .claude: title = reported.map(ComposerBarText.prettyModel) ?? launched
+        case .codex: title = reported.map { id in catalog.models(for: .codex).first { $0.id == id }?.title ?? id } ?? launched
+        }
         guard usage != nil || title != nil else { return nil }
         name = title
         self.usage = usage
@@ -85,9 +92,13 @@ extension CatalogModel {
     /// What the segment and the inspector's Model fact say for a session, from the one source: the usage index's reading,
     /// else the launch choice. Reads only this session's entries.
     func modelContent(of record: CatalogSession) -> HeaderModelContent? {
-        guard capabilities(of: record.session.provider).readsContext else { return nil }
-        let reading = record.session.providerConversationID.flatMap { usage?.contexts[$0] }
-        return HeaderModelContent(usage: reading, launchModel: launchModels.model(of: record.session.id), catalog: modelCatalog)
+        guard capabilities(of: record.session.provider).readsContext,
+              let kind = HarnessTranscriptKind(provider: record.session.provider) else { return nil }
+        let id = record.session.providerConversationID
+        let reading = id.flatMap { usage?.contextUsage(conversationID: $0, kind: kind) }
+        let recorded = id.flatMap { usage?.recordedModel(conversationID: $0, kind: kind) }
+        return HeaderModelContent(usage: reading, launchModel: launchModels.model(of: record.session.id), catalog: modelCatalog,
+                                  kind: kind, recordedModel: recorded)
     }
 }
 
@@ -104,6 +115,46 @@ private struct LoadsLaunchModel: ViewModifier {
     func body(content: Content) -> some View {
         content.task(id: Key(id: row.id, run: row.live?.runID)) {
             await model.launchModels.load(row.id, from: model.catalog)
+        }
+    }
+}
+
+/// Reads a shown Codex session's rollout for the segment, as the Overview does: when it shows and again each time a turn
+/// ends (the indicator leaves Working), and when the Codex source changes. One bounded read per edge; nothing polls.
+/// Claude's reading comes from the index the inspector tracks (`trackInspectorContext`).
+private struct LoadsCodexReading: ViewModifier {
+    let model: CatalogModel
+    let row: SessionRowModel
+
+    private struct Key: Equatable {
+        let conversationID: String?
+        let working: Bool
+        let source: TranscriptSourceKey?
+    }
+
+    private var conversationID: String? {
+        guard let kind = HarnessTranscriptKind(provider: row.record.session.provider), !kind.contextIsTracked,
+              let id = row.record.session.providerConversationID, !id.isEmpty else { return nil }
+        return id
+    }
+
+    func body(content: Content) -> some View {
+        content.task(id: Key(conversationID: conversationID, working: row.indicator == .working,
+                             source: model.transcriptSource(for: row.record.session.provider))) {
+            guard let id = conversationID, row.indicator != .working else { return }
+            guard let kind = HarnessTranscriptKind(provider: row.record.session.provider) else { return }
+            await model.usage?.loadSessionUsage(conversationID: id, kind: kind)
+        }
+    }
+}
+
+extension HarnessTranscriptKind {
+    /// Whether a session's context reading comes from the usage index the inspector names its sessions to
+    /// (`UsageModel.trackContext`, Claude's), rather than from a read of the session's own rollout (`loadSessionUsage`).
+    var contextIsTracked: Bool {
+        switch self {
+        case .claude: true
+        case .codex: false
         }
     }
 }
@@ -154,6 +205,7 @@ struct HeaderModelSegment: View {
             Color.clear.frame(width: 0, height: 0)
         }
         .loadsLaunchModel(model, row: row)
+        .modifier(LoadsCodexReading(model: model, row: row))
     }
 
     private func segment(_ content: HeaderModelContent) -> some View {

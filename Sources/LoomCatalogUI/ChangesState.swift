@@ -147,13 +147,15 @@ enum ChangesSendStatus: Equatable, Sendable {
     case sent(UUID, title: String)
     /// The terminal session read the comments.
     case delivered
+    /// The terminal session read the message, which left out (or cut) `notSent` comments to stay within 16 KiB; they stay.
+    case deliveredInPart(notSent: Int)
     case failed(String)
 
     /// A send is under way or waits to be read: Send is off until it ends.
     var holdsSend: Bool {
         switch self {
         case .sending, .sent: true
-        case .idle, .delivered, .failed: false
+        case .idle, .delivered, .deliveredInPart, .failed: false
         }
     }
 
@@ -162,6 +164,8 @@ enum ChangesSendStatus: Equatable, Sendable {
         switch self {
         case let .sent(_, title): "Sent · waiting for \(title) to be ready"
         case .delivered: "Delivered"
+        case let .deliveredInPart(count):
+            "Delivered · \(count) comment\(count == 1 ? " was" : "s were") not sent: a message holds at most 16 KiB"
         case let .failed(message): message
         case .idle, .sending: nil
         }
@@ -314,6 +318,15 @@ final class SessionChanges {
     func removeComments(_ ids: Set<UUID>, in scope: ChangesScope) {
         drafts[scope]?.removeAll { ids.contains($0.id) }
         if drafts[scope]?.isEmpty == true { drafts[scope] = nil }
+    }
+
+    /// Removes the comments a read terminal send carried, each only while it still reads as sent (same line, same text):
+    /// one edited since, written since, or left out of the message stays.
+    func removeSentComments(_ sent: [ChangeComment], in scope: ChangesScope) {
+        let ids = Set(drafts[scope]?.filter { draft in
+            sent.contains { $0.id == draft.id && $0.anchor == draft.anchor && $0.text == draft.text }
+        }.map(\.id) ?? [])
+        removeComments(ids, in: scope)
     }
 
     func discardComments(in scope: ChangesScope) {

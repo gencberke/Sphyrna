@@ -391,7 +391,8 @@ extension CatalogModel {
     /// Sends the current scope's comments as one message; the user's click is the approval. A Chat session takes it the way
     /// the composer's Return does (`.next`) and the comments clear once it was accepted. A live terminal run gets it in its
     /// mailbox (F1's path): "Sent · waiting for <title> to be ready", with the comments kept, then "Delivered" once the
-    /// session read it, when exactly the sent comments go (one written meanwhile stays). A refused send keeps them and says why.
+    /// session read it, when exactly the sent comments go (one written or edited meanwhile, or left out by the bound, stays,
+    /// and the footer says how many were not sent). A refused send keeps them and says why.
     func sendChangeComments(for sessionID: UUID) async {
         let session = changes.session(for: sessionID)
         let comments = orderedChangeComments(for: sessionID)
@@ -415,23 +416,24 @@ extension CatalogModel {
         }
         // The runtime decides whether this run takes it; the button's own answer may be a moment old.
         guard let row = changesRow(sessionID), runEndpoint(of: row) == .terminal, let runtime = sessions?.runtime else { return }
-        let text = ChangesMessage.terminalText(scopeName: changesScopeName(for: sessionID), comments: comments,
-                                               oldestFirst: session.comments(in: scope).map(\.id))
+        let message = ChangesMessage.terminalMessage(scopeName: changesScopeName(for: sessionID), comments: comments,
+                                                     oldestFirst: session.comments(in: scope).map(\.id))
         let name = title(of: row, repeatsProject: false)
         session.sendStatus = .sending
         do {
-            let id = try await runtime.sendUserMessage(text, to: sessionID, senderTitle: ChangesMessage.senderTitle)
+            let id = try await runtime.sendUserMessage(message.text, to: sessionID, senderTitle: ChangesMessage.senderTitle)
             session.sendStatus = .sent(id, title: name)
-            watchChangesDelivery(id, in: sessionID, scope: scope, comments: Set(comments.map(\.id)), runtime: runtime)
+            watchChangesDelivery(id, in: sessionID, scope: scope, message: message, runtime: runtime)
         } catch {
             session.sendStatus = .failed(Self.userMessage(for: error, context: "The comments could not be sent"))
         }
     }
 
     /// Follows one terminal send until the session read it: the mailbox says when anything in it changed. On the read, the
-    /// comments that went with it leave the scope, as an accepted Chat send clears them.
-    private func watchChangesDelivery(_ messageID: UUID, in sessionID: UUID, scope: ChangesScope, comments: Set<UUID>,
-                                      runtime: SessionRuntime) {
+    /// comments that went with it leave the scope as they were sent, as an accepted Chat send clears them; one the message
+    /// left out, and one edited while it waited, stay.
+    private func watchChangesDelivery(_ messageID: UUID, in sessionID: UUID, scope: ChangesScope,
+                                      message: ChangesMessage.TerminalMessage, runtime: SessionRuntime) {
         let session = changes.session(for: sessionID)
         session.deliveryWatch?.cancel()
         session.deliveryWatch = Task { [weak session] in
@@ -441,8 +443,8 @@ extension CatalogModel {
                 switch await runtime.userMessageDelivery(messageID, to: sessionID) {
                 case .read:
                     if case let .sent(id, _) = current.sendStatus, id == messageID {
-                        current.removeComments(comments, in: scope)
-                        current.sendStatus = .delivered
+                        current.removeSentComments(message.sent, in: scope)
+                        current.sendStatus = message.notSent > 0 ? .deliveredInPart(notSent: message.notSent) : .delivered
                     }
                     return
                 case .gone:

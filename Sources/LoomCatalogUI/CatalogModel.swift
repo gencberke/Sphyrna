@@ -1278,13 +1278,14 @@ public final class CatalogModel {
 
     /// The window's visibility edge (written by the window owner): the minute tick follows it, not
     /// the key or active state, so a visible window behind another app keeps true times. `now`
-    /// catches up at once when the window becomes visible.
+    /// and the status bar's limit segments catch up at once when the window becomes visible.
     public func setWindowVisible(_ visible: Bool) {
         guard visible != windowIsVisible else { return }
         windowIsVisible = visible
         subagentPanel?.setWindowVisible(visible)
         if visible {
             advanceNow()
+            usage?.minuteTick()
             startTicking()
         } else {
             stopTicking()
