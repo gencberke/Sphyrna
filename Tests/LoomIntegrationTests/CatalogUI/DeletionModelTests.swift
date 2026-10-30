@@ -259,8 +259,8 @@ struct DeletionModelTests {
         #expect(production.intents.calls.contains("delete:\(id)"))
         // The cleanup review is the app's to install (every build, D-69): the model never installs it by itself.
         #expect(production.model.cleanupReview == nil)
-        // Codex stays refused for its own reason, not for a build gate.
-        #expect(production.model.deletionDisabledReason(for: try row(production, production.codex))?.contains("Codex") == true)
+        // Codex is offered in every build too (D-121).
+        #expect(production.model.deletionDisabledReason(for: try row(production, production.codex)) == nil)
     }
 
     @Test func theDeleteMenuEntryIsNamedDeletePermanently() {
@@ -375,11 +375,10 @@ struct DeletionModelTests {
     @Test func codexSyntheticAndBusyRowsAreDisabledWithAReason() async throws {
         let fixture = try await makeFixture()
         defer { Task { await fixture.cleanup() } }
+        // A Codex row is deleted like a Claude one (D-121).
         let codexRow = try row(fixture, fixture.codex)
-        #expect(fixture.model.deletionDisabledReason(for: codexRow)?.contains("Codex") == true)
-        #expect(!fixture.model.canDelete(codexRow))
-        fixture.model.requestDeletion(fixture.codex.id)
-        #expect(fixture.model.deletions.confirmation == nil)
+        #expect(fixture.model.deletionDisabledReason(for: codexRow) == nil)
+        #expect(fixture.model.canDelete(codexRow))
 
         let claudeRow = try row(fixture, fixture.claude)
         #expect(fixture.model.deletionDisabledReason(for: claudeRow) == nil)

@@ -20,12 +20,18 @@ public final class DeletionConfirmation: Identifiable {
 
     public nonisolated let id: UUID
     public let title: String
+    /// The session's harness as the user reads it ("Claude", "Codex"): the sheet names whose data it checks.
+    public let harness: String
     public internal(set) var phase: Phase = .loading
 
-    init(id: UUID, title: String) {
+    init(id: UUID, title: String, harness: String = "Claude") {
         self.id = id
         self.title = title
+        self.harness = harness
     }
+
+    /// What the sheet says while the dry run is made.
+    public var checkingText: String { "Checking what \(harness) has kept for this session\u{2026}" }
 
     /// A folder Loom cannot look inside, and that can hold this session's files, blocks the delete: it
     /// would end half done and could never finish.
@@ -153,7 +159,8 @@ extension CatalogModel {
     /// Nothing is removed until `confirmDeletion`.
     public func requestDeletion(_ id: UUID) {
         guard let row = tabRow(id), canDelete(row) else { return }
-        let confirmation = DeletionConfirmation(id: id, title: title(of: row))
+        let harness = capabilities(of: row.record.session.provider).displayName
+        let confirmation = DeletionConfirmation(id: id, title: title(of: row), harness: harness)
         deletions.confirmation = confirmation
         Task { [weak self, weak confirmation] in
             guard let intents = self?.intents else { return }
@@ -206,8 +213,14 @@ extension CatalogModel {
 
     public func cancelRemoveFromLoomOnly() { deletions.removalRequest = nil }
 
+    /// The harness whose files "Remove from Loom Only" leaves in place: the open sheet's, or the unfinished deletion's.
+    public func deletionHarness(_ id: UUID) -> String {
+        if let confirmation = deletions.confirmation, confirmation.id == id { return confirmation.harness }
+        return HarnessCapabilities.intrinsic(of: deletions.pending[id]?.provider ?? .claude).displayName
+    }
+
     /// The alert's Remove. It removes the session and Loom's own data for it and never a file of
-    /// Claude's; without the alert's request it does nothing. The request is taken at once (the alert
+    /// Claude's or Codex's; without the alert's request it does nothing. The request is taken at once (the alert
     /// closes right after its button runs), the removal runs in the returned task.
     @discardableResult
     public func removeFromLoomOnly(_ id: UUID) -> Task<Void, Never>? {
@@ -315,7 +328,10 @@ public enum DeletionCopy {
 
     /// The alert both "Remove from Loom Only" buttons ask for.
     public static let removeTitle = "Remove this session from Sphyrna?"
-    public static let removeMessage = "Sphyrna forgets the session and its own data for it. Claude's files stay where they are, and Sphyrna can't bring the session back."
+    public static let removeMessage = removeMessage(harness: "Claude")
+    public static func removeMessage(harness: String) -> String {
+        "Sphyrna forgets the session and its own data for it. \(harness)'s files stay where they are, and Sphyrna can't bring the session back."
+    }
     public static let removeButton = "Remove"
 
     public static func unreachableNote(_ folders: [String]) -> String {
@@ -325,8 +341,8 @@ public enum DeletionCopy {
     }
 
     /// What failed, in a sentence without a final period. `lastFailure` is the runtime's
-    /// `category` or `category: file name`.
-    public static func failureReason(_ lastFailure: String?) -> String {
+    /// `category` or `category: file name`; `harness` names whose data it is ("Claude", "Codex").
+    public static func failureReason(_ lastFailure: String?, harness: String = "Claude") -> String {
         guard let lastFailure, !lastFailure.isEmpty else { return "Sphyrna stopped before it could finish" }
         let parts = lastFailure.split(separator: ":", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
         let category = parts.first ?? ""
@@ -334,22 +350,35 @@ public enum DeletionCopy {
         switch category {
         case "stop_failed": return "Sphyrna could not stop the running session"
         case "stop_unverified": return "Sphyrna could not confirm that the session stopped"
-        case "live_session": return "A Claude process is still using this session"
-        case "unsafe_directory": return "Claude's data folder is not safe to change (its owner or permissions are not what Sphyrna expects)"
-        case "partial_failure": return file.map { "Sphyrna could not remove \($0)" } ?? "Sphyrna could not remove some of Claude's files"
-        case "refused": return "Sphyrna was refused when it tried to remove Claude's files"
-        case "plan_failed": return "Sphyrna could not read Claude's data folder"
+        case "live_session": return "A \(harness) process is still using this session"
+        case "unsafe_directory": return "\(harness)'s data folder is not safe to change (its owner or permissions are not what Sphyrna expects)"
+        case "partial_failure": return file.map { "Sphyrna could not remove \($0)" } ?? "Sphyrna could not remove some of \(harness)'s files"
+        case "refused": return "Sphyrna was refused when it tried to remove \(harness)'s files"
+        case "plan_failed": return "Sphyrna could not read \(harness)'s data folder"
         case "unreachable_folder":
-            return "Sphyrna cannot look inside \(file ?? "a folder of Claude's data") (it is a link or on another disk), "
-                + "so it cannot tell whether Claude keeps files for this session there"
+            return "Sphyrna cannot look inside \(file ?? "a folder of \(harness)'s data") (it is a link or on another disk), "
+                + "so it cannot tell whether \(harness) keeps files for this session there"
         case "catalog_row_remains": return "Sphyrna's own record of the session could not be removed"
-        case "provider_id_reappeared": return "Another session now uses the same Claude data"
+        case "provider_id_reappeared": return "Another session now uses the same \(harness) data"
         case "still_running": return "A process of this session is still running"
         case "leftover_files":
-            return file.map { "\($0) was still there after Sphyrna removed it" } ?? "Some of Claude's files were still there after Sphyrna removed them"
-        case "verify_failed": return "Sphyrna could not check that Claude's files are gone"
+            return file.map { "\($0) was still there after Sphyrna removed it" } ?? "Some of \(harness)'s files were still there after Sphyrna removed them"
+        case "verify_failed": return "Sphyrna could not check that \(harness)'s files are gone"
+        case "config_unavailable": return "Sphyrna cannot use \(harness)'s data folder right now (it cannot be read, or it is not a folder)"
         case "forget_hook_failed": return "Sphyrna could not clear its usage figures for this session"
         case "unsupported_provider": return "Sphyrna cannot delete this provider's files"
+        // Codex's own delete (D-121): its app-server, the subagent sessions it deletes along, and the proof that it is gone.
+        case "native_descendants":
+            return "Codex would also delete subagent sessions that are not this session's own, so Sphyrna deleted nothing. "
+                + "You can remove the session from Sphyrna only"
+        case "descendants_unverified":
+            return "Sphyrna could not ask Codex which subagent sessions it would delete along with this one, so it deleted nothing. Try again"
+        case "native_delete_failed": return "Codex did not delete the session when Sphyrna asked it to. Try again"
+        case "native_thread_remains": return "Codex still has the session after it was asked to delete it. Try again"
+        case "server_stop_unverified":
+            return "Sphyrna could not confirm that the Codex process it started for the delete has stopped. Try again"
+        case "server_unavailable":
+            return "Sphyrna could not start Codex to delete the session. Check that Codex is installed, then try again"
         default:
             let readable = category.replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "-", with: " ")
             return "A step failed" + (readable.isEmpty || readable == "step failed" ? "" : " (\(readable))")
@@ -357,8 +386,8 @@ public enum DeletionCopy {
     }
 
     /// The banner for a deletion that did not finish.
-    public static func bannerText(lastFailure: String?) -> String {
-        var reason = failureReason(lastFailure)
+    public static func bannerText(lastFailure: String?, harness: String = "Claude") -> String {
+        var reason = failureReason(lastFailure, harness: harness)
         while reason.last == "." { reason.removeLast() }
         return "Deleting this session isn't finished. \(reason). Nothing else was touched."
     }

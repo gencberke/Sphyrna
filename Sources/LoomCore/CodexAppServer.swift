@@ -724,6 +724,17 @@ public actor CodexAppServerClient {
             .contains(message.lowercased().trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
+    /// Whether `error` is `thread/resume`'s answer that `threadID` has no stored thread, and nothing else. Codex 0.164 maps its
+    /// thread store's "not found" for the id to "no rollout found for thread id <id>" (app-server `thread_processor.rs`,
+    /// `read_stored_thread_for_resume` through `thread_store_resume_read_error`). Only the resume path asks it, on the server
+    /// it has just started for this card, where no thread is loaded: the answer means the thread is gone (deleted, or never
+    /// written), not one that another server holds unwritten.
+    public static func isMissingThreadResumeAnswer(_ error: any Error, threadID: String) -> Bool {
+        guard case let .rpc(_, message, _)? = error as? CodexAppServerError else { return false }
+        return message.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            == "no rollout found for thread id \(threadID.lowercased())"
+    }
+
     /// Whether the server still has the persisted thread: a history-free `thread/read` that answers it (true) or answers
     /// that there is no such thread (false, `isAbsentThreadAnswer`). Any other answer or error is thrown, never read as absent.
     public func threadExists(_ threadID: String, timeout: TimeInterval = 20) async throws -> Bool {

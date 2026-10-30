@@ -192,11 +192,13 @@ enum CleanupText {
         }
     }
 
-    static func result(_ result: CleanupRowResult) -> String {
+    /// `harness` names whose data the row's session keeps ("Claude", "Codex").
+    static func result(_ result: CleanupRowResult, harness: String = "Claude") -> String {
         switch result {
         case .deleted: "Deleted"
-        // The recorded failure is "category: file"; the row shows the category, the file stays in the record.
-        case .incomplete(let detail): "Not finished: \(detail.components(separatedBy: ": ").first ?? detail)"
+        // The recorded failure is "category: file"; the row says what failed in words, the file stays in the record.
+        case .incomplete(let detail):
+            "Not finished: " + DeletionCopy.failureReason(detail.components(separatedBy: ": ").first ?? detail, harness: harness)
         case .failed(let detail): "Failed: \(detail)"
         case .skipped(let why): "Skipped: \(reason(why))"
         }

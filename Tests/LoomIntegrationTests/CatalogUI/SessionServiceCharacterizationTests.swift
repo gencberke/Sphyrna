@@ -325,7 +325,6 @@ struct SessionServiceCapabilityTableTests {
 
         let codexLater = "Codex comes in a later version"
         let codexNoResume = "Codex sessions can't be resumed in this version."
-        let codexNoDelete = "Codex sessions can't be deleted from Sphyrna yet."
         var expected: [String: String] = [:]
         for identity in ["production", "development"] {
             // Claude is the same in both identities.
@@ -336,7 +335,7 @@ struct SessionServiceCapabilityTableTests {
                 ("Chat face for a resume, Sessions run in Terminal", "false"), ("Changes send, Sessions run in Terminal", "notChat"),
                 ("deletion refusal", "nil"),
             ] { expected["\(identity), claude, \(question)"] = value }
-            // Codex is never offered a Side tab, a Chat face or a Changes send, and cannot be deleted from Loom.
+            // Codex is never offered a Side tab, a Chat face or a Changes send; it is deleted like Claude (D-121).
             let startsCodex = identity == "development"
             for (question, value) in [
                 ("can start", String(startsCodex)), ("new-session entry's unavailable reason", startsCodex ? "nil" : codexLater),
@@ -344,7 +343,7 @@ struct SessionServiceCapabilityTableTests {
                 ("can resume from Home", String(startsCodex)), ("Side tab offered", "false"),
                 ("Chat face for a resume, Sessions run in Chat", "false"), ("Changes send, Sessions run in Chat", "notChat"),
                 ("Chat face for a resume, Sessions run in Terminal", "false"), ("Changes send, Sessions run in Terminal", "notChat"),
-                ("deletion refusal", codexNoDelete),
+                ("deletion refusal", "nil"),
             ] { expected["\(identity), codex, \(question)"] = value }
         }
         for (cell, value) in expected.sorted(by: { $0.key < $1.key }) {

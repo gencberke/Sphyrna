@@ -176,7 +176,7 @@ struct DeleteStoredSessionsSheet: View {
     var body: some View {
         let rows = storage.selectedRows.map {
             DeleteSheetText.Row(title: $0.record.displayTitle(projectName: catalog.projectName(for: $0.record)),
-                                fileCount: $0.fileCount, byteCount: $0.byteCount)
+                                fileCount: $0.fileCount, byteCount: $0.byteCount, provider: $0.record.session.provider)
         }
         let text = DeleteSheetText.make(rows: rows, folder: profile.map(SettingsPaths.display))
         InkSheet(

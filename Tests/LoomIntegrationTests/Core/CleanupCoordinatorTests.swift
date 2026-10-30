@@ -390,7 +390,7 @@ struct CleanupCoordinatorTests {
         #expect(try await fixture.coordinator.review(now: now).mode == .reviewRequired(.longAbsence))
     }
 
-    @Test func onlyClaudeConversationsAreOffered() async throws {
+    @Test func onlyConversationsSphyrnaCanDeleteAreOffered() async throws {
         let fixture = try makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let claude = try await insertStale(fixture.catalog, title: "claude")
@@ -398,7 +398,8 @@ struct CleanupCoordinatorTests {
         try await fixture.catalog.insertSession(
             codex, title: "codex", createdAt: ago(90), lastUsedAt: ago(60), lifecycle: .stale, staleSince: ago(45))
         let review = try await fixture.coordinator.review(now: now)
-        #expect(review.eligible.map(\.id) == [claude])
+        // Codex is deleted through its own server since D-121.
+        #expect(Set(review.eligible.map(\.id)) == [claude, codex.id])
         #expect(review.excluded.isEmpty)
     }
 

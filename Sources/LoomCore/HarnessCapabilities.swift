@@ -71,10 +71,11 @@ public struct HarnessCapabilities: Equatable, Sendable {
         readsContext: true, readsEdits: true, subagents: true, rewind: true, quickQuestion: true, deletes: true,
         usageLimits: true, modelCatalog: true, reportsRunSettings: true, displayName: "Claude")
 
-    /// Codex's row: transcript, usage and file-change reads do not imply a structured Chat face or deletion support.
+    /// Codex's row: transcript, usage and file-change reads do not imply a structured Chat face. Its sessions are deleted
+    /// through Codex's own app-server and verified gone (D-121).
     private static let codex = HarnessCapabilities(
         hasHarness: true, startable: false, structuredFace: false, readsTranscript: true, sideChats: false,
-        readsContext: true, readsEdits: true, subagents: false, rewind: false, quickQuestion: false, deletes: false,
+        readsContext: true, readsEdits: true, subagents: false, rewind: false, quickQuestion: false, deletes: true,
         usageLimits: true, modelCatalog: true, reportsRunSettings: false, displayName: "Codex")
 
     /// What `id`'s harness can do whatever the build starts (`startable` is false here): the answer for code that has no

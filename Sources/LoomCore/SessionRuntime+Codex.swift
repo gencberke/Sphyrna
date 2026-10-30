@@ -238,7 +238,8 @@ extension SessionRuntime {
             )
         } catch {
             let reason: any Error
-            if let rpc = error as? CodexAppServerError, rpc.isThreadNotFound {
+            if let rpc = error as? CodexAppServerError,
+               rpc.isThreadNotFound || CodexAppServerClient.isMissingThreadResumeAnswer(rpc, threadID: conversationID) {
                 reason = LoomError.providerHistoryUnavailable(provider: .codex, conversationID: conversationID)
             } else { reason = error }
             let failure = await startFailure(reason, cleaning: server)

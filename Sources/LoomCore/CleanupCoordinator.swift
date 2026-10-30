@@ -307,7 +307,9 @@ public actor CleanupCoordinator: CleanupReviewing {
                                           isRunning: running))
         }
         let config = await host.configDirectory()
-        let folder = previews.values.first?.configDirectory ?? config?.path
+        // The Claude profile's folder: a Codex session's preview names its Codex home, which is not this report's folder.
+        let folder = previews.values.first { if case .claude = $0.provider { true } else { false } }?.configDirectory
+            ?? config?.path
         let projects: Int64? = if let config {
             await Task.detached(priority: .utility) { ClaudeDataInventory.projectsFolderBytes(configDirectory: config) }.value
         } else { nil }
@@ -359,8 +361,8 @@ public actor CleanupCoordinator: CleanupReviewing {
     // MARK: Internals
 
     private func makeReview(now: Date, withSizes: Bool) async throws -> CleanupReview {
-        // Only the harnesses Loom can delete are offered (D-28 refuses Codex and synthetic ones);
-        // listing a row that can only fail would mislead.
+        // Only the harnesses Loom can delete are offered (Claude, and Codex since D-121; never a
+        // synthetic one); listing a row that can only fail would mislead.
         let stale = try await catalog.sessions().filter {
             $0.lifecycle == .stale && HarnessCapabilities.intrinsic(of: $0.session.provider).deletes
         }

@@ -594,7 +594,8 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
             reply([:])
         case "thread/resume":
             let threadID = (params["threadId"] as? String) ?? ""
-            guard var thread = load(threadID) else { failure(-32600, "thread not found: \(threadID)"); return }
+            // Codex 0.164's own answer for an id its thread store has no rollout of (unknown, or deleted).
+            guard var thread = load(threadID) else { failure(-32600, "no rollout found for thread id \(threadID)"); return }
             let isTUI = connection.initializeData.map { String(decoding: $0, as: UTF8.self).contains("fake-codex-tui") } ?? false
             let mode = ProcessInfo.processInfo.environment["LOOM_FAKE_CODEX_JOIN"] ?? ""
             if !isTUI {
