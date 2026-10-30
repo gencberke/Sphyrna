@@ -50,16 +50,18 @@
 
 - **The whole gate** (`scripts/check.sh --full --idle`) on the final commit: 14 steps PASS on `cb73630`, the code of this release (`052954-65955`): the guards, the staged release tree, T1 and T2 in release (1,343 + 1,292 tests and the small targets; the one known issue is a test proving its own detector fires) and the window tests alone in release (37).
 - **Real Codex, isolated** (`RealCodexDraftAcceptanceTests`, a cheap model): the first prompt in the owned thread, one approval accepted exactly once, the settings after the first prompt, Stop, a same-thread Resume with no new input, Quit and the cleanup. It passed on the second attempt; in the first the model finished its turn without asking for approval. One real isolated Codex deletion passed earlier (`evidence/r9/d2x/REAL.md`).
+- **Energy** (`scripts/perf/real_energy.py` on the dev flavor of this code, fake providers, 60 s cells; `evidence/r9/release-1.8.0/ENERGY.md`): D-92's idle and footprint budgets hold for the app's process (Home idle 0.05 % of one core and 39 MiB; one terminal working silently 0.6 % and 75 MiB). Streaming 1 MiB/s, the app costs what Terminal.app costs (14.8 % against 15.2 %) with less memory. WindowServer is the exception: about 9 % of one core while a session works in view, against 1.4–1.7 % at rest, and the working spinner is the cause (2.2 % with it standing still). How it moves is a design call for `@user`.
 - **The closing optimizer** read all code through 1.8.0 (`evidence/r9/optimizer-closing/UI.md`, `CORE.md`) and the late changes (`DELTA.md`). Its Blocking and Should-Fix findings are fixed, each with a test that failed first.
 
 ## Not checked yet
 
 - **Claude, live.** The isolated Claude profile's sign-in expired, so no real Claude cell ran tonight: the ordinary session, the child over three rounds, Changes → session. They run once `@user` signs that profile in.
-- **Energy, CPU and memory against D-92's budgets,** VoiceOver, a drag with a real pointer, and the full visual pass against the v4 reference.
+- **Energy beyond the cells above** (the real Claude TUI, a hidden window, a ProMotion display, repeated samples), VoiceOver, a drag with a real pointer, and the full visual pass against the v4 reference.
 - **`@user`'s hand checks** on the installed app: the project drag, a day with Claude and Codex side by side, the panel, the status bar, `send`, Remora.
 
 ## Known limits
 
+- While a session works in a visible window, the working spinner keeps WindowServer at about 7 % of one core above rest (`ENERGY.md`).
 - A Codex session that started native subagent threads, or whose Codex was uninstalled, can be neither deleted nor removed from Sphyrna; the sheet says why.
 - A deletion uses the Codex home Codex resolves when you delete. A session that ran under another `CODEX_HOME` is not seen there.
 - Keys pressed very fast on a pinned card, before it draws its focus ring, may be lost (seen in a test, not yet confirmed by hand).
