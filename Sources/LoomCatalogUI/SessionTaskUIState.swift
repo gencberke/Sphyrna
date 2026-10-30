@@ -40,8 +40,22 @@ final class SessionTaskParentUI {
     fileprivate(set) var limited = false
     fileprivate(set) var incomplete = false
     @ObservationIgnored fileprivate var references = 1
-    @ObservationIgnored fileprivate var wantsPage = true
     @ObservationIgnored fileprivate var isTracked = true
+    /// A read from the first page that replaces `items` only when it ends, so the shown rows stay through an update.
+    @ObservationIgnored fileprivate var pass: Pass? = Pass()
+    @ObservationIgnored fileprivate var wantsMore = false
+
+    fileprivate struct Pass {
+        /// How many rows the pass reads again (those shown when it starts, at least a page); nil until its first page.
+        var target: Int?
+        var items: [SessionTaskProjection] = []
+        var next: UUID?
+        var incomplete = false
+        /// An update arrived after the pass began: another pass follows it.
+        var again = false
+    }
+
+    fileprivate var wantsPage: Bool { pass != nil || wantsMore }
 
     init(id: UUID) { self.id = id }
 }
@@ -72,6 +86,8 @@ final class SessionTaskUIState {
     @ObservationIgnored private var load: Task<Void, Never>?
     @ObservationIgnored private var loadToken: UUID?
     @ObservationIgnored private var loadingParent: UUID?
+    /// The parent read last; the next read starts after it, so frequent updates cannot starve later parents.
+    @ObservationIgnored private var served: UUID?
     @ObservationIgnored private var subscribed = false
 
     deinit {
@@ -106,6 +122,7 @@ final class SessionTaskUIState {
         order.append(id)
         reset(parent)
         startUpdatesIfNeeded()
+        drain()
         return parent
     }
 
@@ -122,7 +139,7 @@ final class SessionTaskUIState {
     func loadMore(_ parent: SessionTaskParentUI) {
         guard parent.isTracked, parents[parent.id] === parent, parent.didLoad, parent.next != nil,
               !parent.isLoading else { return }
-        parent.wantsPage = true
+        parent.wantsMore = true
         parent.limited = false
         drain()
     }
@@ -131,20 +148,33 @@ final class SessionTaskUIState {
         parents[parentID]?.items.first { $0.id == id }
     }
 
+    /// A shown task's read is stale only when that task's own revision changed; a task not shown, at any update.
     func readEvents(for taskID: UUID) async -> EventRead {
         guard let bridge else { return .unavailable }
         let generation = sourceGeneration
         let requestedRevision = revision
+        let taskRevision = shownRevision(of: taskID)
+        func current() -> Bool {
+            !Task.isCancelled && generation == sourceGeneration && taskRevision == shownRevision(of: taskID)
+                && (taskRevision != nil || requestedRevision == revision)
+        }
         do {
             let received = try await bridge.latestEvents(taskID, Self.eventLimit)
-            guard !Task.isCancelled, generation == sourceGeneration, requestedRevision == revision else { return .unavailable }
+            guard current() else { return .unavailable }
             let latest = received.suffix(Self.eventLimit)
             let safe = latest.filter { $0.taskID == taskID && $0.payload.utf8.count <= Self.eventByteLimit }
             return .ready(EventBatch(events: Array(safe), partial: received.count > Self.eventLimit || safe.count != latest.count))
         } catch {
-            guard !Task.isCancelled, generation == sourceGeneration, requestedRevision == revision else { return .unavailable }
+            guard current() else { return .unavailable }
             return .failed
         }
+    }
+
+    private func shownRevision(of taskID: UUID) -> Int64? {
+        for parent in parents.values {
+            if let task = parent.items.first(where: { $0.id == taskID }) { return task.revision }
+        }
+        return nil
     }
 
     private func reset(_ parent: SessionTaskParentUI) {
@@ -155,7 +185,13 @@ final class SessionTaskUIState {
         parent.unavailable = bridge == nil
         parent.limited = false
         parent.incomplete = false
-        parent.wantsPage = true
+        parent.pass = .init()
+        parent.wantsMore = false
+    }
+
+    /// An update keeps the shown rows and reads them again; a pass already under way is followed by one more.
+    private func markStale(_ parent: SessionTaskParentUI) {
+        if parent.pass == nil { parent.pass = .init() } else if parent.pass?.target != nil { parent.pass?.again = true }
     }
 
     /// Subscribe before the first page so an update during the read is not lost.
@@ -170,8 +206,7 @@ final class SessionTaskUIState {
             for await _ in stream {
                 guard !Task.isCancelled, let self, self.sourceGeneration == generation else { return }
                 self.revision &+= 1
-                self.cancelLoad()
-                for parent in self.parents.values { self.reset(parent) }
+                for parent in self.parents.values { self.markStale(parent) }
                 self.drain()
             }
             if !Task.isCancelled, let self, self.sourceGeneration == generation {
@@ -184,18 +219,42 @@ final class SessionTaskUIState {
     /// One page at a time bounds in-flight memory and prevents a burst of visible rows from racing the total cap.
     private func drain() {
         guard subscribed, load == nil, let bridge else { return }
-        guard let parent = order.compactMap({ parents[$0] }).first(where: { $0.wantsPage }) else { return }
-        let room = Self.maximumTasks - cachedTaskCount
-        guard room > 0 else {
-            for parent in parents.values where parent.wantsPage { parent.limited = true }
-            return
+        let tracked = order.compactMap { parents[$0] }
+        let start = served.flatMap { id in tracked.firstIndex { $0.id == id } }.map { $0 + 1 } ?? 0
+        for parent in tracked[start...] + tracked[..<start] where parent.wantsPage {
+            if read(parent, bridge) { return }
         }
-        let limit = min(Self.pageSize, room)
-        let cursor = parent.didLoad ? parent.next : nil
-        guard !parent.didLoad || cursor != nil else { parent.wantsPage = false; drain(); return }
-        parent.isLoading = true
+    }
+
+    /// Starts the parent's next page; false when it has none to read now.
+    private func read(_ parent: SessionTaskParentUI, _ bridge: SessionTaskUIBridge) -> Bool {
+        var pass = parent.pass
+        guard pass != nil || parent.next != nil else { parent.wantsMore = false; return false }
+        // A pass replaces the parent's own rows, so they count as room for it.
+        let room = Self.maximumTasks - cachedTaskCount + (pass.map { parent.items.count - $0.items.count } ?? 0)
+        guard room > 0 else {
+            if let pass, pass.target != nil { finish(parent, pass) } else { parent.limited = true }
+            return false
+        }
+        let cursor: UUID?
+        let limit: Int
+        if var current = pass {
+            cursor = current.target == nil ? nil : current.next
+            let target = current.target ?? max(parent.items.count, Self.pageSize)
+            current.target = target
+            limit = min(Self.pageSize, room, target - current.items.count)
+            pass = current
+            parent.pass = current
+        } else {
+            cursor = parent.next
+            limit = min(Self.pageSize, room)
+        }
+        let refreshing = pass != nil
+        if !refreshing || !parent.didLoad {
+            parent.isLoading = true
+            parent.unavailable = false
+        }
         parent.limited = false
-        parent.unavailable = false
         let generation = sourceGeneration
         let token = UUID()
         let parentID = parent.id
@@ -212,21 +271,57 @@ final class SessionTaskUIState {
             defer { self.drain() }
             guard !Task.isCancelled, let parent, self.sourceGeneration == generation,
                   self.parents[parentID] === parent else { return }
+            self.served = parentID
             parent.isLoading = false
-            parent.wantsPage = false
-            switch result {
-            case let .success(page):
-                var seen = Set(parent.items.map(\.id))
-                let valid = page.items.prefix(limit).filter { $0.parentSessionID == parent.id && seen.insert($0.id).inserted }
-                parent.items.append(contentsOf: valid)
-                parent.incomplete = parent.incomplete || page.items.count > limit || valid.count != page.items.count
-                parent.next = page.next
-                if let cursor, cursor == page.next { parent.next = nil; parent.incomplete = true }
-                parent.didLoad = true
-            case .failure:
-                parent.unavailable = true
-            }
+            if refreshing { self.receivePass(result, parent, cursor: cursor, limit: limit) }
+            else { self.receiveMore(result, parent, cursor: cursor, limit: limit) }
         }
+        return true
+    }
+
+    private func receiveMore(_ result: Result<SessionTaskUIBridge.Page, Error>, _ parent: SessionTaskParentUI,
+                             cursor: UUID?, limit: Int) {
+        parent.wantsMore = false
+        switch result {
+        case let .success(page):
+            var seen = Set(parent.items.map(\.id))
+            let valid = page.items.prefix(limit).filter { $0.parentSessionID == parent.id && seen.insert($0.id).inserted }
+            parent.items.append(contentsOf: valid)
+            parent.incomplete = parent.incomplete || page.items.count > limit || valid.count != page.items.count
+            parent.next = page.next
+            if let cursor, cursor == page.next { parent.next = nil; parent.incomplete = true }
+        case .failure:
+            parent.unavailable = true
+        }
+    }
+
+    private func receivePass(_ result: Result<SessionTaskUIBridge.Page, Error>, _ parent: SessionTaskParentUI,
+                             cursor: UUID?, limit: Int) {
+        guard var pass = parent.pass, let target = pass.target else { return }
+        switch result {
+        case let .success(page):
+            var seen = Set(pass.items.map(\.id))
+            let valid = page.items.prefix(limit).filter { $0.parentSessionID == parent.id && seen.insert($0.id).inserted }
+            pass.items.append(contentsOf: valid)
+            pass.incomplete = pass.incomplete || page.items.count > limit || valid.count != page.items.count
+            pass.next = page.next
+            if let cursor, cursor == page.next { pass.next = nil; pass.incomplete = true }
+            if pass.next != nil, pass.items.count < target { parent.pass = pass } else { finish(parent, pass) }
+        case .failure:
+            // Rows already shown stay, marked as not all read; a parent never read is unavailable.
+            parent.pass = pass.again ? SessionTaskParentUI.Pass() : nil
+            if parent.didLoad { parent.incomplete = true } else { parent.unavailable = true }
+        }
+    }
+
+    /// Assigns only what changed, so an update that changed nothing leaves the rows' observers alone.
+    private func finish(_ parent: SessionTaskParentUI, _ pass: SessionTaskParentUI.Pass) {
+        if parent.items != pass.items { parent.items = pass.items }
+        if parent.next != pass.next { parent.next = pass.next }
+        if parent.incomplete != pass.incomplete { parent.incomplete = pass.incomplete }
+        if parent.unavailable { parent.unavailable = false }
+        if !parent.didLoad { parent.didLoad = true }
+        parent.pass = pass.again ? SessionTaskParentUI.Pass() : nil
     }
 
     /// Wait for a cancelled read to return before starting another, even if its loader ignores cancellation.
