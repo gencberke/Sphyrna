@@ -61,7 +61,7 @@ running, in review, integrated (with the `v2` SHA), cut. Long checks: `~/Library
 ## Current open work
 
 - D-118 final evidence is `evidence/r9/final-wrap-20261029/` (exact files linked from `STATUS.md`). Read the full69-issue verdict, actual AX crash reproductions, positive scoped/deletion/metric evidence and the rejected Menu differential before continuing in existing Claude with permission/effort unchanged.
-- Next (D-120, overnight): the local release steps (D-120, D-123) with [the release notes](release-notes/RELEASE-NOTES-1.8.0.md). Done: the delta pass and its fixes (`cb73630`, whole gate PASS `052954-65955`), step 5 and the whole green gate (`979094a`), D2 (D-121), I1 (D-123), the live acceptance's first run and its two bugs (D-124), the real Codex acceptance.
+- Next (D-120, overnight): D-92's energy cells on the 1.8.0 test package and the morning report. Done: the local release (D-120, D-123; tag `release/1.8.0` on `9eecf23`, installed in place; [the release notes](release-notes/RELEASE-NOTES-1.8.0.md)), the delta pass and its fixes (`cb73630`, whole gate PASS `052954-65955`), step 5 and the whole green gate (`979094a`), D2 (D-121), I1 (D-123), the live acceptance's first run and its two bugs (D-124), the real Codex acceptance.
 - After 1.8.0 (recorded, not started):
   - Codex in the session channel through its owned app-server (D-124); Codex titles through `thread/name/set`; the fake server's `thread/read` answer matching the real one.
   - Keys pressed before a pinned card draws its focus ring may be lost (seen while fixing `PinnedFixRoundTests`).
