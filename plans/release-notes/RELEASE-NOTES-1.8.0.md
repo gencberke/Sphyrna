@@ -1,6 +1,6 @@
 # Sphyrna 1.8.0
 
-30 Oct 2026, built overnight under [D-120](../../DECISIONS.md): `@user` authorized the local tag, the promote and the in-place install once 1.8.0 was stable ([D-120](../../DECISIONS.md), [D-123](../../DECISIONS.md)); the push and the GitHub release wait for `@user` ([D-16](../../DECISIONS.md), [D-83](../../DECISIONS.md)). The plan is [plans/1.8.0](../1.8.0/README.md).
+30 Oct 2026, built overnight under [D-120](../../DECISIONS.md) and re-cut the same afternoon with the calmer spinner ([D-125](../../DECISIONS.md)), at the same version: `@user` authorized the local tag, the promote and the in-place install once 1.8.0 was stable ([D-120](../../DECISIONS.md), [D-123](../../DECISIONS.md)); the push and the GitHub release wait for `@user` ([D-16](../../DECISIONS.md), [D-83](../../DECISIONS.md)). The plan is [plans/1.8.0](../1.8.0/README.md).
 
 1.8.0 is Sphyrna's first strong stop ([D-105](../../DECISIONS.md)): Codex beside Claude, the Ink v4 look on every surface, sessions that work together, and the known bugs closed. What it does not do yet, and what was not checked, is at the end.
 
@@ -36,6 +36,7 @@
 - **No stall from blocking work on Swift's shared threads.** Blocking waits run on their own threads, and so do the recovery after a crash and the task socket's replies, so one slow call no longer holds the rest of the app.
 - **An accessibility crash is fixed.** A selectable text with its own accessibility label made SwiftUI recurse while a client (VoiceOver, an automation tool) read the window.
 - **Codex costs less to read.** A rollout is found in its day folder, a Codex stop needs no extra process scan, and Storage and the cleanup review read every Codex session from one walk of the Codex home without parsing its index.
+- **A calmer working spinner** ([D-125](../../DECISIONS.md)). It steps twice a second, from one clock for every spinner, instead of a 12 fps render-server animation, which kept WindowServer at about 9 % of one core while a session worked in a visible window. Measured on the experiment build, WindowServer then sits at 3.6 %.
 - **Bounded memory** for transcripts and the Changes cache.
 - **Task rows and an open detail survive updates;** the status bar rebuilds when the window is uncovered.
 - **The project drag reorders,** and a project's draft row no longer overlaps the next block.
@@ -50,7 +51,7 @@
 
 - **The whole gate** (`scripts/check.sh --full --idle`) on the final commit: 14 steps PASS on `cb73630`, the code of this release (`052954-65955`): the guards, the staged release tree, T1 and T2 in release (1,343 + 1,292 tests and the small targets; the one known issue is a test proving its own detector fires) and the window tests alone in release (37).
 - **Real Codex, isolated** (`RealCodexDraftAcceptanceTests`, a cheap model): the first prompt in the owned thread, one approval accepted exactly once, the settings after the first prompt, Stop, a same-thread Resume with no new input, Quit and the cleanup. It passed on the second attempt; in the first the model finished its turn without asking for approval. One real isolated Codex deletion passed earlier (`evidence/r9/d2x/REAL.md`).
-- **Energy** (`scripts/perf/real_energy.py` on the dev flavor of this code, fake providers, 60 s cells; `evidence/r9/release-1.8.0/ENERGY.md`): D-92's idle and footprint budgets hold for the app's process (Home idle 0.05 % of one core and 39 MiB; one terminal working silently 0.6 % and 75 MiB). Streaming 1 MiB/s, the app costs what Terminal.app costs (14.8 % against 15.2 %) with less memory. WindowServer is the exception: about 9 % of one core while a session works in view, against 1.4–1.7 % at rest, and the working spinner is the cause (2.2 % with it standing still). How it moves is a design call for `@user`.
+- **Energy** (`scripts/perf/real_energy.py` on the dev flavor of this code, fake providers, 60 s cells; `evidence/r9/release-1.8.0/ENERGY.md`): D-92's idle and footprint budgets hold for the app's process (Home idle 0.05 % of one core and 39 MiB; one terminal working silently 0.6 % and 75 MiB). Streaming 1 MiB/s, the app costs what Terminal.app costs (14.8 % against 15.2 %) with less memory. WindowServer was the exception: about 9 % of one core while a session worked in view, against 1.4–1.7 % at rest, and the working spinner was the cause (2.2 % with it standing still). 1.8.0 steps it twice a second (D-125): 3.6 % on the experiment build; the final build's energy run waits for an idle Mac.
 - **The closing optimizer** read all code through 1.8.0 (`evidence/r9/optimizer-closing/UI.md`, `CORE.md`) and the late changes (`DELTA.md`). Its Blocking and Should-Fix findings are fixed, each with a test that failed first.
 
 ## Not checked yet
@@ -61,7 +62,6 @@
 
 ## Known limits
 
-- While a session works in a visible window, the working spinner keeps WindowServer at about 7 % of one core above rest (`ENERGY.md`).
 - A Codex session that started native subagent threads, or whose Codex was uninstalled, can be neither deleted nor removed from Sphyrna; the sheet says why.
 - A deletion uses the Codex home Codex resolves when you delete. A session that ran under another `CODEX_HOME` is not seen there.
 - Keys pressed very fast on a pinned card, before it draws its focus ring, may be lost (seen in a test, not yet confirmed by hand).
