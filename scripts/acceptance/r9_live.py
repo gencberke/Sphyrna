@@ -405,8 +405,9 @@ def start_from_draft(app, project, harness, model, effort, mode, text):
     app.send(f'new-session:{project}')
     time.sleep(1)
     requested = app.request(f'draft-choice:{project}:{harness}:{model}:{effort}:{mode}', 'ack-draft-choice.json')
-    app.send(f'draft-text:{project}:{text}')
-    time.sleep(.6)
+    if text:
+        app.send(f'draft-text:{project}:{text}')
+        time.sleep(.6)
     app.send(f'draft-send:{project}')
     state = app.until('started', lambda s: set(owners(s)) - before, 120)
     return (set(owners(state)) - before).pop(), requested
@@ -459,10 +460,32 @@ def accept_sphyrna_bash(app, sid, harness, label, timeout, done, allow_words=('S
     return state, answered, denied
 
 
+def prompt_recorded(nid, text):
+    if not nid:
+        return False
+    head = text[:40]
+    return (any(head in claude_text(r) for r in claude_prompts(nid)) or any(head in t for t in codex_texts(nid, 'user')))
+
+
 def type_prompt(app, sid, text):
+    """Types the prompt and Return. A TUI that reads a fast burst as a paste keeps the Return in its composer, so one more
+    Return (a key, not a resend) follows when the provider has not recorded the prompt after a few seconds."""
     app.send(f'select:{sid}')
     time.sleep(.4)
     app.send(f'type:{sid}:{text}')
+    nid = native_id(app.snap('typed'), sid)
+    end = time.monotonic() + 6
+    while time.monotonic() < end:
+        if prompt_recorded(nid, text):
+            return True
+        time.sleep(.5)
+    app.send(f'type:{sid}:')
+    end = time.monotonic() + 10
+    while time.monotonic() < end:
+        if prompt_recorded(nid, text):
+            return True
+        time.sleep(.5)
+    return False
 
 
 # ---------------------------------------------------------------- cells
@@ -571,15 +594,15 @@ def drive_child_rounds(cell, app, parent, parent_harness, child_harness, rounds)
     snapshots.append(task)
     cell.check('round1Completed', len(completed_events(task)) >= 1, task['rounds'])
     if rounds >= 2:
-        type_prompt(app, parent, ('Round 2: send a follow-up to the same child task with "$SPHYRNA_CLI" task reply --task '
-                                  '<the task id> --message - (stdin text: "Round 2. Run the shell command sleep 45, then '
+        type_prompt(app, parent, ('Round 2: send a follow-up to the same child task with `"$SPHYRNA_CLI" task reply --task '
+                                  '<the task id> --message -` (stdin text: "Round 2. Run the shell command sleep 45, then '
                                   'report completed with one short sentence naming a yellow fruit."). Then run "$SPHYRNA_CLI" '
                                   'task status --task <the task id> until the new round is active and tell me its round id.'))
         task, state = settle('r2', lambda t, s: len(t['rounds']) >= 2 and t['rounds'][-1]['phase'] == 'active'
                              and parent_idle(s), 300)
         snapshots.append(task)
-        type_prompt(app, parent, ('Interrupt that exact active round with "$SPHYRNA_CLI" task interrupt --task <the task id> '
-                                  '--round <the active round id> --message - (stdin text: "Round 3 update: skip the sleep and '
+        type_prompt(app, parent, ('Interrupt that exact active round with `"$SPHYRNA_CLI" task interrupt --task <the task id> '
+                                  '--round <the active round id> --message -` (stdin text: "Round 3 update: skip the sleep and '
                                   'report completed with one short sentence naming a red fruit."). Then wait for its event '
                                   'with "$SPHYRNA_CLI" task wait --task <the task id> --revision <current revision> and '
                                   'tell me the result in one line.'))
@@ -602,10 +625,11 @@ def cell_cross(args, parent_harness, child_harness):
         app.send(f'add-project:{work}')
         project = app.until('project', lambda s: len(s['catalog']['projects']) == 1, 30)['catalog']['projects'][0]['id']
         child_model, child_effort = (CODEX_MODEL, CODEX_EFFORT) if child_harness == 'codex' else (CLAUDE_MODEL, CLAUDE_EFFORT)
-        first = ('Delegate a small job to a managed child agent through Sphyrna. Run this Bash command exactly once: '
-                 f'printf "Round 1. Reply with one short sentence naming a green vegetable, and report it as completed." | '
+        first = ('Delegate a small job to a managed child agent through Sphyrna. Run this shell command exactly once, '
+                 'exactly as written between the backticks: '
+                 f'`printf "Round 1. Reply with one short sentence naming a green vegetable, and report it as completed." | '
                  f'"$SPHYRNA_CLI" task create --name acc-helper --harness {child_harness} --model {child_model} '
-                 f'--effort {child_effort} --message - . It prints the task id and then pending until I approve it in '
+                 f'--effort {child_effort} --message -` It prints the task id and then pending until I approve it in '
                  'Sphyrna. After that, run "$SPHYRNA_CLI" task wait --task <the task id> --revision 0 --seconds 60 '
                  '(at most three times until an event arrives), then "$SPHYRNA_CLI" task status --task <the task id>, '
                  'and tell me the child result in one line. Do not do anything else.')
@@ -700,9 +724,29 @@ def cell_changes(args, harness):
         app.send(f'add-project:{work}')
         project = app.until('project', lambda s: len(s['catalog']['projects']) == 1, 30)['catalog']['projects'][0]['id']
         model, effort, mode = (CLAUDE_MODEL, CLAUDE_EFFORT, 'default') if harness == 'claude' else (CODEX_MODEL, CODEX_EFFORT, '-')
+        # A first message passed at launch leaves the run's input gate unclean for good (REPORT: the pointer then waits
+        # forever). With --changes-start typed (default) the user also types one prompt into the terminal, whose observed
+        # submission re-establishes the clean boundary before the comments are sent.
+        typed = args.changes_start == 'typed'
         sid, requested = start_from_draft(app, project, harness, model, effort, mode,
                                           'Reply with the single word READY and nothing else.')
-        state = app.until('first-ready', lambda s: indicator(s, sid) in ('Ready', 'Finished') and native_id(s, sid), 240)
+        cell.details['requested'] = requested
+        cell.details['firstPrompt'] = 'draft+typed' if typed else 'draft'
+
+        def replied(word):
+            def check(s):
+                nid = native_id(s, sid)
+                if not nid or indicator(s, sid) not in ('Ready', 'Finished'):
+                    return False
+                if harness == 'claude':
+                    return claude_has(nid, word, 'assistant')
+                return any(word in t for t in codex_texts(nid, 'assistant'))
+            return check
+        state = app.until('first-ready', replied('READY'), 240)
+        if typed:
+            time.sleep(2)
+            type_prompt(app, sid, 'Reply with the single word AGAIN and nothing else.')
+            state = app.until('typed-ready', replied('AGAIN'), 240)
         nid = native_id(state, sid)
         (work / 'alpha.txt').write_text('alpha\nalpha two\n')
         (work / 'beta.txt').write_text('beta\nbeta two\n')
@@ -782,12 +826,15 @@ def main():
                         default=HOME / 'Library/Caches/loom-v2/evidence/r9/acc')
     parser.add_argument('--cells', default='ordinary,claude-codex,codex-claude,changes-claude,changes-codex')
     parser.add_argument('--rounds', type=int, default=3)
+    parser.add_argument('--changes-start', choices=('typed', 'draft'), default='typed',
+                        help='Changes cells: type the first prompt into an empty session (default) or send it from the draft')
     args = parser.parse_args()
     args.app = perf_paths.refuse_documents('App', args.app)
     if any(args.app == p.resolve() for p in FORBIDDEN_APPS if p.exists()):
         raise SystemExit('refusing the user\'s own app')
-    running = subprocess.run(['pgrep', '-fl', 'Loom Dev.app/Contents/MacOS/Loom Dev|Loom.app/Contents/MacOS|Sphyrna.app'],
-                             capture_output=True, text=True).stdout.strip()
+    comms = subprocess.run(['ps', '-axo', 'pid=,comm='], capture_output=True, text=True).stdout.splitlines()
+    running = '\n'.join(c for c in comms if c.rstrip().endswith(('/Contents/MacOS/Loom Dev', '/Loom.app/Contents/MacOS/Loom',
+                                                                 '/Contents/MacOS/Sphyrna', '/Contents/MacOS/Sphyrna Dev')))
     if running:
         raise SystemExit(f'a Loom/Sphyrna app is running; not running real UI cells:\n{running}')
     args.evidence_root.mkdir(parents=True, exist_ok=True)
@@ -798,7 +845,7 @@ def main():
         log('=== cell', name)
         if name == 'ordinary':
             cell = cell_ordinary(args)
-        elif name in ('claude-codex', 'codex-claude'):
+        elif name in ('claude-codex', 'codex-claude', 'codex-codex', 'claude-claude'):
             p, c = name.split('-')
             cell = cell_cross(args, p, c)
         elif name.startswith('changes-'):
