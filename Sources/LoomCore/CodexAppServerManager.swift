@@ -351,8 +351,8 @@ public actor CodexAppServerManager {
         return try? await supervisor.stop(sessionID: sessionID, graceSeconds: 0.05)
     }
 
-    /// Check that the recorded node has no remaining listener while helpers
-    /// can still run. Quit may then stop its last TUI before the final unlink.
+    /// Check that the recorded node has no remaining listener (`CodexSocketOwnership.verifyNoListener`). Quit may then
+    /// stop its last TUI before the final unlink.
     func prepareSocketCleanup() async -> [String] {
         // Stop, the end observer, and Quit may all arrive together. One
         // inspection is shared, and a later caller must not invalidate a proof
@@ -369,16 +369,8 @@ public actor CodexAppServerManager {
     private func inspectSocketCleanup() async -> [String] {
         guard let ownership = socketOwnership else { return [] }
         do {
-            if let path = try ownership.remainingSocket() {
-                do {
-                    _ = try await supervisor.captureHelper("/usr/sbin/lsof", ["-nP", "-a", "-U", path],
-                        environment: ["PATH": "/usr/bin:/bin"], timeout: 5, outputLimit: 16_384)
-                    throw LoomError.message("Codex socket is still open")
-                } catch let LoomError.helperExit(status, detail) where status == 1 && detail.isEmpty {
-                    // lsof reports no matching open Unix socket with this exit.
-                }
-                _ = try ownership.remainingSocket()
-            }
+            // In-process: no helper and no run scope on Stop, idle teardown, a probe's close or Quit.
+            try ownership.verifyNoListener()
             socketCleanupPrepared = true
             return []
         } catch {

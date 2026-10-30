@@ -34,6 +34,8 @@ public actor CodexUsageIndex {
     public static let maximumSessions = 128
     public static let maximumBytes = 32 * 1024 * 1024
     public static let maximumSeconds = 2.0
+    /// Ids handed to the rollout locator so far (tests count lookups, not time).
+    package private(set) var locatedIDs = 0
 
     public init(home: URL) { self.home = home }
 
@@ -43,11 +45,15 @@ public actor CodexUsageIndex {
             .filter { seen.insert($0).inserted }
         let ids = Array(normalized.prefix(Self.maximumSessions))
         var cached: [String: State] = [:]
+        var known: [String: String] = [:]
         var needsLookup: [String] = []
         for id in ids {
             if let state = states[id], isUnchanged(state) { cached[id] = state }
+            else if let state = states[id], onlyGrew(state) { known[id] = state.path }
             else { needsLookup.append(id) }
         }
+        locatedIDs += needsLookup.count
+        // A file that only grew is read again where it was found; only new or replaced ones are looked up.
         let lookup = CodexRolloutLocator.locate(sessionIDs: needsLookup, home: home)
         var complete = lookup.complete && !catalogTruncated && normalized.count <= Self.maximumSessions
             && sessionIDs.allSatisfy { UUID(uuidString: $0) != nil }
@@ -64,19 +70,29 @@ public actor CodexUsageIndex {
                 order.append(id)
                 continue
             }
-            guard let file = lookup.files[id], let descriptor = openOwnRegularFile(file.path) else { complete = false; continue }
+            guard let path = known[id] ?? lookup.files[id]?.path, let descriptor = openOwnRegularFile(path) else {
+                if known[id] != nil { states[id] = nil }
+                complete = false
+                continue
+            }
             defer { close(descriptor) }
             var info = stat()
             guard fstat(descriptor, &info) == 0 else { complete = false; continue }
             var state: State
-            if let old = states[id], old.path == file.path, old.device == info.st_dev, old.inode == info.st_ino,
+            if let old = states[id], old.path == path, old.device == info.st_dev, old.inode == info.st_ino,
                info.st_size >= old.offset, info.st_size >= old.lastSize,
                !(info.st_size == old.lastSize && (info.st_mtimespec.tv_sec != old.lastMtime.tv_sec
                     || info.st_mtimespec.tv_nsec != old.lastMtime.tv_nsec)),
                tailGuard(descriptor, offset: old.offset) == old.guardBytes {
                 state = old
+            } else if known[id] != nil {
+                // Changed between the check and the open, or rewritten in place: not the file that was found. The next
+                // refresh looks it up again.
+                states[id] = nil
+                complete = false
+                continue
             } else {
-                state = State(path: file.path, device: info.st_dev, inode: info.st_ino, lastMtime: info.st_mtimespec)
+                state = State(path: path, device: info.st_dev, inode: info.st_ino, lastMtime: info.st_mtimespec)
             }
             var chunk = [UInt8](repeating: 0, count: 64 * 1024)
             while state.offset < info.st_size {
@@ -121,6 +137,13 @@ public actor CodexUsageIndex {
             && info.st_dev == state.device && info.st_ino == state.inode && info.st_size == state.lastSize
             && state.offset == state.lastSize && info.st_mtimespec.tv_sec == state.lastMtime.tv_sec
             && info.st_mtimespec.tv_nsec == state.lastMtime.tv_nsec
+    }
+
+    /// The same file, still where it was found, that has only grown since the last read.
+    private func onlyGrew(_ state: State) -> Bool {
+        var info = stat()
+        return lstat(state.path, &info) == 0 && info.st_mode & S_IFMT == S_IFREG && info.st_uid == getuid()
+            && info.st_dev == state.device && info.st_ino == state.inode && info.st_size > state.lastSize
     }
 
     private func tailGuard(_ descriptor: Int32, offset: Int64) -> [UInt8] {

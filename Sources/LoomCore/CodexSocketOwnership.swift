@@ -92,6 +92,51 @@ struct CodexSocketOwnership: Sendable {
         return try Self.node(target) == nil ? nil : target
     }
 
+    /// The unbound check, made in-process: a nonblocking `connect` to the recorded node. Refused (or the node gone) means
+    /// nothing listens on it; a connection, or one that is pending, means something does; any other answer is no answer, and
+    /// the node is then kept. The recorded identities are checked before and after. `connect` does not tell a listener
+    /// whose backlog is full from none, so it is not enough alone: the node is removed only after the server's stop was
+    /// verified (no process of it remains and its scope, if any, was released; `CodexAppServerManager.stop`).
+    func verifyNoListener() throws {
+        guard let path = try remainingSocket() else { return }
+        switch Self.listener(at: path) {
+        case .none: break
+        case .listening: throw LoomError.message("Codex socket is still open")
+        case .unknown(let code): throw LoomError.system("check Codex socket listener", code)
+        }
+        _ = try remainingSocket()
+    }
+
+    enum Listener: Equatable { case none, listening, unknown(Int32) }
+
+    static func listener(at path: String) -> Listener {
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+        let bytes = Array(path.utf8) + [0]
+        guard bytes.count <= MemoryLayout.size(ofValue: address.sun_path) else { return .unknown(ENAMETOOLONG) }
+        withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: bytes) }
+        let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard descriptor >= 0 else { return .unknown(errno) }
+        defer { close(descriptor) }
+        var on: Int32 = 1
+        guard fcntl(descriptor, F_SETFD, FD_CLOEXEC) == 0, fcntl(descriptor, F_SETFL, O_NONBLOCK) == 0,
+              setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size)) == 0 else {
+            return .unknown(errno)
+        }
+        let result = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        if result == 0 { return .listening }
+        switch errno {
+        case ECONNREFUSED, ENOENT: return .none
+        case EINPROGRESS, EAGAIN, EALREADY: return .listening
+        case let code: return .unknown(code)
+        }
+    }
+
     /// Called only after an unbound check and scope-empty verification. Recheck
     /// inode/birth metadata immediately before unlinking either recorded node.
     func removeRemaining() throws {
