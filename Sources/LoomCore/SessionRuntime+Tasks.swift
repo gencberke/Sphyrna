@@ -9,7 +9,14 @@ extension SessionRuntime {
             let database = catalog.dataRoot.appendingPathComponent("session-tasks/tasks.sqlite3")
             let coordinator = try await SessionTaskCoordinator.open(url: database, host: host)
             guard !shuttingDown else { return }
-            let mailbox = try? await SessionMailbox.open(url: catalog.dataRoot.appendingPathComponent("session-mailbox/mailbox.sqlite3"), exclusive: true)
+            let mailbox: SessionMailbox?
+            do {
+                mailbox = try await SessionMailbox.open(url: catalog.dataRoot.appendingPathComponent("session-mailbox/mailbox.sqlite3"), exclusive: true)
+            } catch {
+                // The task channel still serves; agent sends answer "unavailable" for this app session.
+                mailbox = nil
+                LoomLog.error(.lifecycle, "Peer mailbox unavailable (\(LoomLog.category(of: error)))")
+            }
             let path = configuration.socketDirectory
                 .appendingPathComponent("c-\(UUID().uuidString.prefix(8)).sock").path
             let router = SessionTaskWireRouter(coordinator: coordinator, create: { [weak self] call in

@@ -15,8 +15,10 @@ extension SessionRuntime {
     func submitPeerSend(_ call: SessionTaskWireRequest) async -> SessionTaskWireReply {
         do {
             guard let id = call.operationID, let targetID = call.targetSessionID, let message = call.message,
-                  let mailbox = peerMailbox, let senderBinding = await authenticateTaskRun(call.claim),
+                  let senderBinding = await authenticateTaskRun(call.claim),
                   senderBinding.sessionID != targetID else { throw SessionTaskError.unauthorized }
+            // A mailbox that did not open (logged at start) is no refusal of this caller.
+            guard let mailbox = peerMailbox else { return .init(status: "unavailable") }
             if let prior = try await mailbox.terminalStatus(id: id, sender: senderBinding) {
                 return .init(status: prior.rawValue)
             }

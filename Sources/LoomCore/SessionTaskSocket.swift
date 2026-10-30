@@ -98,7 +98,10 @@ final class SessionTaskSocket: @unchecked Sendable {
         } catch { finish(fd, nil); return }
         let task = Task { [self] in
             let response = await handler(request)
-            finish(fd, Task.isCancelled ? nil : response)
+            let reply = Task.isCancelled ? nil : response
+            // The write waits up to its deadline for a client that may not read: on the serve queue, never on the
+            // cooperative pool.
+            serveQueue.async { [self] in finish(fd, reply) }
         }
         let cancel = lock.withLock {
             guard !stopped, connections.keys.contains(fd) else { return true }

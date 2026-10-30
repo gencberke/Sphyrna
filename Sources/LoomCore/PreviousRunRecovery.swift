@@ -17,15 +17,24 @@ public enum PreviousRunRecovery {
         public var quarantinedDirectories = 0
         /// One entry per scope that could not be shown empty; its directory is kept.
         public var leftovers: [String] = []
+        /// Scopes of this boot an earlier recovery already waited on in full, given only a short look this time.
+        public var brieflyCheckedScopes = 0
     }
 
     public static func recover(runsDirectory: URL, current: URL?,
                                scopeTimeout: TimeInterval = 10) async -> Report {
-        let report = await Task.detached { recoverBlocking(runsDirectory: runsDirectory, current: current,
-                                                           scopeTimeout: scopeTimeout) }.value
+        // Each scope's drain sleeps and polls for up to `scopeTimeout`: never on the cooperative pool (`onOwnThread`).
+        let report = (try? await onOwnThread("loom.recovery") {
+            recoverBlocking(runsDirectory: runsDirectory, current: current, scopeTimeout: scopeTimeout)
+        }) ?? Report()
         record(report, dataRoot: runsDirectory.deletingLastPathComponent())
         return report
     }
+
+    /// Written into a run directory that recovery keeps; its presence marks the directory as already waited on.
+    static let errorFileName = "recovery-error.txt"
+    /// The wait for a scope an earlier recovery in this boot already waited on in full.
+    static let briefTimeout: TimeInterval = 0.5
 
     /// Where an unreadable run directory goes, under the runs directory.
     static let quarantineName = "quarantine"
@@ -36,7 +45,7 @@ public enum PreviousRunRecovery {
     private static func record(_ report: Report, dataRoot: URL) {
         let eventful = report.stoppedProcesses > 0 || !report.leftovers.isEmpty || report.quarantinedDirectories > 0
         if eventful {
-            LoomLog.error(.recovery, "Previous run recovery: \(report.stoppedProcesses) process(es) stopped, \(report.leftovers.count) leftover(s), \(report.quarantinedDirectories) directory(ies) set aside")
+            LoomLog.error(.recovery, "Previous run recovery: \(report.stoppedProcesses) process(es) stopped, \(report.leftovers.count) leftover(s), \(report.quarantinedDirectories) directory(ies) set aside, \(report.brieflyCheckedScopes) scope(s) already waited on in this boot checked briefly")
         } else {
             LoomLog.notice(.recovery, "Previous run recovery: \(report.verifiedScopes) scope(s) verified empty, \(report.removedDirectories) directory(ies) removed")
         }
@@ -92,6 +101,9 @@ public enum PreviousRunRecovery {
             }
             var clean = true
             var unreadableLedger = false
+            // A recovery in this boot already waited the full timeout on this directory's scopes and kept it. Its
+            // scopes of this boot without a task receipt to write get a short look, not the full wait again.
+            let waitedBefore = fileManager.fileExists(atPath: directory.appendingPathComponent(errorFileName).path)
             if let ledger = try? OwnershipLedger.load(from: ledgerURL) {
                 let scopes = ledger.scopes ?? []
                 let managed = ledger.managedTaskScopes ?? []
@@ -103,7 +115,9 @@ public enum PreviousRunRecovery {
                     let bindings = managed.filter { $0.scope == scope && $0.ownerRunID == ledger.runID }
                     var verified = false
                     if scope.bootSessionID == boot, boot != nil {
-                        switch drain(scope.coalitionID, timeout: scopeTimeout) {
+                        let brief = waitedBefore && bindings.isEmpty
+                        if brief { report.brieflyCheckedScopes += 1 }
+                        switch drain(scope.coalitionID, timeout: brief ? min(scopeTimeout, briefTimeout) : scopeTimeout) {
                         case let .empty(stopped):
                             report.verifiedScopes += 1
                             report.stoppedProcesses += stopped
@@ -142,7 +156,7 @@ public enum PreviousRunRecovery {
                 if (try? fileManager.removeItem(at: directory)) != nil { report.removedDirectories += 1 }
             } else {
                 try? Data(report.leftovers.joined(separator: "\n").utf8)
-                    .write(to: directory.appendingPathComponent("recovery-error.txt"), options: .atomic)
+                    .write(to: directory.appendingPathComponent(errorFileName), options: .atomic)
             }
         }
         return report
