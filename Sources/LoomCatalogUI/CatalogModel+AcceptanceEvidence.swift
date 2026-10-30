@@ -72,6 +72,7 @@ extension CatalogModel {
         case .sending: "sending"
         case .sent: "sent"
         case .delivered: "delivered"
+        case .deliveredInPart: "deliveredInPart"
         case .failed: "failed"
         }
         var sentID: Any = NSNull()

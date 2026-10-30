@@ -768,7 +768,7 @@ def cell_changes(args, harness):
         cell.check('sendOfferedForTerminal', ch['sendOffered'] and ch['availability'] == 'terminal', ch)
         prompts_before = len(claude_prompts(nid)) if harness == 'claude' else codex_summary(nid)['turnsStarted']
         app.send(f'changes-send:{sid}')
-        sent = app.until('ch-sent', lambda c: c['sendStatus'] in ('sent', 'delivered', 'failed'), 30,
+        sent = app.until('ch-sent', lambda c: c['sendStatus'] in ('sent', 'delivered', 'deliveredInPart', 'failed'), 30,
                          source=lambda label: app.changes(sid, label))
         cell.check('footerSent', sent['sendStatus'] in ('sent', 'delivered'), sent['sendStatus'])
 
