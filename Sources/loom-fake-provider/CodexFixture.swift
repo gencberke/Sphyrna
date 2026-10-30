@@ -880,6 +880,13 @@ func runCodexServer(socketPath: String, config: [String: String]) -> Never {
                          message: fakeSphyrnaTaskProbe() ? "TASK-HELPER-OK" : "TASK-HELPER-REFUSED")
                 return
             }
+            if ProcessInfo.processInfo.environment["LOOM_FAKE_CODEX_USER_ITEMS"] == "1" {
+                // The real CLI announces every submitted prompt, a launch first message included.
+                broadcast("item/started", ["threadId": threadID, "turnId": turn.id, "item": [
+                    "type": "userMessage", "clientId": clientID.map { $0 as Any } ?? NSNull(),
+                    "content": [["type": "text", "text": text, "text_elements": []]]
+                ]])
+            }
             if text.hasPrefix("stream") {
                 // High-frequency streaming a connection may opt out of.
                 let count = Int(text.dropFirst("stream".count).trimmingCharacters(in: .whitespaces)) ?? 5
@@ -1095,6 +1102,7 @@ func runCodexTUI(socketPath: String, resumeID: String?, workingDirectory: String
     }
     out("FAKE-CODEX READY \(threadID) cwd=\(cwd) home=\(environment["CODEX_HOME"] ?? "default")\r\n> ")
     if let firstMessage {
+        holdFirstMessage()
         _ = client.request("turn/start", ["threadId": threadID, "input": [["type": "text", "text": firstMessage]]], sink: sink)
     }
 

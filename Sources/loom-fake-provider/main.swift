@@ -61,6 +61,14 @@ func fakeSphyrnaTaskCommand(_ arguments: [String], input: String? = nil) -> (Int
     return (process.terminationStatus, text)
 }
 
+/// `LOOM_FAKE_HOLD_FIRST_MESSAGE=<path>`: a launch first message waits (at most 10 s) until `<path>` exists, so a
+/// test can attach its terminal first, as the app's surface is attached long before a real CLI reads its prompt.
+func holdFirstMessage() {
+    guard let path = ProcessInfo.processInfo.environment["LOOM_FAKE_HOLD_FIRST_MESSAGE"] else { return }
+    let deadline = Date().addingTimeInterval(10)
+    while Date() < deadline && !FileManager.default.fileExists(atPath: path) { usleep(10_000) }
+}
+
 func fakeSphyrnaTaskCreate(_ command: String) -> Bool {
     let words = command.split(separator: " ").map(String.init)
     guard words.count == 4, words[0] == "/fake-sphyrna-task-create",
@@ -432,7 +440,7 @@ struct FakeClaude {
         hook("SessionStart", ["source": resume ? "resume" : "startup"])
         out("FAKE-CLAUDE READY \(id) cwd=\(FileManager.default.currentDirectoryPath) "
             + "profile=\(environment["CLAUDE_CONFIG_DIR"] ?? "default") effort=\(effort ?? "default")\r\n> ")
-        if let firstMessage { handle(firstMessage) }
+        if let firstMessage { holdFirstMessage(); handle(firstMessage) }
         while let line = readLine() { handle(line) }
     }
 

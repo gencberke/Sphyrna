@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Connects live terminal input to the idle/stop decision. A surface registers
@@ -19,15 +20,35 @@ public final class TerminalInputGate: @unchecked Sendable {
     private let lock = NSLock()
     private var queues: [UUID: TerminalInputQueue] = [:]
     private var registrationObserver: (@Sendable (UUID) -> Void)?
+    // A launch first message waits here for its run's terminal; bounded, and dropped once applied or unregistered.
+    private var launchSubmissions: [UUID: (digest: Data, launchedAt: UInt64)] = [:]
+    private static let maximumLaunchSubmissions = 64
 
     public init() {}
 
     public func register(runID: UUID, queue: TerminalInputQueue) {
-        let observer = lock.withLock {
+        let (observer, launch) = lock.withLock {
             queues[runID] = queue
-            return registrationObserver
+            return (registrationObserver, launchSubmissions.removeValue(forKey: runID))
         }
+        if let launch { queue.expectLaunchSubmission(digest: launch.digest, launchedAt: launch.launchedAt) }
         observer?(runID)
+    }
+
+    /// Records a run's first message, given to the CLI as a launch argument, as its expected first submission
+    /// (`TerminalInputQueue.expectLaunchSubmission`). Call before the spawn; the run's terminal may register later.
+    func expectLaunchSubmission(runID: UUID, message: String) {
+        let digest = Data(SHA256.hash(data: Data(message.utf8)))
+        let launchedAt = DispatchTime.now().uptimeNanoseconds
+        let queue = lock.withLock { () -> TerminalInputQueue? in
+            if let queue = queues[runID] { return queue }
+            if launchSubmissions.count >= Self.maximumLaunchSubmissions, let first = launchSubmissions.keys.first {
+                launchSubmissions[first] = nil
+            }
+            launchSubmissions[runID] = (digest, launchedAt)
+            return nil
+        }
+        queue?.expectLaunchSubmission(digest: digest, launchedAt: launchedAt)
     }
 
     /// Lets the runtime retry deferred work when its actual terminal attaches.
@@ -36,7 +57,7 @@ public final class TerminalInputGate: @unchecked Sendable {
     }
 
     public func unregister(runID: UUID) {
-        lock.withLock { queues[runID] = nil }
+        lock.withLock { queues[runID] = nil; launchSubmissions[runID] = nil }
     }
 
     public func closeIfIdle(runID: UUID, reason: String, quietFor: TimeInterval = 0) -> CloseResult {

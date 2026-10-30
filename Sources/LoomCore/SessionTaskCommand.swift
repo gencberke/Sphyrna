@@ -6,8 +6,9 @@ public enum SessionTaskCommand {
     public static let usage = """
         usage: "$SPHYRNA_CLI" task <command> --task <id> [options]
 
-          create --name <name> --harness <id> --message -
-                                         request an approved new task child
+          create --name <name> --harness claude --message -
+                                         request an approved new task child (Claude; Codex
+                                         children are not available yet: \(SessionChannelSandbox.codexReason))
           identity                       identify this live terminal run
           status                         read task and native status
           read [--after <cursor>]        read task events; printed events are acknowledged
@@ -150,7 +151,8 @@ public enum SessionTaskCommand {
             output.standardError("error: \(reply.detail ?? reply.status)")
             return reply.status == "invalid" ? 2 : reply.status == "refused" ? 1 : 3
         } catch {
-            output.standardError("error: Sphyrna task connection did not complete; do not retry an effect with a new operation id")
+            output.standardError(SessionChannelSandbox.helperConnectFailure(error, environment: environment)
+                ?? "error: Sphyrna task connection did not complete; do not retry an effect with a new operation id")
             return 3
         }
     }

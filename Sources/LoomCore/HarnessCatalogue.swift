@@ -73,7 +73,10 @@ public enum HarnessCatalogue {
         showsOnboardingWhenMissing: true,
         modes: [.askBeforeEdits, .acceptEdits],
         agentModes: [.askBeforeEdits, .acceptEdits],
-        defaultMode: .askBeforeEdits, sharesCrossHarnessModes: true, transcriptFormat: .codexRolloutJSONL)
+        defaultMode: .askBeforeEdits, sharesCrossHarnessModes: true, transcriptFormat: .codexRolloutJSONL,
+        // Both modes run its commands in the seatbelt sandbox with the network off (`CodexLaunchSettings`), which
+        // denies the helper's Unix-socket connect (`SessionChannelSandbox`).
+        sessionChannelBlocked: .init(modes: [.askBeforeEdits, .acceptEdits], reason: SessionChannelSandbox.codexReason))
 
     /// opencode 2.2.0 (2.1.4 when P1 was planned). Install lines and the profile variable are to confirm; `opencode auth
     /// login` is its own `auth --help`'s. It has no doctor yet: `opencode debug config` prints the whole resolved config,

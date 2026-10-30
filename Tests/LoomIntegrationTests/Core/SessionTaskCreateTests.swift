@@ -21,7 +21,7 @@ struct SessionTaskCreateTests {
     }
 
     @Test func approvingATaskStartsTheOwnedChildAndDeliversItsFirstPointerOnlyAfterReady() async throws {
-        let context = try await SessionRuntimeRig.makeContext(extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1"],
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1"],
             scoped: true, durableLedger: true, claudeVersion: "2.0.0", managedClaudeControllerFactory: { run, ingress in
                 ManagedClaudeFixtureController(run: run, ingress: ingress)
             })
@@ -59,7 +59,7 @@ struct SessionTaskCreateTests {
 
     @Test func stoppingParentBeforeFirstAdmissionStopsTheEmptyOwnedChild() async throws {
         let inputGate = ManagedClaudeFixtureInputGate()
-        let context = try await SessionRuntimeRig.makeContext(scoped: true, durableLedger: true, claudeVersion: "2.0.0",
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, scoped: true, durableLedger: true, claudeVersion: "2.0.0",
             managedClaudeControllerFactory: { run, ingress in
                 ManagedClaudeFixtureController(run: run, ingress: ingress, inputGate: inputGate)
             })
@@ -98,7 +98,7 @@ struct SessionTaskCreateTests {
     }
 
     @Test func parentStopDuringAwaitedChildSpawnNeverSubmitsTheFirstInput() async throws {
-        let context = try await SessionRuntimeRig.makeContext(scoped: true, durableLedger: true, claudeVersion: "2.0.0")
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, scoped: true, durableLedger: true, claudeVersion: "2.0.0")
         defer { context.cleanup() }
         do {
             let folder = context.root.appendingPathComponent("stop-during-spawn", isDirectory: true)
@@ -135,7 +135,7 @@ struct SessionTaskCreateTests {
     @Test(arguments: [ManagedSession.Provider.claude, .codex])
     func nativeIdentityChangeRevokesTaskAndStopsAnEmptyChild(parentProvider: ManagedSession.Provider) async throws {
         let inputGate = ManagedClaudeFixtureInputGate()
-        let context = try await SessionRuntimeRig.makeContext(scoped: true, durableLedger: true, claudeVersion: "2.0.0",
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, scoped: true, durableLedger: true, claudeVersion: "2.0.0",
             managedClaudeControllerFactory: { run, ingress in
                 ManagedClaudeFixtureController(run: run, ingress: ingress, inputGate: inputGate)
             })
@@ -177,7 +177,7 @@ struct SessionTaskCreateTests {
     }
 
     @Test func taskStopNeverFollowsAChildThatMovedWhileStopWaited() async throws {
-        let context = try await SessionRuntimeRig.makeContext(extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1",
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1",
             "LOOM_FAKE_TASK_HOLD_FIRST": "1"], scoped: true, durableLedger: true, claudeVersion: "2.0.0")
         defer { context.cleanup() }
         let hold = ActorFreezeGate()
@@ -219,7 +219,7 @@ struct SessionTaskCreateTests {
     }
 
     @Test func removingParentStopsItsOwnedChildAndForgetsOnlyTheRelationship() async throws {
-        let context = try await SessionRuntimeRig.makeContext(extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1",
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1",
             "LOOM_FAKE_TASK_HOLD_FIRST": "1"], scoped: true, durableLedger: true, claudeVersion: "2.0.0")
         defer { context.cleanup() }
         do {
@@ -252,7 +252,7 @@ struct SessionTaskCreateTests {
     }
 
     @Test func deletingParentAfterTheManagedFactoryFailsBeforeSpawn() async throws {
-        let context = try await SessionRuntimeRig.makeContext(scoped: true, durableLedger: true, claudeVersion: "2.0.0",
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, scoped: true, durableLedger: true, claudeVersion: "2.0.0",
             managedClaudeControllerFactory: { _, _ in throw LoomError.message("synthetic factory refusal") })
         defer { context.cleanup() }
         do {
@@ -283,7 +283,7 @@ struct SessionTaskCreateTests {
     @Test(arguments: [ManagedSession.Provider.claude, .codex])
     func parentDeletionWaitsForAnOpeningManagedScope(provider: ManagedSession.Provider) async throws {
         let gate = ManagedClaudeFixtureInputGate()
-        let context = try await SessionRuntimeRig.makeContext(scoped: true, durableLedger: true, claudeVersion: "2.0.0",
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, scoped: true, durableLedger: true, claudeVersion: "2.0.0",
             managedClaudeControllerFactory: { run, ingress in ManagedClaudeFixtureController(run: run, ingress: ingress) })
         defer { context.cleanup() }
         do {
@@ -323,7 +323,7 @@ struct SessionTaskCreateTests {
     }
 
     @Test func unverifiedChildStopKeepsTaskUntilDeletionRetry() async throws {
-        let context = try await SessionRuntimeRig.makeContext(extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1",
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1",
             "LOOM_FAKE_TASK_HOLD_FIRST": "1"], scoped: true, durableLedger: true, claudeVersion: "2.0.0")
         defer { context.cleanup() }
         let failure = TaskDeletionFailure()
@@ -361,7 +361,7 @@ struct SessionTaskCreateTests {
     }
 
     @Test func realHelperCreatesOneBoundedApprovalAndDenyLeavesNoChild() async throws {
-        let context = try await SessionRuntimeRig.makeContext()
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true)
         defer { context.cleanup() }
         let folder = context.root.appendingPathComponent("task-project", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

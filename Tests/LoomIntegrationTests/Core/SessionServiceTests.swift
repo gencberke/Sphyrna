@@ -143,7 +143,7 @@ struct SessionServiceTests: SessionServiceFixtures {
 
     @Test func anApprovedManagedTaskDoesNotAllocateOrRetainATerminalSink() async throws {
         let rig = try await makeRig(runsIn: .chat, extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1"],
-                                    scoped: true, durableLedger: true, claudeVersion: "2.0.0")
+                                    scoped: true, durableLedger: true, claudeVersion: "2.0.0", fakeCodexHasNoSandbox: true)
         defer { rig.context.cleanup() }
         do {
         let folder = rig.context.root.appendingPathComponent("service-task", isDirectory: true)

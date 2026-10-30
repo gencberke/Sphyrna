@@ -64,6 +64,9 @@ public struct SessionRuntimeConfiguration: Sendable {
     public var onClaudeLimitReset: ClaudeLimitResetCallbacks?
     /// Optional task-only Claude stream controller, supplied from LoomChat.
     public var managedClaudeControllerFactory: ManagedTaskControllerFactory?
+    /// Whether a harness in a mode can reach the session channel (`SessionChannelSandbox`). Only a test of a fake
+    /// harness that has no sandbox replaces it.
+    var sessionChannelBlock: @Sendable (HarnessID, HarnessMode?) -> String? = SessionChannelSandbox.blockedReason
 
     public init(
         toolchains: @escaping ProviderToolchainResolver, hookHelperPath: String,
@@ -559,6 +562,11 @@ public actor SessionRuntime {
             }
         }
         beginTaskRun(sessionID: sessionID, runID: runID)
+        // A first message goes to the CLI as a launch argument, never through the terminal: its observation is still
+        // the run's first clean submission, not unclassified input that blocks automatic input until the user types.
+        if opening?.approvedTask == nil, let first = draft?.firstMessage ?? opening?.firstMessage, !first.isEmpty {
+            inputGate.expectLaunchSubmission(runID: runID, message: first)
+        }
         do {
             return try await withNewStart(provider: provider, projectID: projectID, opening: opening, draft: draft) {
                 directory, toolchain in
