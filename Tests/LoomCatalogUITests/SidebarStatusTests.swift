@@ -5,6 +5,7 @@ import Testing
 import LoomCore
 @testable import LoomCatalogUI
 @testable import LoomCatalogUITestRigs
+import LoomTestSupport
 
 @MainActor
 private final class RecordingIntents: ConversationIntents {
@@ -235,7 +236,7 @@ struct SidebarStatusTests {
         #expect(!IndicatorView.isAnimating(.waitingForInput, indicatorsAnimate: true))
         // A subagent's mark stands still in a window that animates (FB6-11): only a session's own spinner moves.
         #expect(!IndicatorView.isAnimating(.working, indicatorsAnimate: true, animates: false))
-        #expect(IndicatorView.framesPerSecond <= 12)
+        #expect(IndicatorView.framesPerSecond <= 2)
     }
 
     @Test func sidebarIndicatorsAnimateOnlyForAnActiveWindowAndAnExpandedSidebar() throws {
@@ -281,31 +282,42 @@ struct SidebarStatusTests {
         }
     }
 
-    /// The animation is the render server's: one discrete keyframe animation over `contents` at 12 frames a second,
-    /// installed on the layer and never rebuilt per step (no timer, no redraw while it runs).
-    @MainActor @Test func theSpinnerIsOneDiscreteKeyframeAnimationAtTwelveFramesASecond() async throws {
-        let view = BrailleSpinner.LayerView(style: .status)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 40, height: 40), styleMask: [.borderless],
+    /// D-125: the spinners step from the app on one clock, twice a second. Each step sets the next pre-drawn frame as the
+    /// layer's contents: no render-server animation (it kept WindowServer compositing at the display's rate), every moving
+    /// spinner shows the same frame, the frames are drawn once, and the clock stops when no spinner moves. The spinners here
+    /// have a clock of their own, never the app's `shared` one.
+    @MainActor @Test func spinnersStepTogetherFromOneClockTwiceASecond() async throws {
+        let clock = SpinnerClock()
+        let first = BrailleSpinner.LayerView(style: .status, clock: clock)
+        let second = BrailleSpinner.LayerView(style: .subagent, clock: clock)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 80, height: 40), styleMask: [.borderless],
                               backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer { window.close() }
-        window.contentView = view
-        #expect(!view.isRunning, "a spinner that is not asked to move stands on its first frame")
-        view.setAnimating(true)
-        let animation = try #require(view.animation as? CAKeyframeAnimation)
-        #expect(animation.keyPath == "contents" && animation.calculationMode == .discrete)
-        #expect(animation.values?.count == 10 && animation.keyTimes?.count == 11)
-        #expect(animation.duration == 10 / 12 && animation.repeatCount == .infinity && !animation.isRemovedOnCompletion)
-        #expect(IndicatorView.framesPerSecond == 12)
-        // Its values are the view's ten frames, in order.
-        let values = try #require(animation.values)
-        #expect(view.frameImages.count == 10)
-        for (value, frame) in zip(values, view.frameImages) { #expect(CFEqual(value as CFTypeRef, frame)) }
-        // Running costs no drawing: the frames are drawn once.
-        let drawn = view.renderCount
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(view.renderCount == drawn && view.isRunning)
-        view.setAnimating(false)
-        #expect(!view.isRunning)
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 80, height: 40))
+        content.addSubview(first)
+        content.addSubview(second)
+        window.contentView = content
+        #expect(IndicatorView.framesPerSecond == 2)
+        #expect(!first.isRunning && !clock.isTicking, "a spinner that is not asked to move stands on its first frame")
+        #expect(first.presentedFrame == 0)
+        first.setAnimating(true)
+        second.setAnimating(true)
+        #expect(first.isRunning && second.isRunning && clock.isTicking)
+        let layers = (first.layer?.sublayers ?? []) + (second.layer?.sublayers ?? [])
+        #expect(layers.allSatisfy { ($0.animationKeys() ?? []).isEmpty }, "no render-server animation")
+        let start = first.presentedFrame
+        let drawn = first.renderCount
+        let moved = await waitFor("the first spinner to step", within: .seconds(2), observe: { first.presentedFrame },
+                                  until: { $0 != start })
+        #expect(moved == ((start ?? 0) + 1) % 10, "one frame per step")
+        #expect(first.presentedFrame == second.presentedFrame, "every moving spinner shows the clock's frame")
+        #expect(first.renderCount == drawn, "a step draws nothing: the frames are drawn once")
+        first.setAnimating(false)
+        #expect(!first.isRunning, "a spinner that stops stands still")
+        await waitFor("the stopped spinner to show its first frame", within: .seconds(2)) { first.presentedFrame == 0 }
+        #expect(clock.isTicking, "the other spinner still moves")
+        second.setAnimating(false)
+        #expect(!clock.isTicking, "no clock runs while no spinner moves")
     }
 }

@@ -35,7 +35,6 @@ enum BrailleFrames {
     }
 
     /// The layer's animation key.
-    static let key = "braille"
 
     static var frameCount: Int { LoomTheme.Spinner.frames.count }
 
@@ -62,19 +61,6 @@ enum BrailleFrames {
         return context.makeImage()
     }
 
-    /// The whole animation: one discrete keyframe animation over `contents`, which the render server steps at the
-    /// frame rate. No timer in the app.
-    static func animation(frames: [CGImage]) -> CAKeyframeAnimation {
-        let animation = CAKeyframeAnimation(keyPath: "contents")
-        animation.calculationMode = .discrete
-        animation.values = frames
-        animation.keyTimes = (0...frames.count).map { NSNumber(value: Double($0) / Double(frames.count)) }
-        animation.duration = Double(frames.count) / LoomTheme.Spinner.framesPerSecond
-        animation.repeatCount = .infinity
-        animation.isRemovedOnCompletion = false
-        return animation
-    }
-
     /// Draws `frame` into a context whose y axis points down (the menu bar art and the menu's glyph), in `rect`.
     static func draw(frame: Int, style: Style, color: CGColor, in context: CGContext, rect: CGRect, scale: CGFloat) {
         guard let image = image(frame: frame, style: style, color: color, scale: scale) else { return }
@@ -86,9 +72,58 @@ enum BrailleFrames {
     }
 }
 
-/// Ink's working mark: the braille spinner (DESIGN §4). A layer holds the current frame; while it animates,
-/// one `CAKeyframeAnimation` over its contents steps through the ten pre-drawn frames in the render server, so
-/// an animating spinner costs the app no wakeups and no SwiftUI updates, as the chase it replaces did not.
+/// Steps every moving spinner of the process on one clock, twice a second (D-125). The render-server animation of 1.8.0
+/// (a 12 fps `CAKeyframeAnimation`) cost the app no wakeups, but while it ran WindowServer composited the window at the
+/// display's rate: about 9 % of one core while a session worked in view, against 2.2 % with the spinner standing still.
+/// Each step set from the app costs WindowServer one composite, so the rate sets the cost: 3.6 % at two steps a second
+/// (`evidence/r9/release-1.8.0/ENERGY.md`). The clock runs only while a spinner moves; the app's spinners share `shared`, and
+/// a test gives its spinners a clock of their own.
+@MainActor final class SpinnerClock {
+    static let shared = SpinnerClock()
+    private let views = NSHashTable<BrailleSpinner.LayerView>.weakObjects()
+    private var loop: Task<Void, Never>?
+    /// The frame every moving spinner shows now: they step together.
+    private(set) var frame = 0
+
+    init() {}
+
+    /// Whether the clock runs (test seam).
+    var isTicking: Bool { loop != nil }
+
+    func start(_ view: BrailleSpinner.LayerView) {
+        views.add(view)
+        view.show(frame: frame)
+        guard loop == nil else { return }
+        let step = Duration.seconds(1 / LoomTheme.Spinner.framesPerSecond)
+        loop = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: step, tolerance: step / 10)
+                guard !Task.isCancelled, let self else { return }
+                self.step()
+            }
+        }
+    }
+
+    func stop(_ view: BrailleSpinner.LayerView) {
+        views.remove(view)
+        if views.allObjects.isEmpty { halt() }
+    }
+
+    private func step() {
+        let moving = views.allObjects
+        guard !moving.isEmpty else { return halt() }
+        frame = (frame + 1) % BrailleFrames.frameCount
+        for view in moving { view.show(frame: frame) }
+    }
+
+    private func halt() {
+        loop?.cancel()
+        loop = nil
+    }
+}
+
+/// Ink's working mark: the braille spinner (DESIGN §4). A layer holds the current frame; while it moves, `SpinnerClock`
+/// sets the next of the ten pre-drawn frames as its contents, twice a second, with no redraw and no SwiftUI update.
 struct BrailleSpinner: NSViewRepresentable {
     let animating: Bool
     var style: BrailleFrames.Style = .status
@@ -113,12 +148,12 @@ struct BrailleSpinner: NSViewRepresentable {
         private var increasedContrast = false
         /// A fixed colour (the menu bar item) replaces the one that follows the appearance.
         private var fixedColor: CGColor?
+        private let clock: SpinnerClock
         /// How many times the frames were drawn (test seam): once per colour or scale, never per step.
         private(set) var renderCount = 0
 
-        /// Whether the keyframe animation is installed (test seam).
-        var isRunning: Bool { imageLayer.animation(forKey: BrailleFrames.key) != nil }
-        var animation: CAAnimation? { imageLayer.animation(forKey: BrailleFrames.key) }
+        /// Whether the spinner moves, stepped by `SpinnerClock` (test seam).
+        private(set) var isRunning = false
         /// The ten frames as drawn now, in order (test seam).
         var frameImages: [CGImage] { frames }
         /// The colour the frames are drawn in now (test seam).
@@ -133,8 +168,9 @@ struct BrailleSpinner: NSViewRepresentable {
 
         override convenience init(frame: NSRect) { self.init(style: .status) }
 
-        init(style: BrailleFrames.Style) {
+        init(style: BrailleFrames.Style, clock: SpinnerClock = .shared) {
             self.style = style
+            self.clock = clock
             super.init(frame: NSRect(origin: .zero, size: NSSize(width: style.side, height: style.side)))
             wantsLayer = true
             layer?.masksToBounds = false
@@ -184,7 +220,7 @@ struct BrailleSpinner: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             render()
-            apply() // animations do not survive leaving a window
+            apply() // a spinner out of a window stops
         }
 
         private func resolvedColor() -> CGColor {
@@ -204,17 +240,25 @@ struct BrailleSpinner: NSViewRepresentable {
             renderedColor = color
             renderedScale = scale
             imageLayer.contentsScale = scale
-            imageLayer.contents = drawn[0]
-            imageLayer.removeAnimation(forKey: BrailleFrames.key) // it holds the old frames
+            imageLayer.contents = drawn[isRunning ? clock.frame : 0]
             apply()
+        }
+
+        /// The clock's step: the frame's contents, with no implicit fade (`actions` maps contents to none).
+        func show(frame: Int) {
+            guard frames.indices.contains(frame) else { return }
+            imageLayer.contents = frames[frame]
         }
 
         private func apply() {
             if wantsAnimation && window != nil && !frames.isEmpty {
-                guard imageLayer.animation(forKey: BrailleFrames.key) == nil else { return }
-                imageLayer.add(BrailleFrames.animation(frames: frames), forKey: BrailleFrames.key)
+                guard !isRunning else { return }
+                isRunning = true
+                clock.start(self)
             } else {
-                imageLayer.removeAnimation(forKey: BrailleFrames.key)
+                if isRunning { clock.stop(self) }
+                isRunning = false
+                if let first = frames.first { imageLayer.contents = first }
             }
         }
     }

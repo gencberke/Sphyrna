@@ -2,10 +2,11 @@ import CoreGraphics
 
 /// Ink's status marks (DESIGN §4): the braille spinner and the dots. All of the spinner's and the dots' sizes live here.
 extension LoomTheme {
-    /// The working mark: ten frames of one SF Mono braille cell, stepped by the render server at 12 frames a second.
+    /// The working mark: ten frames of one SF Mono braille cell, stepped from the app twice a second (D-125: at 12 frames a
+    /// second the render server kept WindowServer at about 9 % of one core while a session worked).
     enum Spinner {
         static let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-        static let framesPerSecond = 12.0
+        static let framesPerSecond = 2.0
         /// In the 12 pt status slot: 14 pt, in primary.
         static let statusPointSize: CGFloat = 14
         /// In a subagent row: 12.5 pt, in secondary.

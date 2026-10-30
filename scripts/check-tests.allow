@@ -67,7 +67,7 @@ sleep	Tests/LoomCatalogUITests/SidebarB2Tests.swift	6
 sleep	Tests/LoomCatalogUITests/SidebarPagingTests.swift	1
 sleep	Tests/LoomCatalogUITests/SidebarParityTests.swift	1
 sleep	Tests/LoomCatalogUITests/SidebarRenderTests.swift	2
-sleep	Tests/LoomCatalogUITests/SidebarStatusTests.swift	4
+sleep	Tests/LoomCatalogUITests/SidebarStatusTests.swift	3
 sleep	Tests/LoomCatalogUITests/StatusBarUtilitiesTests.swift	2
 sleep	Tests/LoomCatalogUITests/StudioNavigationTests.swift	3
 sleep	Tests/LoomCatalogUITests/SubagentPanelTests.swift	7
