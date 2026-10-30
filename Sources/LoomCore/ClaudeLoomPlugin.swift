@@ -39,7 +39,7 @@ public enum ClaudeLoomPlugin {
         after needsParentInput, finish the current turn so the parent can reply. Native tool approvals belong to the user.
         Managed children show progress and individual permission cards. Take Over ends parent automation.
         Use status/read/wait for results and follow-up turns; automatic nudges require an ordinary terminal parent.
-        A nested managed parent must wait/read. Use only harnesses and actions currently offered by help.
+        A nested managed parent must wait/read. Children are Claude only: Codex's sandbox blocks the channel.
 
         `"$SPHYRNA_CLI" send --help` and `"$SPHYRNA_CLI" inbox --help` describe messaging
         an existing session. Every ordinary send needs user approval; read notifications with inbox.

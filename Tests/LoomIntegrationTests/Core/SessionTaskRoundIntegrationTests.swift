@@ -57,7 +57,7 @@ struct SessionTaskRoundIntegrationTests {
 
     @Test(arguments: ["wrong-client", "partial", "missing"])
     func managedCreatorUsesItsLiveSubscriptionWithoutRolloutFallback(caseName: String) async throws {
-        let context = try await SessionRuntimeRig.makeContext(extraEnvironment: [
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, extraEnvironment: [
             "LOOM_FAKE_TASK_ROUNDS": "1", "LOOM_FAKE_CODEX_JOIN": "blank",
             "LOOM_FAKE_TASK_ROLLOUT": caseName, "LOOM_FAKE_CODEX_DELAY_TASK_RECEIPT": "1"
         ], scoped: true, durableLedger: true, claudeVersion: "2.0.0")
@@ -93,7 +93,7 @@ struct SessionTaskRoundIntegrationTests {
     }
 
     @Test func childStopBeforeTheFirstHelperCannotAuthorizeItsReport() async throws {
-        let context = try await SessionRuntimeRig.makeContext(extraEnvironment: [
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, extraEnvironment: [
             "LOOM_FAKE_TASK_ROUNDS": "1", "LOOM_FAKE_TASK_WAIT_REPORT": "1"
         ], scoped: true, durableLedger: true, claudeVersion: "2.0.0")
         defer { context.cleanup() }
@@ -125,7 +125,7 @@ struct SessionTaskRoundIntegrationTests {
     }
 
     @Test func interruptUpdatesOnlyTheExactCodexRoundAndReusesItsChild() async throws {
-        let context = try await SessionRuntimeRig.makeContext(extraEnvironment: [
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, extraEnvironment: [
             "LOOM_FAKE_TASK_ROUNDS": "1", "LOOM_FAKE_CODEX_JOIN": "blank", "LOOM_FAKE_TASK_HOLD_FIRST": "1"
         ], scoped: true, durableLedger: true, claudeVersion: "2.0.0")
         defer { context.cleanup() }
@@ -192,7 +192,7 @@ struct SessionTaskRoundIntegrationTests {
         if !providerStops { environment["LOOM_FAKE_CHAT_IGNORE_INTERRUPT"] = "1" }
         let audit = ManagedClaudeFixtureAudit()
         let resultGate = ManagedClaudeFixtureInputGate()
-        let context = try await SessionRuntimeRig.makeContext(extraEnvironment: environment,
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, extraEnvironment: environment,
             scoped: true, durableLedger: true, claudeVersion: "2.0.0", managedClaudeControllerFactory: { run, ingress in
                 ManagedClaudeFixtureController(run: run, ingress: ingress,
                                                resultGate: providerStops ? resultGate : nil, audit: audit)
@@ -263,7 +263,7 @@ struct SessionTaskRoundIntegrationTests {
     }
 
     @Test func reportedResultWakesACleanReadyParentWithOnlyATaskPointer() async throws {
-        let context = try await SessionRuntimeRig.makeContext(extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1"],
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1"],
                                                                 scoped: true, durableLedger: true, claudeVersion: "2.0.0")
         defer { context.cleanup() }
         do {
@@ -302,7 +302,7 @@ struct SessionTaskRoundIntegrationTests {
     }
 
     @Test func manuallySubmittedParentRequestCanReceiveItsDelegatedResult() async throws {
-        let context = try await SessionRuntimeRig.makeContext(extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1"],
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, extraEnvironment: ["LOOM_FAKE_TASK_ROUNDS": "1"],
                                                                 scoped: true, durableLedger: true, claudeVersion: "2.0.0")
         defer { context.cleanup() }
         do {
@@ -333,7 +333,7 @@ struct SessionTaskRoundIntegrationTests {
     }
 
     @Test func aLiveWaitReturnsAndAcknowledgesTheResultWithoutAnotherParentInput() async throws {
-        let context = try await SessionRuntimeRig.makeContext(extraEnvironment: [
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, extraEnvironment: [
             "LOOM_FAKE_TASK_ROUNDS": "1", "LOOM_FAKE_TASK_WAIT_REPORT": "1"
         ], scoped: true, durableLedger: true, claudeVersion: "2.0.0")
         defer { context.cleanup() }
@@ -376,7 +376,7 @@ struct SessionTaskRoundIntegrationTests {
     }
 
     @Test func managedParentReadsNestedResultWithoutAnUnprovedWake() async throws {
-        let context = try await SessionRuntimeRig.makeContext(extraEnvironment: [
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, extraEnvironment: [
             "LOOM_FAKE_TASK_ROUNDS": "1", "LOOM_FAKE_CODEX_TASK_YIELD": "1", "LOOM_FAKE_CODEX_JOIN": "blank"
         ], scoped: true, durableLedger: true, claudeVersion: "2.0.0", managedClaudeControllerFactory: { run, ingress in
             ManagedClaudeFixtureController(run: run, ingress: ingress)
@@ -445,7 +445,7 @@ struct SessionTaskRoundIntegrationTests {
             environment["LOOM_FAKE_CODEX_JOIN"] = "blank"
             environment["LOOM_FAKE_CODEX_DELAY_TASK_RECEIPT"] = "1"
         }
-        let context = try await SessionRuntimeRig.makeContext(extraEnvironment: environment,
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: true, extraEnvironment: environment,
             scoped: true, durableLedger: true, claudeVersion: "2.0.0", managedClaudeControllerFactory: { run, ingress in
                 ManagedClaudeFixtureController(run: run, ingress: ingress)
             })

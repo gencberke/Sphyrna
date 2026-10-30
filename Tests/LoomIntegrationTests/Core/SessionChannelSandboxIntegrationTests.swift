@@ -92,4 +92,45 @@ struct SessionChannelSandboxIntegrationTests {
         } catch { Issue.record("sandboxed target fixture failed: \(error)") }
         #expect((await context.runtime.shutdown()).succeeded)
     }
+
+    @Test func aTaskWithACodexChildIsRefusedBeforeAnythingIsStoredOrLaunched() async throws {
+        let context = try await SessionRuntimeRig.makeContext(claudeVersion: "2.0.0", managedClaudeControllerFactory: { run, ingress in
+            ManagedClaudeFixtureController(run: run, ingress: ingress)
+        })
+        defer { context.cleanup() }
+        do {
+            let folder = context.root.appendingPathComponent("task-parent", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let project = try await context.catalog.addProject(path: folder.path).project
+            let (parent, _) = try await SessionRuntimeRig.launchClaude(context, projectID: project.id)
+            let claim = try #require(await context.runtime.taskRunPlans[parent.sessionID]?.claim)
+            #expect(await SessionRuntimeRig.waitUntil(3) { await context.runtime.authenticateTaskRun(claim) != nil })
+            let socket = try #require(await context.runtime.taskSocketPath)
+            let sessions = try await context.catalog.sessions().count
+            @Sendable func create(_ extra: [String]) async throws -> (Int32, String) {
+                let process = Process()
+                process.executableURL = RuntimeFixture.binaries.appendingPathComponent("loom-hook")
+                process.arguments = ["task", "create", "--task", UUID().uuidString, "--name", "Review",
+                                     "--message", "-"] + extra
+                process.environment = ["SPHYRNA_TASK_SOCKET": socket, "SPHYRNA_TASK_TOKEN": claim.credential,
+                    "SPHYRNA_TASK_SESSION_ID": claim.sessionID.uuidString, "SPHYRNA_TASK_RUN_ID": claim.managedRunID.uuidString,
+                    "SPHYRNA_TASK_GENERATION": claim.generation.uuidString]
+                let result = try await runToEnd(process, input: Data("review this".utf8))
+                return (result.status, result.outputText + result.errorText)
+            }
+            for extra in [["--harness", "codex"], ["--harness", "codex", "--mode", "acceptEdits"]] {
+                let refused = try await create(extra)
+                #expect(refused.0 == 1 && refused.1.contains(SessionChannelSandbox.codexReason), "\(extra): \(refused.1)")
+            }
+            #expect(await context.runtime.openRequestSnapshot().isEmpty, "no approval card")
+            #expect(await context.runtime.taskChildReservations.isEmpty, "no child reserved")
+            #expect(try await context.catalog.sessions().count == sessions, "no child session")
+            let claude = try await create(["--harness", "claude"])
+            #expect(claude.0 == 0 && claude.1.contains("pending"), "a Claude child is still offered: \(claude.1)")
+            #expect(SessionTaskCommand.usage.contains("--harness claude") && !SessionTaskCommand.usage.contains("--harness <id>"))
+            #expect(SessionTaskCommand.usage.contains("Codex") && SessionTaskCommand.usage.contains(SessionChannelSandbox.codexReason))
+            #expect(try await context.runtime.stopConversation(sessionID: parent.sessionID).succeeded)
+        } catch { Issue.record("Codex child refusal fixture failed: \(error)") }
+        #expect((await context.runtime.shutdown()).succeeded)
+    }
 }

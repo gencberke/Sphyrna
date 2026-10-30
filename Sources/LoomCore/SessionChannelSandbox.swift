@@ -37,6 +37,6 @@ extension SessionRuntime {
     func sessionChannelBlockedReason(sessionID: UUID) async -> String? {
         guard let record = try? await catalog.session(id: sessionID) else { return nil }
         let mode = (try? await catalog.launchChoices(sessionID: sessionID)).flatMap { HarnessMode.fromStored($0.permissionMode) }
-        return SessionChannelSandbox.blockedReason(harness: record.session.harnessID, mode: mode)
+        return configuration.sessionChannelBlock(record.session.harnessID, mode)
     }
 }

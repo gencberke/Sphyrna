@@ -64,6 +64,9 @@ public struct SessionRuntimeConfiguration: Sendable {
     public var onClaudeLimitReset: ClaudeLimitResetCallbacks?
     /// Optional task-only Claude stream controller, supplied from LoomChat.
     public var managedClaudeControllerFactory: ManagedTaskControllerFactory?
+    /// Whether a harness in a mode can reach the session channel (`SessionChannelSandbox`). Only a test of a fake
+    /// harness that has no sandbox replaces it.
+    var sessionChannelBlock: @Sendable (HarnessID, HarnessMode?) -> String? = SessionChannelSandbox.blockedReason
 
     public init(
         toolchains: @escaping ProviderToolchainResolver, hookHelperPath: String,

@@ -261,8 +261,8 @@ extension SessionServiceFixtures {
 
     func makeRig(runsIn: SessionLiveFace = .chat, host hasHost: Bool = true, startable: Set<ManagedSession.Provider> = [.claude, .codex],
                          extraEnvironment: [String: String] = [:], scoped: Bool = false, durableLedger: Bool = false,
-                         claudeVersion: String = "fake 1") async throws -> Rig {
-        let context = try await SessionRuntimeRig.makeContext(extraEnvironment: extraEnvironment,
+                         claudeVersion: String = "fake 1", fakeCodexHasNoSandbox: Bool = false) async throws -> Rig {
+        let context = try await SessionRuntimeRig.makeContext(fakeCodexHasNoSandbox: fakeCodexHasNoSandbox, extraEnvironment: extraEnvironment,
             scoped: scoped, durableLedger: durableLedger, claudeVersion: claudeVersion)
         let host = FakeHost()
         let sinks = FakeSinks()

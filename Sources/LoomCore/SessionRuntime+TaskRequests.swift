@@ -25,6 +25,10 @@ extension SessionRuntime {
             let input = try OpenSessionInput.validated(title: name, project: call.project, message: message,
                 harness: harness, model: call.model, effort: call.effort, mode: call.mode)
             guard let parent = await authenticateTaskRun(call.claim) else { throw SessionTaskError.unauthorized }
+            // Refused before anything is stored or launched: such a child could never read its input or report.
+            if let reason = configuration.sessionChannelBlock(input.harness, HarnessMode.fromStored(input.mode)) {
+                return .init(status: "refused", detail: reason)
+            }
             guard let provider = input.harness.provider, let transport = harnesses[provider]?.taskTransport,
                   transport != .terminalHook || configuration.managedClaudeControllerFactory != nil else {
                 return .init(status: "refused", detail: "this harness cannot receive task inputs yet")

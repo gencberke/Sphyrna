@@ -7,6 +7,9 @@ import LoomTestSupport
 /// Shared by `SessionRuntimeTests` and the tests of other tiers that reuse its fixtures (DEVELOPMENT §3.1).
 enum SessionRuntimeRig {
     static func makeContext(
+        /// The fake Codex runs no sandbox: tests of Codex task children drive it as a harness without the channel
+        /// block, which the product keeps for real Codex (`SessionChannelSandbox`).
+        fakeCodexHasNoSandbox: Bool = false,
         idlePolicy: SessionIdlePolicy = SessionIdlePolicy(),
         extraEnvironment: [String: String] = [:],
         startRuntime: Bool = true,
@@ -75,9 +78,7 @@ enum SessionRuntimeRig {
                 profileDirectory: profile, extraArguments: []
             )
         }
-        let runtime = SessionRuntime(
-            supervisor: supervisor, catalog: catalog,
-            configuration: SessionRuntimeConfiguration(
+        var configuration = SessionRuntimeConfiguration(
                 toolchains: resolver,
                 hookHelperPath: hookHelperPath ?? RuntimeFixture.binaries.appendingPathComponent("loom-hook").path,
                 socketDirectory: socketDirectory, homeDirectory: home.path,
@@ -87,7 +88,8 @@ enum SessionRuntimeRig {
                 runsRecovered: runsRecovered, defaultOpenedMode: defaultOpenedMode, openedModels: openedModels,
                 managedClaudeControllerFactory: managedClaudeControllerFactory
             )
-        )
+        if fakeCodexHasNoSandbox { configuration.sessionChannelBlock = { _, _ in nil } }
+        let runtime = SessionRuntime(supervisor: supervisor, catalog: catalog, configuration: configuration)
         if startRuntime { try await runtime.start() }
         return RuntimeContext(
             root: root, home: home, catalog: catalog, supervisor: supervisor, runtime: runtime,

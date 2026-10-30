@@ -6,8 +6,9 @@ public enum SessionTaskCommand {
     public static let usage = """
         usage: "$SPHYRNA_CLI" task <command> --task <id> [options]
 
-          create --name <name> --harness <id> --message -
-                                         request an approved new task child
+          create --name <name> --harness claude --message -
+                                         request an approved new task child (Claude; Codex
+                                         children are not available yet: \(SessionChannelSandbox.codexReason))
           identity                       identify this live terminal run
           status                         read task and native status
           read [--after <cursor>]        read task events; printed events are acknowledged
