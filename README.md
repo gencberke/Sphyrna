@@ -17,7 +17,7 @@ Sphyrna is the product name. Internal Loom targets, bundle identifiers and exist
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture: targets, runtime flows, process ownership, UI surface-to-code index (§11, replacing `design/UI-MAP.md`), and technical gotchas (§12) |
 | [design/DESIGN.md](design/DESIGN.md), [design/reference.html](design/reference.html) | Visual design system (Ink v4) and interactive reference |
 | [DEVELOPMENT.md](DEVELOPMENT.md), [scripts/README.md](scripts/README.md) | Build, test, isolation, evidence mode, packaging, and measurement |
-| [plans/ACTIVE-PLAN.md](plans/ACTIVE-PLAN.md), [plans/README.md](plans/README.md) | Active 1.8.0 slice status and acceptance, plan routing, and dated history under `plans/archive/` |
+| [plans/ACTIVE-PLAN.md](plans/ACTIVE-PLAN.md), [plans/README.md](plans/README.md) | The active plan (none since the archive, [COLD-START.md](COLD-START.md)), the release notes and the perf baseline |
 
 This repository is **loom-dev**, the development tree. The daily-use app is built from a separate clean **loom** tree that receives tested releases from here and is public at [github.com/gencberke/loom](https://github.com/gencberke/loom); its README is [scripts/release/README.release.md](scripts/release/README.release.md), with pictures rendered from [design/readme/](design/readme/build.py) ([DEVELOPMENT.md §10](DEVELOPMENT.md#10-loom-dev-and-the-clean-loom-tree)).
 

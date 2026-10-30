@@ -8,7 +8,7 @@
 
 **Orca and T3 Code ([D-104](../DECISIONS.md)).** They are Sphyrna's outside references for its look as well as its logic. A surface may follow their design case by case. Each such change is decided by `@user` and lands here as a rule, as every visual change does. The feature-by-feature map is [docs/FEATURES.md](../docs/FEATURES.md).
 
-**Ink v4 ([D-105](../DECISIONS.md), [D-106](../DECISIONS.md)).** 1.8.0 moves the look toward Orca's design system while keeping Ink's identity. `@user` approved it on B0's reference on 27 Oct. Its six rules below replace v3's. [§0](#0-ink-v4) holds its values and wins wherever a v3 section differs. The proposal and its reasons are in [plans/1.8.0/DESIGN-V4.md](../plans/1.8.0/DESIGN-V4.md).
+**Ink v4 ([D-105](../DECISIONS.md), [D-106](../DECISIONS.md)).** 1.8.0 moves the look toward Orca's design system while keeping Ink's identity. `@user` approved it on B0's reference on 27 Oct. Its six rules below replace v3's. [§0](#0-ink-v4) holds its values and wins wherever a v3 section differs. The proposal and its reasons were in `plans/1.8.0/DESIGN-V4.md`, removed at the archive (read it at the tag `release/1.8.0`).
 
 The Ink token system (`I1`) and surface migrations (`Batch B`, `I2c`, `I6`, `I4-0`, `Batch D`, `I4`, `I4b`, `I4c`, `L3b Settings`, `I6b`) are landed in code ([ACTIVE-PLAN.md](../plans/ACTIVE-PLAN.md)):
 - [docs/ARCHITECTURE.md §11](../docs/ARCHITECTURE.md#11-ui-surface-to-code--evidence-index) maps every surface, view, accessibility ID, keyboard shortcut, and evidence key in code (replacing the former `design/UI-MAP.md`);
@@ -43,8 +43,8 @@ What it changes is the surface.
 
 The values of Ink v4, approved by `@user` on B0's reference ([D-106](../DECISIONS.md)). Where this section and a v3 section
 below (§2–§20) differ, this section wins. B1 and the surface slices fold it into those sections as the code lands. The
-reference's "Ink v4" chapter draws each part. The proposal and its reasons are in
-[plans/1.8.0/DESIGN-V4.md](../plans/1.8.0/DESIGN-V4.md).
+reference's "Ink v4" chapter draws each part. The proposal and its reasons were in
+`plans/1.8.0/DESIGN-V4.md` (read it at the tag `release/1.8.0`).
 
 ### 0.1 Tokens
 
@@ -304,7 +304,7 @@ at 100 %. No window draws the art
 - Claude's desktop sidebar: subagents branching from their session, one branch per row.
 - [stackedlol/ascii-sharks](https://github.com/stackedlol/ascii-sharks): sharks drawn as an ASCII density field. Sphyrna's sharks are its own code (§17).
 
-**History.** The accepted previews, 01 to 07 and the identity (D-74 to D-81), are kept in `design/pre-reference-preview-pages/` as they stood before the reference: a record, never edited. They are not part of this contract. The reference brought each of them up to date with the decisions that came after it, so where a preview and the reference differ, the reference holds. The other design files the reference replaced (D-82) are in git only.
+**History.** The accepted previews, 01 to 07 and the identity (D-74 to D-81), were kept in `design/pre-reference-preview-pages/` as they stood before the reference, until the archive removed them (read them at the tag `release/1.8.0`). They are not part of this contract. The reference brought each of them up to date with the decisions that came after it, so where a preview and the reference differ, the reference holds. The other design files the reference replaced (D-82) are in git only.
 
 ## 2. Elements to keep
 
